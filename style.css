@@ -716,51 +716,102 @@ body {
   text-align: center;
   font-weight: bold;
   position: relative;
+  user-select: none;
 }
 .cell-gender.f { color: #d63384; }
 .cell-gender.m { color: #0d6efd; }
 
-/* Excel style dropdown indicator for Gender */
-.cell-gender.cell-focused::after {
-  content: "▼";
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 8px;
-  color: var(--excel-green-dark);
-  pointer-events: none;
-  opacity: 0.8;
+.cell-gender-text {
+  display: inline-block;
+  vertical-align: middle;
+  min-width: 14px;
 }
 
-.cell-gender-select {
-  appearance: auto;
-  width: 100%;
-  height: 100%;
-  border: none;
-  outline: 2px solid var(--excel-green);
-  background: #ffffff;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: bold;
-  text-align: center;
+/* Excel Data Validation Dropdown Arrow Button */
+.gender-dropdown-btn {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 17px;
+  background: #f0f0f0;
+  border: 1px solid #c0c0c0;
+  border-top: none;
+  border-right: none;
+  color: #333333;
+  font-size: 8px;
   cursor: pointer;
-  padding: 0 2px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   margin: 0;
-  border-radius: 0;
+  z-index: 2;
   box-sizing: border-box;
 }
-.cell-gender-select:focus {
-  outline: 2px solid var(--excel-green);
+
+.gender-dropdown-btn:hover {
+  background: #e1dfdd;
 }
-.cell-chartNo { text-align: right; font-family: monospace; font-size: 12px; }
+
+/* Show dropdown arrow ONLY when cell is focused/selected */
+.cell-gender.cell-focused .gender-dropdown-btn {
+  display: flex !important;
+}
+
+/* Excel Dropdown Popup Menu */
+.gender-picker-menu {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #107C41;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  z-index: 3000;
+  min-width: 80px;
+  padding: 3px 0;
+  font-size: 13px;
+  font-weight: bold;
+  user-select: none;
+  animation: contextMenuFadeIn 0.08s ease-out;
+}
+
+.gender-picker-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #24292f;
+  transition: background-color 0.1s;
+}
+
+.gender-picker-item:hover {
+  background-color: #eef8f2;
+}
+
+.gender-picker-item.item-m {
+  color: #0d6efd;
+}
+
+.gender-picker-item.item-f {
+  color: #d63384;
+}
+
+.gender-picker-item.item-none {
+  color: #888888;
+  font-size: 11px;
+  font-weight: normal;
+}
+
+.cell-chartNo { text-align: center; font-family: monospace; font-size: 12px; }
 .cell-name { text-align: center; font-weight: 600; }
-.cell-part { text-align: left; }
+.cell-part { text-align: center; }
 .cell-prescription { text-align: left; }
 .cell-extra { text-align: center; font-weight: 600; color: #1b5e20; }
 .cell-writer { text-align: center; color: #2e7d32; font-weight: bold; }
 .cell-memo { text-align: center; color: #555; }
-.cell-specialNote { text-align: left; color: #c62828; }
+.cell-specialNote { text-align: center; color: #c62828; }
 .cell-del-action { text-align: center; }
 
 /* Selected Cell (Excel highlight style) */
@@ -791,6 +842,13 @@ body {
   background: #d7eadb !important;
   box-shadow: inset 0 0 0 1px var(--excel-cell-selected);
 }
+
+.excel-cell.clipboard-source.cell-focused { outline: none; }
+.excel-cell.clipboard-source .cell-fill-handle { display: none; }
+.excel-cell.clipboard-source.clipboard-top { border-top: 2px dashed var(--excel-green) !important; }
+.excel-cell.clipboard-source.clipboard-bottom { border-bottom: 2px dashed var(--excel-green) !important; }
+.excel-cell.clipboard-source.clipboard-left { border-left: 2px dashed var(--excel-green) !important; }
+.excel-cell.clipboard-source.clipboard-right { border-right: 2px dashed var(--excel-green) !important; }
 
 /* In-Cell Input */
 .cell-input-element {

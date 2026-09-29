@@ -6,28 +6,28 @@
 // Initial Sample Data extracted directly from the user's Excel spreadsheet image
 const INITIAL_SAMPLE_DATA = {
   "2026-09-29": [
-    { no: 3, gender: "F", chartNo: "3387", name: "신재례", part: "양무", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 9, gender: "F", chartNo: "15307", name: "김시호", part: "오무", prescription: "학생 ( HP / Laser )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 6, gender: "M", chartNo: "6780", name: "이춘식", part: "왼 고관절", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "Lt.femur *핀(MW X)", date: "2026.09.29" },
-    { no: 4, gender: "M", chartNo: "16133", name: "최의규", part: "Lt. Heel", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 10, gender: "F", chartNo: "15520", name: "정화자", part: "왼 손목", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 8, gender: "M", chartNo: "12208", name: "천진우", part: "왼 손목", prescription: "학생 ( HP / Laser )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 1, gender: "F", chartNo: "12500", name: "양명자", part: "왼 엉", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 10, gender: "M", chartNo: "4079", name: "정서우", part: "Lt. Thigh", prescription: "학생 ( HP / Laser )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: 4, gender: "M", chartNo: "8064", name: "이영덕", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: "", gender: "F", chartNo: "14358", name: "박서하", part: "Rt. heel", prescription: "X", extra: "충격파", writer: "S", memo: "충완", specialNote: "", date: "2026.09.29" },
-    { no: 9, gender: "M", chartNo: "5285", name: "전기운", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.29" },
-    { no: "", gender: "M", chartNo: "16155", name: "전재윤", part: "목", prescription: "척추 ( HP / 자기장 / ICT )", extra: "충격파", writer: "S", memo: "충완", specialNote: "", date: "2026.09.29" },
-    { no: "", gender: "M", chartNo: "16156", name: "김관웅", part: "우 발바닥", prescription: "사지 ( HP / Laser / ICT )", extra: "윈백", writer: "S", memo: "충완", specialNote: "", date: "2026.09.29" },
-    { no: 1, gender: "", chartNo: "", name: "김열중", part: "발목", prescription: "사지 ( HP / Laser / ICT )", extra: "이온", writer: "S", memo: "이온 완", specialNote: "", date: "2026.09.29" }
+    { no: 3, gender: "F", chartNo: "3387", name: "신재례", part: "양무", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 9, gender: "F", chartNo: "15307", name: "김시호", part: "오무", prescription: "학생 ( HP / Laser )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 6, gender: "M", chartNo: "6780", name: "이춘식", part: "왼 고관절", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "Lt.femur *핀(MW X)", date: "2026.09.29" },
+    { no: 4, gender: "M", chartNo: "16133", name: "최의규", part: "Lt. Heel", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 10, gender: "F", chartNo: "15520", name: "정화자", part: "왼 손목", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 8, gender: "M", chartNo: "12208", name: "천진우", part: "왼 손목", prescription: "학생 ( HP / Laser )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 1, gender: "F", chartNo: "12500", name: "양명자", part: "왼 엉", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 10, gender: "M", chartNo: "4079", name: "정서우", part: "Lt. Thigh", prescription: "학생 ( HP / Laser )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: 4, gender: "M", chartNo: "8064", name: "이영덕", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: "", gender: "F", chartNo: "14358", name: "박서하", part: "Rt. heel", prescription: "X", extra: "충격파", writer: "", memo: "충완", specialNote: "", date: "2026.09.29" },
+    { no: 9, gender: "M", chartNo: "5285", name: "전기운", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.29" },
+    { no: "", gender: "M", chartNo: "16155", name: "전재윤", part: "목", prescription: "척추 ( HP / 자기장 / ICT )", extra: "충격파", writer: "", memo: "충완", specialNote: "", date: "2026.09.29" },
+    { no: "", gender: "M", chartNo: "16156", name: "김관웅", part: "우 발바닥", prescription: "사지 ( HP / Laser / ICT )", extra: "윈백", writer: "", memo: "충완", specialNote: "", date: "2026.09.29" },
+    { no: 1, gender: "", chartNo: "", name: "김열중", part: "발목", prescription: "사지 ( HP / Laser / ICT )", extra: "이온", writer: "", memo: "이온 완", specialNote: "", date: "2026.09.29" }
   ],
   "2026-09-28": [
-    { no: 1, gender: "F", chartNo: "105", name: "김경희", part: "오 손목", prescription: "사지 ( HP / Laser / ICT )", extra: "이온", writer: "S", memo: "이온 완", specialNote: "", date: "2026.09.28" },
-    { no: 4, gender: "F", chartNo: "10948", name: "오성희", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.28" },
-    { no: "", gender: "M", chartNo: "16056", name: "김민성", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "충격파", writer: "S", memo: "충완", specialNote: "", date: "2026.09.28" },
-    { no: 9, gender: "F", chartNo: "16122", name: "김현신", part: "오 등", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.28" },
-    { no: 3, gender: "F", chartNo: "15889", name: "이연진", part: "오 발등", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.28" },
-    { no: "", gender: "M", chartNo: "16154", name: "김세윤", part: "뗀무", prescription: "항냉 ( ICE / Laser )", extra: "", writer: "S", memo: "", specialNote: "", date: "2026.09.28" }
+    { no: 1, gender: "F", chartNo: "105", name: "김경희", part: "오 손목", prescription: "사지 ( HP / Laser / ICT )", extra: "이온", writer: "", memo: "이온 완", specialNote: "", date: "2026.09.28" },
+    { no: 4, gender: "F", chartNo: "10948", name: "오성희", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.28" },
+    { no: "", gender: "M", chartNo: "16056", name: "김민성", part: "허리", prescription: "척추 ( HP / 자기장 / ICT )", extra: "충격파", writer: "", memo: "충완", specialNote: "", date: "2026.09.28" },
+    { no: 9, gender: "F", chartNo: "16122", name: "김현신", part: "오 등", prescription: "척추 ( HP / 자기장 / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.28" },
+    { no: 3, gender: "F", chartNo: "15889", name: "이연진", part: "오 발등", prescription: "사지 ( HP / Laser / ICT )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.28" },
+    { no: "", gender: "M", chartNo: "16154", name: "김세윤", part: "뗀무", prescription: "항냉 ( ICE / Laser )", extra: "", writer: "", memo: "", specialNote: "", date: "2026.09.28" }
   ]
 };
 
@@ -35,7 +35,7 @@ const STORAGE_KEY = "PT_APP_DATA_STORAGE_V1";
 const SUPABASE_CONFIG_KEY = "PT_SUPABASE_CONFIG_V1";
 const DEFAULT_SUPABASE_URL = "https://uqivbmkeuupsaghwshcw.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxaXZibWtldXVwc2FnaHdzaGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0ODM3OTUsImV4cCI6MjA4NTA1OTc5NX0.FY86a0vaN_x-KeErBYAVyCpyXKsxloZiy7eysZGSFjk";
-const DEFAULT_WRITER = "S";
+const DEFAULT_WRITER = "";
 const BASE_ROW_NUMBER = 1; // 행 번호 1부터 시작
 const DEFAULT_ROW_COUNT = 150; // 기본 하루 150개 행
 
@@ -83,6 +83,7 @@ class PTApp {
 
     // Clipboard & Context Menu
     this.clipboardBuffer = ""; // 내부 클립보드 버퍼 (TSV 형식)
+    this.clipboardSelection = null;
     this.contextTarget = null; // { type: 'cell'|'row'|'col'|'corner', rowIdx, colKey, colIdx }
 
     this.cacheElements();
@@ -298,12 +299,17 @@ class PTApp {
       const { rowIdx, colKey } = this.activeCell;
       const rows = this.getCurrentRows();
       if (rows[rowIdx]) {
+        if (colKey === "writer" && e.isComposing) return;
         let val = e.target.value;
         if (colKey === "gender") {
           val = this.normalizeGenderInput(val);
           e.target.value = val;
           this.setGenderValue(rowIdx, val);
           return;
+        }
+        if (colKey === "writer") {
+          val = this.normalizeWriterInput(val);
+          e.target.value = val;
         }
         rows[rowIdx][colKey] = val;
         const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
@@ -313,6 +319,11 @@ class PTApp {
           else cellEl.textContent = val;
         }
         this.saveDataStore();
+      }
+    });
+    this.elFormulaInput.addEventListener("compositionend", () => {
+      if (this.activeCell?.colKey === "writer") {
+        this.elFormulaInput.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
 
@@ -352,6 +363,7 @@ class PTApp {
     // Close modal & context menu on escape
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        this.closeGenderDropdown();
         this.hideContextMenu();
         this.closePreviewModal();
         this.closeBackupModal();
@@ -437,6 +449,7 @@ class PTApp {
   }
 
   setDate(dateStr, autoFocusFirstEmpty = false) {
+    this.clipboardSelection = null;
     this.currentDate = dateStr;
     this.elDatePicker.value = dateStr;
 
@@ -531,12 +544,33 @@ class PTApp {
 
         const val = row[key] || "";
 
-        // Custom render for Gender: Quick click toggle or select
+        // Custom render for Gender: text + right dropdown arrow button (Excel Data Validation Style)
         if (key === "gender") {
-          td.textContent = val;
+          td.textContent = "";
+
+          const textSpan = document.createElement("span");
+          textSpan.className = "cell-gender-text";
+          textSpan.textContent = val;
+          td.appendChild(textSpan);
+
           if (val === "F") td.classList.add("f");
           if (val === "M") td.classList.add("m");
-          td.title = "클릭하여 드롭박스로 M/F 선택 (키보드 M, F, ㅡ, ㄹ 입력 지원)";
+
+          const dropBtn = document.createElement("button");
+          dropBtn.type = "button";
+          dropBtn.className = "gender-dropdown-btn";
+          dropBtn.innerHTML = "▼";
+          dropBtn.title = "성별 선택 (M / F)";
+          dropBtn.tabIndex = -1;
+
+          dropBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.selectCell(rowIdx, "gender", td, false);
+            this.openGenderDropdown(rowIdx, td, dropBtn);
+          });
+
+          td.appendChild(dropBtn);
+          td.title = "선택 시 우측 ▼ 버튼 또는 더블클릭으로 M/F 선택 (키보드 M, F, ㅡ, ㄹ 지원)";
         } else {
           td.textContent = val;
         }
@@ -544,9 +578,9 @@ class PTApp {
         // Cell Mouse Down handler (Start Drag Selection)
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return; // Only Left Click
-          if (e.target.closest(".cell-fill-handle")) return;
-          // If already editing inside input/select, don't interrupt text cursor
-          if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+          if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
+          // If already editing inside input, don't interrupt text cursor
+          if (e.target.tagName === "INPUT") return;
 
           this.isSelectingRange = true;
           this.rangeStart = { rowIdx, colIdx, colKey: key };
@@ -567,21 +601,20 @@ class PTApp {
           this.updateRangeSelection();
         });
 
-        // Cell Click handler (Gender opens dropdown select)
+        // Cell Click handler (Clean cell selection)
         td.addEventListener("click", (e) => {
-          if (e.target.closest(".cell-fill-handle")) return;
-          if (key === "gender") {
-            if (e.target.tagName !== "SELECT") {
-              this.startGenderEdit(rowIdx, td);
-              const dropdown = td.querySelector("select");
-              try { dropdown?.showPicker?.(); } catch { /* Native arrow remains available. */ }
-            }
-          }
+          if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
+          this.selectCell(rowIdx, key, td, false);
         });
 
-        // Cell Double Click to inline edit
+        // Cell Double Click to inline edit or open gender dropdown
         td.addEventListener("dblclick", () => {
-          this.startInlineEdit(rowIdx, key, td);
+          if (key === "gender") {
+            const dropBtn = td.querySelector(".gender-dropdown-btn");
+            this.openGenderDropdown(rowIdx, td, dropBtn);
+          } else {
+            this.startInlineEdit(rowIdx, key, td);
+          }
         });
 
         tr.appendChild(td);
@@ -613,12 +646,14 @@ class PTApp {
         this.updateActiveHeaders(this.activeCell.rowIdx, this.activeCell.colKey);
       }
     }
+    this.renderClipboardSelection();
   }
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
     this.activeCell = { rowIdx, colKey };
     this.selectedRowIdx = rowIdx;
+    this.selectedColKey = null;
 
     this.clearHeaderSelections();
     this.updateActiveHeaders(rowIdx, colKey);
@@ -664,7 +699,8 @@ class PTApp {
       event.stopPropagation();
       const currentValue = this.getCurrentRows()[Number(row)]?.[col];
       if (currentValue === null || currentValue === undefined || String(currentValue).trim() === "") return;
-      this.fillDrag = { rowIdx: Number(row), colKey: col, colIdx: Number(colIdx), value: currentValue,
+      this.fillDrag = { rowIdx: Number(row), colKey: col, colIdx: Number(colIdx),
+        value: col === "writer" ? this.normalizeWriterInput(currentValue) : currentValue,
         endRow: Number(row), date: this.currentDate };
       this.isSelectingRange = false;
       this.isSelectingRows = false;
@@ -716,6 +752,31 @@ class PTApp {
     this.showSaveIndicator(`${drag.endRow - drag.rowIdx}개 셀 채우기 완료`);
   }
 
+  // Convert Korean keyboard input to uppercase English writer initials.
+  normalizeWriterInput(value) {
+    const keys = {
+      'ㄱ':'R', 'ㄲ':'R', 'ㄴ':'S', 'ㄷ':'E', 'ㄸ':'E', 'ㄹ':'F', 'ㅁ':'A',
+      'ㅂ':'Q', 'ㅃ':'Q', 'ㅅ':'T', 'ㅆ':'T', 'ㅇ':'D', 'ㅈ':'W', 'ㅉ':'W',
+      'ㅊ':'C', 'ㅋ':'Z', 'ㅌ':'X', 'ㅍ':'V', 'ㅎ':'G',
+      'ㅏ':'K', 'ㅐ':'O', 'ㅑ':'I', 'ㅒ':'O', 'ㅓ':'J', 'ㅔ':'P', 'ㅕ':'U',
+      'ㅖ':'P', 'ㅗ':'H', 'ㅘ':'HK', 'ㅙ':'HO', 'ㅚ':'HL', 'ㅛ':'Y',
+      'ㅜ':'N', 'ㅝ':'NJ', 'ㅞ':'NP', 'ㅟ':'NL', 'ㅠ':'B', 'ㅡ':'M', 'ㅢ':'ML', 'ㅣ':'L',
+      'ㄳ':'RT', 'ㄵ':'SW', 'ㄶ':'SG', 'ㄺ':'FR', 'ㄻ':'FA', 'ㄼ':'FQ',
+      'ㄽ':'FT', 'ㄾ':'FX', 'ㄿ':'FV', 'ㅀ':'FG', 'ㅄ':'QT',
+    };
+    const initials = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+    const vowels = 'ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ';
+    const finals = ' ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ';
+    return Array.from(String(value ?? '').normalize('NFC'), (char) => {
+      if (/^[a-z]$/i.test(char)) return char.toUpperCase();
+      if (keys[char]) return keys[char];
+      const syllable = char.charCodeAt(0) - 0xAC00;
+      if (syllable < 0 || syllable > 11171) return '';
+      return keys[initials[Math.floor(syllable / 588)]] +
+        keys[vowels[Math.floor(syllable % 588 / 28)]] + (keys[finals[syllable % 28]] || '');
+    }).join('');
+  }
+
   // G열 성별 정규화 헬퍼 (무조건 영어 대문자 M 또는 F, 'ㄹ' -> 'F', 'ㅡ' -> 'M')
   normalizeGenderInput(val) {
     if (!val) return "";
@@ -733,7 +794,17 @@ class PTApp {
 
     const el = cellEl || document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`);
     if (el) {
-      el.textContent = finalVal;
+      let textSpan = el.querySelector(".cell-gender-text");
+      if (!textSpan) {
+        // Dropdown button 확인 및 보존
+        const dropBtn = el.querySelector(".gender-dropdown-btn");
+        el.innerHTML = "";
+        textSpan = document.createElement("span");
+        textSpan.className = "cell-gender-text";
+        el.appendChild(textSpan);
+        if (dropBtn) el.appendChild(dropBtn);
+      }
+      textSpan.textContent = finalVal;
       el.classList.remove("f", "m");
       if (finalVal === "F") el.classList.add("f");
       if (finalVal === "M") el.classList.add("m");
@@ -747,94 +818,74 @@ class PTApp {
     this.saveDataStore();
   }
 
-  startGenderEdit(rowIdx, cellElement) {
-    if (cellElement.querySelector("select") || cellElement.querySelector("input")) return;
+  // 엑셀 스타일 우측 드롭다운 팝업 메뉴 (셀 안에 셀이 들어가지 않고 우측에만 표시)
+  openGenderDropdown(rowIdx, cellElement, triggerElement = null) {
+    this.closeGenderDropdown();
 
-    const rows = this.getCurrentRows();
-    const currentVal = rows[rowIdx] ? (rows[rowIdx].gender || "") : "";
+    const menu = document.createElement("div");
+    menu.className = "gender-picker-menu";
+    menu.id = "genderPickerMenu";
 
-    cellElement.textContent = "";
-    const select = document.createElement("select");
-    select.className = "cell-gender-select";
+    const items = [
+      { val: "M", text: "M (남)", cls: "item-m" },
+      { val: "F", text: "F (여)", cls: "item-f" },
+      { val: "", text: "- (선택 안함)", cls: "item-none" }
+    ];
 
-    const optNone = document.createElement("option");
-    optNone.value = "";
-    optNone.textContent = "- (선택 안함)";
+    items.forEach((item) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = `gender-picker-item ${item.cls}`;
+      itemEl.textContent = item.text;
+      itemEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.setGenderValue(rowIdx, item.val, cellElement);
+        this.closeGenderDropdown();
+        this.selectCell(rowIdx, "gender", cellElement, false);
+      });
+      menu.appendChild(itemEl);
+    });
 
-    const optM = document.createElement("option");
-    optM.value = "M";
-    optM.textContent = "M";
+    document.body.appendChild(menu);
 
-    const optF = document.createElement("option");
-    optF.value = "F";
-    optF.textContent = "F";
+    // 메뉴 위치 계산 (트리거 버튼 또는 셀 바로 아래)
+    const targetRect = (triggerElement || cellElement).getBoundingClientRect();
+    const menuWidth = 85;
+    let left = targetRect.left;
+    let top = targetRect.bottom + 1;
 
-    select.appendChild(optNone);
-    select.appendChild(optF);
-    select.appendChild(optM);
-    select.value = currentVal;
+    if (left + menuWidth > window.innerWidth) {
+      left = window.innerWidth - menuWidth - 6;
+    }
+    if (top + 105 > window.innerHeight) {
+      top = targetRect.top - 105;
+    }
 
-    cellElement.appendChild(select);
-    select.focus();
+    menu.style.left = `${Math.max(6, left)}px`;
+    menu.style.top = `${Math.max(6, top)}px`;
 
-    let committed = false;
-    const commit = (val) => {
-      if (committed) return;
-      committed = true;
-      this.setGenderValue(rowIdx, val, cellElement);
+    // 외부 클릭 시 닫기
+    const outsideClickListener = (e) => {
+      if (!menu.contains(e.target) && e.target !== triggerElement) {
+        this.closeGenderDropdown();
+        document.removeEventListener("click", outsideClickListener);
+      }
     };
+    setTimeout(() => {
+      document.addEventListener("click", outsideClickListener);
+    }, 10);
+  }
 
-    select.addEventListener("change", (e) => {
-      commit(e.target.value);
-    });
-
-    select.addEventListener("blur", () => {
-      commit(select.value);
-    });
-
-    select.addEventListener("keydown", (e) => {
-      const key = e.key;
-      // 한글 오타 및 영문 대소문자 자동 변환
-      if (key === "ㄹ" || key.toLowerCase() === "f") {
-        e.preventDefault();
-        commit("F");
-        this.navigateCell(rowIdx + 1, "gender");
-        return;
-      }
-      if (key === "ㅡ" || key.toLowerCase() === "m") {
-        e.preventDefault();
-        commit("M");
-        this.navigateCell(rowIdx + 1, "gender");
-        return;
-      }
-      if (key === "Delete" || key === "Backspace" || key === " ") {
-        e.preventDefault();
-        commit("");
-        return;
-      }
-      if (key === "Enter") {
-        e.preventDefault();
-        commit(select.value);
-        this.navigateCell(rowIdx + (e.shiftKey ? -1 : 1), "gender");
-        return;
-      }
-      if (key === "Tab") {
-        e.preventDefault();
-        commit(select.value);
-        this.navigateCol(rowIdx, "gender", e.shiftKey ? -1 : 1);
-        return;
-      }
-      if (key === "Escape") {
-        e.preventDefault();
-        commit(currentVal);
-        return;
-      }
-    });
+  closeGenderDropdown() {
+    const existing = document.getElementById("genderPickerMenu");
+    if (existing) {
+      existing.remove();
+    }
   }
 
   startInlineEdit(rowIdx, colKey, cellElement) {
     if (colKey === "gender") {
-      this.startGenderEdit(rowIdx, cellElement);
+      const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
+      this.openGenderDropdown(rowIdx, cellElement, dropBtn);
       return;
     }
 
@@ -850,6 +901,10 @@ class PTApp {
     input.type = "text";
     input.className = "cell-input-element";
     input.value = initialVal;
+    if (colKey === "writer") {
+      input.autocapitalize = "characters";
+      input.spellcheck = false;
+    }
 
     // Auto-complete list suggestion support for Part and Prescription
     if (colKey === "part") {
@@ -869,14 +924,19 @@ class PTApp {
 
     // Input events
     input.addEventListener("input", (e) => {
-      const val = e.target.value;
+      if (colKey === "writer" && e.isComposing) return;
+      const val = colKey === "writer" ? this.normalizeWriterInput(e.target.value) : e.target.value;
+      if (colKey === "writer") e.target.value = val;
       rows[rowIdx][colKey] = val;
       this.elFormulaInput.value = val;
       this.saveDataStore();
     });
+    input.addEventListener("compositionend", () => {
+      if (colKey === "writer") input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
 
     const commitAndBlur = () => {
-      const finalVal = input.value.trim();
+      const finalVal = colKey === "writer" ? this.normalizeWriterInput(input.value) : input.value.trim();
       rows[rowIdx][colKey] = finalVal;
       cellElement.textContent = finalVal;
       if (colKey === "gender") {
@@ -892,6 +952,7 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") {
         e.preventDefault();
         commitAndBlur();
@@ -2006,14 +2067,33 @@ class PTApp {
   // =============================================================================
   // Clipboard Operations (클립보드 연동: 복사, 잘라내기, 붙여넣기, 지우기)
   // =============================================================================
+  renderClipboardSelection() {
+    const classes = ["clipboard-source", "clipboard-top", "clipboard-bottom", "clipboard-left", "clipboard-right"];
+    this.elTableBody.querySelectorAll(".clipboard-source").forEach((cell) => cell.classList.remove(...classes));
+    const selection = this.clipboardSelection;
+    if (!selection || selection.date !== this.currentDate) return;
+    const { minRow, maxRow, minCol, maxCol } = selection;
+    this.elTableBody.querySelectorAll(".excel-cell[data-col-idx]").forEach((cell) => {
+      const row = Number(cell.dataset.row), col = Number(cell.dataset.colIdx);
+      if (row < minRow || row > maxRow || col < minCol || col > maxCol) return;
+      cell.classList.add("clipboard-source");
+      if (row === minRow) cell.classList.add("clipboard-top");
+      if (row === maxRow) cell.classList.add("clipboard-bottom");
+      if (col === minCol) cell.classList.add("clipboard-left");
+      if (col === maxCol) cell.classList.add("clipboard-right");
+    });
+  }
+
   copySelection() {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
     let tsvData = "";
+    let copyRange = null;
 
     if (this.selectedRange) {
       // Range copy (TSV grid format)
       const { minRow, maxRow, minCol, maxCol } = this.selectedRange;
+      copyRange = { ...this.selectedRange };
       const lines = [];
       for (let r = minRow; r <= maxRow; r++) {
         const rowVals = [];
@@ -2024,20 +2104,25 @@ class PTApp {
         lines.push(rowVals.join("\t"));
       }
       tsvData = lines.join("\n");
-    } else if (this.selectedRowIdx !== null && rows[this.selectedRowIdx]) {
-      // Entire row copy
-      const r = rows[this.selectedRowIdx];
-      tsvData = colKeys.map((k) => r[k] ?? "").join("\t");
     } else if (this.selectedColKey !== null) {
       // Entire column copy
       tsvData = rows.map((r) => r[this.selectedColKey] ?? "").join("\n");
+      const col = colKeys.indexOf(this.selectedColKey);
+      copyRange = { minRow: 0, maxRow: rows.length - 1, minCol: col, maxCol: col };
     } else if (this.activeCell && rows[this.activeCell.rowIdx]) {
       // Single cell copy
       tsvData = rows[this.activeCell.rowIdx][this.activeCell.colKey] ?? "";
+      const col = colKeys.indexOf(this.activeCell.colKey);
+      copyRange = { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: col, maxCol: col };
+    } else if (this.selectedRowIdx !== null && rows[this.selectedRowIdx]) {
+      tsvData = colKeys.map((k) => rows[this.selectedRowIdx][k] ?? "").join("\t");
+      copyRange = { minRow: this.selectedRowIdx, maxRow: this.selectedRowIdx, minCol: 0, maxCol: colKeys.length - 1 };
     }
 
     if (tsvData) {
       this.clipboardBuffer = tsvData;
+      this.clipboardSelection = { ...copyRange, date: this.currentDate };
+      this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
           console.warn("Clipboard write failed, internal buffer used:", err);
@@ -2112,7 +2197,8 @@ class PTApp {
           const k = colKeys[c];
           if (k) {
             const trimmed = val.trim();
-            rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed) : trimmed;
+            rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
+              : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
           }
         }
       });
@@ -2121,6 +2207,8 @@ class PTApp {
     this.saveDataStore();
     this.renderTable();
     this.showSaveIndicator("붙여넣기 완료됨");
+    this.clipboardSelection = null;
+    this.renderClipboardSelection();
   }
 
   clearSelection() {
@@ -2421,25 +2509,29 @@ class PTApp {
     if (this.activeCell && this.activeCell.colKey === "gender" && !isCtrlOrMeta && !e.altKey) {
       const { rowIdx } = this.activeCell;
       const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`);
-      if (cellEl && !cellEl.querySelector("select")) {
+      if (cellEl) {
         if (e.key === "ㄹ" || keyLower === "f") {
           e.preventDefault();
+          this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "F", cellEl);
           return;
         }
         if (e.key === "ㅡ" || keyLower === "m") {
           e.preventDefault();
+          this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "M", cellEl);
           return;
         }
         if (e.key === "Delete" || e.key === "Backspace" || e.key === " ") {
           e.preventDefault();
+          this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "", cellEl);
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          this.startGenderEdit(rowIdx, cellEl);
+          const dropBtn = cellEl.querySelector(".gender-dropdown-btn");
+          this.openGenderDropdown(rowIdx, cellEl, dropBtn);
           return;
         }
       }
@@ -2484,6 +2576,17 @@ class PTApp {
     }
 
     // 16) Direct character typing to begin editing (for text cells)
+    if (this.activeCell?.colKey === "writer" && !isCtrlOrMeta && !e.altKey && /^Key[A-Z]$/.test(e.code)) {
+      const cellEl = document.querySelector(`.excel-cell[data-row="${this.activeCell.rowIdx}"][data-col="writer"]`);
+      if (cellEl && !cellEl.querySelector("input")) {
+        e.preventDefault();
+        this.startInlineEdit(this.activeCell.rowIdx, "writer", cellEl);
+        const input = cellEl.querySelector("input");
+        input.value = e.code.slice(3);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
+      }
+    }
     if (this.activeCell && e.key.length === 1 && !isCtrlOrMeta && !e.altKey) {
       const { rowIdx, colKey } = this.activeCell;
       if (colKey !== "gender") {
@@ -2497,6 +2600,8 @@ class PTApp {
     // 17) Escape -> Hide context menu & clear selection highlights
     if (e.key === "Escape") {
       this.hideContextMenu();
+      this.clipboardSelection = null;
+      this.renderClipboardSelection();
       this.clearHeaderSelections();
       document.querySelectorAll(".cell-focused").forEach((c) => c.classList.remove("cell-focused"));
       this.activeCell = null;
