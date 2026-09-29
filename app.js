@@ -825,6 +825,9 @@ class PTApp {
             const dropBtn = td.querySelector(".gender-dropdown-btn");
             this.openGenderDropdown(rowIdx, td, dropBtn);
           } else {
+            // ★ 기존 input이 남아있으면 제거 후 재생성 (blur 타이밍 이슈 방지)
+            const oldInput = td.querySelector("input");
+            if (oldInput) oldInput.remove();
             this.startInlineEdit(rowIdx, key, td);
           }
         });
@@ -892,6 +895,12 @@ class PTApp {
 
     if (startEdit) {
       this.startInlineEdit(rowIdx, colKey, cellElement);
+    } else {
+      // 편집 모드가 아닌 셀 선택 시 sheetContainer에 포커스 설정
+      // → Ctrl+F 등 키보드 단축키가 정상 동작하도록 보장
+      if (this.elSheetContainer) {
+        this.elSheetContainer.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -3449,7 +3458,7 @@ class PTApp {
       }
     }
 
-    // 17) Escape -> Hide context menu & clear selection highlights & DESELECT cell
+    // 17) Escape -> Hide context menu & clear selection highlights & DESELECT cell & 검색 필터 해제
     if (e.key === "Escape") {
       e.preventDefault();
       this.closeAutocompleteMenu();
@@ -3458,6 +3467,14 @@ class PTApp {
       this.clipboardSelection = null;
       this.renderClipboardSelection();
       this.clearHeaderSelections();
+
+      // ★ Ctrl+F 검색 필터가 활성화되어 있으면 해제하여 원래 화면으로 복원
+      if (this.elSearchInput && this.elSearchInput.value.trim()) {
+        this.elSearchInput.value = "";
+        this.handleSearch();
+      }
+      // 원점 행 하이라이트 제거
+      document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
 
       // 편집 중인 input이 있으면 blur하여 편집 종료
       const activeInput = document.querySelector(".cell-input-element");
