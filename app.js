@@ -426,6 +426,7 @@ class PTApp {
     // Quick Chips (동적 렌더링 및 프리셋 관리)
     this.elQuickChipsContainer = document.getElementById("quickChipsContainer");
     this.elBtnAddPreset = document.getElementById("btnAddPreset");
+    this.elBtnManagePresets = document.getElementById("btnManagePresets");
     this.elPresetModal = document.getElementById("presetModal");
     this.elPresetModalTitle = document.getElementById("presetModalTitle");
     this.elPresetTypeSelect = document.getElementById("presetTypeSelect");
@@ -437,8 +438,21 @@ class PTApp {
     this.elPresetContextMenu = document.getElementById("presetContextMenu");
     this._editingPreset = null; // { type, index } 수정 모드일 때
 
+    // 프리셋 전체 관리 모달 요소
+    this.elPresetManagerModal = document.getElementById("presetManagerModal");
+    this.elClosePresetManagerModal = document.getElementById("btnClosePresetManagerModal");
+    this.elBtnManagerDone = document.getElementById("btnManagerDone");
+    this.elTabPresetPrescription = document.getElementById("tabPresetPrescription");
+    this.elTabPresetExtra = document.getElementById("tabPresetExtra");
+    this.elManagerNewPresetInput = document.getElementById("managerNewPresetInput");
+    this.elBtnManagerAddPreset = document.getElementById("btnManagerAddPreset");
+    this.elPresetListContainer = document.getElementById("presetListContainer");
+    this.elBtnManagerResetPresets = document.getElementById("btnManagerResetPresets");
+    this.activePresetTab = "prescription";
+
     this.renderQuickChips();
 
+    // 단일 추가/수정 모달 이벤트
     this.elBtnAddPreset.addEventListener("click", () => this.openPresetModal("add"));
     this.elBtnPresetSave.addEventListener("click", () => this.savePresetFromModal());
     this.elBtnPresetCancel.addEventListener("click", () => this.closePresetModal());
@@ -446,6 +460,39 @@ class PTApp {
     this.elPresetModal.addEventListener("click", (e) => {
       if (e.target === this.elPresetModal) this.closePresetModal();
     });
+
+    // 전체 관리 모달 이벤트
+    if (this.elBtnManagePresets) {
+      this.elBtnManagePresets.addEventListener("click", () => this.openPresetManager());
+    }
+    if (this.elClosePresetManagerModal) {
+      this.elClosePresetManagerModal.addEventListener("click", () => this.closePresetManager());
+    }
+    if (this.elBtnManagerDone) {
+      this.elBtnManagerDone.addEventListener("click", () => this.closePresetManager());
+    }
+    if (this.elPresetManagerModal) {
+      this.elPresetManagerModal.addEventListener("click", (e) => {
+        if (e.target === this.elPresetManagerModal) this.closePresetManager();
+      });
+    }
+    if (this.elTabPresetPrescription) {
+      this.elTabPresetPrescription.addEventListener("click", () => this.switchPresetTab("prescription"));
+    }
+    if (this.elTabPresetExtra) {
+      this.elTabPresetExtra.addEventListener("click", () => this.switchPresetTab("extra"));
+    }
+    if (this.elBtnManagerAddPreset) {
+      this.elBtnManagerAddPreset.addEventListener("click", () => this.addPresetFromManager());
+    }
+    if (this.elManagerNewPresetInput) {
+      this.elManagerNewPresetInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") this.addPresetFromManager();
+      });
+    }
+    if (this.elBtnManagerResetPresets) {
+      this.elBtnManagerResetPresets.addEventListener("click", () => this.resetPresetsFromManager());
+    }
 
     // 프리셋 우클릭 메뉴 액션
     this.elPresetContextMenu.querySelectorAll(".menu-item").forEach((item) => {
@@ -511,6 +558,9 @@ class PTApp {
         this.closePreviewModal();
         this.closeBackupModal();
         this.closeSupabaseModal();
+        this.closePresetModal();
+        this.closePresetManager();
+        this.hidePresetContextMenu();
       }
     });
 
@@ -3324,8 +3374,11 @@ class PTApp {
 
   // ===== 프리셋 관리 (빠른 입력 도구 수정 기능) =====
 
+  // ===== 프리셋 관리 (빠른 입력 도구 추가/삭제/수정/관리 기능) =====
+
   renderQuickChips() {
     const container = this.elQuickChipsContainer;
+    if (!container) return;
     container.innerHTML = "";
 
     const types = ["prescription", "extra"];
@@ -3345,9 +3398,9 @@ class PTApp {
         chip.dataset.type = type;
         chip.dataset.val = val;
         chip.dataset.idx = idx;
-        // 짧은 표시 이름 생성 (괄호 앞부분만)
+        // 짧은 표시 이름 생성
         chip.textContent = val.length > 20 ? val.replace(/\s*\(\s*/g, "(").replace(/\s*\/\s*/g, "/").replace(/\s*\)\s*/g, ")") : val;
-        chip.title = val;
+        chip.title = `${val}\n(클릭: 입력 | 우클릭: 수정/삭제)`;
 
         // 클릭: 빠른 입력 적용
         chip.addEventListener("click", () => {
@@ -3362,6 +3415,26 @@ class PTApp {
           this.showPresetContextMenu(e.pageX, e.pageY);
         });
 
+        // 모바일 터치 대응: 롱프레스 (500ms 이상 길게 누르면 메뉴 호출)
+        let longPressTimer = null;
+        chip.addEventListener("touchstart", (e) => {
+          longPressTimer = setTimeout(() => {
+            const touch = e.touches[0];
+            this._contextPreset = { type, index: idx, value: val };
+            this.showPresetContextMenu(touch.pageX, touch.pageY);
+          }, 500);
+        }, { passive: true });
+
+        chip.addEventListener("touchend", () => {
+          if (longPressTimer) clearTimeout(longPressTimer);
+        });
+        chip.addEventListener("touchmove", () => {
+          if (longPressTimer) clearTimeout(longPressTimer);
+        });
+        chip.addEventListener("touchcancel", () => {
+          if (longPressTimer) clearTimeout(longPressTimer);
+        });
+
         container.appendChild(chip);
       });
     });
@@ -3370,6 +3443,7 @@ class PTApp {
   showPresetContextMenu(x, y) {
     this.hidePresetContextMenu();
     const menu = this.elPresetContextMenu;
+    if (!menu) return;
     menu.style.display = "block";
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
@@ -3377,8 +3451,8 @@ class PTApp {
     // 화면 밖으로 나가지 않도록 조정
     requestAnimationFrame(() => {
       const rect = menu.getBoundingClientRect();
-      if (rect.right > window.innerWidth) menu.style.left = `${x - rect.width}px`;
-      if (rect.bottom > window.innerHeight) menu.style.top = `${y - rect.height}px`;
+      if (rect.right > window.innerWidth) menu.style.left = `${Math.max(10, x - rect.width)}px`;
+      if (rect.bottom > window.innerHeight) menu.style.top = `${Math.max(10, y - rect.height)}px`;
     });
   }
 
@@ -3390,7 +3464,7 @@ class PTApp {
 
   handlePresetContextAction(action) {
     const target = this._contextPreset;
-    if (!target && action !== "reset-presets") return;
+    if (!target && action !== "reset-presets" && action !== "manage-presets") return;
 
     switch (action) {
       case "edit-preset":
@@ -3407,6 +3481,9 @@ class PTApp {
           }
         }
         break;
+      case "manage-presets":
+        this.openPresetManager(target ? target.type : "prescription");
+        break;
       case "reset-presets":
         if (confirm("빠른 입력 도구를 기본값으로 복원하시겠습니까?")) {
           COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
@@ -3419,6 +3496,206 @@ class PTApp {
     this._contextPreset = null;
   }
 
+  // --- 통합 빠른 도구 관리 모달 (추가 / 삭제 / 수정 / 순서변경) ---
+  openPresetManager(tab = "prescription") {
+    if (!this.elPresetManagerModal) return;
+    this.activePresetTab = tab;
+    this.updatePresetManagerTabs();
+    this.renderPresetManagerList();
+    this.elPresetManagerModal.style.display = "flex";
+    if (this.elManagerNewPresetInput) {
+      this.elManagerNewPresetInput.value = "";
+      setTimeout(() => this.elManagerNewPresetInput.focus(), 100);
+    }
+  }
+
+  closePresetManager() {
+    if (this.elPresetManagerModal) {
+      this.elPresetManagerModal.style.display = "none";
+    }
+  }
+
+  switchPresetTab(tab) {
+    this.activePresetTab = tab;
+    this.updatePresetManagerTabs();
+    this.renderPresetManagerList();
+    if (this.elManagerNewPresetInput) {
+      this.elManagerNewPresetInput.focus();
+    }
+  }
+
+  updatePresetManagerTabs() {
+    if (this.elTabPresetPrescription) {
+      this.elTabPresetPrescription.classList.toggle("active", this.activePresetTab === "prescription");
+    }
+    if (this.elTabPresetExtra) {
+      this.elTabPresetExtra.classList.toggle("active", this.activePresetTab === "extra");
+    }
+    if (this.elManagerNewPresetInput) {
+      this.elManagerNewPresetInput.placeholder = this.activePresetTab === "prescription"
+        ? "새 처방 프리셋 입력 (예: 사지 ( HP / Laser / ICT ))"
+        : "새 추가사항 프리셋 입력 (예: 학생 (HP/Laser))";
+    }
+  }
+
+  renderPresetManagerList() {
+    const container = this.elPresetListContainer;
+    if (!container) return;
+    container.innerHTML = "";
+
+    const tab = this.activePresetTab;
+    const items = COLUMN_PRESETS[tab] || [];
+
+    if (items.length === 0) {
+      container.innerHTML = `<div style="padding:28px 16px; text-align:center; color:#94a3b8; font-size:13px;">등록된 프리셋이 없습니다.<br>위 입력창에서 새 프리셋을 추가해보세요.</div>`;
+      return;
+    }
+
+    items.forEach((val, idx) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "preset-list-item";
+
+      const numEl = document.createElement("span");
+      numEl.className = "preset-item-num";
+      numEl.textContent = `${idx + 1}.`;
+
+      const textEl = document.createElement("span");
+      textEl.className = "preset-item-text";
+      textEl.textContent = val;
+      textEl.title = `${val} (더블클릭하여 바로 수정)`;
+      textEl.style.cursor = "pointer";
+      textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
+
+      const actionsEl = document.createElement("div");
+      actionsEl.className = "preset-item-actions";
+
+      // 위로 이동 버튼
+      if (idx > 0) {
+        const btnUp = document.createElement("button");
+        btnUp.type = "button";
+        btnUp.className = "preset-action-btn";
+        btnUp.textContent = "▲";
+        btnUp.title = "위로 이동";
+        btnUp.addEventListener("click", () => this.movePresetAt(tab, idx, -1));
+        actionsEl.appendChild(btnUp);
+      }
+
+      // 아래로 이동 버튼
+      if (idx < items.length - 1) {
+        const btnDown = document.createElement("button");
+        btnDown.type = "button";
+        btnDown.className = "preset-action-btn";
+        btnDown.textContent = "▼";
+        btnDown.title = "아래로 이동";
+        btnDown.addEventListener("click", () => this.movePresetAt(tab, idx, 1));
+        actionsEl.appendChild(btnDown);
+      }
+
+      // 수정 버튼
+      const btnEdit = document.createElement("button");
+      btnEdit.type = "button";
+      btnEdit.className = "preset-action-btn";
+      btnEdit.textContent = "✏️ 수정";
+      btnEdit.title = "프리셋 내용 수정";
+      btnEdit.addEventListener("click", () => this.editPresetAt(tab, idx));
+      actionsEl.appendChild(btnEdit);
+
+      // 삭제 버튼
+      const btnDel = document.createElement("button");
+      btnDel.type = "button";
+      btnDel.className = "preset-action-btn btn-del";
+      btnDel.textContent = "🗑️ 삭제";
+      btnDel.title = "프리셋 삭제";
+      btnDel.addEventListener("click", () => this.deletePresetAt(tab, idx));
+      actionsEl.appendChild(btnDel);
+
+      itemEl.appendChild(numEl);
+      itemEl.appendChild(textEl);
+      itemEl.appendChild(actionsEl);
+      container.appendChild(itemEl);
+    });
+  }
+
+  addPresetFromManager() {
+    if (!this.elManagerNewPresetInput) return;
+    const val = this.elManagerNewPresetInput.value.trim();
+    if (!val) {
+      alert("프리셋 내용을 입력해주세요.");
+      this.elManagerNewPresetInput.focus();
+      return;
+    }
+
+    const tab = this.activePresetTab;
+    if (!COLUMN_PRESETS[tab]) COLUMN_PRESETS[tab] = [];
+    COLUMN_PRESETS[tab].push(val);
+
+    saveColumnPresets(COLUMN_PRESETS);
+    this.renderPresetManagerList();
+    this.renderQuickChips();
+    this.showSaveIndicator("프리셋 추가됨");
+
+    this.elManagerNewPresetInput.value = "";
+    this.elManagerNewPresetInput.focus();
+  }
+
+  editPresetAt(tab, index) {
+    const curVal = COLUMN_PRESETS[tab]?.[index];
+    if (curVal === undefined) return;
+
+    const newVal = prompt("프리셋 내용을 수정하세요:", curVal);
+    if (newVal === null) return; // 취소
+    const trimmed = newVal.trim();
+    if (!trimmed) {
+      alert("내용을 비워둘 수 없습니다.");
+      return;
+    }
+
+    COLUMN_PRESETS[tab][index] = trimmed;
+    saveColumnPresets(COLUMN_PRESETS);
+    this.renderPresetManagerList();
+    this.renderQuickChips();
+    this.showSaveIndicator("프리셋 수정됨");
+  }
+
+  deletePresetAt(tab, index) {
+    const curVal = COLUMN_PRESETS[tab]?.[index];
+    if (curVal === undefined) return;
+
+    if (confirm(`"${curVal}" 항목을 삭제하시겠습니까?`)) {
+      COLUMN_PRESETS[tab].splice(index, 1);
+      saveColumnPresets(COLUMN_PRESETS);
+      this.renderPresetManagerList();
+      this.renderQuickChips();
+      this.showSaveIndicator("프리셋 삭제됨");
+    }
+  }
+
+  movePresetAt(tab, index, dir) {
+    const arr = COLUMN_PRESETS[tab];
+    if (!arr) return;
+    const targetIdx = index + dir;
+    if (targetIdx < 0 || targetIdx >= arr.length) return;
+
+    const temp = arr[index];
+    arr[index] = arr[targetIdx];
+    arr[targetIdx] = temp;
+
+    saveColumnPresets(COLUMN_PRESETS);
+    this.renderPresetManagerList();
+    this.renderQuickChips();
+  }
+
+  resetPresetsFromManager() {
+    if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
+      COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+      saveColumnPresets(COLUMN_PRESETS);
+      this.renderPresetManagerList();
+      this.renderQuickChips();
+      this.showSaveIndicator("기본값으로 복원됨");
+    }
+  }
+
+  // --- 단일 모달 (기존 호환) ---
   openPresetModal(mode, target) {
     this.elPresetModal.style.display = "flex";
     if (mode === "edit" && target) {
@@ -3467,6 +3744,9 @@ class PTApp {
 
     saveColumnPresets(COLUMN_PRESETS);
     this.renderQuickChips();
+    if (this.elPresetManagerModal && this.elPresetManagerModal.style.display !== "none") {
+      this.renderPresetManagerList();
+    }
     this.closePresetModal();
   }
 
