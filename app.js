@@ -1651,7 +1651,52 @@ class PTApp {
         }
       }
 
-      // 2) 일반 키 입력 처리
+      // 2) 방향키 처리: 편집 커밋 후 해당 방향으로 셀 이동
+      //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)
+      //    자동완성이 열려있을 때 좌/우 방향키 또는 자동완성이 닫혀있을 때 모든 방향키
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        if (e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 자동완성이 열려있으면 선택된 항목을 적용
+        if (this.isAutocompleteOpen()) {
+          const chosenVal = this.getSelectedAutocompleteItem();
+          this._justCommittedFromAutocomplete = true;
+          this.closeAutocompleteMenu();
+          if (chosenVal) {
+            input.value = chosenVal;
+          }
+          commitAndBlur(chosenVal);
+        } else {
+          commitAndBlur();
+        }
+
+        // 방향에 따라 셀 이동
+        const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+        const colIdx = colOrder.indexOf(colKey);
+        let targetRow = rowIdx;
+        let targetColIdx = colIdx;
+
+        if (e.key === "ArrowUp") targetRow = Math.max(0, rowIdx - 1);
+        if (e.key === "ArrowDown") targetRow = rowIdx + 1;
+        if (e.key === "ArrowLeft") targetColIdx = Math.max(0, colIdx - 1);
+        if (e.key === "ArrowRight") targetColIdx = Math.min(colOrder.length - 1, colIdx + 1);
+
+        const targetColKey = colOrder[targetColIdx];
+        // ArrowDown이 마지막 행을 넘어갈 경우 행 추가
+        const rows = this.getCurrentRows();
+        if (targetRow >= rows.length) {
+          this.addNewRow(false);
+        }
+        const targetCell = document.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="${targetColKey}"]`);
+        if (targetCell) {
+          this.selectCell(targetRow, targetColKey, targetCell, false);
+        }
+        return;
+      }
+
+      // 3) 일반 키 입력 처리
       if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") {
         e.preventDefault();
