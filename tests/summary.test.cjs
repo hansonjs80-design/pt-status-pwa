@@ -36,7 +36,8 @@ test('mixed additional treatments are separate and repeated items in one row cou
     { extra: '도수; 테이핑' },
   ]);
   assert.equal(result.extras.get('충격파'), 1);
-  assert.equal(result.extras.get('도수치료'), 2);
+  assert.equal(result.extras.get('도수치료'), 1);
+  assert.equal(result.extras.get('도수'), 1);
   assert.equal(result.extras.get('테이핑'), 2);
   for (const label of ['이온', '윈백', '견인']) assert.equal(result.extras.get(label), 1);
 });
@@ -50,4 +51,18 @@ test('prescriptions reflect entered labels rather than a broad other category', 
   assert.equal(result.prescriptions.get('학생 (HP / Laser)'), 2);
   assert.equal(result.prescriptions.get('항냉 (ICE / Laser)'), 1);
   assert.equal(app.getDailySummary([]).total, 0);
+});
+
+
+test('summary omits unused preset treatments and keeps the labels actually entered', () => {
+  const result = app.getDailySummary([
+    { name: '가상1', extra: '충격파, 도수' },
+    { name: '가상2', extra: '이온' },
+    { name: '가상3', extra: '충격파' },
+  ]);
+  assert.deepEqual(Array.from(result.extras, ([label, count]) => [label, count]), [['충격파', 2], ['도수', 1], ['이온', 1]]);
+  assert.equal(result.extras.has('윈백'), false);
+  assert.equal(result.extras.has('견인'), false);
+  assert.equal(result.extras.has('도수치료'), false);
+  assert.equal(app.getDailySummary([]).extras.size, 0);
 });

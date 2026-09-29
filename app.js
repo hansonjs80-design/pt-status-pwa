@@ -2554,7 +2554,7 @@ class PTApp {
     const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
       .some(key => text(row[key])));
     const summary = { total: records.length, male: 0, female: 0, unknown: 0,
-      extras: new Map(["충격파", "이온", "윈백", "도수치료", "견인"].map(label => [label, 0])),
+      extras: new Map(),
       prescriptions: new Map() };
     for (const row of records) {
       const gender = text(row.gender).toUpperCase();
@@ -2566,9 +2566,7 @@ class PTApp {
       const extras = new Set();
       for (const token of text(row.extra).split(/[,;\n/+]+/).map(value => value.trim()).filter(Boolean)) {
         if (/^(x|-)$/i.test(token)) continue;
-        const known = ["충격파", "이온", "윈백", "도수", "견인"].filter(label => token.includes(label));
-        if (known.length) known.forEach(label => extras.add(label === "도수" ? "도수치료" : label));
-        else extras.add(token);
+        extras.add(token.replace(/\s+/g, " "));
       }
       for (const extra of extras) summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
       const prescription = text(row.prescription).replace(/\s+/g, " ") || "미입력";
