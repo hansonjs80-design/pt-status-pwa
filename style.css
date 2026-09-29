@@ -747,6 +747,16 @@ body {
   background-color: var(--excel-row-active);
 }
 
+/* Ctrl+F를 누른 원점 행 하이라이트 (더 진한 색상) */
+.excel-row.search-origin-row {
+  background-color: #c6e6d0 !important;
+}
+.excel-row.search-origin-row .row-num {
+  background-color: #a8d5b8 !important;
+  color: #1a5c2e;
+  font-weight: 700;
+}
+
 .row-num {
   background: #f3f5f4;
   color: #656d76;

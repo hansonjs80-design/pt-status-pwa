@@ -2346,6 +2346,8 @@ class PTApp {
     rows.forEach((rowEl) => {
       if (!q) {
         rowEl.style.display = "";
+        // 검색 해제 시 원점 행 하이라이트도 제거
+        rowEl.classList.remove("search-origin-row");
         return;
       }
       const text = rowEl.textContent.toLowerCase();
@@ -3227,6 +3229,10 @@ class PTApp {
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
         const searchVal = cellInput ? cellInput.value.trim() : "";
         if (this.elSearchInput) {
+          // 기존 원점 행 하이라이트 제거 후 현재 행에 적용
+          document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
+          const originRow = e.target.closest(".excel-row");
+          if (originRow) originRow.classList.add("search-origin-row");
           this.elSearchInput.value = searchVal;
           this.handleSearch();
         }
@@ -3293,6 +3299,10 @@ class PTApp {
         const { rowIdx, colKey } = this.activeCell;
         const rows = this.getCurrentRows();
         const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
+        // 기존 원점 행 하이라이트 제거 후 현재 행에 적용
+        document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
+        const originRow = document.querySelector(`tr[data-row-idx="${rowIdx}"]`);
+        if (originRow) originRow.classList.add("search-origin-row");
         this.elSearchInput.value = cellValue.trim();
         this.handleSearch();
       } else if (this.elSearchInput) {
