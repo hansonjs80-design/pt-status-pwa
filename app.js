@@ -1362,25 +1362,25 @@ class PTApp {
     input.addEventListener("input", (e) => {
       let val = input.value;
 
-      // 한글 IME 조합 중(isComposing)에는 assembleHangul 변환을 절대로 실행하지 않음!
+      // 한글 IME 조합 중(isComposing)에는 assembleHangul/input.value 변환을 절대로 실행하지 않음!
       // input.value를 건드리면 브라우저가 조합 세션을 강제 커밋하여 자모가 분리됨
       if (colKey === "writer" && !e.isComposing) {
         val = this.normalizeWriterInput(val);
         input.value = val;
       }
-      rows[rowIdx][colKey] = val;
-      this.elFormulaInput.value = val;
-      this.debounceSaveDataStore();
-
-      // 자동완성 목록도 한글 조합 중에는 갱신하지 않음 (DOM 변경이 IME를 방해)
-      if (!e.isComposing && colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
+      if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
         const assembled = this.assembleHangul(val);
         if (assembled !== val) {
           input.value = assembled;
           val = assembled;
-          rows[rowIdx][colKey] = val;
-          this.elFormulaInput.value = val;
         }
+      }
+      rows[rowIdx][colKey] = val;
+      this.elFormulaInput.value = val;
+      this.debounceSaveDataStore();
+
+      // 자동완성 메뉴는 별도 DOM이므로 IME에 영향 없음 → 조합 중에도 항상 표시
+      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         const suggestions = this.getAutocompleteSuggestions(colKey, val);
         if (suggestions.length > 0) {
           this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
