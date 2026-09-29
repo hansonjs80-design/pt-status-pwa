@@ -1507,7 +1507,9 @@ class PTApp {
 
     cellElement.appendChild(input);
     input.focus();
-    input.select();
+    // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
 
     // Input events
     // ★ 한글 IME 보호 원칙:
@@ -2413,16 +2415,10 @@ class PTApp {
 
     if (crossDateResults.length === 0) return;
 
-    // 4) 구분선 추가
-    const dividerTr = document.createElement("tr");
-    dividerTr.className = "cross-date-divider";
-    const dividerTd = document.createElement("td");
-    dividerTd.colSpan = 12;
-    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 (${crossDateResults.length}건) — 선택하여 복사 가능</span>`;
-    dividerTr.appendChild(dividerTd);
-    this.elTableBody.appendChild(dividerTr);
+    // 현재 테이블의 첫 번째 행 (삽입 기준점)
+    const firstCurrentRow = this.elTableBody.firstChild;
 
-    // 5) 교차 날짜 결과 행 추가 (최신순, 날짜별 그룹)
+    // 4) 이전 날짜 결과 행을 테이블 상단에 삽입 (최신순, 날짜별 그룹)
     let lastDate = null;
     crossDateResults.forEach((row, idx) => {
       // 날짜 구분 헤더
@@ -2438,7 +2434,7 @@ class PTApp {
         const dayLabel = daysKor[dateObj.getDay()] || "";
         dateLabelTd.textContent = `${formattedDate} (${dayLabel})`;
         dateLabelTr.appendChild(dateLabelTd);
-        this.elTableBody.appendChild(dateLabelTr);
+        this.elTableBody.insertBefore(dateLabelTr, firstCurrentRow);
       }
 
       const tr = document.createElement("tr");
@@ -2474,10 +2470,8 @@ class PTApp {
         // 교차 날짜 셀 클릭 → 내용 복사 지원 (선택 가능)
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
-          // 교차 날짜 행 전체 선택 (복사용)
           document.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
           tr.classList.add("cross-date-row-selected");
-          // 클립보드에 해당 행 데이터를 TSV 형식으로 저장
           const tsvValues = colKeys.map(k => row[k] || "");
           this.clipboardBuffer = tsvValues.join("\t");
         });
@@ -2485,7 +2479,17 @@ class PTApp {
         tr.appendChild(td);
       });
 
-      this.elTableBody.appendChild(tr);
+      this.elTableBody.insertBefore(tr, firstCurrentRow);
+    });
+
+    // 5) 이전 기록과 현재 날짜 사이 구분선
+    const dividerTr = document.createElement("tr");
+    dividerTr.className = "cross-date-divider";
+    const dividerTd = document.createElement("td");
+    dividerTd.colSpan = 12;
+    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
+    dividerTr.appendChild(dividerTd);
+    this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
     });
   }
 
