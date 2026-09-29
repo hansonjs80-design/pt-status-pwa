@@ -378,15 +378,6 @@ class PTApp {
       if (rows[rowIdx]) {
         if (colKey === "writer" && e.isComposing) return;
         let val = e.target.value;
-        if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
-          const assembled = this.assembleHangul(val);
-          if (assembled !== val) {
-            const selStart = this.elFormulaInput.selectionStart;
-            this.elFormulaInput.value = assembled;
-            val = assembled;
-            try { this.elFormulaInput.setSelectionRange(selStart, selStart); } catch (_) {}
-          }
-        }
         if (colKey === "gender") {
           val = this.normalizeGenderInput(val);
           e.target.value = val;
@@ -408,7 +399,7 @@ class PTApp {
       }
     });
     this.elFormulaInput.addEventListener("compositionend", () => {
-      let val = this.assembleHangul(this.elFormulaInput.value);
+      let val = this.elFormulaInput.value;
       if (this.activeCell?.colKey === "writer") {
         val = this.normalizeWriterInput(val);
       }
@@ -554,7 +545,7 @@ class PTApp {
       // input/textarea 내부에서의 복사는 무시 (텍스트 편집 중)
       const active = document.activeElement;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
-      if (this.activeCell || this.selectedRange || this.selectedColKey !== null || this.selectedRowIdx !== null) {
+      if (this.crossDateSelection || this.activeCell || this.selectedRange || this.selectedColKey !== null || this.selectedRowIdx !== null) {
         e.preventDefault();
         this.copySelection();
       }
@@ -594,6 +585,7 @@ class PTApp {
     document.addEventListener("mousemove", (event) => this.updateFillDrag(event));
     window.addEventListener("blur", () => this.cancelFillDrag());
     document.addEventListener("mouseup", (event) => {
+      this.isSelectingCrossDate = false;
       if (this.fillDrag) this.finishFillDrag(event);
       let changed = false;
       if (this.isSelectingRange) {
@@ -662,6 +654,7 @@ class PTApp {
 
   setDate(dateStr, autoFocusFirstEmpty = false) {
     this.clipboardSelection = null;
+    this.historyApplyTarget = null;
     this.currentDate = dateStr;
     this.elDatePicker.value = dateStr;
 
@@ -703,6 +696,7 @@ class PTApp {
   // Render main Excel table
   renderTable() {
     this.cancelFillDrag();
+    this.clearCrossDateSelection();
     const rows = this.getCurrentRows();
     this.elTableBody.innerHTML = "";
 
@@ -719,27 +713,38 @@ class PTApp {
       const thNum = document.createElement("th");
       thNum.className = "row-num";
       thNum.textContent = excelRowNum;
-      thNum.title = `행 ${excelRowNum} 클릭 및 드래그하여 다중 행 선택`;
-
-      // Mouse down on row header (Start Row Drag Selection)
+      thNum.title = `행 ${excelRowNum}: 드래그하여 이동, Shift+클릭으로 여러 행 선택`;
+      thNum.draggable = true;
       thNum.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return; // Only Left Click
-        this.isSelectingRows = true;
-        this.rowRangeStart = rowIdx;
-        this.rowRangeEnd = rowIdx;
-
-        if (this.elSheetContainer) {
-          this.elSheetContainer.classList.add("is-selecting");
-        }
-
-        this.selectRowRange(rowIdx, rowIdx);
+        if (e.button !== 0) return;
+        const range = this.selectedRowRange;
+        if (e.shiftKey && range) this.selectRowRange(range.minRow, rowIdx);
+        else if (!range || rowIdx < range.minRow || rowIdx > range.maxRow) this.selectRowRange(rowIdx, rowIdx);
+        this.elSheetContainer.focus({ preventScroll: true });
       });
-
-      // Mouse enter on row header during drag selection
-      thNum.addEventListener("mouseenter", () => {
-        if (!this.isSelectingRows) return;
-        this.rowRangeEnd = rowIdx;
-        this.selectRowRange(this.rowRangeStart, this.rowRangeEnd);
+      thNum.addEventListener("dragstart", (e) => {
+        if (this.elSearchInput.value.trim()) { e.preventDefault(); return; }
+        this.rowMove = { ...this.selectedRowRange, date: this.currentDate };
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "행 이동");
+      });
+      tr.addEventListener("dragover", (e) => {
+        if (!this.rowMove) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        this.clearRowDropMarker();
+        const after = e.clientY >= tr.getBoundingClientRect().top + tr.getBoundingClientRect().height / 2;
+        this.rowDropIndex = rowIdx + (after ? 1 : 0);
+        tr.classList.add(after ? "row-drop-after" : "row-drop-before");
+      });
+      tr.addEventListener("drop", (e) => {
+        if (!this.rowMove) return;
+        e.preventDefault();
+        this.finishRowMove();
+      });
+      thNum.addEventListener("dragend", () => {
+        this.rowMove = null;
+        this.clearRowDropMarker();
       });
 
       tr.appendChild(thNum);
@@ -793,6 +798,7 @@ class PTApp {
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
           // If already editing inside input, don't interrupt text cursor
           if (e.target.tagName === "INPUT") return;
+          e.preventDefault();
 
           this.isSelectingRange = true;
           this.rangeStart = { rowIdx, colIdx, colKey: key };
@@ -815,6 +821,8 @@ class PTApp {
 
         // Cell Click handler (Clean cell selection)
         td.addEventListener("click", (e) => {
+          if (e.target.closest("input, textarea")) return;
+          if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow || this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
           this.selectCell(rowIdx, key, td, false);
         });
@@ -825,9 +833,9 @@ class PTApp {
             const dropBtn = td.querySelector(".gender-dropdown-btn");
             this.openGenderDropdown(rowIdx, td, dropBtn);
           } else {
-            // ★ 기존 input이 남아있으면 제거 후 재생성 (blur 타이밍 이슈 방지)
-            const oldInput = td.querySelector("input");
-            if (oldInput) oldInput.remove();
+            // Preserve the native editor and its active IME composition.
+            const editor = td.querySelector("input");
+            if (editor && !editor.classList.contains("is-armed")) return;
             this.startInlineEdit(rowIdx, key, td);
           }
         });
@@ -862,12 +870,19 @@ class PTApp {
       }
     }
     this.renderClipboardSelection();
+    if (this.activeCell && this.activeCell.colKey !== "gender") {
+      const { rowIdx, colKey } = this.activeCell;
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
+    }
   }
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
     this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
+    this.historyApplyTarget = { date: this.currentDate, row: this.getCurrentRows()[rowIdx], colKey };
+    this.elTableBody.querySelectorAll(".history-apply-btn").forEach(button => { button.disabled = false; });
     this.selectedRowIdx = rowIdx;
     this.selectedColKey = null;
 
@@ -895,12 +910,11 @@ class PTApp {
 
     if (startEdit) {
       this.startInlineEdit(rowIdx, colKey, cellElement);
+    } else if (colKey !== "gender") {
+      // Focus a native input before the first IME key, without entering edit mode.
+      this.startInlineEdit(rowIdx, colKey, cellElement, true);
     } else {
-      // 편집 모드가 아닌 셀 선택 시 sheetContainer에 포커스 설정
-      // → Ctrl+F 등 키보드 단축키가 정상 동작하도록 보장
-      if (this.elSheetContainer) {
-        this.elSheetContainer.focus({ preventScroll: true });
-      }
+      this.elSheetContainer.focus({ preventScroll: true });
     }
   }
 
@@ -1481,24 +1495,40 @@ class PTApp {
     this.autocompleteState = null;
   }
 
-  startInlineEdit(rowIdx, colKey, cellElement) {
+  activateNativeEditor(input) {
+    if (!input.classList.contains("is-armed")) return;
+    for (const child of [...input.parentElement.childNodes]) {
+      if (child !== input) child.remove();
+    }
+    input.classList.remove("is-armed");
+  }
+
+  startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
       this.openGenderDropdown(rowIdx, cellElement, dropBtn);
       return;
     }
 
-    // If already editing
-    if (cellElement.querySelector("input") || cellElement.querySelector("select")) return;
+    const existingEditor = cellElement.querySelector("input");
+    if (existingEditor) {
+      if (!armed) {
+        this.activateNativeEditor(existingEditor);
+        existingEditor.focus({ preventScroll: true });
+        existingEditor.setSelectionRange(existingEditor.value.length, existingEditor.value.length);
+      }
+      return;
+    }
+    if (cellElement.querySelector("select")) return;
 
     const rows = this.getCurrentRows();
     const initialVal = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
 
-    // Clear content and place input
-    cellElement.textContent = "";
+    // An armed input stays transparent over the selected cell until native typing starts.
+    if (!armed) cellElement.textContent = "";
     const input = document.createElement("input");
     input.type = "text";
-    input.className = "cell-input-element";
+    input.className = "cell-input-element" + (armed ? " is-armed" : "");
     input.value = initialVal;
     if (colKey === "writer") {
       input.autocapitalize = "characters";
@@ -1506,10 +1536,10 @@ class PTApp {
     }
 
     cellElement.appendChild(input);
-    input.focus();
+    input.focus({ preventScroll: true });
     // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
     const len = input.value.length;
-    input.setSelectionRange(len, len);
+    input.setSelectionRange(armed ? 0 : len, len);
 
     // Input events
     // ★ 한글 IME 보호 원칙:
@@ -1517,12 +1547,20 @@ class PTApp {
     // 2. isComposing 중에는 자동완성 등 DOM 조작도 하지 않음 (IME 방해)
     // 3. assembleHangul은 blur(편집 종료) 시점에서만 최종 보정으로 실행
     let _acDebounceTimer = null;
+    let composing = false;
+    input.addEventListener("compositionstart", () => {
+      this.activateNativeEditor(input);
+      composing = true;
+      clearTimeout(_acDebounceTimer);
+      this.closeAutocompleteMenu();
+    });
 
     input.addEventListener("input", (e) => {
+      this.activateNativeEditor(input);
       const val = input.value;
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
-      if (colKey === "writer" && !e.isComposing) {
+      if (colKey === "writer" && !composing && !e.isComposing) {
         const normalized = this.normalizeWriterInput(val);
         if (normalized !== val) input.value = normalized;
         rows[rowIdx][colKey] = normalized;
@@ -1534,12 +1572,13 @@ class PTApp {
 
       // ★ 한글 조합 중(isComposing)에는 자동완성 DOM 조작 절대 금지!
       // DOM 변경이 브라우저 IME 조합을 강제 종료시켜 자모가 분리됨
-      if (e.isComposing) return;
+      if (composing || e.isComposing) return;
 
       // 비조합 입력(영문, 숫자, 조합 완료 후)에서만 자동완성 갱신
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
+          if (composing || !input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
           if (suggestions.length > 0) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -1551,6 +1590,7 @@ class PTApp {
     });
 
     input.addEventListener("compositionend", () => {
+      composing = false;
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
       // assembleHangul은 blur 시점에서만 최종 보정
@@ -1569,6 +1609,7 @@ class PTApp {
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
+          if (composing || !input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
           if (suggestions.length > 0) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -1583,6 +1624,7 @@ class PTApp {
     const commitAndBlur = (forcedVal) => {
       if (isCommitted) return;
       isCommitted = true;
+      clearTimeout(_acDebounceTimer);
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
@@ -1603,13 +1645,41 @@ class PTApp {
     };
 
     input.addEventListener("blur", () => {
-      setTimeout(() => {
-        this.closeAutocompleteMenu();
-        commitAndBlur();
-      }, 150);
+      clearTimeout(_acDebounceTimer);
+      if (input.classList.contains("is-armed")) { input.remove(); return; }
+      this.closeAutocompleteMenu();
+      commitAndBlur();
     });
 
     input.addEventListener("keydown", (e) => {
+      // Let the native IME handle candidate selection and composition confirmation.
+      if (composing || e.isComposing || e.keyCode === 229) {
+        e.stopPropagation();
+        return;
+      }
+      if (input.classList.contains("is-armed")) {
+        if (e.key === "F2") {
+          e.preventDefault(); e.stopPropagation();
+          this.activateNativeEditor(input);
+          input.setSelectionRange(input.value.length, input.value.length);
+          return;
+        }
+        const shortcut = e.ctrlKey || e.metaKey || ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Delete", "Backspace", "Enter", "Tab", "Escape"].includes(e.key);
+        const writerKey = colKey === "writer" && /^Key[A-Z]$/.test(e.code) && !e.altKey;
+        if (shortcut || writerKey) {
+          e.preventDefault(); e.stopPropagation();
+          if (writerKey && !e.ctrlKey && !e.metaKey) {
+            input.value = e.code.slice(3);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+          } else {
+            this.elSheetContainer.dispatchEvent(new KeyboardEvent("keydown", {
+              key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
+              shiftKey: e.shiftKey, altKey: e.altKey, bubbles: true, cancelable: true
+            }));
+          }
+          return;
+        }
+      }
       // 1) 자동완성 목록이 열려 있을 때: Enter/Tab 시 최상단(또는 선택된) 항목 즉시 입력
       if (this.isAutocompleteOpen()) {
         if (e.key === "ArrowDown") {
@@ -1669,7 +1739,7 @@ class PTApp {
       // 2) 방향키 처리: 편집 커밋 후 해당 방향으로 셀 이동
       //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)
       //    자동완성이 열려있을 때 좌/우 방향키 또는 자동완성이 닫혀있을 때 모든 방향키
-      //    ★ 한글 IME 조합 중(isComposing)이라도 방향키는 항상 셀 이동으로 처리
+      //    조합 중에는 위의 가드에서 IME에 키 처리를 맡긴다
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
@@ -1757,6 +1827,7 @@ class PTApp {
   }
 
   clearHeaderSelections() {
+    this.clearCrossDateSelection();
     this.cancelFillDrag();
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
     document.querySelectorAll(".col-letter, .b-header, .row-num, .corner-header").forEach((el) => {
@@ -1921,6 +1992,7 @@ class PTApp {
       this.elSelectedCellCoords.textContent = `${startNum}~${endNum}행 선택 (${rowCount}개 행)`;
     }
     this.elFormulaInput.value = "";
+    this.elSheetContainer.focus({ preventScroll: true });
   }
 
   selectAllCells() {
@@ -2349,10 +2421,99 @@ class PTApp {
     });
   }
 
+  applyHistoryRow(source) {
+    const target = this.historyApplyTarget;
+    if (!target || target.date !== this.currentDate) return;
+    const rowIdx = this.getCurrentRows().indexOf(target.row);
+    if (rowIdx < 0) return;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    for (const key of keys) target.row[key] = source[key] ?? "";
+    this.clipboardSelection = null;
+    this.clearHeaderSelections();
+    this.elSearchInput.value = "";
+    this.elBtnClearSearch.style.display = "none";
+    this.renderTable();
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${target.colKey}"]`);
+    this.selectCell(rowIdx, target.colKey, cell);
+    this.saveDataStore();
+    this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용했습니다`);
+  }
+
+  clearRowDropMarker() {
+    this.elTableBody.querySelectorAll(".row-drop-before, .row-drop-after").forEach(row => row.classList.remove("row-drop-before", "row-drop-after"));
+    this.rowDropIndex = null;
+  }
+
+  finishRowMove() {
+    const move = this.rowMove, destination = this.rowDropIndex;
+    this.rowMove = null;
+    this.clearRowDropMarker();
+    if (!move || move.date !== this.currentDate || destination === null) return;
+    const { minRow, maxRow } = move;
+    if (destination >= minRow && destination <= maxRow + 1) return;
+    const rows = this.getCurrentRows();
+    const count = maxRow - minRow + 1;
+    const target = destination > maxRow ? destination - count : destination;
+    const moving = rows.splice(minRow, count);
+    rows.splice(target, 0, ...moving);
+    this.clipboardSelection = null;
+    this.sortState = { colKey: null, direction: "asc" };
+    this.saveDataStore();
+    this.renderTable();
+    this.selectRowRange(target, target + count - 1);
+    this.showSaveIndicator(`${count}개 행 이동 완료`);
+  }
+
+  clearCrossDateSelection() {
+    this.crossDateSelection = null;
+    this.isSelectingCrossDate = false;
+    if (this.elFormulaInput) this.elFormulaInput.readOnly = false;
+    this.elTableBody?.querySelectorAll(".cross-date-cell").forEach(cell => {
+      cell.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");
+    });
+  }
+
+  selectCrossDateCell(row, col, extend = false) {
+    const previous = this.crossDateSelection;
+    document.activeElement?.blur();
+    this.clearHeaderSelections();
+    this.activeCell = null;
+    this.selectedRowIdx = null;
+    this.selectedColKey = null;
+    document.querySelectorAll(".cell-focused, .active-row, .header-active").forEach(el => el.classList.remove("cell-focused", "active-row", "header-active"));
+    const startRow = extend && previous ? previous.startRow : row;
+    const startCol = extend && previous ? previous.startCol : col;
+    const selection = this.crossDateSelection = {
+      startRow, startCol, endRow: row, endCol: col,
+      minRow: Math.min(startRow, row), maxRow: Math.max(startRow, row),
+      minCol: Math.min(startCol, col), maxCol: Math.max(startCol, col)
+    };
+    this.elTableBody.querySelectorAll(".cross-date-cell").forEach(cell => {
+      const r = Number(cell.dataset.crossIdx), c = Number(cell.dataset.crossColIdx);
+      if (r < selection.minRow || r > selection.maxRow || c < selection.minCol || c > selection.maxCol) return;
+      cell.classList.add("range-selected");
+      if (r === selection.minRow) cell.classList.add("range-border-top");
+      if (r === selection.maxRow) cell.classList.add("range-border-bottom");
+      if (c === selection.minCol) cell.classList.add("range-border-left");
+      if (c === selection.maxCol) cell.classList.add("range-border-right");
+    });
+    const source = this.crossDateResults[row];
+    const cell = this.elTableBody.querySelector(`[data-cross-idx="${row}"][data-cross-col-idx="${col}"]`);
+    const address = `${String.fromCharCode(65 + col)}${BASE_ROW_NUMBER + source._sourceRowIdx}`;
+    this.elCellAddress.textContent = address;
+    this.elSelectedCellCoords.textContent = `${source._sourceDate} · ${address} 선택`;
+    this.elFormulaInput.value = source[cell.dataset.crossCol] ?? "";
+    this.elFormulaInput.readOnly = true;
+    this.elSheetContainer.focus({ preventScroll: true });
+    // Extending selection clears temporary state above; keep mouse dragging active.
+    this.isSelectingCrossDate = extend;
+  }
+
   handleSearch() {
     const q = this.elSearchInput.value.trim().toLowerCase();
     this.elBtnClearSearch.style.display = q ? "block" : "none";
 
+    if (q) { this.searchAllDates(this.elSearchInput.value.trim()); return; }
     // 교차 날짜 임시 행 제거
     this.clearCrossDateRows();
 
@@ -2370,6 +2531,9 @@ class PTApp {
 
   // 교차 날짜 임시 행 제거
   clearCrossDateRows() {
+    this.clearCrossDateSelection();
+    this.crossDateResults = [];
+    if (this.clipboardSelection?.kind === "history") this.clipboardSelection = null;
     document.querySelectorAll(".cross-date-row, .cross-date-divider").forEach(el => el.remove());
   }
 
@@ -2402,17 +2566,18 @@ class PTApp {
     allDates.forEach((dateKey) => {
       if (dateKey === this.currentDate) return; // 현재 날짜 제외
       const dateRows = this.dataStore[dateKey] || [];
-      dateRows.forEach((row) => {
+      dateRows.forEach((row, sourceRowIdx) => {
         // 유의미한 데이터가 있는 행만
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
         // 검색어 매칭
         const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
         if (rowText.includes(q)) {
-          crossDateResults.push({ ...row, _sourceDate: dateKey });
+          crossDateResults.push({ ...row, _sourceDate: dateKey, _sourceRowIdx: sourceRowIdx });
         }
       });
     });
 
+    this.crossDateResults = crossDateResults;
     if (crossDateResults.length === 0) return;
 
     // 현재 테이블의 첫 번째 행 (삽입 기준점)
@@ -2446,6 +2611,12 @@ class PTApp {
       thNum.className = "row-num cross-date-num";
       thNum.textContent = row._sourceDate.slice(5).replace("-", "/");
       thNum.title = `${row._sourceDate} 기록`;
+      thNum.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        this.selectCrossDateCell(idx, 0);
+        this.selectCrossDateCell(idx, 9, true);
+      });
       tr.appendChild(thNum);
 
       // 셀 렌더링
@@ -2454,6 +2625,7 @@ class PTApp {
         td.className = `excel-cell cell-${key} cross-date-cell`;
         td.dataset.crossIdx = idx;
         td.dataset.crossCol = key;
+        td.dataset.crossColIdx = colIdx;
         const val = row[key] || "";
 
         if (key === "gender") {
@@ -2467,18 +2639,30 @@ class PTApp {
           td.textContent = val;
         }
 
-        // 교차 날짜 셀 클릭 → 내용 복사 지원 (선택 가능)
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
-          document.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
-          tr.classList.add("cross-date-row-selected");
-          const tsvValues = colKeys.map(k => row[k] || "");
-          this.clipboardBuffer = tsvValues.join("\t");
+          e.preventDefault();
+          this.selectCrossDateCell(idx, colIdx, e.shiftKey);
+          this.isSelectingCrossDate = true;
+        });
+        td.addEventListener("mouseenter", () => {
+          if (this.isSelectingCrossDate) this.selectCrossDateCell(idx, colIdx, true);
         });
 
         tr.appendChild(td);
       });
 
+      const actionCell = document.createElement("td");
+      const applyButton = document.createElement("button");
+      applyButton.type = "button";
+      applyButton.className = "history-apply-btn";
+      applyButton.textContent = "적용";
+      applyButton.title = "선택했던 현재 날짜 행에 이 기록 적용";
+      applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
+      applyButton.addEventListener("mousedown", e => e.preventDefault());
+      applyButton.addEventListener("click", () => this.applyHistoryRow(row));
+      actionCell.appendChild(applyButton);
+      tr.appendChild(actionCell);
       this.elTableBody.insertBefore(tr, firstCurrentRow);
     });
 
@@ -2864,6 +3048,7 @@ class PTApp {
   }
 
   handleTableContextMenu(e) {
+    if (e.target.closest(".cross-date-row")) { e.preventDefault(); return; }
     const thRow = e.target.closest("th.row-num");
     const thCol = e.target.closest("th.col-letter, th.b-header");
     const thCorner = e.target.closest("#cornerHeader");
@@ -3032,8 +3217,10 @@ class PTApp {
     const selection = this.clipboardSelection;
     if (!selection || selection.date !== this.currentDate) return;
     const { minRow, maxRow, minCol, maxCol } = selection;
-    this.elTableBody.querySelectorAll(".excel-cell[data-col-idx]").forEach((cell) => {
-      const row = Number(cell.dataset.row), col = Number(cell.dataset.colIdx);
+    const history = selection.kind === "history";
+    this.elTableBody.querySelectorAll(history ? ".cross-date-cell" : ".excel-cell[data-col-idx]").forEach((cell) => {
+      const row = Number(history ? cell.dataset.crossIdx : cell.dataset.row);
+      const col = Number(history ? cell.dataset.crossColIdx : cell.dataset.colIdx);
       if (row < minRow || row > maxRow || col < minCol || col > maxCol) return;
       cell.classList.add("clipboard-source");
       if (row === minRow) cell.classList.add("clipboard-top");
@@ -3049,7 +3236,12 @@ class PTApp {
     let tsvData = "";
     let copyRange = null;
 
-    if (this.selectedRange) {
+    if (this.crossDateSelection) {
+      copyRange = { ...this.crossDateSelection, kind: "history" };
+      const { minRow, maxRow, minCol, maxCol } = copyRange;
+      tsvData = this.crossDateResults.slice(minRow, maxRow + 1)
+        .map(row => colKeys.slice(minCol, maxCol + 1).map(key => row[key] ?? "").join("\t")).join("\n");
+    } else if (this.selectedRange) {
       // Range copy (TSV grid format)
       const { minRow, maxRow, minCol, maxCol } = this.selectedRange;
       copyRange = { ...this.selectedRange };
@@ -3092,6 +3284,7 @@ class PTApp {
   }
 
   cutSelection() {
+    if (this.crossDateSelection) return;
     this.copySelection();
     this.clearSelection();
     this.showSaveIndicator("잘라내기 완료됨");
@@ -3186,15 +3379,15 @@ class PTApp {
           }
         }
       }
-    } else if (this.selectedRowIdx !== null) {
-      this.clearRowData(this.selectedRowIdx);
-      return;
     } else if (this.selectedColKey !== null) {
       this.clearColData(this.selectedColKey);
       return;
     } else if (this.activeCell && rows[this.activeCell.rowIdx]) {
       const { rowIdx, colKey } = this.activeCell;
       rows[rowIdx][colKey] = "";
+    } else if (this.selectedRowIdx !== null) {
+      this.clearRowData(this.selectedRowIdx);
+      return;
     }
 
     this.saveDataStore();
@@ -3324,8 +3517,11 @@ class PTApp {
           date: formattedDate
         });
       }
+      this.activeCell = null;
+      this.clearHeaderSelections();
       this.selectedRowIdx = null;
       this.selectedRowRange = null;
+      this.clipboardSelection = null;
       this.saveDataStore();
       this.renderTable();
       const msg = deleteCount > 1
@@ -3369,6 +3565,8 @@ class PTApp {
           const originRow = e.target.closest(".excel-row");
           if (originRow) originRow.classList.add("search-origin-row");
           const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : -1;
+          e.target.blur();
+          this.elSheetContainer.focus({ preventScroll: true });
           this.searchAllDates(searchVal, originRowIdx);
         }
         return;
@@ -3382,6 +3580,24 @@ class PTApp {
 
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const keyLower = e.key.toLowerCase();
+
+    if (this.crossDateSelection && e.key !== "Escape") {
+      const selection = this.crossDateSelection;
+      if (isCtrlOrMeta && keyLower === "c") this.copySelection();
+      else if (isCtrlOrMeta && keyLower === "f") {
+        const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+        const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
+        if (value) this.searchAllDates(value);
+        else this.elSearchInput.focus();
+      } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        const row = Math.max(0, Math.min(this.crossDateResults.length - 1, selection.endRow + (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0)));
+        const col = Math.max(0, Math.min(9, selection.endCol + (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0)));
+        this.selectCrossDateCell(row, col, e.shiftKey);
+        this.elTableBody.querySelector(`[data-cross-idx="${row}"][data-cross-col-idx="${col}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+      if (e.key !== "Tab") e.preventDefault();
+      return;
+    }
 
     // 1) Copy (Ctrl+C / Cmd+C)
     if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.COPY.key) {
@@ -3434,12 +3650,15 @@ class PTApp {
         const { rowIdx, colKey } = this.activeCell;
         const rows = this.getCurrentRows();
         const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
-        const trimmed = cellValue.trim();
+        const trimmed = String(cellValue).trim();
         if (trimmed) {
           document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
           const originRow = document.querySelector(`tr[data-row-idx="${rowIdx}"]`);
           if (originRow) originRow.classList.add("search-origin-row");
           this.searchAllDates(trimmed, rowIdx);
+        } else {
+          this.elSearchInput.focus();
+          this.elSearchInput.select();
         }
       } else if (this.elSearchInput) {
         this.elSearchInput.focus();
@@ -3459,8 +3678,7 @@ class PTApp {
     // 9) Delete Row (Ctrl + '-' or Ctrl + '_' or NumpadSubtract)
     if (isCtrlOrMeta && (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract")) {
       e.preventDefault();
-      const r = this.selectedRowIdx ?? (this.activeCell ? this.activeCell.rowIdx : 0);
-      this.deleteRowAt(r);
+      if (this.selectedRowRange) this.deleteRowAt(this.selectedRowRange.minRow);
       return;
     }
 

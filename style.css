@@ -1787,3 +1787,17 @@ body {
 .excel-context-menu .menu-divider.hidden {
   display: none !important;
 }
+
+/* 이전 날짜도 선택한 셀/범위의 외곽선을 명확히 표시 */
+.cross-date-cell.range-selected { background: #dceee4 !important; }
+.row-num[draggable="true"] { cursor: grab; }
+.row-num[draggable="true"]:active { cursor: grabbing; }
+.excel-row.row-drop-before > * { box-shadow: inset 0 3px 0 #107c41 !important; }
+.excel-row.row-drop-after > * { box-shadow: inset 0 -3px 0 #107c41 !important; }
+
+.history-apply-btn { font: inherit; font-size: 11px; padding: 3px 4px; border: 1px solid #107c41; border-radius: 4px; color: #107c41; background: white; cursor: pointer; white-space: nowrap; }
+.history-apply-btn:hover { background: #dceee4; }
+.history-apply-btn:disabled { opacity: .45; cursor: default; }
+
+/* Keep native IME focus ready while displaying the normal cell selection. */
+.cell-input-element.is-armed { position: absolute; inset: 0; opacity: 0; pointer-events: none; caret-color: transparent; }
