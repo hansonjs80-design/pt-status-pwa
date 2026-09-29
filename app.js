@@ -1129,39 +1129,59 @@ class PTApp {
     if (!query) return [];
 
     const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
+    const presetSet = new Set(presets.map((p) => p.toLowerCase()));
 
     // 현재 시트의 해당 컬럼에서 이미 입력된 고유 값들도 추천 목록에 자동 반영
     const rows = this.getCurrentRows();
     const existingValues = new Set();
     rows.forEach((r) => {
       const v = (r[colKey] || "").trim();
-      if (v) existingValues.add(v);
-    });
-
-    const allCandidates = [];
-    presets.forEach((p) => {
-      if (!allCandidates.includes(p)) allCandidates.push(p);
-    });
-    existingValues.forEach((v) => {
-      if (!allCandidates.includes(v)) allCandidates.push(v);
+      if (v && !presetSet.has(v.toLowerCase())) existingValues.add(v);
     });
 
     const queryChosung = this.getChosung(query);
 
     const matched = [];
-    for (const item of allCandidates) {
-      const itemLower = item.toLowerCase();
-      const itemChosung = this.getChosung(itemLower);
 
+    // 1) 프리셋 항목 매칭 (최우선 정렬: score 0~4)
+    for (const item of presets) {
+      const itemLower = item.toLowerCase();
+      if (itemLower === query) continue; // 정확히 일치하면 추천 불필요
+
+      const itemChosung = this.getChosung(itemLower);
       let score = -1;
-      if (itemLower === query) {
-        score = 0; // 정확히 일치
-      } else if (itemLower.startsWith(query)) {
-        score = 1; // 접두사 일치
+
+      if (itemLower.startsWith(query)) {
+        score = 1; // 프리셋 접두사 일치 (e.g. '학' -> '학생 ( HP / Laser )')
+      } else if (queryChosung && itemChosung.startsWith(queryChosung)) {
+        score = 2; // 프리셋 초성 접두사
       } else if (itemLower.includes(query)) {
-        score = 2; // 부분 일치
-      } else if (queryChosung && (itemChosung.startsWith(queryChosung) || itemChosung.includes(queryChosung))) {
-        score = 3; // 초성 일치 (e.g. 'ㅎ' -> '학생', 'ㅅㅈ' -> '사지')
+        score = 3; // 프리셋 부분 일치
+      } else if (queryChosung && itemChosung.includes(queryChosung)) {
+        score = 4; // 프리셋 초성 부분 일치
+      }
+
+      if (score >= 0) {
+        matched.push({ item, score });
+      }
+    }
+
+    // 2) 시트 기존 값 매칭 (차순위 정렬: score 10~14)
+    for (const item of existingValues) {
+      const itemLower = item.toLowerCase();
+      if (itemLower === query) continue;
+
+      const itemChosung = this.getChosung(itemLower);
+      let score = -1;
+
+      if (itemLower.startsWith(query)) {
+        score = 10;
+      } else if (queryChosung && itemChosung.startsWith(queryChosung)) {
+        score = 11;
+      } else if (itemLower.includes(query)) {
+        score = 12;
+      } else if (queryChosung && itemChosung.includes(queryChosung)) {
+        score = 13;
       }
 
       if (score >= 0) {
@@ -1341,16 +1361,9 @@ class PTApp {
     // Input events
     input.addEventListener("input", (e) => {
       let val = input.value;
-      // 한글 입력 중(isComposing)이 아닐 때 분리된 자모 자동 결합 (ㅎㅏㄱ -> 학 등)
-      if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
-        const assembled = this.assembleHangul(val);
-        if (assembled !== val) {
-          const selStart = input.selectionStart;
-          input.value = assembled;
-          val = assembled;
-          try { input.setSelectionRange(selStart, selStart); } catch (_) {}
-        }
-      }
+
+      // 한글 IME 조합 중(isComposing)에는 assembleHangul 변환을 절대로 실행하지 않음!
+      // input.value를 건드리면 브라우저가 조합 세션을 강제 커밋하여 자모가 분리됨
       if (colKey === "writer" && !e.isComposing) {
         val = this.normalizeWriterInput(val);
         input.value = val;
@@ -1359,8 +1372,15 @@ class PTApp {
       this.elFormulaInput.value = val;
       this.debounceSaveDataStore();
 
-      // 셀 아래 연관 추천 목록 실시간 표시
-      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
+      // 자동완성 목록도 한글 조합 중에는 갱신하지 않음 (DOM 변경이 IME를 방해)
+      if (!e.isComposing && colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
+        const assembled = this.assembleHangul(val);
+        if (assembled !== val) {
+          input.value = assembled;
+          val = assembled;
+          rows[rowIdx][colKey] = val;
+          this.elFormulaInput.value = val;
+        }
         const suggestions = this.getAutocompleteSuggestions(colKey, val);
         if (suggestions.length > 0) {
           this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -1383,7 +1403,7 @@ class PTApp {
       this.elFormulaInput.value = val;
       this.debounceSaveDataStore();
 
-      // 한글 조합 완료 시점 추천 목록 갱신
+      // 한글 조합이 완전히 끝난 시점에서만 자동완성 목록 갱신
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
         if (suggestions.length > 0) {
@@ -3187,17 +3207,49 @@ class PTApp {
       }
     }
 
-    // 17) Escape -> Hide context menu & clear selection highlights
+    // 17) Escape -> Hide context menu & clear selection highlights & DESELECT cell
     if (e.key === "Escape") {
+      e.preventDefault();
       this.closeAutocompleteMenu();
+      this.closeGenderDropdown();
       this.hideContextMenu();
       this.clipboardSelection = null;
       this.renderClipboardSelection();
       this.clearHeaderSelections();
+
+      // 편집 중인 input이 있으면 blur하여 편집 종료
+      const activeInput = document.querySelector(".cell-input-element");
+      if (activeInput) {
+        activeInput.blur();
+      }
+
+      // 셀 포커스 하이라이트 제거
       document.querySelectorAll(".cell-focused").forEach((c) => c.classList.remove("cell-focused"));
+
+      // 활성 행 하이라이트 제거
+      document.querySelectorAll(".excel-row.active-row").forEach((r) => r.classList.remove("active-row"));
+
+      // 범위 선택 상태 해제
+      document.querySelectorAll(".range-selected, .range-border-top, .range-border-bottom, .range-border-left, .range-border-right").forEach((c) => {
+        c.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");
+      });
+
+      // 수식 입력줄 초기화
+      if (this.elFormulaInput) {
+        this.elFormulaInput.value = "";
+      }
+      if (this.elCellAddress) {
+        this.elCellAddress.textContent = "";
+      }
+
+      // 내부 상태 완전 초기화
       this.activeCell = null;
       this.selectedRowIdx = null;
       this.selectedColKey = null;
+      this.selectedRange = null;
+      this.selectedRowRange = null;
+      this.rangeStart = null;
+      this.rangeEnd = null;
     }
   }
 
