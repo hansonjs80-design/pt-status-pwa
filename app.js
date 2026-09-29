@@ -2351,16 +2351,141 @@ class PTApp {
     const q = this.elSearchInput.value.trim().toLowerCase();
     this.elBtnClearSearch.style.display = q ? "block" : "none";
 
+    // 교차 날짜 임시 행 제거
+    this.clearCrossDateRows();
+
     const rows = document.querySelectorAll(".excel-row");
     rows.forEach((rowEl) => {
       if (!q) {
         rowEl.style.display = "";
-        // 검색 해제 시 원점 행 하이라이트도 제거
         rowEl.classList.remove("search-origin-row");
         return;
       }
       const text = rowEl.textContent.toLowerCase();
       rowEl.style.display = text.includes(q) ? "" : "none";
+    });
+  }
+
+  // 교차 날짜 임시 행 제거
+  clearCrossDateRows() {
+    document.querySelectorAll(".cross-date-row, .cross-date-divider").forEach(el => el.remove());
+  }
+
+  // ★ 전체 날짜 검색: Ctrl+F 시 현재 날짜 + 이전 날짜의 매칭 기록을 모두 표시
+  searchAllDates(query, originRowIdx) {
+    if (!query) {
+      this.handleSearch();
+      return;
+    }
+
+    const q = query.toLowerCase();
+    this.elSearchInput.value = query;
+    this.elBtnClearSearch.style.display = "block";
+
+    // 1) 교차 날짜 임시 행 제거
+    this.clearCrossDateRows();
+
+    // 2) 현재 날짜 행 필터링 (기존 검색과 동일)
+    const currentRows = document.querySelectorAll(".excel-row");
+    currentRows.forEach((rowEl) => {
+      const text = rowEl.textContent.toLowerCase();
+      rowEl.style.display = text.includes(q) ? "" : "none";
+    });
+
+    // 3) 이전 날짜에서 매칭 기록 수집
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const crossDateResults = [];
+
+    const allDates = Object.keys(this.dataStore).sort().reverse(); // 최신순
+    allDates.forEach((dateKey) => {
+      if (dateKey === this.currentDate) return; // 현재 날짜 제외
+      const dateRows = this.dataStore[dateKey] || [];
+      dateRows.forEach((row) => {
+        // 유의미한 데이터가 있는 행만
+        if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
+        // 검색어 매칭
+        const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
+        if (rowText.includes(q)) {
+          crossDateResults.push({ ...row, _sourceDate: dateKey });
+        }
+      });
+    });
+
+    if (crossDateResults.length === 0) return;
+
+    // 4) 구분선 추가
+    const dividerTr = document.createElement("tr");
+    dividerTr.className = "cross-date-divider";
+    const dividerTd = document.createElement("td");
+    dividerTd.colSpan = 12;
+    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 (${crossDateResults.length}건) — 선택하여 복사 가능</span>`;
+    dividerTr.appendChild(dividerTd);
+    this.elTableBody.appendChild(dividerTr);
+
+    // 5) 교차 날짜 결과 행 추가 (최신순, 날짜별 그룹)
+    let lastDate = null;
+    crossDateResults.forEach((row, idx) => {
+      // 날짜 구분 헤더
+      if (row._sourceDate !== lastDate) {
+        lastDate = row._sourceDate;
+        const dateLabelTr = document.createElement("tr");
+        dateLabelTr.className = "cross-date-divider cross-date-label";
+        const dateLabelTd = document.createElement("td");
+        dateLabelTd.colSpan = 12;
+        const formattedDate = row._sourceDate.replace(/-/g, ".");
+        const dateObj = new Date(row._sourceDate);
+        const daysKor = ["일", "월", "화", "수", "목", "금", "토"];
+        const dayLabel = daysKor[dateObj.getDay()] || "";
+        dateLabelTd.textContent = `${formattedDate} (${dayLabel})`;
+        dateLabelTr.appendChild(dateLabelTd);
+        this.elTableBody.appendChild(dateLabelTr);
+      }
+
+      const tr = document.createElement("tr");
+      tr.className = "excel-row cross-date-row";
+      tr.dataset.crossDate = row._sourceDate;
+
+      // 행 번호 (날짜 약어로 표시)
+      const thNum = document.createElement("th");
+      thNum.className = "row-num cross-date-num";
+      thNum.textContent = row._sourceDate.slice(5).replace("-", "/");
+      thNum.title = `${row._sourceDate} 기록`;
+      tr.appendChild(thNum);
+
+      // 셀 렌더링
+      colKeys.forEach((key, colIdx) => {
+        const td = document.createElement("td");
+        td.className = `excel-cell cell-${key} cross-date-cell`;
+        td.dataset.crossIdx = idx;
+        td.dataset.crossCol = key;
+        const val = row[key] || "";
+
+        if (key === "gender") {
+          const textSpan = document.createElement("span");
+          textSpan.className = "cell-gender-text";
+          textSpan.textContent = val;
+          td.appendChild(textSpan);
+          if (val === "F") td.classList.add("f");
+          if (val === "M") td.classList.add("m");
+        } else {
+          td.textContent = val;
+        }
+
+        // 교차 날짜 셀 클릭 → 내용 복사 지원 (선택 가능)
+        td.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          // 교차 날짜 행 전체 선택 (복사용)
+          document.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
+          tr.classList.add("cross-date-row-selected");
+          // 클립보드에 해당 행 데이터를 TSV 형식으로 저장
+          const tsvValues = colKeys.map(k => row[k] || "");
+          this.clipboardBuffer = tsvValues.join("\t");
+        });
+
+        tr.appendChild(td);
+      });
+
+      this.elTableBody.appendChild(tr);
     });
   }
 
@@ -3230,20 +3355,18 @@ class PTApp {
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
       const isCtrl = e.ctrlKey || e.metaKey;
-      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용으로 테이블 필터링
+      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용으로 전체 날짜 검색
       if (isCtrl && e.key.toLowerCase() === EXCEL_SHORTCUTS.SEARCH.key) {
         e.preventDefault();
         e.stopPropagation();
-        // 현재 편집 중인 input의 값으로 테이블 필터링 (포커스는 셀에 유지)
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
         const searchVal = cellInput ? cellInput.value.trim() : "";
-        if (this.elSearchInput) {
-          // 기존 원점 행 하이라이트 제거 후 현재 행에 적용
+        if (this.elSearchInput && searchVal) {
           document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
           const originRow = e.target.closest(".excel-row");
           if (originRow) originRow.classList.add("search-origin-row");
-          this.elSearchInput.value = searchVal;
-          this.handleSearch();
+          const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : -1;
+          this.searchAllDates(searchVal, originRowIdx);
         }
         return;
       }
@@ -3308,12 +3431,13 @@ class PTApp {
         const { rowIdx, colKey } = this.activeCell;
         const rows = this.getCurrentRows();
         const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
-        // 기존 원점 행 하이라이트 제거 후 현재 행에 적용
-        document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
-        const originRow = document.querySelector(`tr[data-row-idx="${rowIdx}"]`);
-        if (originRow) originRow.classList.add("search-origin-row");
-        this.elSearchInput.value = cellValue.trim();
-        this.handleSearch();
+        const trimmed = cellValue.trim();
+        if (trimmed) {
+          document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
+          const originRow = document.querySelector(`tr[data-row-idx="${rowIdx}"]`);
+          if (originRow) originRow.classList.add("search-origin-row");
+          this.searchAllDates(trimmed, rowIdx);
+        }
       } else if (this.elSearchInput) {
         this.elSearchInput.focus();
         this.elSearchInput.select();
@@ -3473,8 +3597,10 @@ class PTApp {
         this.elSearchInput.value = "";
         this.handleSearch();
       }
-      // 원점 행 하이라이트 제거
+      // 교차 날짜 임시 행 및 원점 행 하이라이트 제거
+      this.clearCrossDateRows();
       document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
+      document.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
 
       // 편집 중인 input이 있으면 blur하여 편집 종료
       const activeInput = document.querySelector(".cell-input-element");
