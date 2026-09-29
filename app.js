@@ -3219,17 +3219,15 @@ class PTApp {
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
       const isCtrl = e.ctrlKey || e.metaKey;
-      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용을 검색창에 자동 입력
+      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용으로 테이블 필터링
       if (isCtrl && e.key.toLowerCase() === EXCEL_SHORTCUTS.SEARCH.key) {
         e.preventDefault();
         e.stopPropagation();
-        // 현재 편집 중인 input의 값을 검색창에 채우기
+        // 현재 편집 중인 input의 값으로 테이블 필터링 (포커스는 셀에 유지)
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
         const searchVal = cellInput ? cellInput.value.trim() : "";
         if (this.elSearchInput) {
           this.elSearchInput.value = searchVal;
-          this.elSearchInput.focus();
-          this.elSearchInput.select();
           this.handleSearch();
         }
         return;
@@ -3286,10 +3284,18 @@ class PTApp {
       return;
     }
 
-    // 7) Search Focus (Ctrl+F / Cmd+F)
+    // 7) Search / Filter (Ctrl+F / Cmd+F)
+    //    셀이 선택된 상태에서 Ctrl+F → 해당 셀 내용으로 테이블 필터링
+    //    셀이 선택되지 않았으면 검색창 포커스
     if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.SEARCH.key) {
       e.preventDefault();
-      if (this.elSearchInput) {
+      if (this.activeCell && this.elSearchInput) {
+        const { rowIdx, colKey } = this.activeCell;
+        const rows = this.getCurrentRows();
+        const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
+        this.elSearchInput.value = cellValue.trim();
+        this.handleSearch();
+      } else if (this.elSearchInput) {
         this.elSearchInput.focus();
         this.elSearchInput.select();
       }
