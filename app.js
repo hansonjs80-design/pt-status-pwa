@@ -1369,22 +1369,18 @@ class PTApp {
     input.select();
 
     // Input events
+    // ★ 핵심: input 이벤트에서는 절대로 input.value를 변경하지 않음!
+    // assembleHangul 등으로 값을 바꾸면 브라우저 IME 조합이 깨져서 자모가 분리됨.
+    // 한글 조합 보정은 compositionend와 blur 시점에서만 수행.
     input.addEventListener("input", (e) => {
       let val = input.value;
 
-      // 한글 IME 조합 중(isComposing)에는 assembleHangul/input.value 변환을 절대로 실행하지 않음!
-      // input.value를 건드리면 브라우저가 조합 세션을 강제 커밋하여 자모가 분리됨
+      // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
       if (colKey === "writer" && !e.isComposing) {
         val = this.normalizeWriterInput(val);
         input.value = val;
       }
-      if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
-        const assembled = this.assembleHangul(val);
-        if (assembled !== val) {
-          input.value = assembled;
-          val = assembled;
-        }
-      }
+
       rows[rowIdx][colKey] = val;
       this.elFormulaInput.value = val;
       this.debounceSaveDataStore();
