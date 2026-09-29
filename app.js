@@ -1369,54 +1369,70 @@ class PTApp {
     input.select();
 
     // Input events
-    // ★ 핵심: input 이벤트에서는 절대로 input.value를 변경하지 않음!
-    // assembleHangul 등으로 값을 바꾸면 브라우저 IME 조합이 깨져서 자모가 분리됨.
-    // 한글 조합 보정은 compositionend와 blur 시점에서만 수행.
+    // ★ 한글 IME 보호 원칙:
+    // 1. input 이벤트에서 절대로 input.value를 변경하지 않음
+    // 2. isComposing 중에는 자동완성 등 DOM 조작도 하지 않음 (IME 방해)
+    // 3. assembleHangul은 blur(편집 종료) 시점에서만 최종 보정으로 실행
+    let _acDebounceTimer = null;
+
     input.addEventListener("input", (e) => {
-      let val = input.value;
+      const val = input.value;
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
       if (colKey === "writer" && !e.isComposing) {
-        val = this.normalizeWriterInput(val);
-        input.value = val;
+        const normalized = this.normalizeWriterInput(val);
+        if (normalized !== val) input.value = normalized;
+        rows[rowIdx][colKey] = normalized;
+      } else {
+        rows[rowIdx][colKey] = val;
       }
-
-      rows[rowIdx][colKey] = val;
-      this.elFormulaInput.value = val;
+      this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
 
-      // 자동완성 메뉴는 별도 DOM이므로 IME에 영향 없음 → 조합 중에도 항상 표시
+      // ★ 한글 조합 중(isComposing)에는 자동완성 DOM 조작 절대 금지!
+      // DOM 변경이 브라우저 IME 조합을 강제 종료시켜 자모가 분리됨
+      if (e.isComposing) return;
+
+      // 비조합 입력(영문, 숫자, 조합 완료 후)에서만 자동완성 갱신
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
-        const suggestions = this.getAutocompleteSuggestions(colKey, val);
-        if (suggestions.length > 0) {
-          this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
-        } else {
-          this.closeAutocompleteMenu();
-        }
+        clearTimeout(_acDebounceTimer);
+        _acDebounceTimer = setTimeout(() => {
+          const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+          if (suggestions.length > 0) {
+            this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
+          } else {
+            this.closeAutocompleteMenu();
+          }
+        }, 50);
       }
     });
 
     input.addEventListener("compositionend", () => {
       if (this._justCommittedFromAutocomplete) return;
-      let val = this.assembleHangul(input.value);
+      // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
+      // assembleHangul은 blur 시점에서만 최종 보정
+      const val = input.value;
       if (colKey === "writer") {
-        val = this.normalizeWriterInput(val);
+        const normalized = this.normalizeWriterInput(val);
+        if (normalized !== val) input.value = normalized;
+        rows[rowIdx][colKey] = normalized;
+      } else {
+        rows[rowIdx][colKey] = val;
       }
-      if (val !== input.value) {
-        input.value = val;
-      }
-      rows[rowIdx][colKey] = val;
-      this.elFormulaInput.value = val;
+      this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
 
-      // 한글 조합이 완전히 끝난 시점에서만 자동완성 목록 갱신
+      // 한글 조합이 완전히 끝난 시점에서 자동완성 목록 갱신 (약간 지연)
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
-        const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
-        if (suggestions.length > 0) {
-          this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
-        } else {
-          this.closeAutocompleteMenu();
-        }
+        clearTimeout(_acDebounceTimer);
+        _acDebounceTimer = setTimeout(() => {
+          const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+          if (suggestions.length > 0) {
+            this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
+          } else {
+            this.closeAutocompleteMenu();
+          }
+        }, 80);
       }
     });
 
