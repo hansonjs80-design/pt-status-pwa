@@ -436,6 +436,26 @@ class PTApp {
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
 
+    // PWA에서 Cmd+C/X 시 keydown이 처리 못하는 경우 copy/cut 이벤트로 fallback
+    document.addEventListener("copy", (e) => {
+      // input/textarea 내부에서의 복사는 무시 (텍스트 편집 중)
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      if (this.activeCell || this.selectedRange || this.selectedColKey !== null || this.selectedRowIdx !== null) {
+        e.preventDefault();
+        this.copySelection();
+      }
+    });
+
+    document.addEventListener("cut", (e) => {
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      if (this.activeCell || this.selectedRange || this.selectedColKey !== null || this.selectedRowIdx !== null) {
+        e.preventDefault();
+        this.cutSelection();
+      }
+    });
+
     // Close modal & context menu on escape
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -1143,50 +1163,40 @@ class PTApp {
 
     const matched = [];
 
-    // 1) 프리셋 항목 매칭 (최우선 정렬: score 0~4)
-    for (const item of presets) {
+    // 통합 매칭 함수: 매칭 품질 우선, 동일 품질 내 프리셋 우선
+    const matchItem = (item, isPreset) => {
       const itemLower = item.toLowerCase();
-      if (itemLower === query) continue; // 정확히 일치하면 추천 불필요
+      if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
       const itemChosung = this.getChosung(itemLower);
-      let score = -1;
+      // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치, 4=초성부분
+      // 출처 보너스: 프리셋이면 +0, 기존값이면 +0.5 (동일 품질 내 프리셋 우선)
+      let quality = -1;
 
       if (itemLower.startsWith(query)) {
-        score = 1; // 프리셋 접두사 일치 (e.g. '학' -> '학생 ( HP / Laser )')
+        quality = 1; // 접두사 일치 (e.g. '한' -> '한랭...')
       } else if (queryChosung && itemChosung.startsWith(queryChosung)) {
-        score = 2; // 프리셋 초성 접두사
+        quality = 2; // 초성 접두사 (e.g. 'ㅎ' -> '학생...')
       } else if (itemLower.includes(query)) {
-        score = 3; // 프리셋 부분 일치
+        quality = 3; // 부분 일치
       } else if (queryChosung && itemChosung.includes(queryChosung)) {
-        score = 4; // 프리셋 초성 부분 일치
+        quality = 4; // 초성 부분 일치
       }
 
-      if (score >= 0) {
+      if (quality >= 0) {
+        const score = quality * 10 + (isPreset ? 0 : 5);
         matched.push({ item, score });
       }
+    };
+
+    // 1) 프리셋 항목 매칭
+    for (const item of presets) {
+      matchItem(item, true);
     }
 
-    // 2) 시트 기존 값 매칭 (차순위 정렬: score 10~14)
+    // 2) 시트 기존 값 매칭
     for (const item of existingValues) {
-      const itemLower = item.toLowerCase();
-      if (itemLower === query) continue;
-
-      const itemChosung = this.getChosung(itemLower);
-      let score = -1;
-
-      if (itemLower.startsWith(query)) {
-        score = 10;
-      } else if (queryChosung && itemChosung.startsWith(queryChosung)) {
-        score = 11;
-      } else if (itemLower.includes(query)) {
-        score = 12;
-      } else if (queryChosung && itemChosung.includes(queryChosung)) {
-        score = 13;
-      }
-
-      if (score >= 0) {
-        matched.push({ item, score });
-      }
+      matchItem(item, false);
     }
 
     matched.sort((a, b) => {
