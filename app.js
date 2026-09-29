@@ -1575,7 +1575,11 @@ class PTApp {
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
-      cellElement.textContent = finalVal;
+      // ★ 셀에 이미 새 input이 있으면(더블클릭으로 재편집 진입 등) 셀 내용 덮어쓰기 방지
+      const existingInput = cellElement.querySelector("input");
+      if (!existingInput || existingInput === input) {
+        cellElement.textContent = finalVal;
+      }
       if (colKey === "gender") {
         cellElement.classList.remove("f", "m");
         if (finalVal === "F") cellElement.classList.add("f");
@@ -1654,8 +1658,8 @@ class PTApp {
       // 2) 방향키 처리: 편집 커밋 후 해당 방향으로 셀 이동
       //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)
       //    자동완성이 열려있을 때 좌/우 방향키 또는 자동완성이 닫혀있을 때 모든 방향키
+      //    ★ 한글 IME 조합 중(isComposing)이라도 방향키는 항상 셀 이동으로 처리
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-        if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
         e.stopPropagation();
 
