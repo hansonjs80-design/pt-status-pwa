@@ -2725,17 +2725,17 @@ class PTApp {
       tsvData = rows.map((r) => r[this.selectedColKey] ?? "").join("\n");
       const col = colKeys.indexOf(this.selectedColKey);
       copyRange = { minRow: 0, maxRow: rows.length - 1, minCol: col, maxCol: col };
-    } else if (this.activeCell && rows[this.activeCell.rowIdx]) {
-      // Single cell copy
-      tsvData = rows[this.activeCell.rowIdx][this.activeCell.colKey] ?? "";
+    } else if (this.activeCell) {
+      // Single cell copy (빈 셀도 포함)
+      tsvData = rows[this.activeCell.rowIdx] ? (rows[this.activeCell.rowIdx][this.activeCell.colKey] ?? "") : "";
       const col = colKeys.indexOf(this.activeCell.colKey);
       copyRange = { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: col, maxCol: col };
-    } else if (this.selectedRowIdx !== null && rows[this.selectedRowIdx]) {
-      tsvData = colKeys.map((k) => rows[this.selectedRowIdx][k] ?? "").join("\t");
+    } else if (this.selectedRowIdx !== null) {
+      tsvData = rows[this.selectedRowIdx] ? colKeys.map((k) => rows[this.selectedRowIdx][k] ?? "").join("\t") : "";
       copyRange = { minRow: this.selectedRowIdx, maxRow: this.selectedRowIdx, minCol: 0, maxCol: colKeys.length - 1 };
     }
 
-    if (tsvData) {
+    if (copyRange) {
       this.clipboardBuffer = tsvData;
       this.clipboardSelection = { ...copyRange, date: this.currentDate };
       this.renderClipboardSelection();
