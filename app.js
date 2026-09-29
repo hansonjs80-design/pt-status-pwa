@@ -3218,6 +3218,22 @@ class PTApp {
     }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용을 검색창에 자동 입력
+      if (isCtrl && e.key.toLowerCase() === EXCEL_SHORTCUTS.SEARCH.key) {
+        e.preventDefault();
+        e.stopPropagation();
+        // 현재 편집 중인 input의 값을 검색창에 채우기
+        const cellInput = e.target.closest(".excel-cell") ? e.target : null;
+        const searchVal = cellInput ? cellInput.value.trim() : "";
+        if (this.elSearchInput) {
+          this.elSearchInput.value = searchVal;
+          this.elSearchInput.focus();
+          this.elSearchInput.select();
+          this.handleSearch();
+        }
+        return;
+      }
       if (e.key === "Escape") {
         e.target.blur();
         this.hideContextMenu();
