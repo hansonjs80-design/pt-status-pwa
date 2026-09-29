@@ -32,6 +32,7 @@ const INITIAL_SAMPLE_DATA = {
 };
 
 const STORAGE_KEY = "PT_APP_DATA_STORAGE_V1";
+const COL_WIDTHS_STORAGE_KEY = "PT_APP_COL_WIDTHS_STORAGE_V1";
 const SUPABASE_CONFIG_KEY = "PT_SUPABASE_CONFIG_V1";
 const DEFAULT_SUPABASE_URL = "https://uqivbmkeuupsaghwshcw.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxaXZibWtldXVwc2FnaHdzaGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0ODM3OTUsImV4cCI6MjA4NTA1OTc5NX0.FY86a0vaN_x-KeErBYAVyCpyXKsxloZiy7eysZGSFjk";
@@ -1740,39 +1741,149 @@ class PTApp {
 
   initColumnResizing() {
     let activeTh = null;
+    let activeColKey = null;
     let startX = 0;
     let startWidth = 0;
 
+    // 기기별로 저장된 열 너비 초기 로딩 시 복원 적용
+    this.applySavedColumnWidths();
+
+    const startResize = (resizerEl, clientX) => {
+      activeTh = resizerEl.closest("th");
+      activeColKey = activeTh?.dataset?.col || null;
+      startX = clientX;
+      startWidth = activeTh.offsetWidth;
+      resizerEl.classList.add("resizing");
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    };
+
+    const doResize = (clientX) => {
+      if (!activeTh) return;
+      const diff = clientX - startX;
+      const newWidth = Math.max(35, startWidth + diff);
+      activeTh.style.width = `${newWidth}px`;
+      activeTh.style.minWidth = `${newWidth}px`;
+    };
+
+    const endResize = () => {
+      if (activeTh) {
+        const resizer = activeTh.querySelector(".col-resizer");
+        if (resizer) resizer.classList.remove("resizing");
+
+        // 기기별 localStorage에 열 너비 영구 저장
+        if (activeColKey) {
+          const finalWidth = parseInt(activeTh.style.width, 10) || activeTh.offsetWidth;
+          this.saveColumnWidth(activeColKey, finalWidth);
+        }
+
+        activeTh = null;
+        activeColKey = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+
+    // 마우스 이벤트 리스너
     document.addEventListener("mousedown", (e) => {
       if (e.target.classList.contains("col-resizer")) {
         e.preventDefault();
         e.stopPropagation();
-        const resizer = e.target;
-        activeTh = resizer.closest("th");
-        startX = e.pageX;
-        startWidth = activeTh.offsetWidth;
-        resizer.classList.add("resizing");
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
+        startResize(e.target, e.pageX);
       }
     });
 
     document.addEventListener("mousemove", (e) => {
-      if (!activeTh) return;
-      const diff = e.pageX - startX;
-      const newWidth = Math.max(35, startWidth + diff);
-      activeTh.style.width = `${newWidth}px`;
+      if (activeTh) {
+        doResize(e.pageX);
+      }
     });
 
     document.addEventListener("mouseup", () => {
-      if (activeTh) {
-        const resizer = activeTh.querySelector(".col-resizer");
-        if (resizer) resizer.classList.remove("resizing");
-        activeTh = null;
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+      endResize();
+    });
+
+    // 태블릿/모바일 터치 이벤트 리스너
+    document.addEventListener("touchstart", (e) => {
+      if (e.target.classList.contains("col-resizer") && e.touches.length === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        startResize(e.target, e.touches[0].pageX);
+      }
+    }, { passive: false });
+
+    document.addEventListener("touchmove", (e) => {
+      if (activeTh && e.touches.length === 1) {
+        e.preventDefault();
+        doResize(e.touches[0].pageX);
+      }
+    }, { passive: false });
+
+    document.addEventListener("touchend", () => {
+      endResize();
+    });
+
+    // 리사이저 더블클릭 시 해당 열 기본 너비로 복원 기능
+    document.addEventListener("dblclick", (e) => {
+      if (e.target.classList.contains("col-resizer")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const th = e.target.closest("th");
+        const colKey = th?.dataset?.col;
+        if (colKey) {
+          this.resetColumnWidth(colKey);
+        }
       }
     });
+  }
+
+  saveColumnWidth(colKey, width) {
+    try {
+      const saved = this.getSavedColumnWidths();
+      saved[colKey] = width;
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
+    } catch (err) {
+      console.error("Failed to save column width:", err);
+    }
+  }
+
+  getSavedColumnWidths() {
+    try {
+      const data = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
+      return data ? JSON.parse(data) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  applySavedColumnWidths() {
+    const saved = this.getSavedColumnWidths();
+    if (!saved || typeof saved !== "object") return;
+
+    Object.entries(saved).forEach(([colKey, width]) => {
+      if (!width || typeof width !== "number") return;
+      const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
+      if (th) {
+        th.style.width = `${width}px`;
+        th.style.minWidth = `${width}px`;
+      }
+    });
+  }
+
+  resetColumnWidth(colKey) {
+    try {
+      const saved = this.getSavedColumnWidths();
+      delete saved[colKey];
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
+      const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
+      if (th) {
+        th.style.width = "";
+        th.style.minWidth = "";
+      }
+      this.showSaveIndicator("기본 열 너비로 초기화됨");
+    } catch (err) {
+      console.error("Failed to reset column width:", err);
+    }
   }
 
   navigateCell(targetRowIdx, colKey) {
