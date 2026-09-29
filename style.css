@@ -731,15 +731,13 @@ body {
 .gender-dropdown-btn {
   display: none;
   position: absolute;
-  right: 0;
+  right: 2px;
   top: 0;
   bottom: 0;
-  width: 17px;
-  background: #f0f0f0;
-  border: 1px solid #c0c0c0;
-  border-top: none;
-  border-right: none;
-  color: #333333;
+  width: 14px;
+  background: transparent;
+  border: none;
+  color: #555555;
   font-size: 8px;
   cursor: pointer;
   align-items: center;
@@ -748,10 +746,15 @@ body {
   margin: 0;
   z-index: 2;
   box-sizing: border-box;
+  outline: none;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, color 0.15s ease;
 }
 
 .gender-dropdown-btn:hover {
-  background: #e1dfdd;
+  background: transparent;
+  color: #107C41;
+  opacity: 1;
 }
 
 /* Show dropdown arrow ONLY when cell is focused/selected */
