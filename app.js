@@ -119,6 +119,7 @@ class PTApp {
     window.ptApp = this;
     this.dataStore = this.loadDataStore();
     this.editHistory = new Map();
+    this.cloudSearchHistory = {};
     this.currentDate = this.getTodayString();
     this.activeCell = null; // { rowIdx, colKey }
     this.selectedRowIdx = null;
@@ -323,8 +324,6 @@ class PTApp {
     this.elBtnAddRow = document.getElementById("btnAddRow");
     this.elBtnDeleteSelected = document.getElementById("btnDeleteSelected");
     this.elBtnBottomAddRow = document.getElementById("btnBottomAddRow");
-    this.elTabAddRow = document.getElementById("tabAddRow");
-    this.elTabClearEmpty = document.getElementById("tabClearEmpty");
     this.elTabBackup = document.getElementById("tabBackup");
 
     this.elSearchInput = document.getElementById("searchInput");
@@ -446,14 +445,10 @@ class PTApp {
     if (this.elBtnBottomAddRow) {
       this.elBtnBottomAddRow.addEventListener("click", () => this.addNewRow(true));
     }
-    if (this.elTabAddRow) {
-      this.elTabAddRow.addEventListener("click", () => this.addNewRow(true));
-    }
     if (this.elBtnDeleteSelected) {
       this.elBtnDeleteSelected.addEventListener("click", () => this.deleteSelectedRow());
     }
 
-    this.elTabClearEmpty.addEventListener("click", () => this.removeEmptyRows());
     this.elTabBackup.addEventListener("click", () => this.openBackupModal());
 
     // Formula Input Sync
@@ -977,7 +972,7 @@ class PTApp {
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
     this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
-    this.historyApplyTarget = { date: this.currentDate, row: this.getCurrentRows()[rowIdx], colKey };
+    this.historyApplyTarget = { date: this.currentDate, rowIdx, rows: this.getCurrentRows(), row: this.getCurrentRows()[rowIdx], colKey };
     this.elTableBody.querySelectorAll(".history-apply-btn").forEach(button => { button.disabled = false; });
     this.selectedRowIdx = rowIdx;
     this.selectedColKey = null;
@@ -1380,6 +1375,62 @@ class PTApp {
     return res;
   }
 
+  getSearchDataStore() {
+    // Cloud history is read-only search data; local edits always take precedence.
+    return { ...this.cloudSearchHistory, ...this.dataStore };
+  }
+
+  async loadSearchHistory() {
+    const client = this.supabaseClient;
+    if (!client) return false;
+    if (this.searchHistoryClient !== client) {
+      this.searchHistoryClient = client;
+      this.cloudSearchHistory = {};
+      this.searchHistoryLoadedAt = 0;
+      this.searchHistoryRequest = null;
+    }
+    if (this.searchHistoryRequest) return this.searchHistoryRequest;
+    if (Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
+    const request = (async () => {
+      const history = {};
+      const pageSize = 200;
+      try {
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await client.from("pt_daily_records")
+            .select("date, rows_data").order("date", { ascending: false }).range(offset, offset + pageSize - 1);
+          if (error) throw error;
+          if (this.supabaseClient !== client) return false;
+          for (const entry of data || []) {
+            if (entry.date && Array.isArray(entry.rows_data)) history[entry.date] = entry.rows_data;
+          }
+          if (!data || data.length < pageSize) break;
+        }
+        this.cloudSearchHistory = history;
+        this.searchHistoryLoadedAt = Date.now();
+        this.refreshSearchSuggestions();
+        if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim());
+        return true;
+      } catch (error) {
+        console.warn("이전 날짜 검색 기록을 불러오지 못했습니다:", error.message || error);
+        return false;
+      }
+    })();
+    this.searchHistoryRequest = request;
+    try { return await request; }
+    finally { if (this.searchHistoryRequest === request) this.searchHistoryRequest = null; }
+  }
+
+  refreshSearchSuggestions() {
+    const input = document.activeElement;
+    if (!input?.matches(".cell-input-element:not(.is-armed)") || input.dataset.composing === "true") return;
+    const cell = input.closest(".excel-cell");
+    const colKey = cell?.dataset.col;
+    if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
+    const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+    if (suggestions.length) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
+    else this.closeAutocompleteMenu();
+  }
+
   getAutocompleteSuggestions(colKey, rawQuery) {
     if (!rawQuery) return [];
     const query = this.assembleHangul(rawQuery).trim().toLowerCase();
@@ -1390,12 +1441,13 @@ class PTApp {
 
     // 현재 날짜뿐 아니라 저장된 모든 날짜의 같은 열에서 후보를 수집한다.
     // 현재 날짜, 최근 날짜 순으로 수집하되 같은 값은 한 번만 표시한다.
-    const dateKeys = [this.currentDate, ...Object.keys(this.dataStore)
+    const searchStore = this.getSearchDataStore();
+    const dateKeys = [this.currentDate, ...Object.keys(searchStore)
       .filter(date => date !== this.currentDate).sort().reverse()];
     const existingValues = new Set();
     const seenValues = new Set(presetSet);
     for (const dateKey of dateKeys) {
-      const rows = this.dataStore[dateKey];
+      const rows = searchStore[dateKey];
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         const value = String(row?.[colKey] ?? "").trim();
@@ -1453,8 +1505,8 @@ class PTApp {
 
     let results = matched.map((m) => m.item).slice(0, 10);
 
-    // 부위(part) 컬럼: 현재 입력 중인 텍스트를 목록 최상단에 배치
-    if (colKey === "part") {
+    // 부위와 차트번호는 현재 입력값을 첫 후보로 유지한다.
+    if (colKey === "part" || colKey === "chartNo") {
       const assembled = this.assembleHangul(rawQuery).trim();
       if (assembled) {
         // 이미 목록에 정확히 같은 값이 있으면 제거 후 맨 앞에 추가
@@ -1612,6 +1664,7 @@ class PTApp {
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
+    void this.loadSearchHistory();
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
       this.openGenderDropdown(rowIdx, cellElement, dropBtn);
@@ -1659,6 +1712,7 @@ class PTApp {
     input.addEventListener("compositionstart", () => {
       this.activateNativeEditor(input);
       composing = true;
+      input.dataset.composing = "true";
       clearTimeout(_acDebounceTimer);
       this.closeAutocompleteMenu();
     });
@@ -1699,6 +1753,7 @@ class PTApp {
 
     input.addEventListener("compositionend", () => {
       composing = false;
+      input.dataset.composing = "false";
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
       // assembleHangul은 blur 시점에서만 최종 보정
@@ -2561,10 +2616,17 @@ class PTApp {
   applyHistoryRow(source) {
     const target = this.historyApplyTarget;
     if (!target || target.date !== this.currentDate) return;
-    const rowIdx = this.getCurrentRows().indexOf(target.row);
-    if (rowIdx < 0) return;
+    // Finish a live editor before assigning; a later blur cannot restore old text.
+    if (document.activeElement?.matches(".cell-input-element") || document.activeElement === this.elFormulaInput) document.activeElement.blur();
+    const rows = this.getCurrentRows();
+    const referenceIndex = rows.indexOf(target.row);
+    if (referenceIndex < 0 && target.rows === rows) return;
+    const rowIdx = referenceIndex >= 0 ? referenceIndex : target.rowIdx;
+    if (!Number.isInteger(rowIdx) || !rows[rowIdx]) return;
+    const destination = rows[rowIdx];
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    for (const key of keys) target.row[key] = source[key] ?? "";
+    for (const key of keys) destination[key] = source[key] ?? "";
+    this.activeCell = null;
     this.clipboardSelection = null;
     this.clearHeaderSelections();
     this.elSearchInput.value = "";
@@ -2676,6 +2738,13 @@ class PTApp {
 
   // ★ 전체 날짜 검색: Ctrl+F 시 현재 날짜 + 이전 날짜의 매칭 기록을 모두 표시
   searchAllDates(query, originRowIdx) {
+    if (Number.isInteger(originRowIdx) && originRowIdx >= 0) {
+      this.historyApplyTarget = {
+        date: this.currentDate, rowIdx: originRowIdx,
+        rows: this.getCurrentRows(), row: this.getCurrentRows()[originRowIdx], colKey: this.activeCell?.colKey || "chartNo"
+      };
+    }
+    void this.loadSearchHistory();
     if (!query) {
       this.handleSearch();
       return;
@@ -2699,10 +2768,11 @@ class PTApp {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const crossDateResults = [];
 
-    const allDates = Object.keys(this.dataStore).sort().reverse(); // 최신순
+    const searchStore = this.getSearchDataStore();
+    const allDates = Object.keys(searchStore).sort().reverse(); // 최신순
     allDates.forEach((dateKey) => {
       if (dateKey === this.currentDate) return; // 현재 날짜 제외
-      const dateRows = this.dataStore[dateKey] || [];
+      const dateRows = searchStore[dateKey] || [];
       dateRows.forEach((row, sourceRowIdx) => {
         // 유의미한 데이터가 있는 행만
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
@@ -2994,6 +3064,7 @@ class PTApp {
         this.updateSupabaseUI(true);
         // Pull latest cloud data for today
         this.pullFromCloud(this.currentDate, false);
+        void this.loadSearchHistory();
         return;
       }
     } catch (e) {
@@ -3062,6 +3133,7 @@ class PTApp {
 
       localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, key }));
       this.supabaseClient = testClient;
+      void this.loadSearchHistory();
       this.updateSupabaseUI(true);
       alert("Supabase 클라우드 동기화가 성공적으로 활성화되었습니다!\n지금부터 모든 기록이 자동 동기화됩니다.");
       this.closeSupabaseModal();
@@ -3078,6 +3150,8 @@ class PTApp {
     if (confirm("Supabase 클라우드 연결을 해제하시겠습니까? (로컬 데이터는 안전하게 유지됩니다)")) {
       localStorage.removeItem(SUPABASE_CONFIG_KEY);
       this.supabaseClient = null;
+      this.cloudSearchHistory = {};
+      this.searchHistoryClient = null;
       this.updateSupabaseUI(false);
       if (this.elSbUrlInput) this.elSbUrlInput.value = "";
       if (this.elSbKeyInput) this.elSbKeyInput.value = "";

@@ -57,8 +57,6 @@
     <nav class="excel-ribbon">
       <div class="ribbon-tabs">
         <span class="ribbon-tab active">홈</span>
-        <span class="ribbon-tab" id="tabAddRow">+ 새 환자 추가</span>
-        <span class="ribbon-tab" id="tabClearEmpty">빈 줄 정리</span>
         <span class="ribbon-tab" id="tabBackup">데이터 백업/복구</span>
       </div>
       <div class="ribbon-toolbar">
@@ -84,7 +82,7 @@
     </nav>
 
     <!-- Formula Bar (엑셀 수식 입력줄) -->
-    <div class="formula-bar">
+    <div class="formula-bar" hidden>
       <div class="cell-address-box" id="cellAddressDisplay">A1</div>
       <div class="formula-fx">fx</div>
       <input type="text" class="formula-input" id="formulaInput" placeholder="선택한 셀의 값을 확인하거나 수정할 수 있습니다">
@@ -167,7 +165,7 @@
     </main>
 
     <!-- Bottom Status Bar (엑셀 시트 탭 + 상태 바) -->
-    <footer class="excel-statusbar">
+    <footer class="excel-statusbar" hidden>
       <div class="sheet-tabs">
         <button type="button" class="sheet-tab active" id="currentSheetTab">
           <span class="sheet-icon">📄</span> <span id="sheetTabTitle">2026.09.29</span>

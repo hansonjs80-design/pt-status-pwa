@@ -1801,3 +1801,5 @@ body {
 
 .sheet-container.has-cell-range .excel-cell.cell-focused { outline: none; }
 .sheet-container.has-cell-range .cell-fill-handle { display: none; }
+
+.formula-bar[hidden], .excel-statusbar[hidden] { display: none; }
