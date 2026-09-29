@@ -134,6 +134,13 @@ class PTApp {
     }
   }
 
+  debounceSaveDataStore(delay = 350) {
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => {
+      this.saveDataStore();
+    }, delay);
+  }
+
   showSaveIndicator(text, isError = false) {
     if (!this.elSaveStatus) return;
     this.elSaveStatus.textContent = text;
@@ -301,13 +308,22 @@ class PTApp {
       if (rows[rowIdx]) {
         if (colKey === "writer" && e.isComposing) return;
         let val = e.target.value;
+        if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
+          const assembled = this.assembleHangul(val);
+          if (assembled !== val) {
+            const selStart = this.elFormulaInput.selectionStart;
+            this.elFormulaInput.value = assembled;
+            val = assembled;
+            try { this.elFormulaInput.setSelectionRange(selStart, selStart); } catch (_) {}
+          }
+        }
         if (colKey === "gender") {
           val = this.normalizeGenderInput(val);
           e.target.value = val;
           this.setGenderValue(rowIdx, val);
           return;
         }
-        if (colKey === "writer") {
+        if (colKey === "writer" && !e.isComposing) {
           val = this.normalizeWriterInput(val);
           e.target.value = val;
         }
@@ -318,13 +334,32 @@ class PTApp {
           if (inputEl) inputEl.value = val;
           else cellEl.textContent = val;
         }
-        this.saveDataStore();
+        this.debounceSaveDataStore();
       }
     });
     this.elFormulaInput.addEventListener("compositionend", () => {
+      let val = this.assembleHangul(this.elFormulaInput.value);
       if (this.activeCell?.colKey === "writer") {
-        this.elFormulaInput.dispatchEvent(new Event("input", { bubbles: true }));
+        val = this.normalizeWriterInput(val);
       }
+      this.elFormulaInput.value = val;
+      if (this.activeCell) {
+        const { rowIdx, colKey } = this.activeCell;
+        const rows = this.getCurrentRows();
+        if (rows[rowIdx]) {
+          rows[rowIdx][colKey] = val;
+          const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
+          if (cellEl) {
+            const inputEl = cellEl.querySelector("input");
+            if (inputEl) inputEl.value = val;
+            else cellEl.textContent = val;
+          }
+        }
+      }
+      this.debounceSaveDataStore();
+    });
+    this.elFormulaInput.addEventListener("blur", () => {
+      this.saveDataStore();
     });
 
     // Quick Chips (Prescription & Extra)
@@ -786,6 +821,151 @@ class PTApp {
     return "";
   }
 
+  // 한글 자모 결합 (분리된 초/중/종성 자모를 완전한 음절로 자동 결합, e.g. ㅎㅏㄱ -> 학, ㅎㅏㄱㅅㅐㅇ -> 학생)
+  assembleHangul(str) {
+    if (!str || typeof str !== "string") return str;
+
+    const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    const JUNGSUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+    const JONGSUNG = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+    const hasIsolatedJamo = /[\u3131-\u318E]/.test(str);
+    if (!hasIsolatedJamo) return str;
+
+    function decomposeChar(ch) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const offset = code - 0xAC00;
+        const choIdx = Math.floor(offset / (21 * 28));
+        const jungIdx = Math.floor((offset % (21 * 28)) / 28);
+        const jongIdx = offset % 28;
+        return [CHOSUNG[choIdx], JUNGSUNG[jungIdx], JONGSUNG[jongIdx]];
+      }
+      return [ch];
+    }
+
+    let stream = [];
+    for (const ch of str) {
+      const decomp = decomposeChar(ch);
+      for (const j of decomp) {
+        if (j) stream.push(j);
+      }
+    }
+
+    const DOUBLE_JUNG = {
+      'ㅗㅏ': 'ㅘ', 'ㅗㅐ': 'ㅙ', 'ㅗㅣ': 'ㅚ',
+      'ㅜㅓ': 'ㅝ', 'ㅜㅔ': 'ㅞ', 'ㅜㅣ': 'ㅟ',
+      'ㅡㅣ': 'ㅢ'
+    };
+
+    const DOUBLE_JONG = {
+      'ㄱㅅ': 'ㄳ', 'ㄴㅈ': 'ㄵ', 'ㄴㅎ': 'ㄶ',
+      'ㄹㄱ': 'ㄺ', 'ㄹㅁ': 'ㄻ', 'ㄹㅂ': 'ㄼ', 'ㄹㅅ': 'ㄽ', 'ㄹㅌ': 'ㄾ', 'ㄹㅍ': 'ㄿ', 'ㄹㅎ': 'ㅀ',
+      'ㅂㅅ': 'ㅄ'
+    };
+
+    const SPLIT_DOUBLE_JONG = {
+      'ㄳ': ['ㄱ', 'ㅅ'], 'ㄵ': ['ㄴ', 'ㅈ'], 'ㄶ': ['ㄴ', 'ㅎ'],
+      'ㄺ': ['ㄹ', 'ㄱ'], 'ㄻ': ['ㄹ', 'ㅁ'], 'ㄼ': ['ㄹ', 'ㅂ'], 'ㄽ': ['ㄹ', 'ㅅ'],
+      'ㄾ': ['ㄹ', 'ㅌ'], 'ㄿ': ['ㄹ', 'ㅍ'], 'ㅀ': ['ㄹ', 'ㅎ'],
+      'ㅄ': ['ㅂ', 'ㅅ']
+    };
+
+    function isCho(c) { return CHOSUNG.includes(c); }
+    function isJung(c) { return JUNGSUNG.includes(c); }
+    function isJong(c) { return JONGSUNG.includes(c) && c !== ''; }
+
+    function makeSyllable(c1, c2, c3 = '') {
+      const c1Idx = CHOSUNG.indexOf(c1);
+      const c2Idx = JUNGSUNG.indexOf(c2);
+      const c3Idx = JONGSUNG.indexOf(c3);
+      if (c1Idx === -1 || c2Idx === -1 || c3Idx === -1) return c1 + c2 + c3;
+      return String.fromCharCode(0xAC00 + (c1Idx * 21 + c2Idx) * 28 + c3Idx);
+    }
+
+    let result = '';
+    let cho = '', jung = '', jong = '';
+
+    function flush() {
+      if (cho && jung) {
+        result += makeSyllable(cho, jung, jong);
+      } else {
+        result += cho + jung + jong;
+      }
+      cho = '';
+      jung = '';
+      jong = '';
+    }
+
+    for (let i = 0; i < stream.length; i++) {
+      const c = stream[i];
+      if (isJung(c)) {
+        if (jong) {
+          if (SPLIT_DOUBLE_JONG[jong]) {
+            const [j1, j2] = SPLIT_DOUBLE_JONG[jong];
+            jong = j1;
+            flush();
+            cho = j2;
+            jung = c;
+          } else {
+            const prevJong = jong;
+            jong = '';
+            flush();
+            cho = prevJong;
+            jung = c;
+          }
+        } else if (jung) {
+          const combined = DOUBLE_JUNG[jung + c];
+          if (combined) {
+            jung = combined;
+          } else {
+            flush();
+            result += c;
+          }
+        } else if (cho) {
+          jung = c;
+        } else {
+          flush();
+          result += c;
+        }
+      } else if (isCho(c)) {
+        if (!cho) {
+          cho = c;
+        } else if (!jung) {
+          flush();
+          cho = c;
+        } else if (!jong) {
+          if (isJong(c)) {
+            const next = stream[i + 1];
+            if (next && isJung(next)) {
+              flush();
+              cho = c;
+            } else {
+              jong = c;
+            }
+          } else {
+            flush();
+            cho = c;
+          }
+        } else {
+          const combinedJong = DOUBLE_JONG[jong + c];
+          const next = stream[i + 1];
+          if (combinedJong && (!next || !isJung(next))) {
+            jong = combinedJong;
+          } else {
+            flush();
+            cho = c;
+          }
+        }
+      } else {
+        flush();
+        result += c;
+      }
+    }
+    flush();
+    return result;
+  }
+
   setGenderValue(rowIdx, rawVal, cellEl = null) {
     const rows = this.getCurrentRows();
     if (!rows[rowIdx]) return;
@@ -906,37 +1086,48 @@ class PTApp {
       input.spellcheck = false;
     }
 
-    // Auto-complete list suggestion support for Part and Prescription
-    if (colKey === "part") {
-      input.setAttribute("list", "partPresets");
-      this.ensureDatalists();
-    } else if (colKey === "prescription") {
-      input.setAttribute("list", "prescPresets");
-      this.ensureDatalists();
-    } else if (colKey === "extra") {
-      input.setAttribute("list", "extraPresets");
-      this.ensureDatalists();
-    }
-
     cellElement.appendChild(input);
     input.focus();
     input.select();
 
     // Input events
     input.addEventListener("input", (e) => {
-      if (colKey === "writer" && e.isComposing) return;
-      const val = colKey === "writer" ? this.normalizeWriterInput(e.target.value) : e.target.value;
-      if (colKey === "writer") e.target.value = val;
+      let val = input.value;
+      // 한글 입력 중(isComposing)이 아닐 때 분리된 자모 자동 결합 (ㅎㅏㄱ -> 학 등)
+      if (!e.isComposing && colKey !== "writer" && colKey !== "gender") {
+        const assembled = this.assembleHangul(val);
+        if (assembled !== val) {
+          const selStart = input.selectionStart;
+          input.value = assembled;
+          val = assembled;
+          try { input.setSelectionRange(selStart, selStart); } catch (_) {}
+        }
+      }
+      if (colKey === "writer" && !e.isComposing) {
+        val = this.normalizeWriterInput(val);
+        input.value = val;
+      }
       rows[rowIdx][colKey] = val;
       this.elFormulaInput.value = val;
-      this.saveDataStore();
+      this.debounceSaveDataStore();
     });
+
     input.addEventListener("compositionend", () => {
-      if (colKey === "writer") input.dispatchEvent(new Event("input", { bubbles: true }));
+      let val = this.assembleHangul(input.value);
+      if (colKey === "writer") {
+        val = this.normalizeWriterInput(val);
+      }
+      if (val !== input.value) {
+        input.value = val;
+      }
+      rows[rowIdx][colKey] = val;
+      this.elFormulaInput.value = val;
+      this.debounceSaveDataStore();
     });
 
     const commitAndBlur = () => {
-      const finalVal = colKey === "writer" ? this.normalizeWriterInput(input.value) : input.value.trim();
+      let finalVal = this.assembleHangul(input.value);
+      finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
       cellElement.textContent = finalVal;
       if (colKey === "gender") {
@@ -971,50 +1162,11 @@ class PTApp {
   }
 
   ensureDatalists() {
-    if (document.getElementById("partPresets")) return;
-    const datalistPart = document.createElement("datalist");
-    datalistPart.id = "partPresets";
-    datalistPart.innerHTML = `
-      <option value="허리"></option>
-      <option value="목"></option>
-      <option value="오 손목"></option>
-      <option value="왼 손목"></option>
-      <option value="양무"></option>
-      <option value="오무"></option>
-      <option value="뗀무"></option>
-      <option value="왼 고관절"></option>
-      <option value="오 고관절"></option>
-      <option value="오 등"></option>
-      <option value="오 발등"></option>
-      <option value="우 발바닥"></option>
-      <option value="Lt. Heel"></option>
-      <option value="Rt. heel"></option>
-      <option value="발목"></option>
-      <option value="Lt. Thigh"></option>
-    `;
-    document.body.appendChild(datalistPart);
-
-    const datalistPresc = document.createElement("datalist");
-    datalistPresc.id = "prescPresets";
-    datalistPresc.innerHTML = `
-      <option value="사지 ( HP / Laser / ICT )"></option>
-      <option value="척추 ( HP / 자기장 / ICT )"></option>
-      <option value="학생 ( HP / Laser )"></option>
-      <option value="항냉 ( ICE / Laser )"></option>
-      <option value="X"></option>
-    `;
-    document.body.appendChild(datalistPresc);
-
-    const datalistExtra = document.createElement("datalist");
-    datalistExtra.id = "extraPresets";
-    datalistExtra.innerHTML = `
-      <option value="충격파"></option>
-      <option value="이온"></option>
-      <option value="윈백"></option>
-      <option value="도수치료"></option>
-      <option value="견인"></option>
-    `;
-    document.body.appendChild(datalistExtra);
+    // Chrome IME 한글 자모 분리 버그 방지를 위해 datalist 요소 완전 제거
+    ["partPresets", "prescPresets", "extraPresets"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    });
   }
 
   // Update active highlighted headers matching currently focused cell
@@ -2587,7 +2739,7 @@ class PTApp {
         return;
       }
     }
-    if (this.activeCell && e.key.length === 1 && !isCtrlOrMeta && !e.altKey) {
+    if (this.activeCell && !isCtrlOrMeta && !e.altKey && (e.key.length === 1 || e.key === "Process" || e.keyCode === 229)) {
       const { rowIdx, colKey } = this.activeCell;
       if (colKey !== "gender") {
         const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
