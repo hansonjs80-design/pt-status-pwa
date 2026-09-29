@@ -354,10 +354,18 @@ class PTApp {
     this.elBtnGoToday.addEventListener("click", () => this.setDate(this.getTodayString(), true));
 
     // Rows management
-    this.elBtnAddRow.addEventListener("click", () => this.addNewRow(true));
-    this.elBtnBottomAddRow.addEventListener("click", () => this.addNewRow(true));
-    this.elTabAddRow.addEventListener("click", () => this.addNewRow(true));
-    this.elBtnDeleteSelected.addEventListener("click", () => this.deleteSelectedRow());
+    if (this.elBtnAddRow) {
+      this.elBtnAddRow.addEventListener("click", () => this.addNewRow(true));
+    }
+    if (this.elBtnBottomAddRow) {
+      this.elBtnBottomAddRow.addEventListener("click", () => this.addNewRow(true));
+    }
+    if (this.elTabAddRow) {
+      this.elTabAddRow.addEventListener("click", () => this.addNewRow(true));
+    }
+    if (this.elBtnDeleteSelected) {
+      this.elBtnDeleteSelected.addEventListener("click", () => this.deleteSelectedRow());
+    }
 
     this.elTabClearEmpty.addEventListener("click", () => this.removeEmptyRows());
     this.elTabBackup.addEventListener("click", () => this.openBackupModal());
@@ -1312,7 +1320,20 @@ class PTApp {
       return a.item.length - b.item.length;
     });
 
-    return matched.map((m) => m.item).slice(0, 10);
+    let results = matched.map((m) => m.item).slice(0, 10);
+
+    // 부위(part) 컬럼: 현재 입력 중인 텍스트를 목록 최상단에 배치
+    if (colKey === "part") {
+      const assembled = this.assembleHangul(rawQuery).trim();
+      if (assembled) {
+        // 이미 목록에 정확히 같은 값이 있으면 제거 후 맨 앞에 추가
+        results = results.filter((r) => r !== assembled);
+        results.unshift(assembled);
+        results = results.slice(0, 10);
+      }
+    }
+
+    return results;
   }
 
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates) {
