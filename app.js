@@ -58,8 +58,8 @@ const EXCEL_SHORTCUTS = {
   DELETE_ROW: { key: "-", ctrlOrMeta: true, desc: "행 삭제 (Ctrl + '-')" }
 };
 
-// 컬럼별 연관 추천 프리셋 데이터 (타이핑 시 연관 목록 표시 및 Enter 시 최상단 자동 입력)
-const COLUMN_PRESETS = {
+// 기본 프리셋 (초기값, 코드에 내장)
+const DEFAULT_PRESETS = {
   prescription: [
     "사지 ( HP / Laser / ICT )",
     "척추 ( HP / 자기장 / ICT )",
@@ -93,6 +93,26 @@ const COLUMN_PRESETS = {
     "견인"
   ]
 };
+
+const PRESETS_STORAGE_KEY = "PT_APP_CUSTOM_PRESETS_V1";
+
+// localStorage에서 사용자 커스텀 프리셋 로드 (없으면 기본값 사용)
+function loadColumnPresets() {
+  try {
+    const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch (_) {}
+  return JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+}
+
+function saveColumnPresets(presets) {
+  try {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  } catch (_) {}
+}
+
+// 실제 사용되는 프리셋 (앱 시작 시 로드, 수정 시 갱신)
+let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
   constructor() {
@@ -403,14 +423,41 @@ class PTApp {
       this.saveDataStore();
     });
 
-    // Quick Chips (Prescription & Extra)
-    document.querySelectorAll(".quick-chips .chip").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        const type = chip.getAttribute("data-type");
-        const val = chip.getAttribute("data-val");
-        this.applyQuickChip(type, val);
+    // Quick Chips (동적 렌더링 및 프리셋 관리)
+    this.elQuickChipsContainer = document.getElementById("quickChipsContainer");
+    this.elBtnAddPreset = document.getElementById("btnAddPreset");
+    this.elPresetModal = document.getElementById("presetModal");
+    this.elPresetModalTitle = document.getElementById("presetModalTitle");
+    this.elPresetTypeSelect = document.getElementById("presetTypeSelect");
+    this.elPresetLabelInput = document.getElementById("presetLabelInput");
+    this.elPresetValueInput = document.getElementById("presetValueInput");
+    this.elBtnPresetSave = document.getElementById("btnPresetSave");
+    this.elBtnPresetCancel = document.getElementById("btnPresetCancel");
+    this.elBtnClosePresetModal = document.getElementById("btnClosePresetModal");
+    this.elPresetContextMenu = document.getElementById("presetContextMenu");
+    this._editingPreset = null; // { type, index } 수정 모드일 때
+
+    this.renderQuickChips();
+
+    this.elBtnAddPreset.addEventListener("click", () => this.openPresetModal("add"));
+    this.elBtnPresetSave.addEventListener("click", () => this.savePresetFromModal());
+    this.elBtnPresetCancel.addEventListener("click", () => this.closePresetModal());
+    this.elBtnClosePresetModal.addEventListener("click", () => this.closePresetModal());
+    this.elPresetModal.addEventListener("click", (e) => {
+      if (e.target === this.elPresetModal) this.closePresetModal();
+    });
+
+    // 프리셋 우클릭 메뉴 액션
+    this.elPresetContextMenu.querySelectorAll(".menu-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const action = item.dataset.action;
+        this.handlePresetContextAction(action);
+        this.hidePresetContextMenu();
       });
     });
+
+    // 외부 클릭 시 프리셋 컨텍스트 메뉴 닫기
+    document.addEventListener("click", () => this.hidePresetContextMenu());
 
     // Search
     this.elSearchInput.addEventListener("input", () => this.handleSearch());
@@ -3273,6 +3320,154 @@ class PTApp {
       this.rangeStart = null;
       this.rangeEnd = null;
     }
+  }
+
+  // ===== 프리셋 관리 (빠른 입력 도구 수정 기능) =====
+
+  renderQuickChips() {
+    const container = this.elQuickChipsContainer;
+    container.innerHTML = "";
+
+    const types = ["prescription", "extra"];
+    types.forEach((type, typeIdx) => {
+      const items = COLUMN_PRESETS[type] || [];
+      if (typeIdx > 0 && items.length > 0) {
+        const sep = document.createElement("span");
+        sep.className = "chip-sep";
+        sep.textContent = "|";
+        container.appendChild(sep);
+      }
+
+      items.forEach((val, idx) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = type === "extra" ? "chip highlight" : "chip";
+        chip.dataset.type = type;
+        chip.dataset.val = val;
+        chip.dataset.idx = idx;
+        // 짧은 표시 이름 생성 (괄호 앞부분만)
+        chip.textContent = val.length > 20 ? val.replace(/\s*\(\s*/g, "(").replace(/\s*\/\s*/g, "/").replace(/\s*\)\s*/g, ")") : val;
+        chip.title = val;
+
+        // 클릭: 빠른 입력 적용
+        chip.addEventListener("click", () => {
+          this.applyQuickChip(type, val);
+        });
+
+        // 우클릭: 수정/삭제 메뉴
+        chip.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this._contextPreset = { type, index: idx, value: val };
+          this.showPresetContextMenu(e.pageX, e.pageY);
+        });
+
+        container.appendChild(chip);
+      });
+    });
+  }
+
+  showPresetContextMenu(x, y) {
+    this.hidePresetContextMenu();
+    const menu = this.elPresetContextMenu;
+    menu.style.display = "block";
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+
+    // 화면 밖으로 나가지 않도록 조정
+    requestAnimationFrame(() => {
+      const rect = menu.getBoundingClientRect();
+      if (rect.right > window.innerWidth) menu.style.left = `${x - rect.width}px`;
+      if (rect.bottom > window.innerHeight) menu.style.top = `${y - rect.height}px`;
+    });
+  }
+
+  hidePresetContextMenu() {
+    if (this.elPresetContextMenu) {
+      this.elPresetContextMenu.style.display = "none";
+    }
+  }
+
+  handlePresetContextAction(action) {
+    const target = this._contextPreset;
+    if (!target && action !== "reset-presets") return;
+
+    switch (action) {
+      case "edit-preset":
+        this.openPresetModal("edit", target);
+        break;
+      case "delete-preset":
+        if (confirm(`"${target.value}" 프리셋을 삭제하시겠습니까?`)) {
+          const arr = COLUMN_PRESETS[target.type];
+          if (arr) {
+            arr.splice(target.index, 1);
+            saveColumnPresets(COLUMN_PRESETS);
+            this.renderQuickChips();
+            this.showSaveIndicator("프리셋 삭제됨");
+          }
+        }
+        break;
+      case "reset-presets":
+        if (confirm("빠른 입력 도구를 기본값으로 복원하시겠습니까?")) {
+          COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+          saveColumnPresets(COLUMN_PRESETS);
+          this.renderQuickChips();
+          this.showSaveIndicator("기본값으로 복원됨");
+        }
+        break;
+    }
+    this._contextPreset = null;
+  }
+
+  openPresetModal(mode, target) {
+    this.elPresetModal.style.display = "flex";
+    if (mode === "edit" && target) {
+      this.elPresetModalTitle.textContent = "프리셋 수정";
+      this.elPresetTypeSelect.value = target.type;
+      this.elPresetTypeSelect.disabled = true;
+      this.elPresetLabelInput.value = target.value;
+      this.elPresetValueInput.value = target.value;
+      this._editingPreset = { type: target.type, index: target.index };
+    } else {
+      this.elPresetModalTitle.textContent = "프리셋 추가";
+      this.elPresetTypeSelect.disabled = false;
+      this.elPresetLabelInput.value = "";
+      this.elPresetValueInput.value = "";
+      this._editingPreset = null;
+    }
+    setTimeout(() => this.elPresetLabelInput.focus(), 100);
+  }
+
+  closePresetModal() {
+    this.elPresetModal.style.display = "none";
+    this._editingPreset = null;
+  }
+
+  savePresetFromModal() {
+    const type = this.elPresetTypeSelect.value;
+    const label = this.elPresetLabelInput.value.trim();
+    const value = this.elPresetValueInput.value.trim() || label;
+
+    if (!label) {
+      alert("표시 이름을 입력해주세요.");
+      return;
+    }
+
+    if (!COLUMN_PRESETS[type]) COLUMN_PRESETS[type] = [];
+
+    if (this._editingPreset) {
+      // 수정
+      COLUMN_PRESETS[this._editingPreset.type][this._editingPreset.index] = value;
+      this.showSaveIndicator("프리셋 수정됨");
+    } else {
+      // 추가
+      COLUMN_PRESETS[type].push(value);
+      this.showSaveIndicator("프리셋 추가됨");
+    }
+
+    saveColumnPresets(COLUMN_PRESETS);
+    this.renderQuickChips();
+    this.closePresetModal();
   }
 
   initPWA() {

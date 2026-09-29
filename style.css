@@ -379,6 +379,26 @@ body {
   margin: 0 2px;
 }
 
+.chip-add {
+  background: #f0f4f8;
+  border: 1px dashed #b0b8c0;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 28px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 2px;
+}
+
+.chip-add:hover {
+  background: #e8f5e9;
+  border-color: var(--excel-green);
+  color: var(--excel-green-dark);
+}
+
 .search-group {
   position: relative;
   margin-left: auto;
