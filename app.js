@@ -57,6 +57,42 @@ const EXCEL_SHORTCUTS = {
   DELETE_ROW: { key: "-", ctrlOrMeta: true, desc: "행 삭제 (Ctrl + '-')" }
 };
 
+// 컬럼별 연관 추천 프리셋 데이터 (타이핑 시 연관 목록 표시 및 Enter 시 최상단 자동 입력)
+const COLUMN_PRESETS = {
+  prescription: [
+    "사지 ( HP / Laser / ICT )",
+    "척추 ( HP / 자기장 / ICT )",
+    "학생 ( HP / Laser )",
+    "항냉 ( ICE / Laser )",
+    "X"
+  ],
+  part: [
+    "허리",
+    "목",
+    "오 손목",
+    "왼 손목",
+    "양무",
+    "오무",
+    "뗀무",
+    "왼 고관절",
+    "오 고관절",
+    "오 등",
+    "오 발등",
+    "우 발바닥",
+    "Lt. Heel",
+    "Rt. heel",
+    "발목",
+    "Lt. Thigh"
+  ],
+  extra: [
+    "충격파",
+    "이온",
+    "윈백",
+    "도수치료",
+    "견인"
+  ]
+};
+
 class PTApp {
   constructor() {
     this.dataStore = this.loadDataStore();
@@ -67,6 +103,10 @@ class PTApp {
     this.sortState = { colKey: null, direction: "asc" };
     this.supabaseClient = null;
     this.supabaseSyncTimer = null;
+
+    // Autocomplete State
+    this.autocompleteState = null; // { rowIdx, colKey, cellElement, input, candidates, selectedIndex }
+    this._justCommittedFromAutocomplete = false;
 
     // Range Selection (Click & Drag)
     this.isSelectingRange = false;
@@ -686,6 +726,7 @@ class PTApp {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
     this.selectedRowIdx = rowIdx;
     this.selectedColKey = null;
@@ -1062,6 +1103,212 @@ class PTApp {
     }
   }
 
+  // =============================================================================
+  // Cell Autocomplete Engine (셀 타이핑 시 연관 목록 표시 & Enter 시 최상단 자동 입력)
+  // =============================================================================
+  getChosung(str) {
+    if (!str || typeof str !== "string") return "";
+    const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    let res = "";
+    for (const ch of str) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const choIdx = Math.floor((code - 0xAC00) / (21 * 28));
+        res += CHOSUNG[choIdx];
+      } else {
+        res += ch;
+      }
+    }
+    return res;
+  }
+
+  getAutocompleteSuggestions(colKey, rawQuery) {
+    if (!rawQuery) return [];
+    const query = this.assembleHangul(rawQuery).trim().toLowerCase();
+    if (!query) return [];
+
+    const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
+
+    // 현재 시트의 해당 컬럼에서 이미 입력된 고유 값들도 추천 목록에 자동 반영
+    const rows = this.getCurrentRows();
+    const existingValues = new Set();
+    rows.forEach((r) => {
+      const v = (r[colKey] || "").trim();
+      if (v) existingValues.add(v);
+    });
+
+    const allCandidates = [];
+    presets.forEach((p) => {
+      if (!allCandidates.includes(p)) allCandidates.push(p);
+    });
+    existingValues.forEach((v) => {
+      if (!allCandidates.includes(v)) allCandidates.push(v);
+    });
+
+    const queryChosung = this.getChosung(query);
+
+    const matched = [];
+    for (const item of allCandidates) {
+      const itemLower = item.toLowerCase();
+      const itemChosung = this.getChosung(itemLower);
+
+      let score = -1;
+      if (itemLower === query) {
+        score = 0; // 정확히 일치
+      } else if (itemLower.startsWith(query)) {
+        score = 1; // 접두사 일치
+      } else if (itemLower.includes(query)) {
+        score = 2; // 부분 일치
+      } else if (queryChosung && (itemChosung.startsWith(queryChosung) || itemChosung.includes(queryChosung))) {
+        score = 3; // 초성 일치 (e.g. 'ㅎ' -> '학생', 'ㅅㅈ' -> '사지')
+      }
+
+      if (score >= 0) {
+        matched.push({ item, score });
+      }
+    }
+
+    matched.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      return a.item.length - b.item.length;
+    });
+
+    return matched.map((m) => m.item).slice(0, 10);
+  }
+
+  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates) {
+    this.closeAutocompleteMenu();
+    if (!candidates || candidates.length === 0) return;
+
+    const menu = document.createElement("div");
+    menu.id = "cellAutocompleteMenu";
+    menu.className = "cell-autocomplete-menu";
+
+    candidates.forEach((cand, idx) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "autocomplete-item" + (idx === 0 ? " is-selected" : "");
+      itemEl.setAttribute("data-index", idx);
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "autocomplete-item-text";
+      textSpan.textContent = cand;
+      itemEl.appendChild(textSpan);
+
+      if (idx === 0) {
+        const hintBadge = document.createElement("span");
+        hintBadge.className = "autocomplete-hint-badge";
+        hintBadge.textContent = "↵ Enter";
+        itemEl.appendChild(hintBadge);
+      }
+
+      itemEl.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+      });
+
+      itemEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        input.value = cand;
+        this._justCommittedFromAutocomplete = true;
+        this.closeAutocompleteMenu();
+        const rows = this.getCurrentRows();
+        if (rows[rowIdx]) rows[rowIdx][colKey] = cand;
+        cellElement.textContent = cand;
+        this.saveDataStore();
+        this.navigateCell(rowIdx + 1, colKey);
+      });
+
+      menu.appendChild(itemEl);
+    });
+
+    document.body.appendChild(menu);
+
+    this.autocompleteState = {
+      rowIdx,
+      colKey,
+      cellElement,
+      input,
+      candidates,
+      selectedIndex: 0
+    };
+
+    const rect = input.getBoundingClientRect();
+    const menuWidth = Math.max(rect.width, 160);
+    let left = rect.left;
+    let top = rect.bottom + 2;
+
+    if (left + menuWidth > window.innerWidth) {
+      left = window.innerWidth - menuWidth - 8;
+    }
+    if (top + 200 > window.innerHeight && rect.top > 210) {
+      top = rect.top - 204;
+    }
+
+    menu.style.left = `${Math.max(6, left)}px`;
+    menu.style.top = `${Math.max(6, top)}px`;
+    menu.style.minWidth = `${menuWidth}px`;
+
+    const outsideClickListener = (e) => {
+      if (!menu.contains(e.target) && e.target !== input) {
+        this.closeAutocompleteMenu();
+        document.removeEventListener("mousedown", outsideClickListener);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener("mousedown", outsideClickListener);
+    }, 10);
+  }
+
+  moveAutocompleteSelection(direction) {
+    if (!this.autocompleteState) return;
+    const { candidates } = this.autocompleteState;
+    if (!candidates || candidates.length === 0) return;
+
+    let nextIdx = this.autocompleteState.selectedIndex + direction;
+    if (nextIdx < 0) nextIdx = candidates.length - 1;
+    if (nextIdx >= candidates.length) nextIdx = 0;
+
+    this.autocompleteState.selectedIndex = nextIdx;
+
+    const menu = document.getElementById("cellAutocompleteMenu");
+    if (menu) {
+      const items = menu.querySelectorAll(".autocomplete-item");
+      items.forEach((it, idx) => {
+        const isSel = idx === nextIdx;
+        it.classList.toggle("is-selected", isSel);
+        let badge = it.querySelector(".autocomplete-hint-badge");
+        if (isSel) {
+          if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "autocomplete-hint-badge";
+            badge.textContent = "↵ Enter";
+            it.appendChild(badge);
+          }
+          it.scrollIntoView({ block: "nearest" });
+        } else if (badge) {
+          badge.remove();
+        }
+      });
+    }
+  }
+
+  getSelectedAutocompleteItem() {
+    if (!this.autocompleteState) return null;
+    const { candidates, selectedIndex } = this.autocompleteState;
+    return candidates[selectedIndex] || candidates[0] || null;
+  }
+
+  isAutocompleteOpen() {
+    return Boolean(this.autocompleteState && document.getElementById("cellAutocompleteMenu"));
+  }
+
+  closeAutocompleteMenu() {
+    const existing = document.getElementById("cellAutocompleteMenu");
+    if (existing) {
+      existing.remove();
+    }
+    this.autocompleteState = null;
+  }
+
   startInlineEdit(rowIdx, colKey, cellElement) {
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
@@ -1110,9 +1357,20 @@ class PTApp {
       rows[rowIdx][colKey] = val;
       this.elFormulaInput.value = val;
       this.debounceSaveDataStore();
+
+      // 셀 아래 연관 추천 목록 실시간 표시
+      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
+        const suggestions = this.getAutocompleteSuggestions(colKey, val);
+        if (suggestions.length > 0) {
+          this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
+        } else {
+          this.closeAutocompleteMenu();
+        }
+      }
     });
 
     input.addEventListener("compositionend", () => {
+      if (this._justCommittedFromAutocomplete) return;
       let val = this.assembleHangul(input.value);
       if (colKey === "writer") {
         val = this.normalizeWriterInput(val);
@@ -1123,10 +1381,20 @@ class PTApp {
       rows[rowIdx][colKey] = val;
       this.elFormulaInput.value = val;
       this.debounceSaveDataStore();
+
+      // 한글 조합 완료 시점 추천 목록 갱신
+      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
+        const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+        if (suggestions.length > 0) {
+          this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
+        } else {
+          this.closeAutocompleteMenu();
+        }
+      }
     });
 
-    const commitAndBlur = () => {
-      let finalVal = this.assembleHangul(input.value);
+    const commitAndBlur = (forcedVal) => {
+      let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
       cellElement.textContent = finalVal;
@@ -1136,13 +1404,72 @@ class PTApp {
         if (finalVal === "M") cellElement.classList.add("m");
       }
       this.saveDataStore();
+      setTimeout(() => {
+        this._justCommittedFromAutocomplete = false;
+      }, 60);
     };
 
     input.addEventListener("blur", () => {
-      commitAndBlur();
+      setTimeout(() => {
+        this.closeAutocompleteMenu();
+        commitAndBlur();
+      }, 150);
     });
 
     input.addEventListener("keydown", (e) => {
+      // 1) 자동완성 목록이 열려 있을 때: Enter/Tab 시 최상단(또는 선택된) 항목 즉시 입력
+      if (this.isAutocompleteOpen()) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          e.stopPropagation();
+          this.moveAutocompleteSelection(1);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          e.stopPropagation();
+          this.moveAutocompleteSelection(-1);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeAutocompleteMenu();
+          return;
+        }
+        if (e.key === "Enter" || e.code === "Enter" || e.keyCode === 13) {
+          e.preventDefault();
+          e.stopPropagation();
+          const chosenVal = this.getSelectedAutocompleteItem();
+          this._justCommittedFromAutocomplete = true;
+          this.closeAutocompleteMenu();
+          if (chosenVal) {
+            input.value = chosenVal;
+          }
+          commitAndBlur(chosenVal);
+          this.navigateCell(rowIdx + 1, colKey);
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          e.stopPropagation();
+          const chosenVal = this.getSelectedAutocompleteItem();
+          this._justCommittedFromAutocomplete = true;
+          this.closeAutocompleteMenu();
+          if (chosenVal) {
+            input.value = chosenVal;
+          }
+          commitAndBlur(chosenVal);
+          if (e.shiftKey) {
+            this.navigateCol(rowIdx, colKey, -1);
+          } else {
+            this.navigateCol(rowIdx, colKey, 1);
+          }
+          return;
+        }
+      }
+
+      // 2) 일반 키 입력 처리
       if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") {
         e.preventDefault();
@@ -2751,6 +3078,7 @@ class PTApp {
 
     // 17) Escape -> Hide context menu & clear selection highlights
     if (e.key === "Escape") {
+      this.closeAutocompleteMenu();
       this.hideContextMenu();
       this.clipboardSelection = null;
       this.renderClipboardSelection();

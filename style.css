@@ -807,6 +807,64 @@ body {
   font-weight: normal;
 }
 
+/* Excel-style Cell Autocomplete Dropdown Menu */
+.cell-autocomplete-menu {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #107C41;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+  z-index: 3500;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  padding: 4px 0;
+  box-sizing: border-box;
+  animation: contextMenuFadeIn 0.08s ease-out;
+}
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  color: #24292f;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.is-selected {
+  background-color: #eef8f2;
+  color: #107C41;
+  font-weight: 600;
+}
+
+.autocomplete-item-text {
+  flex: 1;
+}
+
+.autocomplete-hint-badge {
+  font-size: 10px;
+  color: #888888;
+  margin-left: 10px;
+  font-weight: normal;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(16, 124, 65, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.autocomplete-item.is-selected .autocomplete-hint-badge {
+  color: #107C41;
+  background: rgba(16, 124, 65, 0.16);
+  font-weight: 600;
+}
+
 .cell-chartNo { text-align: center; font-family: monospace; font-size: 12px; }
 .cell-name { text-align: center; font-weight: 600; }
 .cell-part { text-align: center; }
