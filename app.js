@@ -118,6 +118,7 @@ class PTApp {
   constructor() {
     window.ptApp = this;
     this.dataStore = this.loadDataStore();
+    this.editHistory = new Map();
     this.currentDate = this.getTodayString();
     this.activeCell = null; // { rowIdx, colKey }
     this.selectedRowIdx = null;
@@ -156,6 +157,8 @@ class PTApp {
     this.initPWA();
 
     // Start with today's date and auto-focus
+    this.getCurrentRows();
+    this.editHistory.clear();
     this.setDate(this.currentDate, true);
   }
 
@@ -183,12 +186,13 @@ class PTApp {
     return JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA));
   }
 
-  saveDataStore() {
+  saveDataStore(recordHistory = true) {
+    if (recordHistory && !this.isEditingCell()) this.captureHistory();
+    this.updateHistoryButtons();
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
       this.showSaveIndicator("저장 완료됨");
       this.updateSidebarStats();
-      this.renderRecentDays();
       this.scheduleSupabaseSync();
     } catch (e) {
       console.error("Save error", e);
@@ -196,7 +200,94 @@ class PTApp {
     }
   }
 
+  isEditingCell() {
+    const focused = document.activeElement;
+    return focused === this.elFormulaInput ||
+      Boolean(focused?.matches(".cell-input-element:not(.is-armed)"));
+  }
+
+  getEditHistory(date = this.currentDate) {
+    if (!this.editHistory.has(date)) {
+      this.editHistory.set(date, { undo: [], redo: [], current: JSON.stringify(this.dataStore[date] || []) });
+    }
+    return this.editHistory.get(date);
+  }
+
+  captureHistory() {
+    const history = this.getEditHistory();
+    const next = JSON.stringify(this.dataStore[this.currentDate] || []);
+    if (next === history.current) return;
+    history.undo.push(history.current);
+    if (history.undo.length > 50) history.undo.shift();
+    history.current = next;
+    history.redo = [];
+  }
+
+  updateHistoryButtons() {
+    if (!this.editHistory || !this.currentDate) return;
+    const history = this.getEditHistory();
+    const pending = JSON.stringify(this.dataStore[this.currentDate] || []) !== history.current;
+    const undo = document.getElementById("btnUndo");
+    const redo = document.getElementById("btnRedo");
+    if (undo) undo.disabled = !pending && history.undo.length === 0;
+    if (redo) redo.disabled = pending || history.redo.length === 0;
+  }
+
+  restoreEditHistory(redo = false) {
+    // Commit the current edit before restoring; a late blur must not overwrite undo.
+    if (document.activeElement?.matches(".cell-input-element") || document.activeElement === this.elFormulaInput) {
+      document.activeElement.blur();
+    }
+    clearTimeout(this._saveTimer);
+    this.captureHistory();
+    const history = this.getEditHistory();
+    const from = redo ? history.redo : history.undo;
+    if (!from.length) { this.updateHistoryButtons(); return; }
+    const to = redo ? history.undo : history.redo;
+    to.push(history.current);
+    history.current = from.pop();
+    const selected = this.activeCell ? { ...this.activeCell } : null;
+    this.clearHeaderSelections();
+    this.closeAutocompleteMenu();
+    this.closeGenderDropdown();
+    this.dataStore[this.currentDate] = JSON.parse(history.current);
+    this.activeCell = null;
+    this.selectedRowIdx = null;
+    this.selectedColKey = null;
+    this.clipboardSelection = null;
+    this.historyApplyTarget = null;
+    this.elSearchInput.value = "";
+    this.elBtnClearSearch.style.display = "none";
+    this.renderTable();
+    if (selected) {
+      const rowIdx = Math.min(selected.rowIdx, this.getCurrentRows().length - 1);
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${selected.colKey}"]`);
+      if (cell) this.selectCell(rowIdx, selected.colKey, cell);
+    } else {
+      this.elFormulaInput.value = "";
+      this.elCellAddress.textContent = "";
+      this.elSelectedCellCoords.textContent = "";
+      this.elSheetContainer.focus({ preventScroll: true });
+    }
+    this.saveDataStore(false);
+    this.showSaveIndicator(redo ? "다시 실행됨" : "되돌림 완료");
+  }
+
+  handleHistoryShortcut(e) {
+    if (e.isComposing || e.keyCode === 229 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
+    const key = e.key.toLowerCase();
+    if (key !== "z" && key !== "y") return false;
+    const target = e.target;
+    if (target?.matches("input, textarea, [contenteditable='true']") &&
+        !target.matches(".cell-input-element") && target !== this.elFormulaInput) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    this.restoreEditHistory(key === "y" || e.shiftKey);
+    return true;
+  }
+
   debounceSaveDataStore(delay = 350) {
+    this.updateHistoryButtons();
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
       this.saveDataStore();
@@ -244,14 +335,9 @@ class PTApp {
     this.elStatTotalCount = document.getElementById("statTotalCount");
     this.elStatMaleCount = document.getElementById("statMaleCount");
     this.elStatFemaleCount = document.getElementById("statFemaleCount");
-    this.elStatShockwave = document.getElementById("statShockwave");
-    this.elStatIon = document.getElementById("statIon");
-    this.elStatWinback = document.getElementById("statWinback");
-    this.elStatExtraOther = document.getElementById("statExtraOther");
-    this.elStatPrescExtremity = document.getElementById("statPrescExtremity");
-    this.elStatPrescSpine = document.getElementById("statPrescSpine");
-    this.elStatPrescOther = document.getElementById("statPrescOther");
-    this.elRecentDaysList = document.getElementById("recentDaysList");
+    this.elStatUnknownCount = document.getElementById("statUnknownCount");
+    this.elStatExtraList = document.getElementById("statExtraList");
+    this.elStatPrescriptionList = document.getElementById("statPrescriptionList");
 
     // Tabs
     this.elCurrentSheetTab = document.getElementById("currentSheetTab");
@@ -653,6 +739,8 @@ class PTApp {
   }
 
   setDate(dateStr, autoFocusFirstEmpty = false) {
+    if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
+    clearTimeout(this._saveTimer);
     this.clipboardSelection = null;
     this.historyApplyTarget = null;
     this.currentDate = dateStr;
@@ -669,9 +757,11 @@ class PTApp {
     this.elSidebarDateTag.textContent = dateFormatted;
     this.elSheetTabTitle.textContent = dateFormatted;
 
+    this.getCurrentRows();
+    this.getEditHistory();
     this.renderTable();
+    this.updateHistoryButtons();
     this.updateSidebarStats();
-    this.renderRecentDays();
 
     // Pull from Supabase cloud if connected
     if (this.supabaseClient) {
@@ -801,6 +891,11 @@ class PTApp {
           e.preventDefault();
 
           this.isSelectingRange = true;
+          if (e.shiftKey && this.activeCell) {
+            this.extendCellSelection(rowIdx, colIdx);
+            this.elSheetContainer.classList.add("is-selecting");
+            return;
+          }
           this.rangeStart = { rowIdx, colIdx, colKey: key };
           this.rangeEnd = { rowIdx, colIdx, colKey: key };
 
@@ -822,6 +917,7 @@ class PTApp {
         // Cell Click handler (Clean cell selection)
         td.addEventListener("click", (e) => {
           if (e.target.closest("input, textarea")) return;
+          if (e.shiftKey && this.activeCell) return;
           if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow || this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
           this.selectCell(rowIdx, key, td, false);
@@ -887,6 +983,8 @@ class PTApp {
     this.selectedColKey = null;
 
     this.clearHeaderSelections();
+    this.rangeStart = { rowIdx, colIdx: Number(cellElement.dataset.colIdx), colKey };
+    this.rangeEnd = { ...this.rangeStart };
     this.updateActiveHeaders(rowIdx, colKey);
 
     // Highlight row
@@ -1290,13 +1388,23 @@ class PTApp {
     const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
     const presetSet = new Set(presets.map((p) => p.toLowerCase()));
 
-    // 현재 시트의 해당 컬럼에서 이미 입력된 고유 값들도 추천 목록에 자동 반영
-    const rows = this.getCurrentRows();
+    // 현재 날짜뿐 아니라 저장된 모든 날짜의 같은 열에서 후보를 수집한다.
+    // 현재 날짜, 최근 날짜 순으로 수집하되 같은 값은 한 번만 표시한다.
+    const dateKeys = [this.currentDate, ...Object.keys(this.dataStore)
+      .filter(date => date !== this.currentDate).sort().reverse()];
     const existingValues = new Set();
-    rows.forEach((r) => {
-      const v = (r[colKey] || "").trim();
-      if (v && !presetSet.has(v.toLowerCase())) existingValues.add(v);
-    });
+    const seenValues = new Set(presetSet);
+    for (const dateKey of dateKeys) {
+      const rows = this.dataStore[dateKey];
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const value = String(row?.[colKey] ?? "").trim();
+        const normalized = value.toLowerCase();
+        if (!value || seenValues.has(normalized)) continue;
+        seenValues.add(normalized);
+        existingValues.add(value);
+      }
+    }
 
     const queryChosung = this.getChosung(query);
 
@@ -1657,6 +1765,7 @@ class PTApp {
         e.stopPropagation();
         return;
       }
+      if (this.handleHistoryShortcut(e)) return;
       if (input.classList.contains("is-armed")) {
         if (e.key === "F2") {
           e.preventDefault(); e.stopPropagation();
@@ -1679,6 +1788,10 @@ class PTApp {
           }
           return;
         }
+      }
+      if (e.shiftKey && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.stopPropagation(); // While editing, Shift+arrows select native input text.
+        return;
       }
       // 1) 자동완성 목록이 열려 있을 때: Enter/Tab 시 최상단(또는 선택된) 항목 즉시 입력
       if (this.isAutocompleteOpen()) {
@@ -1827,6 +1940,7 @@ class PTApp {
   }
 
   clearHeaderSelections() {
+    this.elSheetContainer.classList.remove("has-cell-range");
     this.clearCrossDateSelection();
     this.cancelFillDrag();
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
@@ -1849,6 +1963,24 @@ class PTApp {
     this.selectedRowRange = null;
   }
 
+  extendCellSelection(rowIdx, colIdx) {
+    if (!this.activeCell) return;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    if (this.isEditingCell()) document.activeElement.blur();
+    if (!this.selectedRange || this.selectedRowRange || !this.rangeStart) {
+      this.rangeStart = { ...this.activeCell, colIdx: keys.indexOf(this.activeCell.colKey) };
+    }
+    this.rangeEnd = {
+      rowIdx: Math.max(0, Math.min(this.getCurrentRows().length - 1, rowIdx)),
+      colIdx: Math.max(0, Math.min(keys.length - 1, colIdx))
+    };
+    this.rangeEnd.colKey = keys[this.rangeEnd.colIdx];
+    this.updateRangeSelection();
+    const anchor = this.elTableBody.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"]`);
+    if (anchor && this.activeCell.colKey !== "gender") this.startInlineEdit(this.activeCell.rowIdx, this.activeCell.colKey, anchor, true);
+    else this.elSheetContainer.focus({ preventScroll: true });
+  }
+
   updateRangeSelection() {
     if (!this.rangeStart || !this.rangeEnd) return;
 
@@ -1858,6 +1990,7 @@ class PTApp {
     const maxCol = Math.max(this.rangeStart.colIdx, this.rangeEnd.colIdx);
 
     this.selectedRange = { minRow, maxRow, minCol, maxCol };
+    this.elSheetContainer.classList.toggle("has-cell-range", minRow !== maxRow || minCol !== maxCol);
 
     // Clear previous range highlight classes
     document.querySelectorAll(".excel-cell").forEach((c) => {
@@ -2361,64 +2494,68 @@ class PTApp {
     if (cellEl) this.selectCell(targetRow, colKey, cellEl);
   }
 
-  // Update right sidebar statistics
-  updateSidebarStats() {
-    const rows = this.getCurrentRows().filter((r) => r.name || r.chartNo || r.part);
-    const totalCount = rows.length;
-    let maleCount = 0;
-    let femaleCount = 0;
-    let shockwaveCount = 0;
-    let ionCount = 0;
-    let winbackCount = 0;
-    let extraOtherCount = 0;
-    let prescExtremity = 0;
-    let prescSpine = 0;
-    let prescOther = 0;
+  getDailySummary(rows = this.getCurrentRows()) {
+    const text = value => String(value ?? "").trim();
+    const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
+      .some(key => text(row[key])));
+    const summary = { total: records.length, male: 0, female: 0, unknown: 0,
+      extras: new Map(["충격파", "이온", "윈백", "도수치료", "견인"].map(label => [label, 0])),
+      prescriptions: new Map() };
+    for (const row of records) {
+      const gender = text(row.gender).toUpperCase();
+      if (gender === "M") summary.male++;
+      else if (gender === "F") summary.female++;
+      else summary.unknown++;
 
-    rows.forEach((r) => {
-      const g = (r.gender || "").toUpperCase();
-      if (g === "M") maleCount++;
-      else if (g === "F") femaleCount++;
-
-      const extra = (r.extra || "").trim();
-      if (extra.includes("충격파")) shockwaveCount++;
-      if (extra.includes("이온")) ionCount++;
-      if (extra.includes("윈백")) winbackCount++;
-      if (extra && !extra.includes("충격파") && !extra.includes("이온") && !extra.includes("윈백")) {
-        extraOtherCount++;
+      // A repeated item in one row is one treatment; mixed extras count separately.
+      const extras = new Set();
+      for (const token of text(row.extra).split(/[,;\n/+]+/).map(value => value.trim()).filter(Boolean)) {
+        if (/^(x|-)$/i.test(token)) continue;
+        const known = ["충격파", "이온", "윈백", "도수", "견인"].filter(label => token.includes(label));
+        if (known.length) known.forEach(label => extras.add(label === "도수" ? "도수치료" : label));
+        else extras.add(token);
       }
-
-      const presc = (r.prescription || "").trim();
-      if (presc.includes("사지")) prescExtremity++;
-      else if (presc.includes("척추")) prescSpine++;
-      else if (presc && presc !== "X") prescOther++;
-    });
-
-    this.elStatTotalCount.textContent = totalCount;
-    this.elStatMaleCount.textContent = maleCount;
-    this.elStatFemaleCount.textContent = femaleCount;
-
-    this.elStatShockwave.textContent = shockwaveCount;
-    this.elStatIon.textContent = ionCount;
-    this.elStatWinback.textContent = winbackCount;
-    this.elStatExtraOther.textContent = extraOtherCount;
-
-    this.elStatPrescExtremity.textContent = prescExtremity;
-    this.elStatPrescSpine.textContent = prescSpine;
-    this.elStatPrescOther.textContent = prescOther;
+      for (const extra of extras) summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
+      const prescription = text(row.prescription).replace(/\s+/g, " ") || "미입력";
+      summary.prescriptions.set(prescription, (summary.prescriptions.get(prescription) || 0) + 1);
+    }
+    return summary;
   }
 
-  renderRecentDays() {
-    const dates = Object.keys(this.dataStore).sort().reverse();
-    this.elRecentDaysList.innerHTML = "";
+  renderSummaryList(container, entries, emptyMessage) {
+    container.replaceChildren();
+    if (!entries.size) {
+      const empty = document.createElement("li");
+      empty.className = "summary-empty";
+      empty.textContent = emptyMessage;
+      container.appendChild(empty);
+      return;
+    }
+    for (const [label, count] of entries) {
+      const row = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "summary-item-name";
+      name.textContent = label;
+      const value = document.createElement("span");
+      value.className = "summary-item-value";
+      const number = document.createElement("b");
+      number.textContent = count;
+      const unit = document.createElement("span");
+      unit.textContent = "건";
+      value.append(number, unit);
+      row.append(name, value);
+      container.appendChild(row);
+    }
+  }
 
-    dates.slice(0, 10).forEach((d) => {
-      const badge = document.createElement("span");
-      badge.className = "recent-day-badge" + (d === this.currentDate ? " active" : "");
-      badge.textContent = d.replace(/-/g, ".");
-      badge.addEventListener("click", () => this.setDate(d));
-      this.elRecentDaysList.appendChild(badge);
-    });
+  updateSidebarStats() {
+    const summary = this.getDailySummary();
+    this.elStatTotalCount.textContent = summary.total;
+    this.elStatMaleCount.textContent = summary.male;
+    this.elStatFemaleCount.textContent = summary.female;
+    this.elStatUnknownCount.textContent = summary.unknown;
+    this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음");
+    this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");
   }
 
   applyHistoryRow(source) {
@@ -2812,6 +2949,8 @@ class PTApp {
         const parsed = JSON.parse(event.target.result);
         if (typeof parsed === "object" && parsed !== null) {
           this.dataStore = parsed;
+          this.editHistory.clear();
+          this.getCurrentRows();
           this.saveDataStore();
           this.setDate(this.currentDate);
           alert("백업 파일이 성공적으로 복원되었습니다.");
@@ -3005,14 +3144,17 @@ class PTApp {
       }
 
       if (data && Array.isArray(data.rows_data) && data.rows_data.length > 0) {
+        const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
         this.dataStore[dateStr] = data.rows_data;
         // Ensure minimum 150 rows
         this.getCurrentRows();
+        if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.editHistory.delete(dateStr);
+        this.getEditHistory(dateStr);
+        this.updateHistoryButtons();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
         if (this.currentDate === dateStr) {
           this.renderTable();
           this.updateSidebarStats();
-          this.renderRecentDays();
         }
         this.showSaveIndicator("클라우드 데이터 수신됨");
         if (showNotice) alert(`${dateStr} 클라우드 최신 데이터를 성공적으로 불러왔습니다!`);
@@ -3546,6 +3688,7 @@ class PTApp {
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
   handleGlobalKeyDown(e) {
+    if (this.handleHistoryShortcut(e)) return;
     if (this.fillDrag) {
       e.preventDefault();
       if (e.key === "Escape") this.cancelFillDrag();
@@ -3761,22 +3904,23 @@ class PTApp {
     // 15) Arrow Keys Navigation (위/아래/좌/우 셀 이동)
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && this.activeCell) {
       e.preventDefault();
-      const { rowIdx, colKey } = this.activeCell;
       const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-      const colIdx = colOrder.indexOf(colKey);
-
-      let targetRow = rowIdx;
-      let targetColIdx = colIdx;
-
-      if (e.key === "ArrowUp") targetRow = Math.max(0, rowIdx - 1);
-      if (e.key === "ArrowDown") targetRow = rowIdx + 1;
-      if (e.key === "ArrowLeft") targetColIdx = Math.max(0, colIdx - 1);
-      if (e.key === "ArrowRight") targetColIdx = Math.min(colOrder.length - 1, colIdx + 1);
-
+      const from = e.shiftKey && this.selectedRange && this.rangeEnd && !this.selectedRowRange
+        ? this.rangeEnd : { rowIdx: this.activeCell.rowIdx, colIdx: colOrder.indexOf(this.activeCell.colKey) };
+      let targetRow = from.rowIdx;
+      let targetColIdx = from.colIdx;
+      if (e.key === "ArrowUp") targetRow--;
+      if (e.key === "ArrowDown") targetRow++;
+      if (e.key === "ArrowLeft") targetColIdx--;
+      if (e.key === "ArrowRight") targetColIdx++;
+      targetRow = Math.max(0, Math.min(this.getCurrentRows().length - 1, targetRow));
+      targetColIdx = Math.max(0, Math.min(colOrder.length - 1, targetColIdx));
       const targetColKey = colOrder[targetColIdx];
-      const targetCell = document.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="${targetColKey}"]`);
+      const targetCell = this.elTableBody.querySelector(`[data-row="${targetRow}"][data-col="${targetColKey}"]`);
       if (targetCell) {
-        this.selectCell(targetRow, targetColKey, targetCell, false);
+        if (e.shiftKey) this.extendCellSelection(targetRow, targetColIdx);
+        else this.selectCell(targetRow, targetColKey, targetCell, false);
+        targetCell.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
       return;
     }
@@ -3925,6 +4069,26 @@ class PTApp {
         container.appendChild(chip);
       });
     });
+    const controls = document.createElement("span");
+    controls.className = "history-controls";
+    for (const [id, symbol, label, redo] of [
+      ["btnUndo", "↶", "되돌리기 (Ctrl/Cmd+Z)", false],
+      ["btnRedo", "↷", "다시 실행 (Ctrl/Cmd+Shift+Z)", true]
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.id = id;
+      button.className = "history-button";
+      button.textContent = symbol;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", () => this.restoreEditHistory(redo));
+      controls.appendChild(button);
+    }
+    const manualChip = [...container.querySelectorAll(".chip")].find(chip => chip.dataset.val.includes("도수"));
+    container.insertBefore(controls, manualChip || container.firstChild);
+    this.updateHistoryButtons();
   }
 
   showPresetContextMenu(x, y) {

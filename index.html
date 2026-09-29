@@ -144,39 +144,25 @@
         </div>
 
         <div class="stat-card primary">
-          <div class="stat-label">총 치료 환자 (건수)</div>
-          <div class="stat-value"><span id="statTotalCount">0</span> <small>명</small></div>
+          <div class="stat-label">총 치료 기록 <span>선택 날짜 전체</span></div>
+          <div class="stat-value"><span id="statTotalCount">0</span> <small>건</small></div>
           <div class="stat-sub">
-            <span>남(M): <b id="statMaleCount">0</b></span>
-            <span>여(F): <b id="statFemaleCount">0</b></span>
+            <span>남성 <b id="statMaleCount">0</b></span>
+            <span>여성 <b id="statFemaleCount">0</b></span>
+            <span>미지정 <b id="statUnknownCount">0</b></span>
           </div>
         </div>
 
         <div class="summary-section">
           <h4>추가 사항 집계</h4>
-          <ul class="stat-list" id="statExtraList">
-            <li><span>충격파</span> <b id="statShockwave">0</b>건</li>
-            <li><span>이온</span> <b id="statIon">0</b>건</li>
-            <li><span>윈백</span> <b id="statWinback">0</b>건</li>
-            <li><span>기타 추가</span> <b id="statExtraOther">0</b>건</li>
-          </ul>
+          <ul class="stat-list" id="statExtraList"></ul>
         </div>
 
         <div class="summary-section">
           <h4>처방별 집계</h4>
-          <ul class="stat-list" id="statPrescriptionList">
-            <li><span>사지 치료</span> <b id="statPrescExtremity">0</b>건</li>
-            <li><span>척추 치료</span> <b id="statPrescSpine">0</b>건</li>
-            <li><span>항냉/학생 등</span> <b id="statPrescOther">0</b>건</li>
-          </ul>
+          <ul class="stat-list" id="statPrescriptionList"></ul>
         </div>
 
-        <div class="summary-section recent-days-section">
-          <h4>최근 기록된 일자</h4>
-          <div class="recent-days-list" id="recentDaysList">
-            <!-- Dynamic Date Badges -->
-          </div>
-        </div>
       </aside>
     </main>
 

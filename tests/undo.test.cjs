@@ -1,0 +1,69 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+const vm = require('node:vm');
+
+function createApp() {
+  const storage = new Map();
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: { activeElement: null, getElementById() { return null; } },
+    localStorage: { getItem() { return null; }, setItem(k, v) { storage.set(k, v); } },
+    clearTimeout,
+  });
+  vm.runInContext(readFileSync(resolve(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  app.currentDate = '2026-09-30';
+  app.dataStore = {};
+  app.editHistory = new Map();
+  app.getCurrentRows();
+  app.getEditHistory();
+  for (const method of ['clearHeaderSelections', 'closeAutocompleteMenu', 'closeGenderDropdown', 'renderTable', 'showSaveIndicator', 'updateSidebarStats', 'scheduleSupabaseSync']) app[method] = () => {};
+  for (const element of ['elSearchInput', 'elFormulaInput', 'elCellAddress', 'elSelectedCellCoords']) app[element] = {};
+  app.elBtnClearSearch = { style: {} };
+  app.elSheetContainer = { focus() {} };
+  return { app, storage };
+}
+
+test('multi-cell changes restore as one transaction and persist undo/redo', () => {
+  const { app, storage } = createApp();
+  const rows = app.getCurrentRows();
+  rows[0].name = '가상환자'; rows[0].chartNo = '123'; rows[1].memo = '테스트';
+  app.saveDataStore();
+  app.saveDataStore();
+  assert.equal(app.getEditHistory().undo.length, 1);
+  app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0].name, '');
+  assert.equal(app.getCurrentRows()[1].memo, '');
+  assert.equal(JSON.parse([...storage.values()][0])['2026-09-30'][0].chartNo, '');
+  app.restoreEditHistory(true);
+  assert.equal(app.getCurrentRows()[0].chartNo, '123');
+  assert.equal(app.getCurrentRows()[1].memo, '테스트');
+});
+
+test('undo is isolated by date and new edits invalidate redo', () => {
+  const { app } = createApp();
+  app.getCurrentRows()[0].name = '오늘'; app.saveDataStore();
+  app.currentDate = '2026-09-29'; app.getCurrentRows(); app.getEditHistory();
+  app.getCurrentRows()[0].name = '어제'; app.saveDataStore();
+  app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0].name, '');
+  assert.equal(app.dataStore['2026-09-30'][0].name, '오늘');
+  app.getCurrentRows()[0].name = '새수정'; app.saveDataStore();
+  assert.equal(app.getEditHistory().redo.length, 0);
+  app.currentDate = '2026-09-30'; app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0].name, '');
+  assert.equal(app.dataStore['2026-09-29'][0].name, '새수정');
+});
+
+test('undo history is bounded and captures a pending edit before undo', () => {
+  const { app } = createApp();
+  for (let i = 0; i < 60; i++) { app.getCurrentRows()[0].memo = String(i); app.saveDataStore(); }
+  assert.equal(app.getEditHistory().undo.length, 50);
+  app.getCurrentRows()[0].memo = '미저장 입력';
+  app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0].memo, '59');
+  app.restoreEditHistory(true);
+  assert.equal(app.getCurrentRows()[0].memo, '미저장 입력');
+});

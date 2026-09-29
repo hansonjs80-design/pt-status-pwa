@@ -1270,36 +1270,6 @@ body {
   color: var(--excel-green-dark);
 }
 
-.recent-days-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.recent-day-badge {
-  background: #f1f3f5;
-  border: 1px solid #ced4da;
-  padding: 3px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  color: #495057;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.recent-day-badge:hover {
-  background: #eef8f2;
-  border-color: var(--excel-green);
-  color: var(--excel-green-dark);
-}
-
-.recent-day-badge.active {
-  background: var(--excel-green);
-  color: #ffffff;
-  border-color: var(--excel-green);
-  font-weight: bold;
-}
-
 /* 6. Bottom Status Bar */
 .excel-statusbar {
   background: #eef2ef;
@@ -1801,3 +1771,33 @@ body {
 
 /* Keep native IME focus ready while displaying the normal cell selection. */
 .cell-input-element.is-armed { position: absolute; inset: 0; opacity: 0; pointer-events: none; caret-color: transparent; }
+
+.history-controls { display: inline-flex; align-items: center; gap: 3px; margin: 0 3px; }
+.history-button { width: 28px; height: 26px; padding: 0; border: 1px solid #c7d4cb; border-radius: 5px; background: white; color: #107c41; font-size: 23px; line-height: 1; cursor: pointer; }
+.history-button:hover:not(:disabled) { background: #e2efda; border-color: #107c41; }
+.history-button:disabled { opacity: .35; cursor: default; }
+
+/* Align labels, counts and units consistently in the daily summary. */
+.excel-sidebar { flex-shrink: 0; gap: 12px; padding: 14px 12px; background: #f6f9f7; }
+.sidebar-header { gap: 8px; flex-wrap: wrap; }
+.stat-card.primary { padding: 16px; border-radius: 12px; box-shadow: 0 3px 10px #107c411a; }
+.stat-card .stat-label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stat-card .stat-label > span { font-size: 10px; font-weight: 400; opacity: .8; }
+.stat-card .stat-value { display: flex; align-items: baseline; gap: 6px; margin: 10px 0; font-variant-numeric: tabular-nums; }
+.stat-card .stat-sub { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; padding-top: 12px; }
+.stat-card .stat-sub > span { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
+.stat-card .stat-sub > span + span { border-left: 1px solid #ffffff35; }
+.stat-card .stat-sub b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.summary-section { padding: 12px 14px; border-color: #dce6df; border-radius: 10px; box-shadow: 0 2px 5px #1a382008; }
+.summary-section h4 { margin-bottom: 4px; padding-bottom: 10px; color: #284c36; border-color: #e8eee9; }
+.stat-list { gap: 0; }
+.stat-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 0; line-height: 1.5; }
+.stat-list li + li { border-top: 1px solid #f0f3f1; }
+.summary-item-name { text-align: left; overflow-wrap: anywhere; }
+.summary-item-value { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 5px; min-width: 42px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.summary-item-value b { font-size: 14px; }
+.summary-item-value > span { font-size: 11px; color: #78877d; }
+.stat-list li.summary-empty { display: block; text-align: center; color: #7d8981; padding: 18px 0; }
+
+.sheet-container.has-cell-range .excel-cell.cell-focused { outline: none; }
+.sheet-container.has-cell-range .cell-fill-handle { display: none; }
