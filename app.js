@@ -2490,7 +2490,6 @@ class PTApp {
     dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
-    });
   }
 
   // --- Preview & Print Modal ---
