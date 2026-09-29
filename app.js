@@ -1342,7 +1342,10 @@ class PTApp {
         if (rows[rowIdx]) rows[rowIdx][colKey] = cand;
         cellElement.textContent = cand;
         this.saveDataStore();
-        this.navigateCell(rowIdx + 1, colKey);
+        this.selectCell(rowIdx, colKey, cellElement, false);
+        if (this.elSheetContainer) {
+          this.elSheetContainer.focus({ preventScroll: true });
+        }
       });
 
       menu.appendChild(itemEl);
@@ -1533,7 +1536,10 @@ class PTApp {
       }
     });
 
+    let isCommitted = false;
     const commitAndBlur = (forcedVal) => {
+      if (isCommitted) return;
+      isCommitted = true;
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
@@ -1587,7 +1593,11 @@ class PTApp {
             input.value = chosenVal;
           }
           commitAndBlur(chosenVal);
-          this.navigateCell(rowIdx + 1, colKey);
+          // 다음 행으로 가지 않고 해당 셀 선택 테두리 유지 (커서는 비활성화된 셀 선택 상태)
+          this.selectCell(rowIdx, colKey, cellElement, false);
+          if (this.elSheetContainer) {
+            this.elSheetContainer.focus({ preventScroll: true });
+          }
           return;
         }
         if (e.key === "Tab") {
