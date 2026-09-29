@@ -73,6 +73,7 @@ class PTApp {
     this.rangeStart = null; // { rowIdx, colIdx, colKey }
     this.rangeEnd = null;   // { rowIdx, colIdx, colKey }
     this.selectedRange = null; // { minRow, maxRow, minCol, maxCol }
+    this.fillDrag = null;
 
     // Row Drag Selection (행 헤더 드래그 다중 선택)
     this.isSelectingRows = false;
@@ -366,7 +367,10 @@ class PTApp {
     });
 
     // Global mouseup to finish drag selection (cells or rows)
-    document.addEventListener("mouseup", () => {
+    document.addEventListener("mousemove", (event) => this.updateFillDrag(event));
+    window.addEventListener("blur", () => this.cancelFillDrag());
+    document.addEventListener("mouseup", (event) => {
+      if (this.fillDrag) this.finishFillDrag(event);
       let changed = false;
       if (this.isSelectingRange) {
         this.isSelectingRange = false;
@@ -473,11 +477,12 @@ class PTApp {
 
   // Render main Excel table
   renderTable() {
+    this.cancelFillDrag();
     const rows = this.getCurrentRows();
     this.elTableBody.innerHTML = "";
 
-    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
-    const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
     rows.forEach((row, rowIdx) => {
       const tr = document.createElement("tr");
@@ -539,6 +544,7 @@ class PTApp {
         // Cell Mouse Down handler (Start Drag Selection)
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return; // Only Left Click
+          if (e.target.closest(".cell-fill-handle")) return;
           // If already editing inside input/select, don't interrupt text cursor
           if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
 
@@ -563,9 +569,12 @@ class PTApp {
 
         // Cell Click handler (Gender opens dropdown select)
         td.addEventListener("click", (e) => {
+          if (e.target.closest(".cell-fill-handle")) return;
           if (key === "gender") {
             if (e.target.tagName !== "SELECT") {
               this.startGenderEdit(rowIdx, td);
+              const dropdown = td.querySelector("select");
+              try { dropdown?.showPicker?.(); } catch { /* Native arrow remains available. */ }
             }
           }
         });
@@ -639,8 +648,72 @@ class PTApp {
   }
 
   highlightCell(cellElement) {
+    document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
     document.querySelectorAll(".excel-cell").forEach((c) => c.classList.remove("cell-focused"));
     cellElement.classList.add("cell-focused");
+    const { row, col, colIdx } = cellElement.dataset;
+    const value = this.getCurrentRows()[Number(row)]?.[col];
+    if (value === null || value === undefined || String(value).trim() === "") return;
+    const handle = document.createElement("span");
+    handle.className = "cell-fill-handle";
+    handle.title = "아래로 드래그하여 같은 내용 채우기";
+    handle.setAttribute("aria-label", handle.title);
+    handle.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const currentValue = this.getCurrentRows()[Number(row)]?.[col];
+      if (currentValue === null || currentValue === undefined || String(currentValue).trim() === "") return;
+      this.fillDrag = { rowIdx: Number(row), colKey: col, colIdx: Number(colIdx), value: currentValue,
+        endRow: Number(row), date: this.currentDate };
+      this.isSelectingRange = false;
+      this.isSelectingRows = false;
+      this.elSheetContainer.classList.add("is-selecting");
+    });
+    handle.addEventListener("click", (event) => event.stopPropagation());
+    cellElement.appendChild(handle);
+  }
+
+  updateFillDrag(event) {
+    if (!this.fillDrag) return;
+    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-row-idx]");
+    if (!row || !this.elTableBody.contains(row)) return;
+    const endRow = Math.max(this.fillDrag.rowIdx, Number(row.dataset.rowIdx));
+    if (this.fillDrag.endRow === endRow) return;
+    this.fillDrag.endRow = endRow;
+    this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
+    for (let r = this.fillDrag.rowIdx + 1; r <= endRow; r++) {
+      this.elTableBody.querySelector(`.excel-cell[data-row="${r}"][data-col="${this.fillDrag.colKey}"]`)?.classList.add("fill-preview");
+    }
+  }
+
+  cancelFillDrag() {
+    if (!this.fillDrag) return;
+    this.fillDrag = null;
+    this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
+    this.elSheetContainer.classList.remove("is-selecting");
+  }
+
+  finishFillDrag(event) {
+    this.updateFillDrag(event);
+    const drag = this.fillDrag;
+    const releasedRow = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-row-idx]");
+    this.cancelFillDrag();
+    if (!drag || drag.date !== this.currentDate || drag.endRow <= drag.rowIdx ||
+        !releasedRow || !this.elTableBody.contains(releasedRow)) return;
+    const rows = this.getCurrentRows();
+    for (let r = drag.rowIdx + 1; r <= drag.endRow; r++) {
+      rows[r][drag.colKey] = drag.value;
+    }
+    this.saveDataStore();
+    this.renderTable();
+    const source = this.elTableBody.querySelector(`.excel-cell[data-row="${drag.rowIdx}"][data-col="${drag.colKey}"]`);
+    this.selectCell(drag.rowIdx, drag.colKey, source);
+    this.rangeStart = { rowIdx: drag.rowIdx, colIdx: drag.colIdx, colKey: drag.colKey };
+    this.rangeEnd = { ...this.rangeStart, rowIdx: drag.endRow };
+    this.updateRangeSelection();
+    this.updateSidebarStats();
+    this.showSaveIndicator(`${drag.endRow - drag.rowIdx}개 셀 채우기 완료`);
   }
 
   // G열 성별 정규화 헬퍼 (무조건 영어 대문자 M 또는 F, 'ㄹ' -> 'F', 'ㅡ' -> 'M')
@@ -668,6 +741,7 @@ class PTApp {
 
     if (this.activeCell && this.activeCell.rowIdx === rowIdx && this.activeCell.colKey === "gender") {
       this.elFormulaInput.value = finalVal;
+      if (el) this.highlightCell(el);
     }
 
     this.saveDataStore();
@@ -689,15 +763,15 @@ class PTApp {
 
     const optM = document.createElement("option");
     optM.value = "M";
-    optM.textContent = "M (남성)";
+    optM.textContent = "M";
 
     const optF = document.createElement("option");
     optF.value = "F";
-    optF.textContent = "F (여성)";
+    optF.textContent = "F";
 
     select.appendChild(optNone);
-    select.appendChild(optM);
     select.appendChild(optF);
+    select.appendChild(optM);
     select.value = currentVal;
 
     cellElement.appendChild(select);
@@ -901,6 +975,8 @@ class PTApp {
   }
 
   clearHeaderSelections() {
+    this.cancelFillDrag();
+    document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
     document.querySelectorAll(".col-letter, .b-header, .row-num, .corner-header").forEach((el) => {
       el.classList.remove("selected");
     });
@@ -941,7 +1017,7 @@ class PTApp {
       );
     });
 
-    const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+    const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
     let cellCount = 0;
     let numericSum = 0;
     let numericCount = 0;
@@ -1015,6 +1091,19 @@ class PTApp {
   }
 
   selectRowRange(startRowIdx, endRowIdx) {
+    // Finish the current edit before replacing cell selection with row selection.
+    const focusedElement = document.activeElement;
+    if (focusedElement === this.elFormulaInput ||
+        focusedElement?.matches(".cell-input-element, .cell-gender-select")) {
+      focusedElement.blur();
+    }
+    this.activeCell = null;
+    this.isSelectingRange = false;
+    this.rangeStart = null;
+    this.rangeEnd = null;
+    document.querySelectorAll(".cell-focused, .active-row, .header-active").forEach((el) => {
+      el.classList.remove("cell-focused", "active-row", "header-active");
+    });
     this.clearHeaderSelections();
 
     const minRow = Math.min(startRowIdx, endRowIdx);
@@ -1024,8 +1113,8 @@ class PTApp {
     this.selectedRowIdx = minRow;
     this.selectedColKey = null;
 
-    // Apply entire row range (columns 0 to 10) so copy/cut/clear automatically covers all columns
-    this.selectedRange = { minRow, maxRow, minCol: 0, maxCol: 10 };
+    // Apply entire row range (columns 0 to 9) so copy/cut/clear automatically covers all columns
+    this.selectedRange = { minRow, maxRow, minCol: 0, maxCol: 9 };
 
     for (let r = minRow; r <= maxRow; r++) {
       const rowTr = document.querySelector(`tr[data-row-idx="${r}"]`);
@@ -1159,7 +1248,7 @@ class PTApp {
   }
 
   navigateCol(rowIdx, currentColKey, direction) {
-    const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
+    const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const curIdx = colOrder.indexOf(currentColKey);
     let nextIdx = curIdx + direction;
     let nextRowIdx = rowIdx;
@@ -1459,7 +1548,7 @@ class PTApp {
       return;
     }
 
-    const headers = ["No.", "G", "차트No.", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항", "날짜"];
+    const headers = ["No.", "G", "차트No.", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항"];
     let csvContent = "\uFEFF"; // UTF-8 BOM for Excel
     csvContent += headers.map((h) => `"${h}"`).join(",") + "\n";
 
@@ -1474,8 +1563,7 @@ class PTApp {
         r.extra || "",
         r.writer || DEFAULT_WRITER,
         r.memo || "",
-        r.specialNote || "",
-        r.date || this.currentDate.replace(/-/g, ".")
+        r.specialNote || ""
       ];
       csvContent += line.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
     });
@@ -1919,7 +2007,7 @@ class PTApp {
   // Clipboard Operations (클립보드 연동: 복사, 잘라내기, 붙여넣기, 지우기)
   // =============================================================================
   copySelection() {
-    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
     let tsvData = "";
 
@@ -1982,7 +2070,7 @@ class PTApp {
       return;
     }
 
-    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
 
     // Parse TSV grid
@@ -2022,7 +2110,7 @@ class PTApp {
         const c = startCol + cOffset;
         if (c < colKeys.length) {
           const k = colKeys[c];
-          if (k && k !== "date") {
+          if (k) {
             const trimmed = val.trim();
             rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed) : trimmed;
           }
@@ -2036,7 +2124,7 @@ class PTApp {
   }
 
   clearSelection() {
-    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
 
     if (this.selectedRange) {
@@ -2045,7 +2133,7 @@ class PTApp {
         if (rows[r]) {
           for (let c = minCol; c <= maxCol; c++) {
             const k = colKeys[c];
-            if (k && k !== "date") {
+            if (k) {
               rows[r][k] = "";
             }
           }
@@ -2059,9 +2147,7 @@ class PTApp {
       return;
     } else if (this.activeCell && rows[this.activeCell.rowIdx]) {
       const { rowIdx, colKey } = this.activeCell;
-      if (colKey !== "date") {
-        rows[rowIdx][colKey] = "";
-      }
+      rows[rowIdx][colKey] = "";
     }
 
     this.saveDataStore();
@@ -2203,7 +2289,7 @@ class PTApp {
   }
 
   clearColData(colKey) {
-    if (!colKey || colKey === "date") return;
+    if (!colKey) return;
     const rows = this.getCurrentRows();
     rows.forEach((r) => {
       r[colKey] = "";
@@ -2217,6 +2303,11 @@ class PTApp {
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
   handleGlobalKeyDown(e) {
+    if (this.fillDrag) {
+      e.preventDefault();
+      if (e.key === "Escape") this.cancelFillDrag();
+      return;
+    }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
       if (e.key === "Escape") {
@@ -2373,7 +2464,7 @@ class PTApp {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && this.activeCell) {
       e.preventDefault();
       const { rowIdx, colKey } = this.activeCell;
-      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "date"];
+      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
       const colIdx = colOrder.indexOf(colKey);
 
       let targetRow = rowIdx;

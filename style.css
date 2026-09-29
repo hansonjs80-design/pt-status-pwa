@@ -734,6 +734,7 @@ body {
 }
 
 .cell-gender-select {
+  appearance: auto;
   width: 100%;
   height: 100%;
   border: none;
@@ -744,7 +745,7 @@ body {
   font-weight: bold;
   text-align: center;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 2px;
   margin: 0;
   border-radius: 0;
   box-sizing: border-box;
@@ -760,7 +761,6 @@ body {
 .cell-writer { text-align: center; color: #2e7d32; font-weight: bold; }
 .cell-memo { text-align: center; color: #555; }
 .cell-specialNote { text-align: left; color: #c62828; }
-.cell-date { text-align: center; font-size: 11px; color: #777; }
 .cell-del-action { text-align: center; }
 
 /* Selected Cell (Excel highlight style) */
@@ -771,16 +771,25 @@ body {
   z-index: 2;
 }
 
-.excel-cell.cell-focused::after {
-  content: "";
+.cell-fill-handle {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 6px;
-  height: 6px;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  height: 8px;
   background-color: var(--excel-cell-selected);
   border: 1px solid #ffffff;
-  pointer-events: none;
+  cursor: crosshair;
+  z-index: 3;
+}
+
+.excel-cell.range-selected:not(.range-border-bottom) .cell-fill-handle {
+  display: none;
+}
+
+.excel-cell.fill-preview {
+  background: #d7eadb !important;
+  box-shadow: inset 0 0 0 1px var(--excel-cell-selected);
 }
 
 /* In-Cell Input */
@@ -1469,5 +1478,3 @@ body {
 .excel-context-menu .menu-divider.hidden {
   display: none !important;
 }
-
-
