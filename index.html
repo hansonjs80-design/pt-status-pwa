@@ -78,11 +78,11 @@
         <!-- Quick Presets (동적 렌더링) -->
         <div class="tool-group quick-inputs">
           <span class="tool-group-label">빠른 입력 도구:</span>
+          <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
+          <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
           <div class="quick-chips" id="quickChipsContainer">
             <!-- JS에서 동적으로 렌더링됨 -->
           </div>
-          <button type="button" class="chip chip-add" id="btnAddPreset" title="빠른 도구 추가">＋ 추가</button>
-          <button type="button" class="chip chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리">⚙️ 관리</button>
         </div>
 
         <div class="tool-divider"></div>
@@ -410,10 +410,10 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
 
   <!-- 빠른 입력 도구 전체 관리 모달 -->
   <div class="modal-overlay" id="presetManagerModal" style="display:none;">
-    <div class="modal-content" style="max-width:520px; width:92%;">
+    <div class="modal-card" style="max-width:520px; width:92%;">
       <div class="modal-header">
         <h2 class="modal-title">⚙️ 빠른 입력 도구 관리</h2>
-        <button class="btn-close" id="btnClosePresetManagerModal">&times;</button>
+        <button type="button" class="btn-close-modal" id="btnClosePresetManagerModal" onclick="if(window.ptApp) window.ptApp.closePresetManager();">✕</button>
       </div>
       <div class="modal-body" style="padding:16px 20px;">
         <p style="font-size:12px; color:#64748b; margin:0 0 14px 0; line-height:1.4;">
@@ -439,7 +439,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid #e2e8f0;">
           <button type="button" id="btnManagerResetPresets" style="padding:7px 12px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; color:#ef4444; cursor:pointer; font-size:12px; font-weight:600;">🔄 기본값 복원</button>
-          <button type="button" id="btnManagerDone" style="padding:8px 20px; border:none; border-radius:6px; background:#107c41; color:#fff; cursor:pointer; font-weight:600; font-size:13px;">완료</button>
+          <button type="button" id="btnManagerDone" onclick="if(window.ptApp) window.ptApp.closePresetManager();" style="padding:8px 20px; border:none; border-radius:6px; background:#107c41; color:#fff; cursor:pointer; font-weight:600; font-size:13px;">완료</button>
         </div>
       </div>
     </div>
@@ -447,10 +447,10 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
 
   <!-- 프리셋 추가/수정 모달 -->
   <div class="modal-overlay" id="presetModal" style="display:none;">
-    <div class="modal-content" style="max-width:400px;">
+    <div class="modal-card" style="max-width:400px; width:92%;">
       <div class="modal-header">
         <h2 class="modal-title" id="presetModalTitle">프리셋 추가</h2>
-        <button class="btn-close" id="btnClosePresetModal">&times;</button>
+        <button type="button" class="btn-close-modal" id="btnClosePresetModal" onclick="if(window.ptApp) window.ptApp.closePresetModal();">✕</button>
       </div>
       <div class="modal-body" style="padding:20px;">
         <div style="margin-bottom:14px;">
@@ -469,7 +469,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
           <input type="text" id="presetValueInput" placeholder="예: 학생 ( HP / Laser )" style="width:100%;padding:8px;border:1px solid #d0d7de;border-radius:6px;font-size:13px;box-sizing:border-box;">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button type="button" id="btnPresetCancel" style="padding:8px 16px;border:1px solid #d0d7de;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;">취소</button>
+          <button type="button" id="btnPresetCancel" onclick="if(window.ptApp) window.ptApp.closePresetModal();" style="padding:8px 16px;border:1px solid #d0d7de;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;">취소</button>
           <button type="button" id="btnPresetSave" style="padding:8px 16px;border:none;border-radius:6px;background:var(--excel-green);color:#fff;cursor:pointer;font-weight:600;font-size:13px;">저장</button>
         </div>
       </div>

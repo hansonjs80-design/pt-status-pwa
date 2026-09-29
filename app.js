@@ -116,6 +116,7 @@ let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
   constructor() {
+    window.ptApp = this;
     this.dataStore = this.loadDataStore();
     this.currentDate = this.getTodayString();
     this.activeCell = null; // { rowIdx, colKey }
@@ -453,13 +454,23 @@ class PTApp {
     this.renderQuickChips();
 
     // 단일 추가/수정 모달 이벤트
-    this.elBtnAddPreset.addEventListener("click", () => this.openPresetModal("add"));
-    this.elBtnPresetSave.addEventListener("click", () => this.savePresetFromModal());
-    this.elBtnPresetCancel.addEventListener("click", () => this.closePresetModal());
-    this.elBtnClosePresetModal.addEventListener("click", () => this.closePresetModal());
-    this.elPresetModal.addEventListener("click", (e) => {
-      if (e.target === this.elPresetModal) this.closePresetModal();
-    });
+    if (this.elBtnAddPreset) {
+      this.elBtnAddPreset.addEventListener("click", () => this.openPresetModal("add"));
+    }
+    if (this.elBtnPresetSave) {
+      this.elBtnPresetSave.addEventListener("click", () => this.savePresetFromModal());
+    }
+    if (this.elBtnPresetCancel) {
+      this.elBtnPresetCancel.addEventListener("click", () => this.closePresetModal());
+    }
+    if (this.elBtnClosePresetModal) {
+      this.elBtnClosePresetModal.addEventListener("click", () => this.closePresetModal());
+    }
+    if (this.elPresetModal) {
+      this.elPresetModal.addEventListener("click", (e) => {
+        if (e.target === this.elPresetModal) this.closePresetModal();
+      });
+    }
 
     // 전체 관리 모달 이벤트
     if (this.elBtnManagePresets) {
