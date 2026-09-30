@@ -2132,6 +2132,8 @@ class PTApp {
   }
 
   selectRowRange(startRowIdx, endRowIdx) {
+    // Clear native browser text highlighting before painting the spreadsheet selection.
+    window.getSelection()?.removeAllRanges();
     // Finish the current edit before replacing cell selection with row selection.
     const focusedElement = document.activeElement;
     if (focusedElement === this.elFormulaInput ||
@@ -2162,8 +2164,13 @@ class PTApp {
       if (rowTr) {
         const rowNumTh = rowTr.querySelector(".row-num");
         if (rowNumTh) rowNumTh.classList.add("selected");
-        rowTr.querySelectorAll(".excel-cell").forEach((cell) => {
+        const cells = rowTr.querySelectorAll(".excel-cell");
+        cells.forEach((cell, colIdx) => {
           cell.classList.add("row-selected");
+          if (r === minRow) cell.classList.add("range-border-top");
+          if (r === maxRow) cell.classList.add("range-border-bottom");
+          if (colIdx === 0) cell.classList.add("range-border-left");
+          if (colIdx === cells.length - 1) cell.classList.add("range-border-right");
         });
       }
     }

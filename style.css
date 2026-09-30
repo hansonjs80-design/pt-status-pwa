@@ -1803,3 +1803,7 @@ body {
 .sheet-container.has-cell-range .cell-fill-handle { display: none; }
 
 .formula-bar[hidden], .excel-statusbar[hidden] { display: none; }
+
+/* Grid selection uses cell highlighting, never the browser's text selection. */
+.excel-table tbody { -webkit-user-select: none; user-select: none; }
+.excel-table .cell-input-element { -webkit-user-select: text; user-select: text; }
