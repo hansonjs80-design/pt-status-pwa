@@ -803,7 +803,7 @@ class PTApp {
       thNum.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
         const range = this.selectedRowRange;
-        if (e.shiftKey && range) this.selectRowRange(range.minRow, rowIdx);
+        if (e.shiftKey && range) this.selectRowRange(this.rowRangeStart ?? range.minRow, rowIdx);
         else if (!range || rowIdx < range.minRow || rowIdx > range.maxRow) this.selectRowRange(rowIdx, rowIdx);
         this.elSheetContainer.focus({ preventScroll: true });
       });
@@ -2033,6 +2033,8 @@ class PTApp {
     });
     this.selectedRange = null;
     this.selectedRowRange = null;
+    this.rowRangeStart = null;
+    this.rowRangeEnd = null;
   }
 
   extendCellSelection(rowIdx, colIdx) {
@@ -2169,6 +2171,8 @@ class PTApp {
     const minRow = Math.min(startRowIdx, endRowIdx);
     const maxRow = Math.max(startRowIdx, endRowIdx);
 
+    this.rowRangeStart = startRowIdx;
+    this.rowRangeEnd = endRowIdx;
     this.selectedRowRange = { minRow, maxRow };
     this.selectedRowIdx = minRow;
     this.selectedColKey = null;
@@ -3994,6 +3998,20 @@ class PTApp {
     if (e.key === "Tab" && this.activeCell) {
       e.preventDefault();
       this.navigateCol(this.activeCell.rowIdx, this.activeCell.colKey, e.shiftKey ? -1 : 1);
+      return;
+    }
+
+    // Row-header selection keeps its original anchor while Shift+arrows moves the endpoint.
+    if (this.selectedRowRange && e.shiftKey && !isCtrlOrMeta && !e.altKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const anchor = this.rowRangeStart ?? this.selectedRowRange.minRow;
+      const end = this.rowRangeEnd ?? this.selectedRowRange.maxRow;
+      const targetRow = Math.max(0, Math.min(this.getCurrentRows().length - 1,
+        end + (e.key === "ArrowDown" ? 1 : -1)));
+      this.selectRowRange(anchor, targetRow);
+      this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
 
