@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>물리치료 현황 (Excel PT Daily Log)</title>
-  
+
   <!-- PWA Settings -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#107C41">
@@ -13,7 +13,7 @@
   <meta name="apple-mobile-web-app-title" content="PT현황">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  
+
   <link rel="stylesheet" href="style.css">
   <!-- Supabase JS Client CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -26,19 +26,6 @@
         <span class="excel-badge">X</span>
         <span class="file-name" id="docTitle">물리치료 - Excel</span>
         <span class="save-status" id="saveStatus">저장 완료됨</span>
-      </div>
-      <div class="title-center">
-        <!-- Quick Date Switcher -->
-        <div class="date-navigator">
-          <button type="button" class="btn-nav" id="btnPrevDay" title="이전 날짜 (Alt+Left)">◀</button>
-          <div class="date-display-wrap">
-            <span class="cal-icon">📅</span>
-            <input type="date" id="datePicker" class="date-picker-input">
-            <span class="date-label" id="dateDisplayLabel">2026.09.29 (화)</span>
-          </div>
-          <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)">▶</button>
-          <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘 바로가기</button>
-        </div>
       </div>
       <div class="title-right">
         <button type="button" class="btn-action cloud-btn" id="btnSupabase" title="Supabase 클라우드 동기화 설정">
@@ -55,16 +42,23 @@
 
     <!-- Excel Ribbon Menu / Tools -->
     <nav class="excel-ribbon">
-      <div class="ribbon-tabs">
-        <span class="ribbon-tab active">홈</span>
-        <span class="ribbon-tab" id="tabBackup">데이터 백업/복구</span>
-      </div>
       <div class="ribbon-toolbar">
 
 
         <!-- Quick Presets (동적 렌더링) -->
         <div class="tool-group quick-inputs">
+          <div class="date-navigator">
+          <button type="button" class="btn-nav" id="btnPrevDay" title="이전 날짜 (Alt+Left)">◀</button>
+          <div class="date-display-wrap">
+
+            <input type="date" id="datePicker" class="date-picker-input">
+            <span class="date-label" id="dateDisplayLabel">2026.09.29 (화)</span>
+          </div>
+          <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)">▶</button>
+          <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
+        </div>
           <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
+          <button type="button" id="btnFontColor" class="history-button font-color-button" title="글자색" aria-label="글자색"><span>A</span></button>
           <span class="tool-group-label">빠른 입력 도구:</span>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
           <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
@@ -286,7 +280,7 @@
       </div>
       <div class="modal-body">
         <p class="guide-text">Supabase 프로젝트를 연결하면 모든 기기(스마트폰, 태블릿, PC)에서 물리치료 기록이 실시간으로 자동 동기화 및 영구 보존됩니다.</p>
-        
+
         <div class="supabase-form">
           <div class="form-group">
             <label for="sbUrlInput">Project URL:</label>
@@ -343,6 +337,8 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
       <span class="menu-label">붙여넣기</span>
       <span class="menu-shortcut">Ctrl+V</span>
     </div>
+    <div class="menu-item" data-action="font-color"><span>글자색…</span></div>
+    <div class="menu-item row-only-item" data-action="lunch-line"><span>점심시간 설정 / 해제</span></div>
     <div class="menu-item" data-action="clear-contents">
       <span class="menu-icon">🧹</span>
       <span class="menu-label">내용 지우기</span>

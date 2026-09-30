@@ -1809,3 +1809,20 @@ body {
 /* Grid selection uses cell highlighting, never the browser's text selection. */
 .excel-table tbody { -webkit-user-select: none; user-select: none; }
 .excel-table .cell-input-element { -webkit-user-select: text; user-select: text; }
+
+.quick-inputs .date-navigator { background: #e8eeeb; color: #34483c; flex-shrink: 0; margin-right: 8px; }
+.quick-inputs .date-label { color: #34483c; font-size: 14px; }
+.quick-inputs .btn-nav { color: #34483c; }
+.quick-inputs .btn-today-pill { font-size: 12px; }
+.font-color-button span { font: 600 21px sans-serif; border-bottom: 3px solid currentColor; line-height: 24px; }
+.font-color-menu { position: fixed; z-index: 5000; width: 286px; padding: 14px; border-radius: 10px; background: white; border: 1px solid #d9dfdc; box-shadow: 0 8px 25px #0003; max-height: calc(100vh - 12px); overflow: auto; }
+.color-reset { background: none; border: 0; padding: 4px 0 12px; font-size: 14px; cursor: pointer; }
+.color-palette { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #0002; cursor: pointer; }
+.color-swatch:hover, .color-swatch:focus-visible { outline: 2px solid #107c41; outline-offset: 1px; }
+.custom-color { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
+.excel-row.lunch-break-row > * { border-top: 3px solid #d93025 !important; }
+
+/* Keep the date and search available on smaller desktop/PWA windows. */
+.ribbon-toolbar { flex-wrap: wrap; }
+.quick-inputs { flex-wrap: wrap; flex-shrink: 1; }

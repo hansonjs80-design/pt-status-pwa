@@ -1,0 +1,59 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8');
+const clone = value => JSON.parse(JSON.stringify(value));
+function createApp(db = new Map()) {
+  const storage = new Map();
+  const context = vm.createContext({ window: { addEventListener() {} }, document: { activeElement: null },
+    localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  Object.assign(app, { currentDate: '2026-09-30', dataStore: {}, syncBaselines: new Map(), pendingSyncDates: new Set(), activePushes: new Map(), syncTimers: new Map(), editHistory: new Map() });
+  for (const key of ['showSaveIndicator', 'notifyCloudChange', 'renderTable', 'updateSidebarStats', 'updateHistoryButtons', 'renderQuickChips', 'refreshSearchSuggestions']) app[key] = () => {};
+  app.isEditingCell = () => false;
+  app.supabaseClient = { from() {
+    let action = 'read', record, conditions = [];
+    const query = { select() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
+      return Promise.resolve().then(() => {
+        if (action === 'read') return { data: clone(db.get(conditions.find(([k]) => k === 'date')[1]) || null) };
+        const old = db.get(record.date);
+        if (action === 'insert' && old) return { error: { code: '23505' } };
+        if (action === 'update' && !conditions.every(([k,v]) => old?.[k] === v)) return { data: [] };
+        db.set(record.date, clone(record)); return { data: [{ date: record.date }] };
+      }).then(resolve, reject);
+    }}; return query;
+  }};
+  return { app, storage, context };
+}
+test('Excel TSV preserves empty cells, multiline cells and escaped quotes', () => {
+  const { app } = createApp();
+  assert.deepEqual(clone(app.parseClipboardGrid('123\t가상\t\r\n456\t"두\n줄"\t"인용 ""문자"""\r\n')), [['123','가상',''],['456','두\n줄','인용 "문자"']]);
+});
+test('two computers concurrently editing different cells retain both changes', async () => {
+  const date='2026-09-30', db = new Map([[date, { date, rows_data: [{ name: '테스트', memo: '' }], updated_at: '2026-09-30T00:00:00.000Z' }]]);
+  const a=createApp(db).app, b=createApp(db).app;
+  for (const app of [a,b]) { app.dataStore[date]=clone(db.get(date).rows_data); app.syncBaselines.set(date,clone(app.dataStore[date])); app.pendingSyncDates.add(date); }
+  a.dataStore[date][0].name='변경'; b.dataStore[date][0].memo='메모';
+  await Promise.all([a.pushToCloud(date), b.pushToCloud(date)]);
+  assert.deepEqual(db.get(date).rows_data[0], {name:'변경', memo:'메모'});
+  await a.pullFromCloud(date);
+  assert.equal(a.dataStore[date][0].memo, '메모');
+});
+test('offline edits retain their date and baseline for retry after restart', () => {
+  const {app, storage}=createApp(); app.supabaseClient=null;
+  app.syncBaselines.set(app.currentDate,[{name:'이전'}]); app.scheduleSupabaseSync(); app.currentDate='2026-10-01';
+  assert.deepEqual(JSON.parse(storage.get('PT_PENDING_DATES')), ['2026-09-30']);
+  assert.equal(JSON.parse(storage.get('PT_SYNC_BASELINES'))['2026-09-30'][0].name, '이전');
+});
+test('preset edits and deletions propagate to another computer', async () => {
+  const db=new Map(), a=createApp(db), b=createApp(db);
+  vm.runInContext('COLUMN_PRESETS = { prescription: ["새 처방"], extra: ["도수"] };', a.context);
+  a.app.presetsDirty=true; await a.app.pushSharedPresets(); await b.app.pullSharedPresets();
+  assert.deepEqual(clone(vm.runInContext('COLUMN_PRESETS',b.context)), {prescription:['새 처방'],extra:['도수']});
+  vm.runInContext('COLUMN_PRESETS.extra = [];', a.context);
+  a.app.presetsDirty=true; await a.app.pushSharedPresets(); await b.app.pullSharedPresets();
+  assert.deepEqual(clone(vm.runInContext('COLUMN_PRESETS.extra',b.context)), []);
+  assert.equal(a.app.presetsDirty,false);
+});

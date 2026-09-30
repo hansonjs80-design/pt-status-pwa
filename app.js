@@ -95,6 +95,7 @@ const DEFAULT_PRESETS = {
 };
 
 const PRESETS_STORAGE_KEY = "PT_APP_CUSTOM_PRESETS_V1";
+const SHARED_PRESETS_RECORD = "__pt_shared_presets_v1__";
 
 // localStorage에서 사용자 커스텀 프리셋 로드 (없으면 기본값 사용)
 function loadColumnPresets() {
@@ -108,6 +109,7 @@ function loadColumnPresets() {
 function saveColumnPresets(presets) {
   try {
     localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    window.ptApp?.schedulePresetSync();
   } catch (_) {}
 }
 
@@ -127,6 +129,13 @@ class PTApp {
     this.sortState = { colKey: null, direction: "asc" };
     this.supabaseClient = null;
     this.supabaseSyncTimer = null;
+    this.pendingSyncDates = new Set();
+    this.syncTimers = new Map();
+    this.syncBaselines = new Map(Object.entries(JSON.parse(JSON.stringify(this.dataStore))));
+    try { for (const [date, rows] of Object.entries(JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"))) this.syncBaselines.set(date, rows); } catch (_) {}
+    this.activePushes = new Map();
+    this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
+    try { this.pendingSyncDates = new Set(JSON.parse(localStorage.getItem("PT_PENDING_DATES") || "[]")); } catch (_) {}
 
     // Autocomplete State
     this.autocompleteState = null; // { rowIdx, colKey, cellElement, input, candidates, selectedIndex }
@@ -449,7 +458,8 @@ class PTApp {
       this.elBtnDeleteSelected.addEventListener("click", () => this.deleteSelectedRow());
     }
 
-    this.elTabBackup.addEventListener("click", () => this.openBackupModal());
+    document.getElementById("btnFontColor").addEventListener("mousedown", event => event.preventDefault());
+    document.getElementById("btnFontColor").addEventListener("click", event => this.openFontColorMenu(event.currentTarget));
 
     // Formula Input Sync
     this.elFormulaInput.addEventListener("input", (e) => {
@@ -620,6 +630,19 @@ class PTApp {
 
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
+
+    document.addEventListener("paste", event => {
+      const target = event.target;
+      if (this.crossDateSelection) { event.preventDefault(); return; }
+      if (!this.activeCell && !this.selectedRange && this.selectedRowIdx === null) return;
+      if (target.matches?.("input, textarea") && !target.matches(".cell-input-element")) return;
+      const text = event.clipboardData?.getData("text/plain");
+      if (text == null) return;
+      if (target.matches?.(".cell-input-element:not(.is-armed)") && !/[\t\r\n]/.test(text)) return;
+      event.preventDefault();
+      if (target.matches?.(".cell-input-element")) target.blur();
+      void this.pasteSelection(text);
+    });
 
     // PWA에서 Cmd+C/X 시 keydown이 처리 못하는 경우 copy/cut 이벤트로 fallback
     document.addEventListener("copy", (e) => {
@@ -792,6 +815,7 @@ class PTApp {
       const tr = document.createElement("tr");
       tr.className = "excel-row";
       tr.dataset.rowIdx = rowIdx;
+      tr.classList.toggle("lunch-break-row", Boolean(row._lunchBefore));
 
       // Row Number Header (1, 2, 3...)
       const excelRowNum = BASE_ROW_NUMBER + rowIdx;
@@ -843,6 +867,7 @@ class PTApp {
         td.dataset.colIdx = colIdx;
         td.dataset.colLetter = colLetters[colIdx];
         td.dataset.excelRow = excelRowNum;
+        if (row._textColors?.[key]) td.style.color = row._textColors[key];
 
         const val = row[key] || "";
 
@@ -1401,7 +1426,7 @@ class PTApp {
           if (error) throw error;
           if (this.supabaseClient !== client) return false;
           for (const entry of data || []) {
-            if (entry.date && Array.isArray(entry.rows_data)) history[entry.date] = entry.rows_data;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) history[entry.date] = entry.rows_data;
           }
           if (!data || data.length < pageSize) break;
         }
@@ -1422,7 +1447,7 @@ class PTApp {
 
   refreshSearchSuggestions() {
     const input = document.activeElement;
-    if (!input?.matches(".cell-input-element:not(.is-armed)") || input.dataset.composing === "true") return;
+    if (!input?.matches(".cell-input-element:not(.is-armed)")) return;
     const cell = input.closest(".excel-cell");
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
@@ -1749,15 +1774,12 @@ class PTApp {
       this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
 
-      // ★ 한글 조합 중(isComposing)에는 자동완성 DOM 조작 절대 금지!
-      // DOM 변경이 브라우저 IME 조합을 강제 종료시켜 자모가 분리됨
-      if (composing || e.isComposing) return;
-
-      // 비조합 입력(영문, 숫자, 조합 완료 후)에서만 자동완성 갱신
+      // Keep the native input and focus intact during composition.
+      // Only the separate suggestion popup is refreshed, including Windows IME input.
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
-          if (composing || !input.isConnected || document.activeElement !== input) return;
+          if (!input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
           if (suggestions.length > 0) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -1789,7 +1811,7 @@ class PTApp {
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
-          if (composing || !input.isConnected || document.activeElement !== input) return;
+          if (!input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
           if (suggestions.length > 0) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -1838,6 +1860,10 @@ class PTApp {
         return;
       }
       if (this.handleHistoryShortcut(e)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
+      if ((e.ctrlKey || e.metaKey) && e.key === "ArrowDown") {
+        e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToLastRecord(); return;
+      }
       if (input.classList.contains("is-armed")) {
         if (e.key === "F2") {
           e.preventDefault(); e.stopPropagation();
@@ -1921,6 +1947,11 @@ class PTApp {
         }
       }
 
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const atEdge = input.selectionStart === input.selectionEnd &&
+          (e.key === "ArrowLeft" ? input.selectionStart === 0 : input.selectionEnd === input.value.length);
+        if (!atEdge || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) { e.stopPropagation(); return; }
+      }
       // 2) 방향키 처리: 편집 커밋 후 해당 방향으로 셀 이동
       //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)
       //    자동완성이 열려있을 때 좌/우 방향키 또는 자동완성이 닫혀있을 때 모든 방향키
@@ -1930,7 +1961,7 @@ class PTApp {
         e.stopPropagation();
 
         // 자동완성이 열려있으면 선택된 항목을 적용
-        if (this.isAutocompleteOpen()) {
+        if (this.isAutocompleteOpen() && e.key !== "ArrowLeft" && e.key !== "ArrowRight") {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
@@ -2652,6 +2683,7 @@ class PTApp {
     const destination = rows[rowIdx];
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     for (const key of keys) destination[key] = source[key] ?? "";
+    destination._textColors = { ...source._textColors };
     this.activeCell = null;
     this.clipboardSelection = null;
     this.clearHeaderSelections();
@@ -2859,6 +2891,7 @@ class PTApp {
         td.dataset.crossIdx = idx;
         td.dataset.crossCol = key;
         td.dataset.crossColIdx = colIdx;
+        if (row._textColors?.[key]) td.style.color = row._textColors[key];
         const val = row[key] || "";
 
         if (key === "gender") {
@@ -3088,6 +3121,7 @@ class PTApp {
       if (url && key && window.supabase) {
         this.supabaseClient = window.supabase.createClient(url, key);
         this.updateSupabaseUI(true);
+        this.startLiveSync();
         // Pull latest cloud data for today
         this.pullFromCloud(this.currentDate, false);
         void this.loadSearchHistory();
@@ -3159,13 +3193,14 @@ class PTApp {
 
       localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, key }));
       this.supabaseClient = testClient;
+      this.startLiveSync();
       void this.loadSearchHistory();
       this.updateSupabaseUI(true);
       alert("Supabase 클라우드 동기화가 성공적으로 활성화되었습니다!\n지금부터 모든 기록이 자동 동기화됩니다.");
       this.closeSupabaseModal();
 
-      // Push current local data to cloud
-      this.pushToCloud(this.currentDate, false);
+      // Read the shared day first; only explicitly changed dates are uploaded.
+      void this.pullFromCloud(this.currentDate);
     } catch (err) {
       console.error("Supabase connect error:", err);
       alert("연결 중 오류가 발생했습니다: " + (err.message || err));
@@ -3175,6 +3210,7 @@ class PTApp {
   disconnectSupabase() {
     if (confirm("Supabase 클라우드 연결을 해제하시겠습니까? (로컬 데이터는 안전하게 유지됩니다)")) {
       localStorage.removeItem(SUPABASE_CONFIG_KEY);
+      this.stopLiveSync();
       this.supabaseClient = null;
       this.cloudSearchHistory = {};
       this.searchHistoryClient = null;
@@ -3186,46 +3222,173 @@ class PTApp {
     }
   }
 
+  stopLiveSync() {
+    clearInterval(this.liveSyncTimer);
+    clearTimeout(this.presetsSyncTimer);
+    if (this.liveChannel && this.liveClient) void this.liveClient.removeChannel(this.liveChannel);
+    this.liveChannel = null;
+    this.syncTimers?.forEach(timer => clearTimeout(timer));
+    this.syncTimers?.clear();
+  }
+
+  startLiveSync() {
+    this.stopLiveSync();
+    const client = this.supabaseClient;
+    if (!client) return;
+    this.liveClient = client;
+    this.liveChannel = client.channel("pt-live-updates-v1")
+      .on("broadcast", { event: "changed" }, ({ payload }) => {
+        if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
+        else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
+        this.searchHistoryLoadedAt = 0;
+      }).subscribe();
+    const refresh = async () => {
+      if (this.liveRefreshBusy || this.supabaseClient !== client) return;
+      this.liveRefreshBusy = true;
+      try {
+        for (const date of this.pendingSyncDates) if (!this.activePushes.has(date)) void this.pushToCloud(date);
+        if (this.presetsDirty) await this.pushSharedPresets();
+        else await this.pullSharedPresets();
+        await this.pullFromCloud(this.currentDate);
+      } finally { this.liveRefreshBusy = false; }
+    };
+    this.liveSyncTimer = setInterval(refresh, 2000);
+    void refresh();
+  }
+
+  notifyCloudChange(date) {
+    if (this.liveChannel) void this.liveChannel.send({ type: "broadcast", event: "changed", payload: { date } });
+  }
+
+  schedulePresetSync() {
+    this.presetsDirty = true;
+    localStorage.setItem("PT_PRESETS_PENDING", "1");
+    clearTimeout(this.presetsSyncTimer);
+    this.presetsSyncTimer = setTimeout(() => this.pushSharedPresets(), 250);
+  }
+
+  async pullSharedPresets() {
+    const client = this.supabaseClient;
+    if (!client || this.presetsDirty || this.presetsPushing) return;
+    try {
+      const { data, error } = await client.from("pt_daily_records").select("rows_data").eq("date", SHARED_PRESETS_RECORD).maybeSingle();
+      if (error) throw error;
+      if (client !== this.supabaseClient || this.presetsDirty) return;
+      const presets = data?.rows_data?.[0]?.presets;
+      if (!data) {
+        const result = await client.from("pt_daily_records").insert({ date: SHARED_PRESETS_RECORD,
+          rows_data: [{ presets: COLUMN_PRESETS }], total_count: 0, updated_at: new Date().toISOString() });
+        if (result.error && result.error.code !== "23505") throw result.error;
+        return;
+      }
+      if (!presets || !Object.values(presets).every(values => Array.isArray(values) && values.every(value => typeof value === "string"))) return;
+      if (JSON.stringify(presets) === JSON.stringify(COLUMN_PRESETS)) return;
+      COLUMN_PRESETS = presets;
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+      this.renderQuickChips();
+      this.refreshSearchSuggestions();
+    } catch (error) { this.showSaveIndicator("빠른 입력 도구 동기화 재시도 중", true); }
+  }
+
+  async pushSharedPresets() {
+    const client = this.supabaseClient;
+    if (!client || !this.presetsDirty || this.presetsPushing) return;
+    this.presetsPushing = true;
+    const snapshot = JSON.stringify(COLUMN_PRESETS);
+    try {
+      const { error } = await client.from("pt_daily_records").upsert({ date: SHARED_PRESETS_RECORD,
+        rows_data: [{ presets: JSON.parse(snapshot) }], total_count: 0, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      if (JSON.stringify(COLUMN_PRESETS) === snapshot) {
+        this.presetsDirty = false; localStorage.removeItem("PT_PRESETS_PENDING");
+      }
+      this.notifyCloudChange(SHARED_PRESETS_RECORD);
+    } catch (error) { this.showSaveIndicator("빠른 입력 도구 동기화 재시도 중", true); }
+    finally { this.presetsPushing = false; }
+  }
+
   scheduleSupabaseSync() {
+    const date = this.currentDate;
+    this.pendingSyncDates.add(date);
+    localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
     if (!this.supabaseClient) return;
-    if (this.supabaseSyncTimer) clearTimeout(this.supabaseSyncTimer);
-    this.supabaseSyncTimer = setTimeout(() => {
-      this.pushToCloud(this.currentDate, false);
-    }, 1200);
+    clearTimeout(this.syncTimers.get(date));
+    this.syncTimers.set(date, setTimeout(() => { this.syncTimers.delete(date); void this.pushToCloud(date); }, 400));
+  }
+
+  mergeCloudRows(base, local, remote) {
+    if (!base) return local;
+    const merged = JSON.parse(JSON.stringify(remote || []));
+    for (let i = 0; i < local.length; i++) {
+      const before = base[i] || {}, after = local[i] || {};
+      merged[i] ||= {};
+      for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+        if (key in after) merged[i][key] = after[key]; else delete merged[i][key];
+      }
+    }
+    if (local.length < base.length) merged.length = local.length;
+    return merged;
   }
 
   async pushToCloud(dateStr, showNotice = false) {
-    if (!this.supabaseClient) {
-      if (showNotice) alert("Supabase가 연결되어 있지 않습니다. 상단 [슈파베이스 연동]을 눌러 설정해주세요.");
-      return;
-    }
-
+    const client = this.supabaseClient;
+    if (!client || this.activePushes.has(dateStr)) return;
+    const snapshot = JSON.stringify(this.dataStore[dateStr] || []);
+    const local = JSON.parse(snapshot), base = this.syncBaselines.get(dateStr) || [];
+    this.activePushes.set(dateStr, true);
     try {
-      const rows = this.dataStore[dateStr] || this.getCurrentRows();
-      const meaningfulCount = rows.filter((r) => r.name || r.chartNo).length;
-
-      const { error } = await this.supabaseClient.from("pt_daily_records").upsert({
-        date: dateStr,
-        rows_data: rows,
-        total_count: meaningfulCount,
-        updated_at: new Date().toISOString()
-      });
-
-      if (error) {
-        console.warn("Cloud push warning:", error);
-        if (showNotice) alert("클라우드 업로드 실패: " + error.message);
-      } else {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error: readError } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", dateStr).maybeSingle();
+        if (readError) throw readError;
+        const rows = this.mergeCloudRows(base, local, data?.rows_data || []);
+        const record = { date: dateStr, rows_data: rows, total_count: this.getDailySummary(rows).total, updated_at: new Date(Math.max(Date.now(), (Date.parse(data?.updated_at) || 0) + 1)).toISOString() };
+        const result = data
+          ? await client.from("pt_daily_records").update(record).eq("date", dateStr).eq("updated_at", data.updated_at).select("date")
+          : await client.from("pt_daily_records").insert(record).select("date");
+        if (result.error?.code === "23505") continue;
+        if (result.error) throw result.error;
+        if (!result.data?.length) continue;
+        if (client !== this.supabaseClient) return;
+        const latest = this.dataStore[dateStr] || [];
+        const latestText = JSON.stringify(latest);
+        const rebased = this.mergeCloudRows(local, latest, rows);
+        // Keep existing row objects alive for an editor that may still be typing.
+        for (let i = 0; i < rebased.length; i++) {
+          if (!latest[i]) latest[i] = rebased[i];
+          else { for (const key of Object.keys(latest[i])) delete latest[i][key]; Object.assign(latest[i], rebased[i]); }
+        }
+        latest.length = rebased.length;
+        this.dataStore[dateStr] = latest;
+        this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
+        localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
+        if (latestText === snapshot) this.pendingSyncDates.delete(dateStr);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+        if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
+          this.editHistory.delete(dateStr); this.getEditHistory(dateStr);
+          this.renderTable(); this.updateSidebarStats();
+        }
+        localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+        this.notifyCloudChange(dateStr);
         this.showSaveIndicator("클라우드 동기화 완료");
-        if (showNotice) alert(`${dateStr} 데이터가 Supabase 클라우드에 성공적으로 저장되었습니다!`);
+        return;
       }
-    } catch (err) {
-      console.error("Cloud push exception:", err);
-      if (showNotice) alert("클라우드 통신 오류: " + err.message);
-    }
+      throw new Error("다른 기기의 변경으로 재시도가 필요합니다");
+    } catch (error) {
+      this.pendingSyncDates.add(dateStr);
+      localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+      this.showSaveIndicator("클라우드 동기화 재시도 중", true);
+      if (showNotice) alert("클라우드 업로드 실패: " + error.message);
+    } finally { this.activePushes.delete(dateStr); }
   }
 
   async pullFromCloud(dateStr, showNotice = false) {
-    if (!this.supabaseClient) {
+    if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
+        (dateStr === this.currentDate && this.isEditingCell())) return;
+    const localAtRequest = JSON.stringify(this.dataStore[dateStr] || []);
+    const client = this.supabaseClient;
+    if (!client) {
       if (showNotice) alert("Supabase가 연결되어 있지 않습니다.");
       return;
     }
@@ -3243,7 +3406,15 @@ class PTApp {
         return;
       }
 
-      if (data && Array.isArray(data.rows_data) && data.rows_data.length > 0) {
+      if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
+          localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
+          (dateStr === this.currentDate && this.isEditingCell())) return;
+      if (data && Array.isArray(data.rows_data)) {
+        this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
+        localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
+        const padded = data.rows_data.slice();
+        while (dateStr === this.currentDate && padded.length < DEFAULT_ROW_COUNT) padded.push({ ...this.createDefaultEmptyRows(1)[0], date: dateStr.replace(/-/g, ".") });
+        if (localAtRequest === JSON.stringify(padded)) return;
         const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
         this.dataStore[dateStr] = data.rows_data;
         // Ensure minimum 150 rows
@@ -3259,6 +3430,7 @@ class PTApp {
         this.showSaveIndicator("클라우드 데이터 수신됨");
         if (showNotice) alert(`${dateStr} 클라우드 최신 데이터를 성공적으로 불러왔습니다!`);
       } else {
+        this.syncBaselines.set(dateStr, []);
         if (showNotice) alert(`${dateStr} 일자의 클라우드 데이터가 아직 없습니다.`);
       }
     } catch (err) {
@@ -3404,6 +3576,15 @@ class PTApp {
     const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
 
     switch (action) {
+      case "font-color":
+        this.openFontColorMenu(document.getElementById("btnFontColor"));
+        break;
+      case "lunch-line":
+        this.getCurrentRows()[targetRow]._lunchBefore = !this.getCurrentRows()[targetRow]._lunchBefore;
+        this.saveDataStore();
+        this.renderTable();
+        this.selectRowRange(targetRow, targetRow);
+        break;
       case "cut":
         this.cutSelection();
         break;
@@ -3448,6 +3629,96 @@ class PTApp {
       default:
         console.warn("Unknown context action:", action);
     }
+  }
+
+  jumpToLastRecord() {
+    const origin = this.historyApplyTarget;
+    if (this.crossDateSelection && origin?.date === this.currentDate) {
+      const rows = this.getCurrentRows();
+      const found = rows.indexOf(origin.row);
+      const rowIdx = found >= 0 ? found : origin.rowIdx;
+      this.elSearchInput.value = "";
+      this.handleSearch();
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${origin.colKey}"]`);
+      if (cell) { this.selectCell(rowIdx, origin.colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+      return;
+    }
+    if (!this.activeCell) return;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const rows = this.getCurrentRows();
+    let rowIdx = rows.length - 1;
+    while (rowIdx > 0 && !keys.some(key => String(rows[rowIdx][key] ?? "").trim())) rowIdx--;
+    const colKey = this.activeCell.colKey;
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+    if (cell) { this.selectCell(rowIdx, colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+  }
+
+  parseClipboardGrid(text) {
+    const grid = [[]]; let value = "", quoted = false;
+    text = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"' && (quoted || value === "")) {
+        if (quoted && text[i + 1] === '"') { value += '"'; i++; }
+        else quoted = !quoted;
+      } else if (!quoted && (char === "\t" || char === "\n")) {
+        grid[grid.length - 1].push(value); value = "";
+        if (char === "\n") grid.push([]);
+      } else value += char;
+    }
+    grid[grid.length - 1].push(value);
+    if (text.endsWith("\n") && grid.at(-1).length === 1 && grid.at(-1)[0] === "") grid.pop();
+    return grid;
+  }
+
+  applyTextColor(color) {
+    if (this.crossDateSelection) return;
+    if (this.isEditingCell()) document.activeElement.blur();
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const rows = this.getCurrentRows();
+    const range = this.selectedRange || (this.selectedRowRange ? { ...this.selectedRowRange, minCol: 0, maxCol: keys.length - 1 } : null) || (this.selectedColKey ? { minRow: 0, maxRow: rows.length - 1, minCol: keys.indexOf(this.selectedColKey), maxCol: keys.indexOf(this.selectedColKey) }
+      : this.activeCell ? { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: keys.indexOf(this.activeCell.colKey), maxCol: keys.indexOf(this.activeCell.colKey) } : null);
+    if (!range) return;
+    for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      rows[r]._textColors ||= {};
+      if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
+    }
+    this.saveDataStore(); this.renderTable();
+    this.closeFontColorMenu();
+  }
+
+  closeFontColorMenu() {
+    this.fontColorMenuCleanup?.();
+    this.fontColorMenuCleanup = null;
+    document.getElementById("fontColorMenu")?.remove();
+  }
+
+  openFontColorMenu(anchor) {
+    this.closeFontColorMenu();
+    const menu = document.createElement("div"); menu.id = "fontColorMenu"; menu.className = "font-color-menu";
+    menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", "글자색 선택");
+    const reset = document.createElement("button"); reset.type = "button"; reset.textContent = "↺ 재설정";
+    reset.className = "color-reset"; reset.onclick = () => this.applyTextColor(null); menu.appendChild(reset);
+    const palette = document.createElement("div"); palette.className = "color-palette";
+    const colors = ["#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#eeeeee", "#f3f3f3", "#ffffff",
+      "#980000", "#ff0000", "#ff9900", "#ffff00", "#00ff00", "#00ffff", "#4285f4", "#0000ff", "#9900ff", "#ff00ff"];
+    const hues = [0, 10, 32, 45, 100, 180, 215, 205, 260, 320];
+    for (const light of [88, 76, 64, 48, 34, 20]) for (const hue of hues) colors.push(`hsl(${hue} 55% ${light}%)`);
+    colors.forEach(color => { const button = document.createElement("button"); button.type = "button"; button.className = "color-swatch";
+      button.style.backgroundColor = color; button.title = color; button.setAttribute("aria-label", color);
+      button.onclick = () => this.applyTextColor(color); palette.appendChild(button); });
+    menu.appendChild(palette);
+    const custom = document.createElement("label"); custom.className = "custom-color"; custom.textContent = "맞춤 색상 ";
+    const picker = document.createElement("input"); picker.type = "color"; picker.setAttribute("aria-label", "맞춤 글자색"); picker.oninput = () => this.applyTextColor(picker.value); custom.appendChild(picker); menu.appendChild(custom);
+    menu.onmousedown = event => { if (event.target !== picker) event.preventDefault(); };
+    document.body.appendChild(menu);
+    const rect = anchor.getBoundingClientRect(); menu.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - menu.offsetWidth - 6))}px`;
+    menu.style.top = `${Math.max(6, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 6))}px`;
+    const close = event => { if (!menu.contains(event.target) && !anchor.contains(event.target)) this.closeFontColorMenu(); };
+    const escape = event => { if (event.key === "Escape") this.closeFontColorMenu(); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    this.fontColorMenuCleanup = () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
   }
 
   // =============================================================================
@@ -3532,18 +3803,18 @@ class PTApp {
     this.showSaveIndicator("잘라내기 완료됨");
   }
 
-  async pasteSelection() {
-    let text = "";
-    if (navigator.clipboard && navigator.clipboard.readText) {
+  async pasteSelection(suppliedText) {
+    let text = suppliedText ?? "";
+    if (suppliedText === undefined && navigator.clipboard && navigator.clipboard.readText) {
       try {
         text = await navigator.clipboard.readText();
       } catch (err) {
         text = this.clipboardBuffer;
       }
-    } else {
+    } else if (suppliedText === undefined) {
       text = this.clipboardBuffer;
     }
-    if (!text && this.clipboardBuffer) text = this.clipboardBuffer;
+    if (!text && suppliedText === undefined && this.clipboardBuffer) text = this.clipboardBuffer;
     if (!text) {
       this.showSaveIndicator("붙여넣을 데이터가 없습니다.", true);
       return;
@@ -3552,12 +3823,7 @@ class PTApp {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
 
-    // Parse TSV grid
-    const lines = text.replace(/\r\n/g, "\n").split("\n");
-    if (lines.length > 1 && lines[lines.length - 1] === "") {
-      lines.pop();
-    }
-    const grid = lines.map((l) => l.split("\t"));
+    const grid = this.parseClipboardGrid(text);
 
     // Determine start coordinate
     let startRow = 0;
@@ -3824,6 +4090,9 @@ class PTApp {
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const keyLower = e.key.toLowerCase();
 
+    if (isCtrlOrMeta && e.key === "ArrowDown") {
+      e.preventDefault(); this.jumpToLastRecord(); return;
+    }
     if (this.crossDateSelection && e.key !== "Escape") {
       const selection = this.crossDateSelection;
       if (isCtrlOrMeta && keyLower === "c") this.copySelection();
@@ -3857,11 +4126,7 @@ class PTApp {
     }
 
     // 3) Paste (Ctrl+V / Cmd+V)
-    if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.PASTE.key) {
-      e.preventDefault();
-      this.pasteSelection();
-      return;
-    }
+    if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.PASTE.key) return; // Native paste supplies clipboardData.
 
     // 4) Select All (Ctrl+A / Cmd+A)
     if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.SELECT_ALL.key) {

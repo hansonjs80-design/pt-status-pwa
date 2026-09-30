@@ -74,14 +74,14 @@ test('cloud-only dates are searched while local edits override the same cloud da
 test('cloud history loads every page without modifying local records and reuses its cache', async () => {
   const app = createApp({ '2026-09-30': [{ name: '로컬입력' }] });
   const calls = [];
-  const page = Array.from({ length: 200 }, (_, i) => ({ date: `past-${i}`, rows_data: [{ name: `이름${i}` }] }));
+  const page = Array.from({ length: 200 }, (_, i) => ({ date: new Date(Date.UTC(2025, 0, i + 1)).toISOString().slice(0, 10), rows_data: [{ name: `이름${i}` }] }));
   app.supabaseClient = {
     from(table) {
       assert.equal(table, 'pt_daily_records');
       return {
         select(columns) { assert.equal(columns, 'date, rows_data'); return this; },
         order() { return this; },
-        async range(start, end) { calls.push([start, end]); return { data: start === 0 ? page : [{ date: 'oldest', rows_data: [{ chartNo: '9876' }] }] }; },
+        async range(start, end) { calls.push([start, end]); return { data: start === 0 ? page : [{ date: '2024-01-01', rows_data: [{ chartNo: '9876' }] }] }; },
       };
     },
   };
