@@ -1772,10 +1772,12 @@ body {
 /* Keep native IME focus ready while displaying the normal cell selection. */
 .cell-input-element.is-armed { position: absolute; inset: 0; opacity: 0; pointer-events: none; caret-color: transparent; }
 
-.history-controls { display: inline-flex; align-items: center; gap: 3px; margin: 0 3px; }
-.history-button { width: 28px; height: 26px; padding: 0; border: 1px solid #c7d4cb; border-radius: 5px; background: white; color: #107c41; font-size: 23px; line-height: 1; cursor: pointer; }
-.history-button:hover:not(:disabled) { background: #e2efda; border-color: #107c41; }
-.history-button:disabled { opacity: .35; cursor: default; }
+.history-controls { display: inline-flex; flex-shrink: 0; align-items: center; gap: 3px; margin-right: 6px; }
+.history-button { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 32px; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: #484d4c; cursor: pointer; transition: background-color .15s; }
+.history-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.history-button:hover:not(:disabled), .history-button:active:not(:disabled) { background: #e2e7eb; }
+.history-button:focus-visible { outline: 2px solid #6d7b75; outline-offset: 1px; background: #e2e7eb; }
+.history-button:disabled { color: #a8aeab; cursor: default; }
 
 /* Align labels, counts and units consistently in the daily summary. */
 .excel-sidebar { flex-shrink: 0; gap: 12px; padding: 14px 12px; background: #f6f9f7; }

@@ -4183,25 +4183,29 @@ class PTApp {
         container.appendChild(chip);
       });
     });
-    const controls = document.createElement("span");
-    controls.className = "history-controls";
-    for (const [id, symbol, label, redo] of [
-      ["btnUndo", "↶", "되돌리기 (Ctrl/Cmd+Z)", false],
-      ["btnRedo", "↷", "다시 실행 (Ctrl/Cmd+Shift+Z)", true]
+    const controls = document.getElementById("historyControls");
+    controls.replaceChildren();
+    for (const [id, path, label, redo] of [
+      ["btnUndo", "M9 5 4 10l5 5 M4 10h10a5 5 0 0 1 0 10h-4", "되돌리기 (Ctrl/Cmd+Z)", false],
+      ["btnRedo", "m15 5 5 5-5 5 M20 10H10a5 5 0 0 0 0 10h4", "다시 실행 (Ctrl/Cmd+Shift+Z)", true]
     ]) {
       const button = document.createElement("button");
       button.type = "button";
       button.id = id;
       button.className = "history-button";
-      button.textContent = symbol;
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("viewBox", "0 0 24 24");
+      icon.setAttribute("aria-hidden", "true");
+      const arrow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      arrow.setAttribute("d", path);
+      icon.appendChild(arrow);
+      button.appendChild(icon);
       button.title = label;
       button.setAttribute("aria-label", label);
       button.addEventListener("mousedown", event => event.preventDefault());
       button.addEventListener("click", () => this.restoreEditHistory(redo));
       controls.appendChild(button);
     }
-    const manualChip = [...container.querySelectorAll(".chip")].find(chip => chip.dataset.val.includes("도수"));
-    container.insertBefore(controls, manualChip || container.firstChild);
     this.updateHistoryButtons();
   }
 

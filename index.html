@@ -64,6 +64,7 @@
 
         <!-- Quick Presets (동적 렌더링) -->
         <div class="tool-group quick-inputs">
+          <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
           <span class="tool-group-label">빠른 입력 도구:</span>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
           <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
