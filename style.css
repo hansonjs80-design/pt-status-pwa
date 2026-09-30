@@ -1865,3 +1865,7 @@ body {
 
 .excel-table { min-width: 1396px; }
 .excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }
+
+.font-size-button > span { font: 600 21px Arial, sans-serif; white-space: nowrap; }
+.font-size-button small { font-size: 13px; margin-left: 1px; }
+.font-weight-button > span { font: 800 22px Arial, sans-serif; }

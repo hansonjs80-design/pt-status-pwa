@@ -482,6 +482,12 @@ class PTApp {
     document.getElementById("btnFontColor").addEventListener("mousedown", event => { this.captureTextColorSelection(); event.preventDefault(); });
     document.getElementById("btnFontColor").addEventListener("click", event => this.openFontColorMenu(event.currentTarget));
 
+    for (const [id, property] of [["btnFontSize", "fontSize"], ["btnFontWeight", "fontWeight"]]) {
+      const button = document.getElementById(id);
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", event => this.openColumnTypographyMenu(property, event.currentTarget));
+    }
+
     // Formula Input Sync
     this.elFormulaInput.addEventListener("input", (e) => {
       if (!this.activeCell) return;
@@ -893,7 +899,7 @@ class PTApp {
     if (columns) this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
   }
 
-  openColumnTypographyMenu(property) {
+  openColumnTypographyMenu(property, anchor = null) {
     if (!this.getFormattingRange()) return;
     const status = this.getFormattingStatus(property);
     this.typographyCleanup?.(); document.getElementById("columnTypographyMenu")?.remove();
@@ -914,9 +920,9 @@ class PTApp {
       popup.append(button);
     }
     popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
-    const rect = this.elContextMenu.getBoundingClientRect();
+    const rect = (anchor || this.elContextMenu).getBoundingClientRect();
     popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - popup.offsetHeight - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(anchor ? rect.bottom + 6 : rect.top, innerHeight - popup.offsetHeight - 8))}px`;
     const outside = event => { if (!popup.contains(event.target)) close(); };
     const escape = event => { event.stopPropagation(); if (event.key === "Escape") { close(); this.elSheetContainer.focus(); } };
     document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
