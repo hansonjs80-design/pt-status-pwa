@@ -2050,6 +2050,7 @@ class PTApp {
         return;
       }
       if (this.handleHistoryShortcut(e)) return;
+      if (this.handleRowDeleteShortcut(e)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
       if ((e.ctrlKey || e.metaKey) && e.key === "ArrowDown") {
         e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToLastRecord(); return;
@@ -3229,7 +3230,7 @@ class PTApp {
       return;
     }
 
-    const headers = ["No.", "G", "차트No.", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항", "방문 시간"];
+    const headers = ["No.", "성별", "챠트번호", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항", "방문 시간"];
     let csvContent = "\uFEFF"; // UTF-8 BOM for Excel
     csvContent += headers.map((h) => `"${h}"`).join(",") + "\n";
 
@@ -4283,6 +4284,20 @@ class PTApp {
     this.showSaveIndicator(msg);
   }
 
+  handleRowDeleteShortcut(event) {
+    if (!(event.ctrlKey || event.metaKey) || this.crossDateSelection ||
+        ![event.key, event.code].some(key => ["-", "_", "Minus", "NumpadSubtract"].includes(key))) return false;
+    const rowIdx = this.selectedRowRange?.minRow ?? this.activeCell?.rowIdx ?? this.selectedRowIdx;
+    if (!Number.isInteger(rowIdx)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    // Commit an active editor before removing its row so a later blur cannot overwrite the next row.
+    if (document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
+    this.deleteRowAt(rowIdx);
+    this.elSheetContainer.focus({ preventScroll: true });
+    return true;
+  }
+
   deleteRowAt(targetRowIdx) {
     const rows = this.getCurrentRows();
     let minRow = targetRowIdx;
@@ -4475,11 +4490,7 @@ class PTApp {
     }
 
     // 9) Delete Row (Ctrl + '-' or Ctrl + '_' or NumpadSubtract)
-    if (isCtrlOrMeta && (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract")) {
-      e.preventDefault();
-      if (this.selectedRowRange) this.deleteRowAt(this.selectedRowRange.minRow);
-      return;
-    }
+    if (this.handleRowDeleteShortcut(e)) return;
 
     // 10) Clear Contents (Delete / Backspace)
     if (e.key === "Delete" || e.key === "Backspace") {
