@@ -51,8 +51,8 @@
           <button type="button" class="btn-nav" id="btnPrevDay" title="이전 날짜 (Alt+Left)">◀</button>
           <div class="date-display-wrap">
 
-            <input type="date" id="datePicker" class="date-picker-input">
-            <span class="date-label" id="dateDisplayLabel">2026.09.29 (화)</span>
+            <input type="date" id="datePicker" hidden>
+            <button type="button" class="date-label date-trigger" id="dateDisplayLabel" aria-haspopup="dialog" aria-expanded="false" title="날짜 선택">2026.09.29 (화)</button>
           </div>
           <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)">▶</button>
           <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
@@ -338,6 +338,8 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
       <span class="menu-shortcut">Ctrl+V</span>
     </div>
     <div class="menu-item" data-action="font-color"><span>글자색…</span></div>
+    <div class="menu-item col-only-item" data-action="font-size"><span>글자 크기…</span></div>
+    <div class="menu-item col-only-item" data-action="font-weight"><span>글자 굵기…</span></div>
     <div class="menu-item row-only-item" data-action="lunch-line"><span>점심시간 설정 / 해제</span></div>
     <div class="menu-item" data-action="clear-contents">
       <span class="menu-icon">🧹</span>

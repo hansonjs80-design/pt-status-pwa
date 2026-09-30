@@ -414,15 +414,20 @@ class PTApp {
       this.elBtnPullFromCloud.addEventListener("click", () => this.pullFromCloud(this.currentDate, true));
     }
 
-    // Column Headers Click (Select Entire Column)
-    document.querySelectorAll(".col-headers-row th.col-letter").forEach((th) => {
-      th.addEventListener("click", (e) => {
-        if (e.target.classList.contains("col-resizer")) return;
-        const colKey = th.dataset.col;
-        const colLetter = th.dataset.colLetter;
-        if (colKey) this.selectEntireColumn(colKey, colLetter);
+    // Drag or Shift-click column letters to select a contiguous set of columns.
+    document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
+      th.addEventListener("mousedown", e => {
+        if (e.button !== 0 || e.target.closest(".col-resizer") || th.dataset.col === "del") return;
+        e.preventDefault();
+        const start = e.shiftKey && this.columnAnchor ? this.columnAnchor : th.dataset.col;
+        this.columnDragAnchor = start;
+        this.selectEntireColumn(start, "", th.dataset.col);
+      });
+      th.addEventListener("mouseenter", () => {
+        if (this.columnDragAnchor && th.dataset.col !== "del") this.selectEntireColumn(this.columnDragAnchor, "", th.dataset.col);
       });
     });
+    document.addEventListener("mouseup", () => { this.columnDragAnchor = null; });
 
     // Business Headers Click (Sort Column)
     document.querySelectorAll(".business-headers-row th.b-header").forEach((th) => {
@@ -437,6 +442,8 @@ class PTApp {
     if (cornerHeader) {
       cornerHeader.addEventListener("click", () => this.selectAllCells());
     }
+
+    this.elDateLabel.addEventListener("click", () => this.openCalendar());
 
     // Date Navigation
     this.elDatePicker.addEventListener("change", (e) => {
@@ -458,7 +465,7 @@ class PTApp {
       this.elBtnDeleteSelected.addEventListener("click", () => this.deleteSelectedRow());
     }
 
-    document.getElementById("btnFontColor").addEventListener("mousedown", event => event.preventDefault());
+    document.getElementById("btnFontColor").addEventListener("mousedown", event => { this.captureTextColorSelection(); event.preventDefault(); });
     document.getElementById("btnFontColor").addEventListener("click", event => this.openFontColorMenu(event.currentTarget));
 
     // Formula Input Sync
@@ -756,6 +763,113 @@ class PTApp {
     return rows;
   }
 
+  closeDateCalendar(restoreFocus = false) {
+    this.calendarCleanup?.();
+    document.getElementById("dateCalendar")?.remove();
+    this.elDateLabel.setAttribute("aria-expanded", "false");
+    if (restoreFocus) this.elDateLabel.focus();
+  }
+
+  openCalendar() {
+    if (document.getElementById("dateCalendar")) { this.closeDateCalendar(); return; }
+    if (this.isEditingCell()) document.activeElement.blur();
+    const selected = this.currentDate;
+    let [year, month] = selected.split("-").map(Number);
+    const popup = document.createElement("div");
+    popup.id = "dateCalendar"; popup.className = "date-calendar";
+    popup.setAttribute("role", "dialog"); popup.setAttribute("aria-label", "날짜 선택");
+    const choose = value => { this.closeDateCalendar(); this.setDate(value, true); };
+    const render = () => {
+      popup.replaceChildren();
+      const header = document.createElement("div"); header.className = "calendar-heading";
+      const nav = (text, label, delta) => {
+        const button = document.createElement("button"); button.textContent = text; button.setAttribute("aria-label", label);
+        button.onclick = () => { const next = new Date(year, month - 1 + delta, 1); year = next.getFullYear(); month = next.getMonth() + 1; render(); popup.querySelector(`[aria-label="${label}"]`).focus(); };
+        return button;
+      };
+      header.append(nav("‹", "이전 달", -1));
+      const yearInput = document.createElement("input"); yearInput.type = "number"; yearInput.min = "1900"; yearInput.max = "2100"; yearInput.value = year; yearInput.setAttribute("aria-label", "연도");
+      yearInput.onchange = () => { year = Math.max(1900, Math.min(2100, Number(yearInput.value) || year)); render(); };
+      const monthSelect = document.createElement("select"); monthSelect.setAttribute("aria-label", "월");
+      for (let m = 1; m <= 12; m++) { const option = new Option(`${m}월`, m, false, m === month); monthSelect.add(option); }
+      monthSelect.onchange = () => { month = Number(monthSelect.value); render(); };
+      header.append(yearInput, monthSelect, nav("›", "다음 달", 1)); popup.append(header);
+      const grid = document.createElement("div"); grid.className = "calendar-grid";
+      ["일", "월", "화", "수", "목", "금", "토"].forEach(label => { const day = document.createElement("span"); day.className = "calendar-weekday"; day.textContent = label; grid.append(day); });
+      const offset = new Date(year, month - 1, 1).getDay();
+      const today = this.getTodayString();
+      for (let index = 0; index < 42; index++) {
+        const date = new Date(year, month - 1, index - offset + 1);
+        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        const button = document.createElement("button"); button.textContent = date.getDate(); button.dataset.date = value;
+        button.setAttribute("aria-label", `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`);
+        if (date.getMonth() + 1 !== month) button.classList.add("outside-month");
+        if (value === today) { button.classList.add("is-today"); button.setAttribute("aria-current", "date"); }
+        if (value === selected) { button.classList.add("is-selected"); button.setAttribute("aria-pressed", "true"); }
+        button.onclick = () => choose(value); grid.append(button);
+      }
+      popup.append(grid);
+      const footer = document.createElement("div"); footer.className = "calendar-footer";
+      const hint = document.createElement("span"); hint.textContent = "원하는 날짜를 선택하세요";
+      const todayButton = document.createElement("button"); todayButton.textContent = "오늘"; todayButton.onclick = () => choose(today);
+      footer.append(hint, todayButton); popup.append(footer);
+    };
+    render(); document.body.append(popup); this.elDateLabel.setAttribute("aria-expanded", "true");
+    const rect = this.elDateLabel.getBoundingClientRect();
+    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 10, innerHeight - popup.offsetHeight - 8))}px`;
+    const outside = event => { if (!popup.contains(event.target) && !this.elDateLabel.contains(event.target)) this.closeDateCalendar(); };
+    const keyboard = event => {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); this.closeDateCalendar(true); return; }
+      const day = event.target.closest("[data-date]");
+      const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+      if (day && delta) { event.preventDefault(); const buttons = [...popup.querySelectorAll("[data-date]")]; buttons[Math.max(0, Math.min(41, buttons.indexOf(day) + delta))].focus(); }
+    };
+    document.addEventListener("mousedown", outside); popup.addEventListener("keydown", keyboard);
+    this.calendarCleanup = () => document.removeEventListener("mousedown", outside);
+    popup.querySelector(".is-selected")?.focus();
+  }
+
+  applyColumnTypography(property, value) {
+    if (!this.selectedColumnRange || !["fontSize", "fontWeight"].includes(property)) return;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const range = { ...this.selectedColumnRange };
+    for (const row of this.getCurrentRows()) for (let col = range.minCol; col <= range.maxCol; col++) {
+      row._textStyles ||= {}; row._textStyles[keys[col]] ||= {};
+      if (value === null) delete row._textStyles[keys[col]][property];
+      else row._textStyles[keys[col]][property] = value;
+    }
+    this.saveDataStore(); this.renderTable();
+    this.selectEntireColumn(keys[range.minCol], "", keys[range.maxCol]);
+  }
+
+  openColumnTypographyMenu(property) {
+    if (!this.selectedColumnRange) return;
+    this.typographyCleanup?.(); document.getElementById("columnTypographyMenu")?.remove();
+    const popup = document.createElement("div"); popup.id = "columnTypographyMenu"; popup.className = "column-typography-menu";
+    popup.setAttribute("role", "dialog"); popup.setAttribute("aria-label", property === "fontSize" ? "글자 크기" : "글자 굵기");
+    const title = document.createElement("strong"); title.textContent = property === "fontSize" ? "글자 크기" : "글자 굵기"; popup.append(title);
+    const options = property === "fontSize" ? [[null, "기본 크기"], ...[10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32].map(n => [n, `${n}px`])]
+      : [[null, "기본 굵기"], [400, "보통"], [500, "중간"], [600, "약간 굵게"], [700, "굵게"], [800, "매우 굵게"]];
+    const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
+    for (const [value, label] of options) {
+      const button = document.createElement("button"); button.textContent = label;
+      if (property === "fontWeight" && value) button.style.fontWeight = value;
+      button.onclick = () => { this.applyColumnTypography(property, value); close(); this.elSheetContainer.focus(); };
+      popup.append(button);
+    }
+    popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
+    const rect = this.elContextMenu.getBoundingClientRect();
+    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - popup.offsetHeight - 8))}px`;
+    const outside = event => { if (!popup.contains(event.target)) close(); };
+    const escape = event => { event.stopPropagation(); if (event.key === "Escape") { close(); this.elSheetContainer.focus(); } };
+    document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
+    this.typographyCleanup = () => document.removeEventListener("mousedown", outside);
+    popup.querySelector("button").focus();
+  }
+
   setDate(dateStr, autoFocusFirstEmpty = false) {
     if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
     clearTimeout(this._saveTimer);
@@ -868,6 +982,8 @@ class PTApp {
         td.dataset.colLetter = colLetters[colIdx];
         td.dataset.excelRow = excelRowNum;
         if (row._textColors?.[key]) td.style.color = row._textColors[key];
+        if (row._textStyles?.[key]?.fontSize) td.style.fontSize = row._textStyles[key].fontSize + "px";
+        if (row._textStyles?.[key]?.fontWeight) td.style.fontWeight = row._textStyles[key].fontWeight;
 
         const val = row[key] || "";
 
@@ -899,7 +1015,7 @@ class PTApp {
           td.appendChild(dropBtn);
           td.title = "선택 시 우측 ▼ 버튼 또는 더블클릭으로 M/F 선택 (키보드 M, F, ㅡ, ㄹ 지원)";
         } else {
-          td.textContent = val;
+          this.renderColoredText(td, row, key);
         }
 
         // Cell Mouse Down handler (Start Drag Selection)
@@ -1833,7 +1949,7 @@ class PTApp {
       // ★ 셀에 이미 새 input이 있으면(더블클릭으로 재편집 진입 등) 셀 내용 덮어쓰기 방지
       const existingInput = cellElement.querySelector("input");
       if (!existingInput || existingInput === input) {
-        cellElement.textContent = finalVal;
+        this.renderColoredText(cellElement, rows[rowIdx], colKey);
       }
       if (colKey === "gender") {
         cellElement.classList.remove("f", "m");
@@ -2063,6 +2179,8 @@ class PTApp {
       );
     });
     this.selectedRange = null;
+    this.selectedColumnRange = null;
+    this.columnAnchor = null;
     this.selectedRowRange = null;
     this.rowRangeStart = null;
     this.rowRangeEnd = null;
@@ -2156,25 +2274,35 @@ class PTApp {
     }
   }
 
-  selectEntireColumn(colKey, colLetter) {
+  selectEntireColumn(colKey, colLetter, endKey = colKey) {
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const first = keys.indexOf(colKey), last = keys.indexOf(endKey);
+    if (first < 0 || last < 0) return;
+    document.activeElement?.blur();
+    window.getSelection()?.removeAllRanges();
     this.clearHeaderSelections();
+    this.activeCell = null;
     this.selectedColKey = colKey;
     this.selectedRowIdx = null;
-
-    // Highlight Column Header
-    const colTh = document.querySelector(`.col-letter[data-col="${colKey}"]`);
-    const bTh = document.querySelector(`.b-header[data-col="${colKey}"]`);
-    if (colTh) colTh.classList.add("selected");
-    if (bTh) bTh.classList.add("selected");
-
-    // Select all cells in this column
-    document.querySelectorAll(`.excel-cell[data-col="${colKey}"]`).forEach((cell) => {
-      cell.classList.add("col-selected");
-    });
-
-    this.elCellAddress.textContent = `${colLetter}:${colLetter}`;
-    this.elSelectedCellCoords.textContent = `${colLetter}열 전체 선택 (${colKey})`;
+    this.columnAnchor = colKey;
+    this.selectedColumnRange = { minCol: Math.min(first, last), maxCol: Math.max(first, last) };
+    this.selectedRange = { ...this.selectedColumnRange, minRow: 0, maxRow: this.getCurrentRows().length - 1 };
+    document.querySelectorAll(".cell-focused, .active-row, .header-active").forEach(el => el.classList.remove("cell-focused", "active-row", "header-active"));
+    for (let col = this.selectedColumnRange.minCol; col <= this.selectedColumnRange.maxCol; col++) {
+      document.querySelectorAll(`.col-letter[data-col="${keys[col]}"], .b-header[data-col="${keys[col]}"]`).forEach(el => el.classList.add("selected"));
+      this.elTableBody.querySelectorAll(`.excel-cell[data-col="${keys[col]}"]`).forEach(cell => {
+        cell.classList.add("col-selected");
+        if (col === this.selectedColumnRange.minCol) cell.classList.add("range-border-left");
+        if (col === this.selectedColumnRange.maxCol) cell.classList.add("range-border-right");
+        if (Number(cell.dataset.row) === 0) cell.classList.add("range-border-top");
+        if (Number(cell.dataset.row) === this.selectedRange.maxRow) cell.classList.add("range-border-bottom");
+      });
+    }
+    const label = `${String.fromCharCode(65 + this.selectedColumnRange.minCol)}:${String.fromCharCode(65 + this.selectedColumnRange.maxCol)}`;
+    this.elCellAddress.textContent = label;
+    this.elSelectedCellCoords.textContent = `${label}열 선택`;
     this.elFormulaInput.value = "";
+    this.elSheetContainer.focus({ preventScroll: true });
   }
 
   selectEntireRow(rowIdx) {
@@ -2670,6 +2798,18 @@ class PTApp {
     this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");
   }
 
+  copyHistoryFields(destination, source, keys) {
+    for (const key of keys) {
+      destination[key] = source[key] ?? "";
+      for (const metadata of ["_textColors", "_textStyles", "_richText"]) {
+        if (source[metadata]?.[key] !== undefined) {
+          destination[metadata] ||= {};
+          destination[metadata][key] = JSON.parse(JSON.stringify(source[metadata][key]));
+        } else if (destination[metadata]) delete destination[metadata][key];
+      }
+    }
+  }
+
   applyHistoryRow(source) {
     const target = this.historyApplyTarget;
     if (!target || target.date !== this.currentDate) return;
@@ -2680,10 +2820,16 @@ class PTApp {
     if (referenceIndex < 0 && target.rows === rows) return;
     const rowIdx = referenceIndex >= 0 ? referenceIndex : target.rowIdx;
     if (!Number.isInteger(rowIdx) || !rows[rowIdx]) return;
-    const destination = rows[rowIdx];
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    for (const key of keys) destination[key] = source[key] ?? "";
-    destination._textColors = { ...source._textColors };
+    const selection = this.crossDateSelection;
+    const sourceIndex = this.crossDateResults?.indexOf(source);
+    const useSelection = selection && sourceIndex >= selection.minRow && sourceIndex <= selection.maxRow;
+    const sources = useSelection ? this.crossDateResults.slice(selection.minRow, selection.maxRow + 1) : [source];
+    const selectedKeys = useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys;
+    for (let offset = 0; offset < sources.length; offset++) {
+      while (!rows[rowIdx + offset]) rows.push(this.createDefaultEmptyRows(1)[0]);
+      this.copyHistoryFields(rows[rowIdx + offset], sources[offset], selectedKeys);
+    }
     this.activeCell = null;
     this.clipboardSelection = null;
     this.clearHeaderSelections();
@@ -2892,6 +3038,8 @@ class PTApp {
         td.dataset.crossCol = key;
         td.dataset.crossColIdx = colIdx;
         if (row._textColors?.[key]) td.style.color = row._textColors[key];
+        if (row._textStyles?.[key]?.fontSize) td.style.fontSize = row._textStyles[key].fontSize + "px";
+        if (row._textStyles?.[key]?.fontWeight) td.style.fontWeight = row._textStyles[key].fontWeight;
         const val = row[key] || "";
 
         if (key === "gender") {
@@ -2902,7 +3050,7 @@ class PTApp {
           if (val === "F") td.classList.add("f");
           if (val === "M") td.classList.add("m");
         } else {
-          td.textContent = val;
+          this.renderColoredText(td, row, key);
         }
 
         td.addEventListener("mousedown", (e) => {
@@ -2923,7 +3071,7 @@ class PTApp {
       applyButton.type = "button";
       applyButton.className = "history-apply-btn";
       applyButton.textContent = "적용";
-      applyButton.title = "선택했던 현재 날짜 행에 이 기록 적용";
+      applyButton.title = "선택한 셀 적용 · Enter (선택이 없으면 이 행 전체 적용)";
       applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
       applyButton.addEventListener("mousedown", e => e.preventDefault());
       applyButton.addEventListener("click", () => this.applyHistoryRow(row));
@@ -2987,7 +3135,7 @@ class PTApp {
           <td style="text-align:center; font-weight:bold;">${r.extra || ""}</td>
           <td style="text-align:center;">${r.writer || DEFAULT_WRITER}</td>
           <td style="text-align:center;">${r.memo || ""}</td>
-          <td style="color:#b30000;">${r.specialNote || ""}</td>
+          <td style="color:#000000;">${r.specialNote || ""}</td>
         `;
         this.elPrintTableBody.appendChild(tr);
       });
@@ -3462,6 +3610,7 @@ class PTApp {
   }
 
   handleTableContextMenu(e) {
+    this.captureTextColorSelection();
     if (e.target.closest(".cross-date-row")) { e.preventDefault(); return; }
     const thRow = e.target.closest("th.row-num");
     const thCol = e.target.closest("th.col-letter, th.b-header");
@@ -3500,7 +3649,8 @@ class PTApp {
 
       e.preventDefault();
       this.contextTarget = { type: "col", colKey, colLetter };
-      this.selectEntireColumn(colKey, colLetter);
+      const index = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"].indexOf(colKey);
+      if (!this.selectedColumnRange || index < this.selectedColumnRange.minCol || index > this.selectedColumnRange.maxCol) this.selectEntireColumn(colKey, colLetter);
 
       // Show Column items
       rowOnlyItems.forEach((el) => el.classList.add("hidden"));
@@ -3576,6 +3726,10 @@ class PTApp {
     const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
 
     switch (action) {
+      case "font-size":
+      case "font-weight":
+        this.openColumnTypographyMenu(action === "font-size" ? "fontSize" : "fontWeight");
+        break;
       case "font-color":
         this.openFontColorMenu(document.getElementById("btnFontColor"));
         break;
@@ -3671,8 +3825,50 @@ class PTApp {
     return grid;
   }
 
+  captureTextColorSelection() {
+    this.textColorSelection = null;
+    const input = document.activeElement;
+    if (!this.activeCell || !input?.matches(".cell-input-element:not(.is-armed)") || input.selectionStart === input.selectionEnd) return;
+    this.textColorSelection = { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd };
+  }
+
+  setPartialTextColor(row, key, start, end, color) {
+    const text = String(row[key] ?? "");
+    const previous = row._richText?.[key];
+    const colors = previous?.text === text ? [...previous.colors] : Array(text.length).fill(null);
+    for (let i = Math.max(0, start); i < Math.min(text.length, end); i++) colors[i] = color;
+    row._richText ||= {};
+    row._richText[key] = { text, colors };
+  }
+
+  renderColoredText(element, row, key) {
+    const text = String(row[key] ?? "");
+    const rich = row._richText?.[key];
+    element.textContent = "";
+    if (rich?.text !== text || !Array.isArray(rich.colors)) { element.textContent = text; return; }
+    let start = 0;
+    while (start < text.length) {
+      const color = rich.colors[start];
+      let end = start + 1;
+      while (end < text.length && rich.colors[end] === color) end++;
+      const span = document.createElement("span"); span.textContent = text.slice(start, end);
+      if (color) span.style.color = color;
+      element.append(span); start = end;
+    }
+  }
+
   applyTextColor(color) {
     if (this.crossDateSelection) return;
+    const textSelection = this.textColorSelection;
+    this.textColorSelection = null;
+    if (textSelection && this.activeCell?.rowIdx === textSelection.rowIdx && this.activeCell?.colKey === textSelection.colKey) {
+      if (this.isEditingCell()) document.activeElement.blur();
+      const row = this.getCurrentRows()[textSelection.rowIdx];
+      if (String(row[textSelection.colKey] ?? "") === textSelection.text) {
+        this.setPartialTextColor(row, textSelection.colKey, textSelection.start, textSelection.end, color);
+        this.saveDataStore(); this.renderTable(); this.closeFontColorMenu(); return;
+      }
+    }
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const rows = this.getCurrentRows();
@@ -3680,6 +3876,7 @@ class PTApp {
       : this.activeCell ? { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: keys.indexOf(this.activeCell.colKey), maxCol: keys.indexOf(this.activeCell.colKey) } : null);
     if (!range) return;
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (rows[r]._richText) delete rows[r]._richText[keys[c]];
       rows[r]._textColors ||= {};
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
     }
@@ -4095,7 +4292,8 @@ class PTApp {
     }
     if (this.crossDateSelection && e.key !== "Escape") {
       const selection = this.crossDateSelection;
-      if (isCtrlOrMeta && keyLower === "c") this.copySelection();
+      if (e.key === "Enter") this.applyHistoryRow(this.crossDateResults[selection.minRow]);
+      else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
