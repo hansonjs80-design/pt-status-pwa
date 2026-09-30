@@ -1863,9 +1863,14 @@ body {
 .column-typography-menu .is-current { background: #e3f1e8; color: #107c41; }
 .color-swatch.is-current { outline: 2px solid #107c41; outline-offset: 2px; color: white; text-shadow: 0 1px 2px black; }
 
-.excel-table { min-width: 1396px; }
+.excel-table { min-width: 1406px; }
 .excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }
 
 .font-size-button > span { font: 600 21px Arial, sans-serif; white-space: nowrap; }
 .font-size-button small { font-size: 13px; margin-left: 1px; }
 .font-weight-button > span { font: 800 22px Arial, sans-serif; }
+
+.excel-table .col-spacer, .excel-table .cell-spacer { padding: 0; }
+.excel-table .col-spacer .col-resizer { left: 0; right: auto; width: 5px; }
+.excel-table .col-del .col-resizer { right: 2px; width: 4px; }
+.excel-table .cell-spacer { border-right: 1px solid var(--excel-grid-line); border-bottom: 1px solid var(--excel-grid-line); }

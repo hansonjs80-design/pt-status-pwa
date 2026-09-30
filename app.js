@@ -431,14 +431,14 @@ class PTApp {
     // Drag or Shift-click column letters to select a contiguous set of columns.
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
       th.addEventListener("mousedown", e => {
-        if (e.button !== 0 || e.target.closest(".col-resizer") || th.dataset.col === "del") return;
+        if (e.button !== 0 || e.target.closest(".col-resizer") || ["del", "spacer"].includes(th.dataset.col)) return;
         e.preventDefault();
         const start = e.shiftKey && this.columnAnchor ? this.columnAnchor : th.dataset.col;
         this.columnDragAnchor = start;
         this.selectEntireColumn(start, "", th.dataset.col);
       });
       th.addEventListener("mouseenter", () => {
-        if (this.columnDragAnchor && th.dataset.col !== "del") this.selectEntireColumn(this.columnDragAnchor, "", th.dataset.col);
+        if (this.columnDragAnchor && !["del", "spacer"].includes(th.dataset.col)) this.selectEntireColumn(this.columnDragAnchor, "", th.dataset.col);
       });
     });
     document.addEventListener("mouseup", () => { this.columnDragAnchor = null; });
@@ -1152,6 +1152,9 @@ class PTApp {
       });
       tdDel.appendChild(btnDel);
       tr.appendChild(tdDel);
+      const spacer = document.createElement("td");
+      spacer.className = "cell-spacer";
+      tr.appendChild(spacer);
 
       this.elTableBody.appendChild(tr);
     });
@@ -2495,6 +2498,7 @@ class PTApp {
     let activeColKey = null;
     let startX = 0;
     let startWidth = 0;
+    let fixedRight = 0;
 
     // 기기별로 저장된 열 너비 초기 로딩 시 복원 적용
     this.applySavedColumnWidths();
@@ -2504,6 +2508,7 @@ class PTApp {
       activeColKey = activeTh?.dataset?.col || null;
       startX = clientX;
       startWidth = activeTh.offsetWidth;
+      fixedRight = activeTh.getBoundingClientRect().right;
       resizerEl.classList.add("resizing");
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
@@ -2512,9 +2517,13 @@ class PTApp {
     const doResize = (clientX) => {
       if (!activeTh) return;
       const diff = clientX - startX;
-      const newWidth = Math.max(35, startWidth + diff);
+      const newWidth = Math.max(activeColKey === "spacer" ? 10 : 35, startWidth + (activeColKey === "spacer" ? -diff : diff));
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
+      if (activeColKey === "spacer") {
+        // The trailing column grows leftward; compensate horizontal overflow to keep its right edge in place.
+        this.elSheetContainer.scrollLeft += activeTh.getBoundingClientRect().right - fixedRight;
+      }
     };
 
     const endResize = () => {
@@ -2628,7 +2637,7 @@ class PTApp {
       localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
       const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
       if (th) {
-        th.style.width = "";
+        th.style.width = th.dataset.defaultWidth ? `${th.dataset.defaultWidth}px` : "";
         th.style.minWidth = "";
       }
       this.showSaveIndicator("기본 열 너비로 초기화됨");
@@ -3139,6 +3148,9 @@ class PTApp {
       applyButton.addEventListener("click", () => this.applyHistoryRow(row));
       actionCell.appendChild(applyButton);
       tr.appendChild(actionCell);
+      const spacer = document.createElement("td");
+      spacer.className = "cell-spacer";
+      tr.appendChild(spacer);
       this.elTableBody.insertBefore(tr, firstCurrentRow);
     });
 
@@ -3146,7 +3158,7 @@ class PTApp {
     const dividerTr = document.createElement("tr");
     dividerTr.className = "cross-date-divider";
     const dividerTd = document.createElement("td");
-    dividerTd.colSpan = 13;
+    dividerTd.colSpan = 14;
     dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
@@ -3710,7 +3722,7 @@ class PTApp {
       // 2) Right Click on Column Header (열 헤더 우클릭)
       const colKey = thCol.dataset.col;
       const colLetter = thCol.dataset.colLetter || "";
-      if (!colKey || colKey === "del") return;
+      if (!colKey || ["del", "spacer"].includes(colKey)) return;
 
       e.preventDefault();
       this.contextTarget = { type: "col", colKey, colLetter };
