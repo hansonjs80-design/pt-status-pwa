@@ -2077,7 +2077,7 @@ class PTApp {
         e.stopPropagation();
 
         // 자동완성이 열려있으면 선택된 항목을 적용
-        if (this.isAutocompleteOpen() && e.key !== "ArrowLeft" && e.key !== "ArrowRight") {
+        if (this.isAutocompleteOpen() && e.key !== "ArrowLeft") {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
