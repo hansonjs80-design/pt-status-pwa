@@ -1821,7 +1821,7 @@ body {
 .color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #0002; cursor: pointer; }
 .color-swatch:hover, .color-swatch:focus-visible { outline: 2px solid #107c41; outline-offset: 1px; }
 .custom-color { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
-.excel-row.lunch-break-row > * { border-top: 3px solid #d93025 !important; }
+.excel-row.lunch-break-row > * { border-top: 1.5px dashed #d93025 !important; }
 
 /* Keep the date and search available on smaller desktop/PWA windows. */
 .ribbon-toolbar { flex-wrap: wrap; }
@@ -1853,3 +1853,15 @@ body {
 .column-typography-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #263d31; border-radius: 7px; padding: 8px 10px; cursor: pointer; }
 .column-typography-menu button:hover, .column-typography-menu button:focus-visible { background: #e9f4ed; outline: none; }
 .cell-input-element { font-weight: inherit; }
+
+.excel-table { font-family: Arial, sans-serif; }
+.excel-table .excel-cell { font-size: 14px; font-weight: 600; }
+.excel-table .cell-gender, .excel-table .cell-gender.f, .excel-table .cell-gender.m { color: #000; }
+.excel-table .cell-visitTime { text-align: center; white-space: nowrap; }
+.format-current { display: flex; align-items: center; gap: 8px; padding: 9px 10px; margin-bottom: 8px; border-radius: 8px; background: #eef6f1; color: #27583c; font-size: 12px; }
+.current-color-chip { width: 16px; height: 16px; border: 1px solid #a2afa7; border-radius: 50%; }
+.column-typography-menu .is-current { background: #e3f1e8; color: #107c41; }
+.color-swatch.is-current { outline: 2px solid #107c41; outline-offset: 2px; color: white; text-shadow: 0 1px 2px black; }
+
+.excel-table { min-width: 1354px; }
+.excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }

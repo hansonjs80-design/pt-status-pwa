@@ -107,3 +107,10 @@ test('completed Korean syllables exclude unrelated names while explicit initials
   assert.deepEqual(suggestions(app, 'name', '전ㅈ'), ['전재윤', '전지훈']);
   assert.deepEqual(suggestions(app, 'name', 'ㅈㅎ'), ['주한솔', '정화자', '전지훈']);
 });
+
+test('unfinished final syllable narrows Korean autocomplete before the final consonant', () => {
+  const app = createApp({}, { extra: ['충격파', '도수치료', '운동치료'] });
+  assert.deepEqual(suggestions(app, 'extra', '추'), ['충격파']);
+  assert.deepEqual(suggestions(app, 'extra', '충'), ['충격파']);
+  assert.ok(suggestions(app, 'extra', 'ㅊ').includes('충격파'));
+});
