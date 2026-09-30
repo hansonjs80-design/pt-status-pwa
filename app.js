@@ -202,7 +202,7 @@ class PTApp {
       const hasName = Boolean(String(row.name || "").trim());
       if (recordHistory && hasName && this.visitNameState.get(row) === false && !row.visitTime) {
         const now = new Date(); row._visitedAt = now.toISOString();
-        row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분`;
+        row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분 ${String(now.getSeconds()).padStart(2, "0")}초`;
         const cell = this.elTableBody?.querySelector(`[data-row="${(this.dataStore[this.currentDate] || []).indexOf(row)}"][data-col="visitTime"]`);
         if (cell) cell.textContent = row.visitTime;
       }
@@ -2470,7 +2470,9 @@ class PTApp {
     const ordered = rows.slice().sort((a, b) => {
       if (direction === "original") return a._originalOrder - b._originalOrder;
       if (filled(a) !== filled(b)) return filled(a) ? -1 : 1;
-      const result = String(a[colKey] ?? "").localeCompare(String(b[colKey] ?? ""), "ko", { numeric: true });
+      const valueA = colKey === "visitTime" ? this.getVisitTime(a) : String(a[colKey] ?? "");
+      const valueB = colKey === "visitTime" ? this.getVisitTime(b) : String(b[colKey] ?? "");
+      const result = valueA.localeCompare(valueB, "ko", { numeric: true });
       return direction === "asc" ? result : -result;
     });
     this.dataStore[this.currentDate] = ordered;
@@ -3190,7 +3192,7 @@ class PTApp {
           <td style="text-align:center;">${r.writer || DEFAULT_WRITER}</td>
           <td style="text-align:center;">${r.memo || ""}</td>
           <td style="color:#000000;">${r.specialNote || ""}</td>
-          <td style="text-align:center;">${r.visitTime || ""}</td>
+          <td style="text-align:center;">${this.getVisitTime(r)}</td>
         `;
         this.elPrintTableBody.appendChild(tr);
       });
@@ -3237,7 +3239,7 @@ class PTApp {
         r.writer || DEFAULT_WRITER,
         r.memo || "",
         r.specialNote || "",
-        r.visitTime || ""
+        this.getVisitTime(r)
       ];
       csvContent += line.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
     });
@@ -3892,8 +3894,17 @@ class PTApp {
     row._richText[key] = { text, colors };
   }
 
+  getVisitTime(row) {
+    const value = String(row.visitTime ?? "");
+    if (/^\d{2}시 \d{2}분$/.test(value) && row._visitedAt) {
+      const timestamp = new Date(row._visitedAt);
+      if (!Number.isNaN(timestamp.getTime())) return `${value} ${String(timestamp.getSeconds()).padStart(2, "0")}초`;
+    }
+    return value;
+  }
+
   renderColoredText(element, row, key) {
-    const text = String(row[key] ?? "");
+    const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
     const rich = row._richText?.[key];
     element.textContent = "";
     if (rich?.text !== text || !Array.isArray(rich.colors)) { element.textContent = text; return; }

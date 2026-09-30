@@ -1863,5 +1863,5 @@ body {
 .column-typography-menu .is-current { background: #e3f1e8; color: #107c41; }
 .color-swatch.is-current { outline: 2px solid #107c41; outline-offset: 2px; color: white; text-shadow: 0 1px 2px black; }
 
-.excel-table { min-width: 1354px; }
+.excel-table { min-width: 1396px; }
 .excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }
