@@ -1433,7 +1433,7 @@ class PTApp {
 
   getAutocompleteSuggestions(colKey, rawQuery) {
     if (!rawQuery) return [];
-    const query = this.assembleHangul(rawQuery).trim().toLowerCase();
+    const query = String(rawQuery).trim().toLowerCase();
     if (!query) return [];
 
     const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
@@ -1458,7 +1458,14 @@ class PTApp {
       }
     }
 
-    const queryChosung = this.getChosung(query);
+    // Only explicit initials are fuzzy; completed syllables must match literally.
+    const queryChars = [...query];
+    const hasInitials = /[ㄱ-ㅎ]/.test(query);
+    const matchesInitialsAt = (value, start) => hasInitials && queryChars.every((char, index) => {
+      const candidate = value[start + index];
+      return candidate !== undefined && (/^[ㄱ-ㅎ]$/.test(char)
+        ? this.getChosung(candidate) === char : candidate === char);
+    });
 
     const matched = [];
 
@@ -1467,18 +1474,17 @@ class PTApp {
       const itemLower = item.toLowerCase();
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
-      const itemChosung = this.getChosung(itemLower);
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치, 4=초성부분
       // 출처 보너스: 프리셋이면 +0, 기존값이면 +0.5 (동일 품질 내 프리셋 우선)
       let quality = -1;
 
       if (itemLower.startsWith(query)) {
         quality = 1; // 접두사 일치 (e.g. '한' -> '한랭...')
-      } else if (queryChosung && itemChosung.startsWith(queryChosung)) {
+      } else if (matchesInitialsAt(itemLower, 0)) {
         quality = 2; // 초성 접두사 (e.g. 'ㅎ' -> '학생...')
       } else if (itemLower.includes(query)) {
         quality = 3; // 부분 일치
-      } else if (queryChosung && itemChosung.includes(queryChosung)) {
+      } else if (hasInitials && [...itemLower].some((_, index) => matchesInitialsAt(itemLower, index))) {
         quality = 4; // 초성 부분 일치
       }
 
@@ -1577,31 +1583,40 @@ class PTApp {
       selectedIndex: 0
     };
 
-    const rect = input.getBoundingClientRect();
-    const menuWidth = Math.max(rect.width, 160);
-    let left = rect.left;
-    let top = rect.bottom + 2;
-
-    if (left + menuWidth > window.innerWidth) {
-      left = window.innerWidth - menuWidth - 8;
-    }
-    if (top + 200 > window.innerHeight && rect.top > 210) {
-      top = rect.top - 204;
-    }
-
-    menu.style.left = `${Math.max(6, left)}px`;
-    menu.style.top = `${Math.max(6, top)}px`;
-    menu.style.minWidth = `${menuWidth}px`;
+    const positionMenu = () => {
+      if (!menu.isConnected || !cellElement.isConnected) return;
+      const rect = cellElement.getBoundingClientRect();
+      const margin = 6, gap = 4;
+      const width = Math.min(Math.max(rect.width, 160), window.innerWidth - margin * 2);
+      menu.style.minWidth = `${width}px`;
+      menu.style.maxWidth = `${window.innerWidth - margin * 2}px`;
+      menu.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - menu.offsetWidth - margin))}px`;
+      menu.style.maxHeight = "220px";
+      const naturalHeight = menu.offsetHeight;
+      const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
+      const above = Math.max(0, rect.top - gap - margin);
+      const useBelow = naturalHeight <= below || below >= above;
+      const available = useBelow ? below : above;
+      menu.style.maxHeight = `${Math.min(220, available)}px`;
+      const height = menu.offsetHeight;
+      menu.style.top = `${useBelow ? rect.bottom + gap : rect.top - gap - height}px`;
+    };
+    positionMenu();
 
     const outsideClickListener = (e) => {
-      if (!menu.contains(e.target) && e.target !== input) {
-        this.closeAutocompleteMenu();
-        document.removeEventListener("mousedown", outsideClickListener);
-      }
+      if (!menu.contains(e.target) && e.target !== input) this.closeAutocompleteMenu();
     };
-    setTimeout(() => {
-      document.addEventListener("mousedown", outsideClickListener);
-    }, 10);
+    const scrollListener = (event) => {
+      if (!menu.contains(event.target)) positionMenu();
+    };
+    document.addEventListener("mousedown", outsideClickListener);
+    window.addEventListener("resize", positionMenu);
+    document.addEventListener("scroll", scrollListener, true);
+    this.autocompleteCleanup = () => {
+      document.removeEventListener("mousedown", outsideClickListener);
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("scroll", scrollListener, true);
+    };
   }
 
   moveAutocompleteSelection(direction) {
@@ -1648,6 +1663,8 @@ class PTApp {
   }
 
   closeAutocompleteMenu() {
+    this.autocompleteCleanup?.();
+    this.autocompleteCleanup = null;
     const existing = document.getElementById("cellAutocompleteMenu");
     if (existing) {
       existing.remove();

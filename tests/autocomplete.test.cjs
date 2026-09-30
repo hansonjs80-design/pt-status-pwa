@@ -29,7 +29,7 @@ test('names, numeric chart numbers and other fields include previous dates', () 
   };
   const app = createApp(data);
   const before = JSON.stringify(data);
-  assert.deepEqual(suggestions(app, 'name', '김'), ['김가상', '김과거', '오늘기록']);
+  assert.deepEqual(suggestions(app, 'name', '김'), ['김가상', '김과거']);
   assert.deepEqual(suggestions(app, 'name', 'ㄱㄱㅅ'), ['김가상']);
   assert.deepEqual(suggestions(app, 'chartNo', '123'), ['123', '12345', '001234']);
   assert.deepEqual(suggestions(app, 'memo', '예약'), ['예약 확인']);
@@ -94,4 +94,16 @@ test('cloud history loads every page without modifying local records and reuses 
   assert.deepEqual(suggestions(app, 'chartNo', '987'), ['987', '9876']);
   await app.loadSearchHistory();
   assert.equal(calls.length, 2);
+});
+
+
+test('completed Korean syllables exclude unrelated names while explicit initials still work', () => {
+  const app = createApp({ '2026-09-29': [
+    { name: '주한솔' }, { name: '정화자' }, { name: '전재윤' }, { name: '전지훈' },
+  ] });
+  assert.deepEqual(suggestions(app, 'name', '주한'), ['주한솔']);
+  assert.deepEqual(suggestions(app, 'name', '주ㅎ'), ['주한솔']);
+  assert.deepEqual(suggestions(app, 'name', '주해'), []);
+  assert.deepEqual(suggestions(app, 'name', '전ㅈ'), ['전재윤', '전지훈']);
+  assert.deepEqual(suggestions(app, 'name', 'ㅈㅎ'), ['주한솔', '정화자', '전지훈']);
 });
