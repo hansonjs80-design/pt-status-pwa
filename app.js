@@ -3859,24 +3859,33 @@ class PTApp {
   }
 
   jumpToLastRecord() {
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const copiedRange = this.clipboardSelection?.date === this.currentDate ? this.clipboardSelection : null;
+    const range = copiedRange || this.crossDateSelection || this.selectedRange;
+    const colKey = range ? keys[range.minCol] : this.activeCell?.colKey || "no";
+    if (!colKey) return;
     const origin = this.historyApplyTarget;
     if (this.crossDateSelection && origin?.date === this.currentDate) {
       const rows = this.getCurrentRows();
       const found = rows.indexOf(origin.row);
       const rowIdx = found >= 0 ? found : origin.rowIdx;
       this.scrollToHistoryTarget();
-      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${origin.colKey}"]`);
-      if (cell) { this.selectCell(rowIdx, origin.colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell) { this.selectCell(rowIdx, colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
       return;
     }
-    if (!this.activeCell && this.selectedRowIdx == null) return;
-    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    if (!range && !this.activeCell && this.selectedRowIdx == null) return;
     const rows = this.getCurrentRows();
-    let rowIdx = rows.length - 1;
-    while (rowIdx > 0 && !keys.some(key => String(rows[rowIdx][key] ?? "").trim())) rowIdx--;
-    const colKey = this.activeCell?.colKey || "no";
+    let rowIdx = range ? rows.findLastIndex(row => String(row[colKey] ?? "").trim()) : -1;
+    // A wholly empty first column (for example No. in a copied row) still lands on the last record.
+    if (rowIdx < 0) rowIdx = rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()));
+    rowIdx = Math.max(0, rowIdx);
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
-    if (cell) { this.selectCell(rowIdx, colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+    if (cell) {
+      cell.closest("tr").style.display = "";
+      this.selectCell(rowIdx, colKey, cell);
+      cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
 
   parseClipboardGrid(text) {
