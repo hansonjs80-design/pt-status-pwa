@@ -931,6 +931,7 @@ class PTApp {
     this.historyApplyTarget = null;
     if (this.currentDate !== dateStr) this.sortState = { colKey: null, direction: "original" };
     this.pendingCut = null;
+    this.lastHistoryAppliedTarget = null;
     this.currentDate = dateStr;
     this.elDatePicker.value = dateStr;
 
@@ -2892,6 +2893,7 @@ class PTApp {
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${target.colKey}"]`);
     this.selectCell(rowIdx, target.colKey, cell);
     this.saveDataStore();
+    this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용했습니다`);
   }
 
@@ -2983,6 +2985,15 @@ class PTApp {
       const text = rowEl.textContent.toLowerCase();
       rowEl.style.display = text.includes(q) || Number(rowEl.dataset.rowIdx) === this.historyApplyTarget?.rowIdx ? "" : "none";
     });
+    // Restore visibility after all daily rows are unhidden and history rows removed.
+    const target = this.lastHistoryAppliedTarget || this.historyApplyTarget;
+    if (target?.date === this.currentDate) {
+      const index = this.getCurrentRows().indexOf(target.row);
+      const rowIdx = index >= 0 ? index : target.rowIdx;
+      this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"]`)
+        ?.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+    this.lastHistoryAppliedTarget = null;
   }
 
   // 교차 날짜 임시 행 제거
