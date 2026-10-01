@@ -59,7 +59,7 @@
     const newPage=()=>{
       ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.fillStyle='#111';ctx.textAlign='center';ctx.font='700 30px Arial, sans-serif';ctx.fillText(title(date),width/2,45);
       ctx.font='500 17px Arial, sans-serif';
-      const extra=[...summary.extras].map(([name,count])=>`${name} ${count}건`).join(' · ');
+      const extra=[...summary.extras].map(([name,count])=>`${name} ${app.formatExtraCount(summary,name,count)}건`).join(' · ');
       const summaryLines=wrap(`총 ${summary.total}건 · 남 ${summary.male} · 여 ${summary.female} · 미지정 ${summary.unknown}  |  ${extra || '추가 사항 없음'}`,width-margin*2);
       summaryLines.forEach((line,i)=>ctx.fillText(line,width/2,82+i*23));
       const top=100+summaryLines.length*23;return top+drawRow(labels,top,true);
@@ -230,7 +230,7 @@
         const pdf=dialog.querySelector('[data-pdf]').checked,backup=dialog.querySelector('[data-backup]').checked,time=dialog.querySelector('[data-time]').value;
         if(!/^\d{2}:\d{2}$/.test(time))throw Error('저장 시간을 선택해 주세요.');
         if(pdf&&!this.folder)throw Error('자동 PDF 저장을 위해 폴더를 먼저 연결해 주세요.');
-        if(pdf&&!this.settings.pdf)this.settings.pdfFrom=previousDay(new Date());
+        if(pdf&&!this.settings.pdf){this.settings.pdfFrom=previousDay(new Date());this.settings.lastPDF=null;}
         this.settings={...this.settings,pdf,backup,time};this.save();this.report('이 컴퓨터에 설정 저장됨');
         if(backup){await this.backup(true);this.report('로컬 백업 저장·검증 완료');}void this.tick();
       });

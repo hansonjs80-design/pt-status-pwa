@@ -1913,3 +1913,6 @@ body {
 .device-settings-dialog input:not([type=checkbox]) { max-width: 140px; border: 1px solid #cad8cf; padding: 7px; border-radius: 6px; }
 .device-settings-dialog footer { margin-top: 20px; border-top: 1px solid #e1e9e4; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
 .device-settings-dialog a { color: #176e40; font-size: 12px; }
+
+.history-search-active [data-col="visitTime"],
+.history-search-active [data-cross-col="visitTime"] { display: none; }

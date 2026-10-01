@@ -66,3 +66,15 @@ test('summary omits unused preset treatments and keeps the labels actually enter
   assert.equal(result.extras.has('도수치료'), false);
   assert.equal(app.getDailySummary([]).extras.size, 0);
 });
+
+test('shockwave count includes kidney-note subcount only on shockwave rows', () => {
+  const rows = [
+    {extra:'충격파',specialNote:'신장2.5'}, {extra:'충격파',specialNote:'신장4.0'},
+    {extra:'충격파, 충격파',specialNote:'신장 3.0'}, {extra:'충격파'}, {extra:'충격파'}, {extra:'충격파'},
+    {extra:'도수치료',specialNote:'신장4.0'},
+  ];
+  const result=app.getDailySummary(rows);
+  assert.equal(result.extras.get('충격파'),6);
+  assert.equal(app.formatExtraCount(result,'충격파',6),'6(3)');
+  assert.equal(app.formatExtraCount(result,'도수치료',1),'1');
+});

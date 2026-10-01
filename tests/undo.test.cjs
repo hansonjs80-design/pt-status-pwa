@@ -83,3 +83,11 @@ test('undo and redo retain history search and its destination row', () => {
   assert.deepEqual(searches, [['테스트', 0], ['테스트', 0]]);
   assert.equal(app.getCurrentRows()[0].name, '테스트');
 });
+
+test('visit time manual changes and deletion survive saves and name re-entry', () => {
+  const {app}=createApp();const row=app.getCurrentRows()[0];row.name='가상환자';app.saveDataStore();
+  assert.match(row.visitTime,/\d{2}시 \d{2}분 \d{2}초/);
+  row.visitTime='10시 20분';app.saveDataStore();assert.equal(app.getVisitTime(row),'10시 20분');assert.equal(row._visitTimeEdited,true);
+  row.visitTime='';app.saveDataStore();row.name='';app.saveDataStore();row.name='가상환자';app.saveDataStore();assert.equal(row.visitTime,'');
+  app.dataStore[app.currentDate]=JSON.parse(JSON.stringify(app.getCurrentRows()));app.getCurrentRows();app.saveDataStore();assert.equal(app.getCurrentRows()[0].visitTime,'');
+});

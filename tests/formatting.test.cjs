@@ -74,3 +74,18 @@ test('clipboard jump uses leftmost column and its last populated row', () => {
   instance.historyApplyTarget={date:'2026-10-01',row:rows[2],rowIdx:2,colKey:'name'}; instance.scrollToHistoryTarget=()=>{};
   instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:2,colKey:'chartNo'});
 });
+
+test('compound patient entry splits chart and name and removes suffixes', () => {
+  for (const key of ['chartNo','name']) for (const [input,chartNo,name] of [
+    ['8364/최정원(3)','8364','최정원'], ['15575/유은정M(3)','15575','유은정'],
+    ['00123 / 가상환자F(12)','00123','가상환자'], ['123/가상환자','123','가상환자'],
+  ]) {
+    const row={memo:'유지'};assert.equal(app.applyCompoundPatientInput(row,key,input),true);
+    assert.deepEqual(row,{memo:'유지',chartNo,name});
+  }
+  const row={name:'유지'};
+  assert.equal(app.applyCompoundPatientInput(row,'part','123/다른이름(3)'),false);
+  assert.equal(app.applyCompoundPatientInput(row,'name','일반성함'),false);
+  assert.equal(app.applyCompoundPatientInput(row,'name','123/'),false);
+  assert.equal(row.name,'유지');
+});

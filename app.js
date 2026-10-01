@@ -198,15 +198,18 @@ class PTApp {
 
   saveDataStore(recordHistory = true) {
     this.visitNameState ||= new WeakMap();
+    this.visitTimeState ||= new WeakMap();
     for (const row of this.dataStore[this.currentDate] || []) {
+      if (recordHistory && this.visitTimeState.has(row) && this.visitTimeState.get(row) !== String(row.visitTime ?? "")) row._visitTimeEdited = true;
       const hasName = Boolean(String(row.name || "").trim());
-      if (recordHistory && hasName && this.visitNameState.get(row) === false && !row.visitTime) {
+      if (recordHistory && hasName && this.visitNameState.get(row) === false && !row.visitTime && !row._visitedAt && !row._visitTimeEdited) {
         const now = new Date(); row._visitedAt = now.toISOString();
         row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분 ${String(now.getSeconds()).padStart(2, "0")}초`;
         const cell = this.elTableBody?.querySelector(`[data-row="${(this.dataStore[this.currentDate] || []).indexOf(row)}"][data-col="visitTime"]`);
         if (cell) cell.textContent = row.visitTime;
       }
       this.visitNameState.set(row, hasName);
+      this.visitTimeState.set(row, String(row.visitTime ?? ""));
     }
     if (recordHistory && !this.isEditingCell()) this.captureHistory();
     this.updateHistoryButtons();
@@ -782,7 +785,11 @@ class PTApp {
       }
     }
     this.visitNameState ||= new WeakMap();
-    for (const row of this.dataStore[this.currentDate]) if (!this.visitNameState.has(row)) this.visitNameState.set(row, Boolean(String(row.name || "").trim()));
+    this.visitTimeState ||= new WeakMap();
+    for (const row of this.dataStore[this.currentDate]) {
+      if (!this.visitNameState.has(row)) this.visitNameState.set(row, Boolean(String(row.name || "").trim()));
+      if (!this.visitTimeState.has(row)) this.visitTimeState.set(row, String(row.visitTime ?? ""));
+    }
     return this.dataStore[this.currentDate];
   }
 
@@ -1200,6 +1207,11 @@ class PTApp {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    if (colKey === "visitTime" && this.elSearchInput.value.trim()) {
+      colKey = "specialNote";
+      cellElement = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="specialNote"]`);
+      if (!cellElement) return;
+    }
     this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
     this.historyApplyTarget = { date: this.currentDate, rowIdx, rows: this.getCurrentRows(), row: this.getCurrentRows()[rowIdx], colKey };
@@ -2057,6 +2069,13 @@ class PTApp {
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
+      const compound = this.applyCompoundPatientInput(rows[rowIdx], colKey, finalVal);
+      if (compound) {
+        for (const key of ["chartNo", "name"]) {
+          const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${key}"]`);
+          if (cell && cell !== cellElement) this.renderColoredText(cell, rows[rowIdx], key);
+        }
+      }
       // ★ 셀에 이미 새 input이 있으면(더블클릭으로 재편집 진입 등) 셀 내용 덮어쓰기 방지
       const existingInput = cellElement.querySelector("input");
       if (!existingInput || existingInput === input) {
@@ -2847,7 +2866,7 @@ class PTApp {
     const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
       .some(key => text(row[key])));
     const summary = { total: records.length, male: 0, female: 0, unknown: 0,
-      extras: new Map(),
+      extras: new Map(), extraSubcounts: new Map(),
       prescriptions: new Map() };
     for (const row of records) {
       const gender = text(row.gender).toUpperCase();
@@ -2861,14 +2880,22 @@ class PTApp {
         if (/^(x|-)$/i.test(token)) continue;
         extras.add(token.replace(/\s+/g, " "));
       }
-      for (const extra of extras) summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
+      for (const extra of extras) {
+        summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
+        if (extra.includes("충격파") && text(row.specialNote).includes("신장")) summary.extraSubcounts.set(extra, (summary.extraSubcounts.get(extra) || 0) + 1);
+      }
       const prescription = text(row.prescription).replace(/\s+/g, " ") || "미입력";
       summary.prescriptions.set(prescription, (summary.prescriptions.get(prescription) || 0) + 1);
     }
     return summary;
   }
 
-  renderSummaryList(container, entries, emptyMessage) {
+  formatExtraCount(summary, label, count) {
+    const subcount = summary.extraSubcounts?.get(label) || 0;
+    return subcount ? `${count}(${subcount})` : String(count);
+  }
+
+  renderSummaryList(container, entries, emptyMessage, summary = null) {
     container.replaceChildren();
     if (!entries.size) {
       const empty = document.createElement("li");
@@ -2885,7 +2912,7 @@ class PTApp {
       const value = document.createElement("span");
       value.className = "summary-item-value";
       const number = document.createElement("b");
-      number.textContent = count;
+      number.textContent = summary ? this.formatExtraCount(summary, label, count) : count;
       const unit = document.createElement("span");
       unit.textContent = "건";
       value.append(number, unit);
@@ -2900,7 +2927,7 @@ class PTApp {
     this.elStatMaleCount.textContent = summary.male;
     this.elStatFemaleCount.textContent = summary.female;
     this.elStatUnknownCount.textContent = summary.unknown;
-    this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음");
+    this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음", summary);
     this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");
   }
 
@@ -3050,6 +3077,7 @@ class PTApp {
 
   // 교차 날짜 임시 행 제거
   clearCrossDateRows() {
+    this.elSheetContainer.classList.remove("history-search-active");
     this.clearCrossDateSelection();
     this.crossDateResults = [];
     if (this.clipboardSelection?.kind === "history") this.clipboardSelection = null;
@@ -3096,6 +3124,7 @@ class PTApp {
 
     // 1) 교차 날짜 임시 행 제거
     this.clearCrossDateRows();
+    this.elSheetContainer.classList.add("history-search-active");
 
     // 2) 현재 날짜 행 필터링 (기존 검색과 동일)
     const currentRows = document.querySelectorAll(".excel-row");
@@ -3206,7 +3235,7 @@ class PTApp {
     const dividerTr = document.createElement("tr");
     dividerTr.className = "cross-date-divider";
     const dividerTd = document.createElement("td");
-    dividerTd.colSpan = 14;
+    dividerTd.colSpan = 13;
     dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
@@ -3247,7 +3276,7 @@ class PTApp {
     this.elPrintTotalCount.textContent = summary.total;
     this.elPrintMaleCount.textContent = summary.male;
     this.elPrintFemaleCount.textContent = summary.female;
-    document.getElementById("printExtras").textContent = [...summary.extras].map(([name, count]) => `${name}: ${count}건`).join(" · ") || "추가 사항 없음";
+    document.getElementById("printExtras").textContent = [...summary.extras].map(([name, count]) => `${name}: ${this.formatExtraCount(summary, name, count)}건`).join(" · ") || "추가 사항 없음";
 
     const now = new Date();
     this.elPrintGeneratedTime.textContent = now.toLocaleString("ko-KR");
@@ -3965,9 +3994,22 @@ class PTApp {
     row._richText[key] = { text, colors };
   }
 
+  applyCompoundPatientInput(row, key, value) {
+    if (!["chartNo", "name"].includes(key)) return false;
+    const match = String(value ?? "").trim().match(/^(\d+)\s*\/\s*(.+)$/u);
+    if (!match) return false;
+    const name = match[2].replace(/\s*\(\d+\)\s*$/, "").replace(/([가-힣])\s*[MF]\s*$/i, "$1").trim();
+    if (!name || !/^[\p{L} .'-]+$/u.test(name)) return false;
+    row.chartNo = match[1]; row.name = name;
+    for (const field of ["chartNo", "name"]) {
+      if (row._richText) delete row._richText[field];
+    }
+    return true;
+  }
+
   getVisitTime(row) {
     const value = String(row.visitTime ?? "");
-    if (/^\d{2}시 \d{2}분$/.test(value) && row._visitedAt) {
+    if (!row._visitTimeEdited && /^\d{2}시 \d{2}분$/.test(value) && row._visitedAt) {
       const timestamp = new Date(row._visitedAt);
       if (!Number.isNaN(timestamp.getTime())) return `${value} ${String(timestamp.getSeconds()).padStart(2, "0")}초`;
     }
@@ -4214,6 +4256,7 @@ class PTApp {
           }
         }
       });
+      rowVals.forEach((value, offset) => this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value));
     });
 
     this.saveDataStore();
