@@ -208,13 +208,13 @@ class PTApp {
         delete row._visitTimeEdited;
         if (row._richText) delete row._richText.visitTime;
         const cell = this.elTableBody?.querySelector(`[data-row="${this.dataStore[this.currentDate].indexOf(row)}"][data-col="visitTime"]`);
-        if (cell) cell.textContent = "";
+        if (cell) this.renderColoredText(cell, row, "visitTime");
       }
       if (recordHistory && hasName && this.visitNameState.get(row) === false && !row.visitTime && !row._visitedAt && !row._visitTimeEdited) {
         const now = new Date(); row._visitedAt = now.toISOString();
         row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분 ${String(now.getSeconds()).padStart(2, "0")}초`;
         const cell = this.elTableBody?.querySelector(`[data-row="${(this.dataStore[this.currentDate] || []).indexOf(row)}"][data-col="visitTime"]`);
-        if (cell) cell.textContent = row.visitTime;
+        if (cell) this.renderColoredText(cell, row, "visitTime");
       }
       this.visitNameState.set(row, hasName);
       this.visitTimeState.set(row, String(row.visitTime ?? ""));
@@ -1947,7 +1947,7 @@ class PTApp {
   activateNativeEditor(input) {
     if (!input.classList.contains("is-armed")) return;
     for (const child of [...input.parentElement.childNodes]) {
-      if (child !== input) child.remove();
+      if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
     }
     input.classList.remove("is-armed");
   }
@@ -1986,6 +1986,7 @@ class PTApp {
     }
 
     cellElement.appendChild(input);
+    if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
     // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
     const len = input.value.length;
@@ -2967,9 +2968,11 @@ class PTApp {
     const useSelection = selection && sourceIndex >= selection.minRow && sourceIndex <= selection.maxRow;
     const sources = useSelection ? this.crossDateResults.slice(selection.minRow, selection.maxRow + 1) : [source];
     const selectedKeys = useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys.filter(key => key !== "visitTime");
+    const appliedAt = new Date();
     for (let offset = 0; offset < sources.length; offset++) {
       while (!rows[rowIdx + offset]) rows.push(this.createDefaultEmptyRows(1)[0]);
       this.copyHistoryFields(rows[rowIdx + offset], sources[offset], selectedKeys);
+      this.setVisitTimeNow(rows[rowIdx + offset], appliedAt);
     }
     this.activeCell = null;
     this.clipboardSelection = null;
@@ -4016,6 +4019,37 @@ class PTApp {
     return true;
   }
 
+  setVisitTimeNow(row, now = new Date()) {
+    row._visitedAt = now.toISOString();
+    row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분 ${String(now.getSeconds()).padStart(2, "0")}초`;
+    row._visitTimeEdited = true;
+    if (row._richText) delete row._richText.visitTime;
+    this.visitNameState ||= new WeakMap();
+    this.visitNameState.set(row, Boolean(String(row.name || "").trim()));
+  }
+
+  appendVisitTimeRefresh(cell, row) {
+    if (!cell.hasAttribute("data-row") || cell.querySelector(".visit-time-refresh")) return;
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "visit-time-refresh";
+    button.textContent = "↻";
+    button.title = "방문시간을 현재 시간으로 갱신";
+    button.setAttribute("aria-label", "방문시간을 현재 시간으로 갱신");
+    button.addEventListener("mousedown", event => { event.preventDefault(); event.stopPropagation(); });
+    button.addEventListener("dblclick", event => event.stopPropagation());
+    button.addEventListener("click", event => {
+      event.stopPropagation();
+      document.activeElement?.blur();
+      const rowIdx = this.getCurrentRows().indexOf(row);
+      if (rowIdx < 0) return;
+      this.setVisitTimeNow(row);
+      this.renderColoredText(cell, row, "visitTime");
+      this.saveDataStore();
+      this.selectCell(rowIdx, "visitTime", cell, false);
+    });
+    cell.appendChild(button);
+  }
+
   getVisitTime(row) {
     const value = String(row.visitTime ?? "");
     if (!row._visitTimeEdited && /^\d{2}시 \d{2}분$/.test(value) && row._visitedAt) {
@@ -4029,7 +4063,11 @@ class PTApp {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
     const rich = row._richText?.[key];
     element.textContent = "";
-    if (rich?.text !== text || !Array.isArray(rich.colors)) { element.textContent = text; return; }
+    if (rich?.text !== text || !Array.isArray(rich.colors)) {
+      element.textContent = text;
+      if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
+      return;
+    }
     let start = 0;
     while (start < text.length) {
       const color = rich.colors[start];
@@ -4039,6 +4077,7 @@ class PTApp {
       if (color) span.style.color = color;
       element.append(span); start = end;
     }
+    if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
   }
 
   applyTextColor(color) {

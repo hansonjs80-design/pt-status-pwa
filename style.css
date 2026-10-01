@@ -1918,3 +1918,8 @@ body {
 .history-search-active [data-cross-col="visitTime"] { display: none; }
 
 .history-apply-cell { text-align: center; vertical-align: middle; padding: 2px; }
+
+.excel-cell.cell-visitTime { padding-right: 24px; }
+.visit-time-refresh { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); z-index: 4; width: 19px; height: 22px; border: 0; border-radius: 4px; padding: 0; background: transparent; color: #547364; font: 20px/22px Arial, sans-serif; cursor: pointer; }
+.visit-time-refresh:hover, .visit-time-refresh:focus-visible { background: #dceee3; color: #107c41; }
+.cell-visitTime .cell-input-element { padding-right: 25px; }

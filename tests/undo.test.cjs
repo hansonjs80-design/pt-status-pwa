@@ -102,3 +102,14 @@ test('clearing a name clears its visit time in the same undo transaction', () =>
   app.restoreEditHistory(true);assert.equal(app.getCurrentRows()[0].visitTime,'');
   app.getCurrentRows()[0].name='새환자';app.saveDataStore();assert.match(app.getCurrentRows()[0].visitTime,/\d{2}시 \d{2}분 \d{2}초/);
 });
+
+test('explicit visit refresh records seconds and supports undo without changing another row', () => {
+  const {app}=createApp(),rows=app.getCurrentRows();
+  rows[0].name='가상환자';app.saveDataStore();rows[0].visitTime='09시 01분 02초';app.saveDataStore();
+  rows[1].visitTime='08시 00분 00초';app.saveDataStore();
+  const now=new Date(2026,9,1,14,23,45);
+  app.setVisitTimeNow(rows[0],now);app.saveDataStore();
+  assert.equal(rows[0].visitTime,'14시 23분 45초');assert.equal(rows[0]._visitedAt,now.toISOString());
+  assert.equal(rows[1].visitTime,'08시 00분 00초');
+  app.restoreEditHistory();assert.equal(app.getCurrentRows()[0].visitTime,'09시 01분 02초');
+});
