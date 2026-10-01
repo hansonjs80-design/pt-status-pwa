@@ -1923,3 +1923,18 @@ body {
 .visit-time-refresh { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); z-index: 4; width: 19px; height: 22px; border: 0; border-radius: 4px; padding: 0; background: transparent; color: #547364; font: 20px/22px Arial, sans-serif; cursor: pointer; }
 .visit-time-refresh:hover, .visit-time-refresh:focus-visible { background: #dceee3; color: #107c41; }
 .cell-visitTime .cell-input-element { padding-right: 25px; }
+
+/* Four presets per row; keep every configured preset available. */
+.quick-chips { display: grid; grid-template-columns: repeat(4, max-content); gap: 6px; }
+.quick-chips .chip-sep { display: none; }
+.quick-chips .chip { border-width: 1.5px; font-size: 12px; font-weight: 600; padding: 4px 9px; }
+.excel-sidebar > .search-group { width: 100%; margin: 0; flex: none; }
+.excel-sidebar .search-box { width: 100%; min-width: 0; box-sizing: border-box; }
+.font-size-controls #btnFontSize { min-width: 36px; width: 36px; padding: 2px; font-weight: 600; }
+.visit-time-refresh { opacity: 0; pointer-events: none; }
+.cell-visitTime:hover .visit-time-refresh,
+.cell-visitTime.cell-focused .visit-time-refresh,
+.cell-visitTime:focus-within .visit-time-refresh { opacity: 1; pointer-events: auto; }
+@media (max-width: 640px) { .quick-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; } .quick-chips .chip { white-space: normal; } }
+
+.excel-cell.is-discrete-selected { background-color: #d2eadb !important; box-shadow: inset 0 0 0 2px #107c41; }

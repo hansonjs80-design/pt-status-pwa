@@ -65,7 +65,6 @@
             <button type="button" id="btnFontSize" title="글자 크기 선택" aria-label="글자 크기 선택" aria-haspopup="dialog">14</button>
             <button type="button" id="btnFontLarger" aria-label="글자 크기 늘리기">+</button>
           </div>
-          <span class="tool-group-label">빠른 입력 도구:</span>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
           <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
           <div class="quick-chips" id="quickChipsContainer">
@@ -73,12 +72,8 @@
           </div>
         </div>
 
-        <div class="tool-divider"></div>
 
-        <div class="tool-group search-group">
-          <input type="text" id="searchInput" placeholder="환자명/차트/부위 검색..." class="search-box">
-          <button type="button" id="btnClearSearch" class="btn-clear-search" style="display:none;">✕</button>
-        </div>
+
       </div>
     </nav>
 
@@ -141,6 +136,10 @@
 
       <!-- Right Summary Panel (사진의 L, M 열 역할) -->
       <aside class="excel-sidebar" id="summarySidebar">
+                <div class="tool-group search-group">
+          <input type="text" id="searchInput" placeholder="환자명/차트/부위 검색..." class="search-box">
+          <button type="button" id="btnClearSearch" class="btn-clear-search" style="display:none;">✕</button>
+        </div>
         <div class="sidebar-header">
           <h3>📊 일일 현황 요약</h3>
           <span class="target-date-tag" id="sidebarDateTag">2026.09.29</span>

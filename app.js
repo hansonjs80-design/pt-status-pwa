@@ -131,7 +131,7 @@ class PTApp {
     this.supabaseSyncTimer = null;
     this.pendingSyncDates = new Set();
     this.syncTimers = new Map();
-    this.syncBaselines = new Map(Object.entries(JSON.parse(JSON.stringify(this.dataStore))));
+    this.syncBaselines = new Map();
     try { for (const [date, rows] of Object.entries(JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"))) this.syncBaselines.set(date, rows); } catch (_) {}
     this.activePushes = new Map();
     this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
@@ -328,6 +328,12 @@ class PTApp {
   }
 
   debounceSaveDataStore(delay = 350) {
+    // Protect edits immediately; a pending cloud response must not replace this date.
+    this.pendingSyncDates.add(this.currentDate);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+      localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+    } catch (_) { this.showSaveIndicator("로컬 저장 공간을 확인해 주세요", true); }
     this.updateHistoryButtons();
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
@@ -905,6 +911,7 @@ class PTApp {
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const values = new Set();
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (!this.isSelectedCoordinate(r, c)) continue;
       const cell = this.elTableBody.querySelector(`[data-row="${r}"][data-col="${keys[c]}"]`);
       if (cell) values.add(getComputedStyle(cell)[property]);
     }
@@ -928,6 +935,7 @@ class PTApp {
     const columns = this.selectedColumnRange && { ...this.selectedColumnRange };
     const rows = this.getCurrentRows();
     for (let r = range.minRow; r <= range.maxRow; r++) for (let col = range.minCol; col <= range.maxCol; col++) {
+      if (!this.isSelectedCoordinate(r, col)) continue;
       const row = rows[r]; row._textStyles ||= {}; row._textStyles[keys[col]] ||= {};
       if (value === null) delete row._textStyles[keys[col]][property];
       else row._textStyles[keys[col]][property] = value;
@@ -1122,6 +1130,7 @@ class PTApp {
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return; // Only Left Click
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
+          if (e.ctrlKey || e.metaKey) { e.preventDefault(); this.toggleCellSelection(rowIdx, colIdx); return; }
           // If already editing inside input, don't interrupt text cursor
           if (e.target.tagName === "INPUT") return;
           e.preventDefault();
@@ -1152,6 +1161,7 @@ class PTApp {
 
         // Cell Click handler (Clean cell selection)
         td.addEventListener("click", (e) => {
+          if (e.ctrlKey || e.metaKey) return;
           if (e.target.closest("input, textarea")) return;
           if (e.shiftKey && this.activeCell) return;
           if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow || this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
@@ -1204,6 +1214,7 @@ class PTApp {
         this.updateActiveHeaders(this.activeCell.rowIdx, this.activeCell.colKey);
       }
     }
+    this.paintCellSet();
     this.renderClipboardSelection();
     if (this.activeCell && this.activeCell.colKey !== "gender") {
       const { rowIdx, colKey } = this.activeCell;
@@ -2298,7 +2309,52 @@ class PTApp {
     }
   }
 
+  toggleCellSelection(row, col, kind = "current") {
+    document.activeElement?.blur();
+    let cells = new Set(this.selectedCellKind === kind ? this.selectedCellSet : []);
+    if (!this.selectedCellSet || this.selectedCellKind !== kind) {
+      const range = kind === "history" ? this.crossDateSelection : this.selectedRange;
+      if (range) for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) cells.add(`${r}:${c}`);
+      else if (kind === "current" && this.activeCell) {
+        const keys = ["no","gender","chartNo","name","part","prescription","extra","writer","memo","specialNote","visitTime"];
+        cells.add(`${this.activeCell.rowIdx}:${keys.indexOf(this.activeCell.colKey)}`);
+      }
+    }
+    const id = `${row}:${col}`;
+    if (cells.has(id)) cells.delete(id); else cells.add(id);
+    this.clearHeaderSelections();
+    this.activeCell = null; this.selectedRowIdx = null; this.selectedColKey = null;
+    this.isSelectingRange = false; this.isSelectingCrossDate = false;
+    this.elTableBody.querySelectorAll(".cell-focused, .active-row").forEach(el => el.classList.remove("cell-focused", "active-row"));
+    if (cells.size) {
+      this.selectedCellSet = cells; this.selectedCellKind = kind;
+      const positions = [...cells].map(id => id.split(":").map(Number));
+      const range = { minRow: Math.min(...positions.map(p=>p[0])), maxRow: Math.max(...positions.map(p=>p[0])), minCol: Math.min(...positions.map(p=>p[1])), maxCol: Math.max(...positions.map(p=>p[1])) };
+      if (kind === "history") this.crossDateSelection = { ...range, startRow: range.minRow, startCol: range.minCol, endRow: row, endCol: col };
+      else this.selectedRange = range;
+      this.paintCellSet();
+    }
+    this.elSelectedCellCoords.textContent = `${cells.size}개 셀 선택`;
+    this.elSheetContainer.focus({ preventScroll: true });
+  }
+
+  isSelectedCoordinate(row, col) {
+    return !this.selectedCellSet || this.selectedCellSet.has(`${row}:${col}`);
+  }
+
+  paintCellSet() {
+    if (!this.selectedCellSet) return;
+    const history = this.selectedCellKind === "history";
+    this.elTableBody.querySelectorAll(history ? ".cross-date-cell" : ".excel-cell[data-col-idx]").forEach(cell => {
+      const row = Number(history ? cell.dataset.crossIdx : cell.dataset.row);
+      const col = Number(history ? cell.dataset.crossColIdx : cell.dataset.colIdx);
+      cell.classList.toggle("is-discrete-selected", this.selectedCellSet.has(`${row}:${col}`));
+    });
+  }
+
   clearHeaderSelections() {
+    this.selectedCellSet = null; this.selectedCellKind = null;
+    this.elTableBody?.querySelectorAll(".is-discrete-selected").forEach(cell => cell.classList.remove("is-discrete-selected"));
     this.elSheetContainer.classList.remove("has-cell-range");
     this.clearCrossDateSelection();
     this.cancelFillDrag();
@@ -2511,17 +2567,14 @@ class PTApp {
   }
 
   selectAllCells() {
-    this.clearHeaderSelections();
+    document.activeElement?.blur();
+    this.selectRowRange(0, this.getCurrentRows().length - 1);
     const cornerHeader = document.getElementById("cornerHeader");
-    if (cornerHeader) cornerHeader.classList.add("selected");
-
-    document.querySelectorAll(".excel-cell").forEach((cell) => {
-      cell.classList.add("all-selected");
-    });
-
+    cornerHeader?.classList.add("selected");
     this.elCellAddress.textContent = "1:전체";
     this.elSelectedCellCoords.textContent = "전체 시트 선택";
     this.elFormulaInput.value = "";
+    this.elSheetContainer.focus({ preventScroll: true });
   }
 
   sortByColumn(colKey, requestedDirection) {
@@ -2967,24 +3020,26 @@ class PTApp {
     const sourceIndex = this.crossDateResults?.indexOf(source);
     const useSelection = selection && sourceIndex >= selection.minRow && sourceIndex <= selection.maxRow;
     const sources = useSelection ? this.crossDateResults.slice(selection.minRow, selection.maxRow + 1) : [source];
-    const selectedKeys = useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys.filter(key => key !== "visitTime");
+    const selectedKeys = (useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys).filter(key => key !== "visitTime");
     const appliedAt = new Date();
     for (let offset = 0; offset < sources.length; offset++) {
+      const fields = useSelection && this.selectedCellSet ? selectedKeys.filter(key => this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))) : selectedKeys;
+      if (!fields.length) continue;
       while (!rows[rowIdx + offset]) rows.push(this.createDefaultEmptyRows(1)[0]);
-      this.copyHistoryFields(rows[rowIdx + offset], sources[offset], selectedKeys);
+      this.copyHistoryFields(rows[rowIdx + offset], sources[offset], fields);
       this.setVisitTimeNow(rows[rowIdx + offset], appliedAt);
     }
     this.activeCell = null;
     this.clipboardSelection = null;
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
+    this.saveDataStore();
     this.renderTable();
     if (searchQuery) this.searchAllDates(searchQuery, rowIdx);
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${target.colKey}"]`);
     this.selectCell(rowIdx, target.colKey, cell);
-    this.saveDataStore();
     this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
-    this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용했습니다`);
+    this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
 
   clearRowDropMarker() {
@@ -3013,6 +3068,7 @@ class PTApp {
   }
 
   clearCrossDateSelection() {
+    if (this.selectedCellKind === "history") { this.selectedCellSet = null; this.selectedCellKind = null; }
     this.crossDateSelection = null;
     this.isSelectingCrossDate = false;
     if (this.elFormulaInput) this.elFormulaInput.readOnly = false;
@@ -3215,6 +3271,7 @@ class PTApp {
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           e.preventDefault();
+          if (e.ctrlKey || e.metaKey) { this.toggleCellSelection(idx, colIdx, "history"); return; }
           this.selectCrossDateCell(idx, colIdx, e.shiftKey);
           this.isSelectingCrossDate = true;
         });
@@ -3639,11 +3696,15 @@ class PTApp {
       for (let attempt = 0; attempt < 3; attempt++) {
         const { data, error: readError } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", dateStr).maybeSingle();
         if (readError) throw readError;
-        const rows = this.mergeCloudRows(base, local, data?.rows_data || []);
+        // A date absent from the server has no merge baseline. Recreate it from
+        // the full local snapshot, including unchanged records from older dates.
+        const rows = data ? this.mergeCloudRows(base, local, data.rows_data || []) : local;
         const record = { date: dateStr, rows_data: rows, total_count: this.getDailySummary(rows).total, updated_at: new Date(Math.max(Date.now(), (Date.parse(data?.updated_at) || 0) + 1)).toISOString() };
-        const result = data
-          ? await client.from("pt_daily_records").update(record).eq("date", dateStr).eq("updated_at", data.updated_at).select("date")
-          : await client.from("pt_daily_records").insert(record).select("date");
+        let result;
+        if (data) {
+          const update = client.from("pt_daily_records").update(record).eq("date", dateStr);
+          result = await (data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date");
+        } else result = await client.from("pt_daily_records").insert(record).select("date");
         if (result.error?.code === "23505") continue;
         if (result.error) throw result.error;
         if (!result.data?.length) continue;
@@ -3706,6 +3767,13 @@ class PTApp {
       if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
           localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
           (dateStr === this.currentDate && this.isEditingCell())) return;
+      if (!this.syncBaselines.has(dateStr) && this.getDailySummary(this.dataStore[dateStr] || []).total &&
+          JSON.stringify(data?.rows_data || []) !== localAtRequest) {
+        this.pendingSyncDates.add(dateStr);
+        localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+        await this.pushToCloud(dateStr, showNotice);
+        return;
+      }
       if (data && Array.isArray(data.rows_data)) {
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
         localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
@@ -3728,6 +3796,12 @@ class PTApp {
         if (showNotice) alert(`${dateStr} 클라우드 최신 데이터를 성공적으로 불러왔습니다!`);
       } else {
         this.syncBaselines.set(dateStr, []);
+        if (this.getDailySummary(this.dataStore[dateStr] || []).total) {
+          this.pendingSyncDates.add(dateStr);
+          localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+          await this.pushToCloud(dateStr, showNotice);
+          return;
+        }
         if (showNotice) alert(`${dateStr} 일자의 클라우드 데이터가 아직 없습니다.`);
       }
     } catch (err) {
@@ -4099,6 +4173,7 @@ class PTApp {
       : this.activeCell ? { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: keys.indexOf(this.activeCell.colKey), maxCol: keys.indexOf(this.activeCell.colKey) } : null);
     if (!range) return;
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (!this.isSelectedCoordinate(r, c)) continue;
       if (rows[r]._richText) delete rows[r]._richText[keys[c]];
       rows[r]._textColors ||= {};
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
@@ -4162,7 +4237,9 @@ class PTApp {
       const row = Number(history ? cell.dataset.crossIdx : cell.dataset.row);
       const col = Number(history ? cell.dataset.crossColIdx : cell.dataset.colIdx);
       if (row < minRow || row > maxRow || col < minCol || col > maxCol) return;
+      if (selection.cells && !selection.cells.includes(`${row}:${col}`)) return;
       cell.classList.add("clipboard-source");
+      if (selection.cells) cell.classList.add("clipboard-top", "clipboard-bottom", "clipboard-left", "clipboard-right");
       if (row === minRow) cell.classList.add("clipboard-top");
       if (row === maxRow) cell.classList.add("clipboard-bottom");
       if (col === minCol) cell.classList.add("clipboard-left");
@@ -4181,7 +4258,7 @@ class PTApp {
       copyRange = { ...this.crossDateSelection, kind: "history" };
       const { minRow, maxRow, minCol, maxCol } = copyRange;
       tsvData = this.crossDateResults.slice(minRow, maxRow + 1)
-        .map(row => colKeys.slice(minCol, maxCol + 1).map(key => row[key] ?? "").join("\t")).join("\n");
+        .map((row, r) => colKeys.slice(minCol, maxCol + 1).map((key, c) => this.isSelectedCoordinate(minRow+r, minCol+c) ? row[key] ?? "" : "").join("\t")).join("\n");
     } else if (this.selectedRange) {
       // Range copy (TSV grid format)
       const { minRow, maxRow, minCol, maxCol } = this.selectedRange;
@@ -4191,7 +4268,7 @@ class PTApp {
         const rowVals = [];
         for (let c = minCol; c <= maxCol; c++) {
           const k = colKeys[c];
-          rowVals.push(rows[r] ? (rows[r][k] ?? "") : "");
+          rowVals.push(this.isSelectedCoordinate(r, c) && rows[r] ? (rows[r][k] ?? "") : "");
         }
         lines.push(rowVals.join("\t"));
       }
@@ -4213,7 +4290,7 @@ class PTApp {
 
     if (copyRange) {
       this.clipboardBuffer = tsvData;
-      this.clipboardSelection = { ...copyRange, date: this.currentDate };
+      this.clipboardSelection = { ...copyRange, date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
@@ -4233,6 +4310,7 @@ class PTApp {
     const rows = this.getCurrentRows();
     this.pendingCut = { date: this.currentDate, text: this.clipboardBuffer, cells: [] };
     for (let r = minRow; r <= maxRow; r++) for (let c = minCol; c <= maxCol; c++) {
+      if (!this.isSelectedCoordinate(r, c)) continue;
       this.pendingCut.cells.push({ row: rows[r], key: keys[c], value: rows[r]?.[keys[c]] ?? "" });
     }
     this.showSaveIndicator("잘라내기 선택됨 · 붙여넣으면 이동합니다");
@@ -4259,6 +4337,7 @@ class PTApp {
     const rows = this.getCurrentRows();
 
     const grid = this.parseClipboardGrid(text);
+    const sourceSelection = text === this.clipboardBuffer ? this.clipboardSelection : null;
 
     // Determine start coordinate
     let startRow = 0;
@@ -4294,6 +4373,7 @@ class PTApp {
         this.addNewRow(false);
       }
       rowVals.forEach((val, cOffset) => {
+        if (sourceSelection?.cells && !sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+cOffset}`)) return;
         const c = startCol + cOffset;
         if (c < colKeys.length) {
           const k = colKeys[c];
@@ -4304,7 +4384,9 @@ class PTApp {
           }
         }
       });
-      rowVals.forEach((value, offset) => this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value));
+      rowVals.forEach((value, offset) => {
+        if (!sourceSelection?.cells || sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+offset}`)) this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value);
+      });
     });
 
     this.saveDataStore();
@@ -4323,6 +4405,7 @@ class PTApp {
       for (let r = minRow; r <= maxRow; r++) {
         if (rows[r]) {
           for (let c = minCol; c <= maxCol; c++) {
+            if (!this.isSelectedCoordinate(r, c)) continue;
             const k = colKeys[c];
             if (k) {
               rows[r][k] = "";

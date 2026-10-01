@@ -15,7 +15,7 @@ function createApp(db = new Map()) {
   app.isEditingCell = () => false;
   app.supabaseClient = { from() {
     let action = 'read', record, conditions = [];
-    const query = { select() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
+    const query = { select() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, is(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
       return Promise.resolve().then(() => {
         if (action === 'read') return { data: clone(db.get(conditions.find(([k]) => k === 'date')[1]) || null) };
         const old = db.get(record.date);
@@ -56,4 +56,23 @@ test('preset edits and deletions propagate to another computer', async () => {
   a.app.presetsDirty=true; await a.app.pushSharedPresets(); await b.app.pullSharedPresets();
   assert.deepEqual(clone(vm.runInContext('COLUMN_PRESETS.extra',b.context)), []);
   assert.equal(a.app.presetsDirty,false);
+});
+
+
+test('older dates missing on the server retain all local rows on upload and another device receives them', async () => {
+  for (const date of ['2026-03-05','2026-06-07','2026-06-08']) {
+    const db=new Map(),a=createApp(db).app,b=createApp(db).app;
+    a.dataStore[date]=[{name:'보존1'},{name:'보존2'}];a.syncBaselines.set(date,clone(a.dataStore[date]));a.pendingSyncDates.add(date);
+    await a.pushToCloud(date);assert.equal(a.dataStore[date][0].name,'보존1');assert.equal(db.get(date).rows_data[1].name,'보존2');
+    await b.pullFromCloud(date);assert.equal(b.dataStore[date][0].name,'보존1');
+  }
+});
+test('legacy local records without a confirmed baseline survive an empty cloud result', async () => {
+  const {app}=createApp();const date='2026-03-05';app.dataStore[date]=[{name:'미전송기록'}];
+  await app.pullFromCloud(date);assert.equal(app.dataStore[date][0].name,'미전송기록');assert.equal(app.pendingSyncDates.has(date),false);
+});
+test('older cloud rows with a null timestamp can be updated',async()=>{
+  const date='2026-03-05',db=new Map([[date,{date,rows_data:[{name:'이전'}],updated_at:null}]]),{app}=createApp(db);
+  app.dataStore[date]=[{name:'변경'}];app.syncBaselines.set(date,[{name:'이전'}]);app.pendingSyncDates.add(date);await app.pushToCloud(date);
+  assert.equal(db.get(date).rows_data[0].name,'변경');assert.equal(app.pendingSyncDates.has(date),false);
 });
