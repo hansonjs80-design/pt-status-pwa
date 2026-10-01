@@ -20,7 +20,7 @@ function createApp() {
   app.getCurrentRows();
   app.getEditHistory();
   for (const method of ['clearHeaderSelections', 'closeAutocompleteMenu', 'closeGenderDropdown', 'renderTable', 'showSaveIndicator', 'updateSidebarStats', 'scheduleSupabaseSync']) app[method] = () => {};
-  for (const element of ['elSearchInput', 'elFormulaInput', 'elCellAddress', 'elSelectedCellCoords']) app[element] = {};
+  for (const element of ['elSearchInput', 'elFormulaInput', 'elCellAddress', 'elSelectedCellCoords']) app[element] = { value: "" };
   app.elBtnClearSearch = { style: {} };
   app.elSheetContainer = { focus() {} };
   return { app, storage };
@@ -66,4 +66,20 @@ test('undo history is bounded and captures a pending edit before undo', () => {
   assert.equal(app.getCurrentRows()[0].memo, '59');
   app.restoreEditHistory(true);
   assert.equal(app.getCurrentRows()[0].memo, '미저장 입력');
+});
+
+
+test('undo and redo retain history search and its destination row', () => {
+  const { app } = createApp();
+  app.getCurrentRows()[0].name = '테스트'; app.saveDataStore();
+  app.elSearchInput.value = '테스트';
+  app.historyApplyTarget = { rowIdx: 0 };
+  const searches = [];
+  app.searchAllDates = (query, rowIdx) => searches.push([query, rowIdx]);
+  app.restoreEditHistory();
+  assert.equal(app.elSearchInput.value, '테스트');
+  assert.equal(app.elBtnClearSearch.style.display, 'block');
+  app.restoreEditHistory(true);
+  assert.deepEqual(searches, [['테스트', 0], ['테스트', 0]]);
+  assert.equal(app.getCurrentRows()[0].name, '테스트');
 });

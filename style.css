@@ -1881,8 +1881,35 @@ body {
 .excel-table .col-del .col-resizer { right: 2px; width: 4px; }
 .excel-table .cell-spacer { border-right: 1px solid var(--excel-grid-line); border-bottom: 1px solid var(--excel-grid-line); }
 
-/* Compact labels keep the three formatting controls identifiable. */
-.format-button { flex-direction: column; width: 40px; height: 48px; padding: 3px 4px; gap: 2px; flex-shrink: 0; }
-.format-button .format-icon { display: inline-block; height: 27px; line-height: 27px; }
-.font-color-button .format-icon { transform: scaleY(.9); }
-.format-button .format-label { font: 500 10px/12px Arial, sans-serif; white-space: nowrap; }
+.font-color-button .format-icon { display: inline-block; transform: scaleY(.9); }
+.font-size-controls { display: inline-flex; align-items: center; gap: 4px; }
+.font-size-controls button { border: 0; border-radius: 6px; height: 32px; min-width: 28px; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
+.font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }
+.font-size-controls button:hover { background: #e2e7eb; }
+.excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #2563eb; }
+.excel-table .cell-writer { color: #000; }
+
+.print-table { width: 100%; table-layout: fixed; }
+.print-table th, .print-table td { padding: 3px 4px; text-align: center !important; vertical-align: middle; font: 600 10px/1.35 Arial, sans-serif; overflow-wrap: anywhere; white-space: normal; }
+.print-table tr { break-inside: avoid; }
+.print-table thead { display: table-header-group; }
+.print-table .print-lunch-row td { border-top: 1.5px dashed #d93025; }
+.print-summary-bar { flex-wrap: wrap; gap: 6px; }
+@media print { @page { size: A4 landscape; margin: 8mm; } .preview-printable-area { padding: 0 !important; } }
+
+.device-settings-footer { margin-top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 16px; }
+.device-settings-footer small { color: #66796d; font-size: 11px; overflow-wrap: anywhere; }
+.device-settings-footer button, .device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
+.device-settings-dialog { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; margin: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; color: #263d30; box-shadow: 0 16px 70px #0003; }
+.device-settings-dialog::backdrop { background: #13251d66; }
+.device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; }
+.device-settings-dialog h2 { font-size: 20px; }
+.device-settings-dialog nav { display: flex; gap: 6px; margin: 18px 0; border-bottom: 1px solid #e1e9e4; padding-bottom: 10px; }
+.device-settings-dialog nav .active { background: #107c41; color: #fff; }
+.device-settings-dialog section { display: flex; flex-wrap: wrap; gap: 12px; }
+.device-settings-dialog [hidden] { display: none; }
+.device-settings-dialog p { width: 100%; font-size: 13px; line-height: 1.7; margin: 0; color: #5e7165; }
+.device-settings-dialog label { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 14px; }
+.device-settings-dialog input:not([type=checkbox]) { max-width: 140px; border: 1px solid #cad8cf; padding: 7px; border-radius: 6px; }
+.device-settings-dialog footer { margin-top: 20px; border-top: 1px solid #e1e9e4; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+.device-settings-dialog a { color: #176e40; font-size: 12px; }

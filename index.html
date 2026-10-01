@@ -58,9 +58,13 @@
           <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
         </div>
           <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
-          <button type="button" id="btnFontColor" class="history-button format-button font-color-button" title="글자색" aria-label="글자색"><span class="format-icon" aria-hidden="true">A</span><span class="format-label" aria-hidden="true">글자색</span></button>
-          <button type="button" id="btnFontSize" class="history-button format-button font-size-button" title="글자 크기" aria-label="글자 크기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">A<small>a</small></span><span class="format-label" aria-hidden="true">크기</span></button>
-          <button type="button" id="btnFontWeight" class="history-button format-button font-weight-button" title="글자 굵기" aria-label="글자 굵기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">B</span><span class="format-label" aria-hidden="true">굵기</span></button>
+          <button type="button" id="btnFontColor" class="history-button font-color-button" title="글자색" aria-label="글자색"><span class="format-icon" aria-hidden="true">A</span></button>
+          <button type="button" id="btnFontWeight" class="history-button font-weight-button" title="글자 굵기" aria-label="글자 굵기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">B</span></button>
+          <div class="font-size-controls" role="group" aria-label="글자 크기">
+            <button type="button" id="btnFontSmaller" aria-label="글자 크기 줄이기">−</button>
+            <button type="button" id="btnFontSize" title="글자 크기 선택" aria-label="글자 크기 선택" aria-haspopup="dialog">14</button>
+            <button type="button" id="btnFontLarger" aria-label="글자 크기 늘리기">+</button>
+          </div>
           <span class="tool-group-label">빠른 입력 도구:</span>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
           <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
@@ -200,25 +204,13 @@
             <h1>물 리 치 료 실 &nbsp; 업 무 &nbsp; 일 지</h1>
             <p class="doc-meta">일자 : <span id="printDateFull">2026년 09월 29일 (화요일)</span></p>
           </div>
-          <table class="approval-table">
-            <tr>
-              <th rowspan="2">결<br>재</th>
-              <th>담 당</th>
-              <th>실 장</th>
-              <th>원 장</th>
-            </tr>
-            <tr>
-              <td class="sign-box"></td>
-              <td class="sign-box"></td>
-              <td class="sign-box"></td>
-            </tr>
-          </table>
+
         </div>
 
         <!-- Summary Mini Bar -->
         <div class="print-summary-bar">
           <div>총 환자 수: <strong id="printTotalCount">0</strong>명 (남: <span id="printMaleCount">0</span>, 여: <span id="printFemaleCount">0</span>)</div>
-          <div>충격파: <strong id="printShockwave">0</strong>건 | 이온: <strong id="printIon">0</strong>건 | 윈백: <strong id="printWinback">0</strong>건</div>
+          <div id="printExtras"></div>
         </div>
 
         <!-- Print Grid Table -->
@@ -235,6 +227,7 @@
               <th style="width: 45px;">작성</th>
               <th style="width: 65px;">메모</th>
               <th style="width: 140px;">특이 사항</th>
+              <th style="width: 90px;">방문시간</th>
             </tr>
           </thead>
           <tbody id="printTableBody">
@@ -479,5 +472,6 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
   </div>
 
   <script src="app.js"></script>
+  <script src="local-tools.js"></script>
 </body>
 </html>

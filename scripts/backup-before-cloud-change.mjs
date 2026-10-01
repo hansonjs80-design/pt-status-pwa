@@ -1,0 +1,16 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, statSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
+process.umask(0o077);
+if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL 환경 변수가 필요합니다. 연결 문자열을 로그에 출력하지 마세요.');
+const directory=join(homedir(),'Downloads','물리치료현황','개발전백업');mkdirSync(directory,{recursive:true,mode:0o700});
+const file=join(directory,`supabase-${new Date().toISOString().replace(/[:.]/g,'-')}.dump`);
+const dump=spawnSync('pg_dump',['--format=custom','--file',file],{env:{...process.env,PGDATABASE:process.env.DATABASE_URL},encoding:'utf8'});
+if(dump.error||dump.status!==0)throw new Error('pg_dump 실패: PostgreSQL 도구 설치, 접속 및 전체 읽기 권한을 확인하세요. 실제 변경을 중단합니다.');
+const verify=spawnSync('pg_restore',['--list',file],{encoding:'utf8'});
+if(verify.status!==0||!verify.stdout.includes('TABLE')||statSync(file).size===0)throw new Error('백업 검증 실패. 실제 변경을 중단합니다.');
+const manifest={createdAt:new Date().toISOString(),file,bytes:statSync(file).size,sha256:createHash('sha256').update(readFileSync(file)).digest('hex'),verified:'pg_restore --list',scope:'PostgreSQL dump; excludes Storage binary files and cluster globals'};
+writeFileSync(file+'.manifest.json',JSON.stringify(manifest,null,2),{mode:0o600});
+console.log(JSON.stringify(manifest,null,2));

@@ -267,6 +267,8 @@ class PTApp {
     const to = redo ? history.undo : history.redo;
     to.push(history.current);
     history.current = from.pop();
+    const searchQuery = this.elSearchInput.value.trim();
+    const searchTarget = this.historyApplyTarget && { ...this.historyApplyTarget };
     const selected = this.activeCell ? { ...this.activeCell } : null;
     this.clearHeaderSelections();
     this.closeAutocompleteMenu();
@@ -280,8 +282,8 @@ class PTApp {
     this.pendingCut = null;
     this.sortState = { colKey: null, direction: "original" };
     document.querySelectorAll?.(".sort-indicator").forEach(el => { el.textContent = ""; });
-    this.elSearchInput.value = "";
-    this.elBtnClearSearch.style.display = "none";
+    this.elSearchInput.value = searchQuery;
+    this.elBtnClearSearch.style.display = searchQuery ? "block" : "none";
     this.renderTable();
     if (selected) {
       const rowIdx = Math.min(selected.rowIdx, this.getCurrentRows().length - 1);
@@ -292,6 +294,10 @@ class PTApp {
       this.elCellAddress.textContent = "";
       this.elSelectedCellCoords.textContent = "";
       this.elSheetContainer.focus({ preventScroll: true });
+    }
+    if (searchQuery) {
+      const target = Math.min(searchTarget?.rowIdx ?? selected?.rowIdx ?? 0, this.getCurrentRows().length - 1);
+      this.searchAllDates(searchQuery, Math.max(0, target));
     }
     this.saveDataStore(false);
     this.showSaveIndicator(redo ? "다시 실행됨" : "되돌림 완료");
@@ -467,6 +473,22 @@ class PTApp {
     this.elBtnPrevDay.addEventListener("click", () => this.shiftDay(-1));
     this.elBtnNextDay.addEventListener("click", () => this.shiftDay(1));
     this.elBtnGoToday.addEventListener("click", () => this.setDate(this.getTodayString(), true));
+
+    const updateFontSize = () => {
+      const status = this.getFormattingStatus("fontSize");
+      document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
+    };
+    for (const [id, delta] of [["btnFontSmaller", -1], ["btnFontLarger", 1]]) {
+      const button = document.getElementById(id);
+      button.addEventListener("mousedown", e => e.preventDefault());
+      button.addEventListener("click", () => {
+        const value = parseFloat(this.getFormattingStatus("fontSize").value) || 14;
+        this.applyColumnTypography("fontSize", Math.max(8, Math.min(72, value + delta)));
+        updateFontSize();
+      });
+    }
+    this.elSheetContainer.addEventListener("mouseup", updateFontSize);
+    this.elSheetContainer.addEventListener("keyup", updateFontSize);
 
     // Rows management
     if (this.elBtnAddRow) {
@@ -3204,51 +3226,28 @@ class PTApp {
     this.elPreviewModalDate.textContent = dateTitle;
     this.elPrintDateFull.textContent = `${dateTitle} (${dayLabel})`;
 
-    let maleCount = 0;
-    let femaleCount = 0;
-    let shockwave = 0;
-    let ion = 0;
-    let winback = 0;
-
-    this.elPrintTableBody.innerHTML = "";
-
-    if (rows.length === 0) {
-      const emptyTr = document.createElement("tr");
-      emptyTr.innerHTML = `<td colspan="11" style="text-align:center; padding: 20px; color: #888;">해당 날짜에 등록된 물리치료 환자 데이터가 없습니다.</td>`;
-      this.elPrintTableBody.appendChild(emptyTr);
-    } else {
-      rows.forEach((r, idx) => {
-        const g = (r.gender || "").toUpperCase();
-        if (g === "M") maleCount++;
-        if (g === "F") femaleCount++;
-        if ((r.extra || "").includes("충격파")) shockwave++;
-        if ((r.extra || "").includes("이온")) ion++;
-        if ((r.extra || "").includes("윈백")) winback++;
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td style="text-align:center;">${r.no || idx + 1}</td>
-          <td style="text-align:center; font-weight:bold;">${r.gender || ""}</td>
-          <td style="text-align:right; font-family:monospace;">${r.chartNo || ""}</td>
-          <td style="text-align:center; font-weight:bold;">${r.name || ""}</td>
-          <td>${r.part || ""}</td>
-          <td>${r.prescription || ""}</td>
-          <td style="text-align:center; font-weight:bold;">${r.extra || ""}</td>
-          <td style="text-align:center;">${r.writer || DEFAULT_WRITER}</td>
-          <td style="text-align:center;">${r.memo || ""}</td>
-          <td style="color:#000000;">${r.specialNote || ""}</td>
-          <td style="text-align:center;">${this.getVisitTime(r)}</td>
-        `;
-        this.elPrintTableBody.appendChild(tr);
-      });
+    const summary = this.getDailySummary(rows);
+    this.elPrintTableBody.replaceChildren();
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      if (row._lunchBefore) tr.className = "print-lunch-row";
+      for (const key of keys) {
+        const td = document.createElement("td");
+        td.textContent = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
+        tr.appendChild(td);
+      }
+      this.elPrintTableBody.appendChild(tr);
     }
-
-    this.elPrintTotalCount.textContent = rows.length;
-    this.elPrintMaleCount.textContent = maleCount;
-    this.elPrintFemaleCount.textContent = femaleCount;
-    this.elPrintShockwave.textContent = shockwave;
-    this.elPrintIon.textContent = ion;
-    this.elPrintWinback.textContent = winback;
+    if (!rows.length) {
+      const tr = document.createElement("tr"), td = document.createElement("td");
+      td.colSpan = keys.length; td.textContent = "해당 날짜에 입력된 현황이 없습니다.";
+      tr.appendChild(td); this.elPrintTableBody.appendChild(tr);
+    }
+    this.elPrintTotalCount.textContent = summary.total;
+    this.elPrintMaleCount.textContent = summary.male;
+    this.elPrintFemaleCount.textContent = summary.female;
+    document.getElementById("printExtras").textContent = [...summary.extras].map(([name, count]) => `${name}: ${count}건`).join(" · ") || "추가 사항 없음";
 
     const now = new Date();
     this.elPrintGeneratedTime.textContent = now.toLocaleString("ko-KR");
@@ -3324,23 +3323,29 @@ class PTApp {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        const parsed = JSON.parse(event.target.result);
-        if (typeof parsed === "object" && parsed !== null) {
-          this.dataStore = parsed;
-          this.editHistory.clear();
-          this.getCurrentRows();
-          this.saveDataStore();
-          this.setDate(this.currentDate);
-          alert("백업 파일이 성공적으로 복원되었습니다.");
-          this.closeBackupModal();
-        } else {
-          alert("올바르지 않은 백업 파일 형식입니다.");
+        const payload = JSON.parse(event.target.result);
+        const parsed = payload?.version === 1 ? payload.dataStore : payload;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+            !Object.entries(parsed).every(([date, rows]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(rows) && rows.every(row => row && typeof row === "object" && !Array.isArray(row)))) {
+          throw new Error("올바르지 않은 백업 파일 형식입니다.");
         }
-      } catch (err) {
-        alert("JSON 파일을 읽는 중 오류가 발생했습니다.");
-      }
+        if (!confirm("현재 데이터를 먼저 백업한 뒤, 파일의 날짜별 기록을 복원합니다. 클라우드에 연결되어 있으면 복원한 날짜가 동기화됩니다. 진행할까요?")) return;
+        if (!window.ptLocalTools) throw new Error("백업 기능을 준비하지 못했습니다. 새로고침 후 다시 시도하세요.");
+        await window.ptLocalTools.backup(true);
+        this.dataStore = { ...this.dataStore, ...parsed };
+        this.editHistory.clear();
+        this.getCurrentRows(); this.saveDataStore();
+        for (const date of Object.keys(parsed)) this.pendingSyncDates.add(date);
+        localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+        if (payload.version === 1 && payload.presets && Object.values(payload.presets).every(values => Array.isArray(values) && values.every(value => typeof value === "string"))) {
+          COLUMN_PRESETS = payload.presets; saveColumnPresets(COLUMN_PRESETS); this.renderQuickChips();
+        }
+        this.setDate(this.currentDate);
+        alert("백업 파일 복원 완료. 기존 기록은 복원 전 로컬 백업에 보관했습니다.");
+        this.closeBackupModal();
+      } catch (err) { alert("복원을 진행하지 못했습니다: " + err.message); }
     };
     reader.readAsText(file);
   }
