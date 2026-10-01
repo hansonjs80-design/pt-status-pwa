@@ -84,10 +84,21 @@ test('undo and redo retain history search and its destination row', () => {
   assert.equal(app.getCurrentRows()[0].name, '테스트');
 });
 
-test('visit time manual changes and deletion survive saves and name re-entry', () => {
+test('visit time manual changes and deletion survive saves and reloads', () => {
   const {app}=createApp();const row=app.getCurrentRows()[0];row.name='가상환자';app.saveDataStore();
   assert.match(row.visitTime,/\d{2}시 \d{2}분 \d{2}초/);
   row.visitTime='10시 20분';app.saveDataStore();assert.equal(app.getVisitTime(row),'10시 20분');assert.equal(row._visitTimeEdited,true);
-  row.visitTime='';app.saveDataStore();row.name='';app.saveDataStore();row.name='가상환자';app.saveDataStore();assert.equal(row.visitTime,'');
+  row.visitTime='';app.saveDataStore();app.saveDataStore();assert.equal(row.visitTime,'');
   app.dataStore[app.currentDate]=JSON.parse(JSON.stringify(app.getCurrentRows()));app.getCurrentRows();app.saveDataStore();assert.equal(app.getCurrentRows()[0].visitTime,'');
+});
+
+
+test('clearing a name clears its visit time in the same undo transaction', () => {
+  const {app}=createApp();const row=app.getCurrentRows()[0];row.name='가상환자';app.saveDataStore();
+  const originalTime=row.visitTime;
+  row.name='   ';app.saveDataStore();
+  assert.equal(row.visitTime,'');assert.equal(row._visitedAt,undefined);assert.equal(row._visitTimeEdited,undefined);
+  app.restoreEditHistory();assert.equal(app.getCurrentRows()[0].name,'가상환자');assert.equal(app.getCurrentRows()[0].visitTime,originalTime);
+  app.restoreEditHistory(true);assert.equal(app.getCurrentRows()[0].visitTime,'');
+  app.getCurrentRows()[0].name='새환자';app.saveDataStore();assert.match(app.getCurrentRows()[0].visitTime,/\d{2}시 \d{2}분 \d{2}초/);
 });

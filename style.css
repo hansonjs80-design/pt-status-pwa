@@ -1916,3 +1916,5 @@ body {
 
 .history-search-active [data-col="visitTime"],
 .history-search-active [data-cross-col="visitTime"] { display: none; }
+
+.history-apply-cell { text-align: center; vertical-align: middle; padding: 2px; }

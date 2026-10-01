@@ -202,6 +202,14 @@ class PTApp {
     for (const row of this.dataStore[this.currentDate] || []) {
       if (recordHistory && this.visitTimeState.has(row) && this.visitTimeState.get(row) !== String(row.visitTime ?? "")) row._visitTimeEdited = true;
       const hasName = Boolean(String(row.name || "").trim());
+      if (recordHistory && !hasName && this.visitNameState.get(row) === true) {
+        row.visitTime = "";
+        delete row._visitedAt;
+        delete row._visitTimeEdited;
+        if (row._richText) delete row._richText.visitTime;
+        const cell = this.elTableBody?.querySelector(`[data-row="${this.dataStore[this.currentDate].indexOf(row)}"][data-col="visitTime"]`);
+        if (cell) cell.textContent = "";
+      }
       if (recordHistory && hasName && this.visitNameState.get(row) === false && !row.visitTime && !row._visitedAt && !row._visitTimeEdited) {
         const now = new Date(); row._visitedAt = now.toISOString();
         row.visitTime = `${String(now.getHours()).padStart(2, "0")}시 ${String(now.getMinutes()).padStart(2, "0")}분 ${String(now.getSeconds()).padStart(2, "0")}초`;
@@ -3215,6 +3223,7 @@ class PTApp {
       });
 
       const actionCell = document.createElement("td");
+      actionCell.className = "history-apply-cell";
       const applyButton = document.createElement("button");
       applyButton.type = "button";
       applyButton.className = "history-apply-btn";
