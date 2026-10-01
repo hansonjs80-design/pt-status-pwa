@@ -1744,6 +1744,16 @@ class PTApp {
   }
 
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates) {
+    const previous = this.autocompleteState;
+    const query = input.value;
+    const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
+      previous.colKey === colKey && previous.query === query;
+    // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
+    if (sameQuery && candidates?.length === previous.candidates.length &&
+        candidates.every((candidate, index) => candidate === previous.candidates[index]) &&
+        document.getElementById("cellAutocompleteMenu")) return;
+    const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
+    const selectedIndex = Math.max(0, candidates?.indexOf(selectedValue) ?? -1);
     this.closeAutocompleteMenu();
     if (!candidates || candidates.length === 0) return;
 
@@ -1753,7 +1763,7 @@ class PTApp {
 
     candidates.forEach((cand, idx) => {
       const itemEl = document.createElement("div");
-      itemEl.className = "autocomplete-item" + (idx === 0 ? " is-selected" : "");
+      itemEl.className = "autocomplete-item" + (idx === selectedIndex ? " is-selected" : "");
       itemEl.setAttribute("data-index", idx);
 
       const textSpan = document.createElement("span");
@@ -1761,7 +1771,7 @@ class PTApp {
       textSpan.textContent = cand;
       itemEl.appendChild(textSpan);
 
-      if (idx === 0) {
+      if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
         hintBadge.className = "autocomplete-hint-badge";
         hintBadge.textContent = "↵ Enter";
@@ -1798,7 +1808,8 @@ class PTApp {
       cellElement,
       input,
       candidates,
-      selectedIndex: 0
+      query,
+      selectedIndex
     };
 
     const positionMenu = () => {
@@ -1820,6 +1831,7 @@ class PTApp {
       menu.style.top = `${useBelow ? rect.bottom + gap : rect.top - gap - height}px`;
     };
     positionMenu();
+    if (selectedIndex > 0) this.moveAutocompleteSelection(0);
 
     const outsideClickListener = (e) => {
       if (!menu.contains(e.target) && e.target !== input) this.closeAutocompleteMenu();

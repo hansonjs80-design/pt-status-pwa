@@ -5,10 +5,11 @@ const { resolve } = require('node:path');
 const vm = require('node:vm');
 
 // Load the real suggestion engine without starting the UI or accessing cloud data.
-function createApp(dataStore, presets = {}) {
+function createApp(dataStore, presets = {}, environment = {}) {
   const context = vm.createContext({
     window: { addEventListener() {} },
     localStorage: { getItem() { return null; } },
+    ...environment,
   });
   vm.runInContext(readFileSync(resolve(__dirname, '../app.js'), 'utf8') +
     '\n globalThis.App = PTApp; globalThis.setPresets = value => { COLUMN_PRESETS = value; };', context);
@@ -113,4 +114,43 @@ test('unfinished final syllable narrows Korean autocomplete before the final con
   assert.deepEqual(suggestions(app, 'extra', '추'), ['충격파']);
   assert.deepEqual(suggestions(app, 'extra', '충'), ['충격파']);
   assert.ok(suggestions(app, 'extra', 'ㅊ').includes('충격파'));
+});
+
+
+test('autocomplete refresh preserves the selected value until the query or editor changes', () => {
+  let menu = null;
+  const element = () => ({
+    style: {}, children: [], isConnected: true, offsetWidth: 160, offsetHeight: 100,
+    appendChild(child) { this.children.push(child); },
+    setAttribute() {}, addEventListener() {}, remove() { menu = null; },
+  });
+  const document = {
+    createElement: element, getElementById: () => menu,
+    body: { appendChild(child) { menu = child; } },
+    addEventListener() {}, removeEventListener() {},
+  };
+  const window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1000, innerHeight: 800 };
+  const app = createApp({}, {}, { document, window });
+  app.moveAutocompleteSelection = () => {};
+  const cell = { isConnected: true, getBoundingClientRect: () => ({left: 100, top: 100, bottom: 130, width: 100}) };
+  const input = { value: '김' };
+  const show = candidates => app.showAutocompleteMenu(0, 'name', cell, input, candidates);
+  show(['김가', '김나', '김다']);
+  app.autocompleteState.selectedIndex = 2;
+  const originalMenu = menu;
+  show(['김가', '김나', '김다']);
+  assert.equal(menu, originalMenu);
+  assert.equal(app.getSelectedAutocompleteItem(), '김다');
+  show(['김새', '김다', '김가', '김나']);
+  assert.equal(app.autocompleteState.selectedIndex, 1);
+  assert.equal(app.getSelectedAutocompleteItem(), '김다');
+  assert.match(menu.children[1].className, /is-selected/);
+  input.value = '김가'; show(['김가', '김가나']);
+  assert.equal(app.autocompleteState.selectedIndex, 0);
+  app.autocompleteState.selectedIndex = 1;
+  show(['김가']);
+  assert.equal(app.getSelectedAutocompleteItem(), '김가');
+  show(['김가', '김가나']); app.autocompleteState.selectedIndex = 1;
+  app.showAutocompleteMenu(1, 'name', cell, {value: '김가'}, ['김가', '김가나']);
+  assert.equal(app.autocompleteState.selectedIndex, 0);
 });
