@@ -3029,6 +3029,20 @@ class PTApp {
     if (row) { row.style.display = ""; row.scrollIntoView({ block: "nearest", inline: "nearest" }); }
   }
 
+  findActiveCell() {
+    if (!this.elSearchInput) return;
+    const { rowIdx, colKey } = this.activeCell || {};
+    const query = String(this.getCurrentRows()[rowIdx]?.[colKey] ?? "").trim();
+    if (query) {
+      document.querySelectorAll(".search-origin-row").forEach(row => row.classList.remove("search-origin-row"));
+      this.elSheetContainer.querySelector(`tr[data-row-idx="${rowIdx}"]`)?.classList.add("search-origin-row");
+      this.searchAllDates(query, rowIdx);
+    } else {
+      this.elSearchInput.focus();
+      this.elSearchInput.select();
+    }
+  }
+
   searchAllDates(query, originRowIdx) {
     if (Number.isInteger(originRowIdx) && originRowIdx >= 0) {
       this.historyApplyTarget = {
@@ -3694,6 +3708,8 @@ class PTApp {
     const thCorner = e.target.closest("#cornerHeader");
     const tdCell = e.target.closest(".excel-cell");
 
+    this.elContextMenu.querySelector('[data-action="find"]').classList.toggle("hidden",
+      !tdCell || !["chartNo", "name"].includes(tdCell.dataset.col));
     const rowOnlyItems = this.elContextMenu.querySelectorAll(".row-only-item");
     const colOnlyItems = this.elContextMenu.querySelectorAll(".col-only-item");
 
@@ -3803,6 +3819,16 @@ class PTApp {
     const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
 
     switch (action) {
+      case "find": {
+        if (this.contextTarget?.type !== "cell" || !["chartNo", "name"].includes(targetCol)) break;
+        document.activeElement?.blur();
+        const cell = this.elSheetContainer.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`);
+        if (cell) {
+          this.selectCell(targetRow, targetCol, cell, false);
+          this.findActiveCell();
+        }
+        break;
+      }
       case "font-size":
       case "font-weight":
         this.openColumnTypographyMenu(action === "font-size" ? "fontSize" : "fontWeight");
@@ -4481,24 +4507,7 @@ class PTApp {
     //    셀이 선택되지 않았으면 검색창 포커스
     if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.SEARCH.key) {
       e.preventDefault();
-      if (this.activeCell && this.elSearchInput) {
-        const { rowIdx, colKey } = this.activeCell;
-        const rows = this.getCurrentRows();
-        const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
-        const trimmed = String(cellValue).trim();
-        if (trimmed) {
-          document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
-          const originRow = document.querySelector(`tr[data-row-idx="${rowIdx}"]`);
-          if (originRow) originRow.classList.add("search-origin-row");
-          this.searchAllDates(trimmed, rowIdx);
-        } else {
-          this.elSearchInput.focus();
-          this.elSearchInput.select();
-        }
-      } else if (this.elSearchInput) {
-        this.elSearchInput.focus();
-        this.elSearchInput.select();
-      }
+      this.findActiveCell();
       return;
     }
 

@@ -58,9 +58,9 @@
           <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
         </div>
           <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
-          <button type="button" id="btnFontColor" class="history-button font-color-button" title="글자색" aria-label="글자색"><span>A</span></button>
-          <button type="button" id="btnFontSize" class="history-button font-size-button" title="글자 크기" aria-label="글자 크기" aria-haspopup="dialog"><span aria-hidden="true">A<small>a</small></span></button>
-          <button type="button" id="btnFontWeight" class="history-button font-weight-button" title="글자 굵기" aria-label="글자 굵기" aria-haspopup="dialog"><span aria-hidden="true">B</span></button>
+          <button type="button" id="btnFontColor" class="history-button format-button font-color-button" title="글자색" aria-label="글자색"><span class="format-icon" aria-hidden="true">A</span><span class="format-label" aria-hidden="true">글자색</span></button>
+          <button type="button" id="btnFontSize" class="history-button format-button font-size-button" title="글자 크기" aria-label="글자 크기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">A<small>a</small></span><span class="format-label" aria-hidden="true">크기</span></button>
+          <button type="button" id="btnFontWeight" class="history-button format-button font-weight-button" title="글자 굵기" aria-label="글자 굵기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">B</span><span class="format-label" aria-hidden="true">굵기</span></button>
           <span class="tool-group-label">빠른 입력 도구:</span>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
           <button type="button" class="tool-btn chip-add" id="btnAddPreset" title="새 빠른 도구 추가" onclick="if(window.ptApp) window.ptApp.openPresetModal('add');">＋ 추가</button>
@@ -343,6 +343,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
       <span class="menu-label">붙여넣기</span>
       <span class="menu-shortcut">Ctrl+V</span>
     </div>
+    <div class="menu-item hidden" data-action="find"><span class="menu-icon" aria-hidden="true">🔎</span><span class="menu-label">찾기</span><span class="menu-shortcut">Ctrl/Cmd+F</span></div>
     <div class="menu-item" data-action="font-color"><span class="menu-icon" aria-hidden="true">🎨</span><span class="menu-label">글자색…</span></div>
     <div class="menu-item" data-action="font-size"><span class="menu-icon" aria-hidden="true">🔠</span><span class="menu-label">글자 크기…</span></div>
     <div class="menu-item" data-action="font-weight"><span class="menu-icon" aria-hidden="true">𝐁</span><span class="menu-label">글자 굵기…</span></div>

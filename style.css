@@ -1814,14 +1814,20 @@ body {
 .quick-inputs .date-label { color: #34483c; font-size: 14px; }
 .quick-inputs .btn-nav { color: #34483c; }
 .quick-inputs .btn-today-pill { font-size: 12px; }
-.font-color-button span { font: 600 21px sans-serif; border-bottom: 3px solid currentColor; line-height: 24px; }
+.font-color-button .format-icon { font: 600 21px sans-serif; border-bottom: 3px solid currentColor; line-height: 24px; }
 .font-color-menu { position: fixed; z-index: 5000; width: 286px; padding: 14px; border-radius: 10px; background: white; border: 1px solid #d9dfdc; box-shadow: 0 8px 25px #0003; max-height: calc(100vh - 12px); overflow: auto; }
 .color-reset { background: none; border: 0; padding: 4px 0 12px; font-size: 14px; cursor: pointer; }
 .color-palette { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
 .color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #0002; cursor: pointer; }
 .color-swatch:hover, .color-swatch:focus-visible { outline: 2px solid #107c41; outline-offset: 1px; }
 .custom-color { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
-.excel-row.lunch-break-row > * { border-top: 1.5px dashed #d93025 !important; }
+/* Draw above the grid so collapsed borders and selection cannot hide lunch markers. */
+.excel-row.lunch-break-row { position: relative; }
+.excel-row.lunch-break-row::after {
+  content: ""; position: absolute; top: 0; left: 0; right: 0;
+  border-top: 1.5px dashed #d93025; background: #fff; background-clip: border-box;
+  z-index: 6; pointer-events: none;
+}
 
 /* Keep the date and search available on smaller desktop/PWA windows. */
 .ribbon-toolbar { flex-wrap: wrap; }
@@ -1866,11 +1872,17 @@ body {
 .excel-table { min-width: 1406px; }
 .excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }
 
-.font-size-button > span { font: 600 21px Arial, sans-serif; white-space: nowrap; }
+.font-size-button .format-icon { font: 600 21px Arial, sans-serif; white-space: nowrap; }
 .font-size-button small { font-size: 13px; margin-left: 1px; }
-.font-weight-button > span { font: 800 22px Arial, sans-serif; }
+.font-weight-button .format-icon { font: 800 22px Arial, sans-serif; }
 
 .excel-table .col-spacer, .excel-table .cell-spacer { padding: 0; }
 .excel-table .col-spacer .col-resizer { left: 0; right: auto; width: 5px; }
 .excel-table .col-del .col-resizer { right: 2px; width: 4px; }
 .excel-table .cell-spacer { border-right: 1px solid var(--excel-grid-line); border-bottom: 1px solid var(--excel-grid-line); }
+
+/* Compact labels keep the three formatting controls identifiable. */
+.format-button { flex-direction: column; width: 40px; height: 48px; padding: 3px 4px; gap: 2px; flex-shrink: 0; }
+.format-button .format-icon { display: inline-block; height: 27px; line-height: 27px; }
+.font-color-button .format-icon { transform: scaleY(.9); }
+.format-button .format-label { font: 500 10px/12px Arial, sans-serif; white-space: nowrap; }
