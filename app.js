@@ -428,6 +428,13 @@ class PTApp {
 
     // Right-Click Context Menu
     this.elContextMenu = document.getElementById("excelContextMenu");
+
+    // Search Prompt Modal
+    this.elSearchPromptModal = document.getElementById("searchPromptModal");
+    this.elSearchPromptInput = document.getElementById("searchPromptInput");
+    this.elBtnCloseSearchPrompt = document.getElementById("btnCloseSearchPrompt");
+    this.elBtnSearchPromptCancel = document.getElementById("btnSearchPromptCancel");
+    this.elBtnSearchPromptSubmit = document.getElementById("btnSearchPromptSubmit");
   }
 
   bindEvents() {
@@ -679,6 +686,33 @@ class PTApp {
       this.elSearchInput.value = "";
       this.handleSearch();
     });
+
+    // Search Prompt Modal
+    if (this.elBtnCloseSearchPrompt) {
+      this.elBtnCloseSearchPrompt.addEventListener("click", () => this.closeSearchPromptModal());
+    }
+    if (this.elBtnSearchPromptCancel) {
+      this.elBtnSearchPromptCancel.addEventListener("click", () => this.closeSearchPromptModal());
+    }
+    if (this.elBtnSearchPromptSubmit) {
+      this.elBtnSearchPromptSubmit.addEventListener("click", () => this.submitSearchPrompt());
+    }
+    if (this.elSearchPromptInput) {
+      this.elSearchPromptInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.submitSearchPrompt();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          this.closeSearchPromptModal();
+        }
+      });
+    }
+    if (this.elSearchPromptModal) {
+      this.elSearchPromptModal.addEventListener("click", (e) => {
+        if (e.target === this.elSearchPromptModal) this.closeSearchPromptModal();
+      });
+    }
 
     // Preview & Print Modal
     this.elBtnPreview.addEventListener("click", () => this.openPreviewModal());
@@ -3020,7 +3054,7 @@ class PTApp {
     const sourceIndex = this.crossDateResults?.indexOf(source);
     const useSelection = selection && sourceIndex >= selection.minRow && sourceIndex <= selection.maxRow;
     const sources = useSelection ? this.crossDateResults.slice(selection.minRow, selection.maxRow + 1) : [source];
-    const selectedKeys = (useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys).filter(key => key !== "visitTime");
+    const selectedKeys = (useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys).filter(key => key !== "visitTime" && key !== "no");
     const appliedAt = new Date();
     for (let offset = 0; offset < sources.length; offset++) {
       const fields = useSelection && this.selectedCellSet ? selectedKeys.filter(key => this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))) : selectedKeys;
@@ -3146,6 +3180,7 @@ class PTApp {
   clearCrossDateRows() {
     this.elSheetContainer.classList.remove("history-search-active");
     this.clearCrossDateSelection();
+    this.isCrossDateRowSelected = false;
     this.crossDateResults = [];
     if (this.clipboardSelection?.kind === "history") this.clipboardSelection = null;
     document.querySelectorAll(".cross-date-row, .cross-date-divider").forEach(el => el.remove());
@@ -3158,8 +3193,59 @@ class PTApp {
     if (row) { row.style.display = ""; row.scrollIntoView({ block: "nearest", inline: "nearest" }); }
   }
 
+  findFirstEmptyRowIndex() {
+    const rows = this.getCurrentRows();
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.name && !r.chartNo && !r.part && !r.prescription && !r.extra && !r.writer && !r.memo && !r.specialNote) {
+        return i;
+      }
+    }
+    return rows.length;
+  }
+
+  openSearchPromptModal(targetRowIdx) {
+    this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
+    if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
+    this.elSearchPromptInput.value = this.elSearchInput?.value?.trim() || "";
+    this.elSearchPromptModal.style.display = "flex";
+    setTimeout(() => {
+      this.elSearchPromptInput.focus();
+      this.elSearchPromptInput.select();
+    }, 50);
+  }
+
+  closeSearchPromptModal() {
+    if (!this.elSearchPromptModal) return;
+    this.elSearchPromptModal.style.display = "none";
+    this.elSheetContainer?.focus({ preventScroll: true });
+  }
+
+  submitSearchPrompt() {
+    if (!this.elSearchPromptInput) return;
+    const q = this.elSearchPromptInput.value.trim();
+    const targetIdx = this.searchPromptTargetRowIdx;
+    this.closeSearchPromptModal();
+    if (q) {
+      this.searchAllDates(q, targetIdx);
+    }
+  }
+
+  selectCrossDateRow(idx) {
+    if (!this.crossDateResults || idx < 0 || idx >= this.crossDateResults.length) return;
+    this.isCrossDateRowSelected = true;
+    // No. 열(col 0)은 숨겨져 있으므로 성별(col 1)부터 방문시간(col 10)까지 전체 행 선택
+    this.selectCrossDateCell(idx, 1);
+    this.selectCrossDateCell(idx, 10, true);
+
+    this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
+    const th = this.elTableBody.querySelector(`.cross-date-row th.cross-date-num[data-cross-idx="${idx}"]`)
+      || this.elTableBody.querySelector(`[data-cross-idx="${idx}"]`)?.closest("tr")?.querySelector(".cross-date-num");
+    th?.classList.add("selected", "header-active");
+    th?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
   findActiveCell() {
-    if (!this.elSearchInput) return;
     const { rowIdx, colKey } = this.activeCell || {};
     const query = String(this.getCurrentRows()[rowIdx]?.[colKey] ?? "").trim();
     if (query) {
@@ -3167,8 +3253,9 @@ class PTApp {
       this.elSheetContainer.querySelector(`tr[data-row-idx="${rowIdx}"]`)?.classList.add("search-origin-row");
       this.searchAllDates(query, rowIdx);
     } else {
-      this.elSearchInput.focus();
-      this.elSearchInput.select();
+      // 빈 셀이거나 셀 선택을 안했어도 컨트롤 f를 누르면 이름이나 챠트 번호를 입력해서 컨트롤 f 창으로 들어갈 수 있게 함
+      const targetIdx = Number.isInteger(rowIdx) ? rowIdx : this.findFirstEmptyRowIndex();
+      this.openSearchPromptModal(targetIdx);
     }
   }
 
@@ -3193,11 +3280,26 @@ class PTApp {
     this.clearCrossDateRows();
     this.elSheetContainer.classList.add("history-search-active");
 
-    // 2) 현재 날짜 행 필터링 (기존 검색과 동일)
-    const currentRows = document.querySelectorAll(".excel-row");
+    // 2) 현재 날짜 행 필터링: 마지막 내용 있는 행 아래로 2~3행(3행) 더 보이게 설정
+    const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row)");
+    const rowsData = this.getCurrentRows();
+    let lastDataIdx = -1;
+    rowsData.forEach((row, idx) => {
+      if (row.name || row.chartNo || row.part || row.prescription || row.extra || row.writer || row.memo || row.specialNote) {
+        lastDataIdx = Math.max(lastDataIdx, idx);
+      }
+    });
+    const originIdx = Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
+    const maxContentIdx = Math.max(lastDataIdx, originIdx);
+    const extraEmptyLimit = maxContentIdx >= 0 ? maxContentIdx + 3 : 2;
+
     currentRows.forEach((rowEl) => {
+      const rIdx = Number(rowEl.dataset.rowIdx);
       const text = rowEl.textContent.toLowerCase();
-      rowEl.style.display = text.includes(q) || Number(rowEl.dataset.rowIdx) === this.historyApplyTarget?.rowIdx ? "" : "none";
+      const isMatch = text.includes(q);
+      const isExtraEmpty = rIdx >= 0 && rIdx <= extraEmptyLimit;
+      const isTarget = rIdx === originIdx;
+      rowEl.style.display = (isMatch || isExtraEmpty || isTarget) ? "" : "none";
     });
 
     // 3) 이전 날짜에서 매칭 기록 수집
@@ -3235,13 +3337,13 @@ class PTApp {
       // 행 번호 (날짜 약어로 표시)
       const thNum = document.createElement("th");
       thNum.className = "row-num cross-date-num";
+      thNum.dataset.crossIdx = idx;
       thNum.textContent = row._sourceDate.slice(5).replace("-", "/");
-      thNum.title = `${row._sourceDate} 기록`;
+      thNum.title = `${row._sourceDate} 기록 (클릭하여 행 전체 선택)`;
       thNum.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
         e.preventDefault();
-        this.selectCrossDateCell(idx, 0);
-        this.selectCrossDateCell(idx, 10, true);
+        this.selectCrossDateRow(idx);
       });
       tr.appendChild(thNum);
 
@@ -3271,6 +3373,8 @@ class PTApp {
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           e.preventDefault();
+          this.isCrossDateRowSelected = false; // 단독 셀 클릭 시 전체 행 선택 모드 해제
+          this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
           if (e.ctrlKey || e.metaKey) { this.toggleCellSelection(idx, colIdx, "history"); return; }
           this.selectCrossDateCell(idx, colIdx, e.shiftKey);
           this.isSelectingCrossDate = true;
@@ -3308,7 +3412,15 @@ class PTApp {
     dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
-    this.scrollToHistoryTarget();
+
+    // 6) 기본적으로 이전 날짜 항목 중에 가장 최신 행헤더를 클릭한 것과 같이 전체 행 선택
+    if (crossDateResults.length > 0) {
+      const firstCrossRow = this.elTableBody.querySelector(".cross-date-row");
+      const firstIdx = firstCrossRow ? Number(firstCrossRow.querySelector("[data-cross-idx]")?.dataset.crossIdx ?? (crossDateResults.length - 1)) : 0;
+      this.selectCrossDateRow(firstIdx);
+    } else {
+      this.scrollToHistoryTarget();
+    }
   }
 
   // --- Preview & Print Modal ---
@@ -4638,14 +4750,48 @@ class PTApp {
     }
     if (this.crossDateSelection && e.key !== "Escape") {
       const selection = this.crossDateSelection;
+      const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+
       if (e.key === "Enter") this.applyHistoryRow(this.crossDateResults[selection.minRow]);
       else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
         if (value) this.searchAllDates(value);
-        else this.elSearchInput.focus();
-      } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        else this.openSearchPromptModal(this.findFirstEmptyRowIndex());
+      }
+      // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
+      else if (isCtrlOrMeta && e.shiftKey && e.key === "ArrowRight") {
+        const sourceRow = this.crossDateResults[selection.startRow];
+        let targetCol = selection.startCol;
+        for (let c = selection.startCol + 1; c < colKeys.length; c++) {
+          const k = colKeys[c];
+          if (String(sourceRow[k] ?? "").trim()) {
+            targetCol = c;
+          } else {
+            break;
+          }
+        }
+        this.selectCrossDateCell(selection.startRow, targetCol, true);
+      }
+      // 행 전체 선택 상태일 때 위/아래 방향키 누르면 전체 행 선택 유지한 채 위아래로 이동
+      else if (this.isCrossDateRowSelected && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        const crossRows = Array.from(this.elTableBody.querySelectorAll(".cross-date-row"));
+        const currentTr = this.elTableBody.querySelector(`[data-cross-idx="${selection.minRow}"]`)?.closest("tr");
+        const currentDomIdx = crossRows.indexOf(currentTr);
+        if (currentDomIdx >= 0) {
+          const nextDomIdx = e.key === "ArrowDown" ? currentDomIdx + 1 : currentDomIdx - 1;
+          if (nextDomIdx >= 0 && nextDomIdx < crossRows.length) {
+            const nextTr = crossRows[nextDomIdx];
+            const nextIdx = Number(nextTr.querySelector("[data-cross-idx]")?.dataset.crossIdx);
+            this.selectCrossDateRow(nextIdx);
+          }
+        }
+      }
+      // 일반 셀 선택 상태에서 방향키 이동
+      else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        this.isCrossDateRowSelected = false;
+        this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
         const row = Math.max(0, Math.min(this.crossDateResults.length - 1, selection.endRow + (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0)));
         const col = Math.max(0, Math.min(10, selection.endCol + (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0)));
         this.selectCrossDateCell(row, col, e.shiftKey);
@@ -4789,17 +4935,45 @@ class PTApp {
       return;
     }
 
-    // Row-header selection keeps its original anchor while Shift+arrows moves the endpoint.
-    if (this.selectedRowRange && e.shiftKey && !isCtrlOrMeta && !e.altKey &&
+    // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
+    if (isCtrlOrMeta && e.shiftKey && e.key === "ArrowRight" && this.activeCell) {
+      e.preventDefault();
+      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+      const startRow = this.selectedRange ? this.selectedRange.minRow : this.activeCell.rowIdx;
+      const startCol = this.selectedRange ? this.selectedRange.minCol : colOrder.indexOf(this.activeCell.colKey);
+      const rowData = this.getCurrentRows()[startRow];
+      let targetCol = startCol;
+      for (let c = startCol + 1; c < colOrder.length; c++) {
+        const k = colOrder[c];
+        if (String(rowData?.[k] ?? "").trim()) {
+          targetCol = c;
+        } else {
+          break;
+        }
+      }
+      this.extendCellSelection(startRow, targetCol);
+      return;
+    }
+
+    // Row-header selection: Shift+Arrow moves endpoint, ArrowUp/ArrowDown moves entire row selection
+    if (this.selectedRowRange && !isCtrlOrMeta && !e.altKey &&
         (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
-      const anchor = this.rowRangeStart ?? this.selectedRowRange.minRow;
-      const end = this.rowRangeEnd ?? this.selectedRowRange.maxRow;
-      const targetRow = Math.max(0, Math.min(this.getCurrentRows().length - 1,
-        end + (e.key === "ArrowDown" ? 1 : -1)));
-      this.selectRowRange(anchor, targetRow);
-      this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
-        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const rowCount = this.getCurrentRows().length;
+      if (e.shiftKey) {
+        const anchor = this.rowRangeStart ?? this.selectedRowRange.minRow;
+        const end = this.rowRangeEnd ?? this.selectedRowRange.maxRow;
+        const targetRow = Math.max(0, Math.min(rowCount - 1, end + (e.key === "ArrowDown" ? 1 : -1)));
+        this.selectRowRange(anchor, targetRow);
+        this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      } else {
+        const currentRow = this.selectedRowRange.minRow;
+        const targetRow = Math.max(0, Math.min(rowCount - 1, currentRow + (e.key === "ArrowDown" ? 1 : -1)));
+        this.selectRowRange(targetRow, targetRow);
+        this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
       return;
     }
 

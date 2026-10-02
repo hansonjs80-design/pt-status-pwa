@@ -813,6 +813,22 @@ body {
   color: #1e3a8a;
 }
 
+/* Ctrl+F 검색 모드 활성화 시 No. 열 숨김 (복사/붙여넣기 시 순번 혼선 방지) */
+.history-search-active th.b-header[data-col="no"],
+.history-search-active th.col-letter[data-col="no"],
+.history-search-active td.cell-no,
+.history-search-active td[data-col="no"],
+.history-search-active td[data-cross-col="no"] {
+  display: none !important;
+}
+
+.cross-date-num.selected,
+.cross-date-num.header-active {
+  background-color: #2563eb !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
 .row-num {
   background: #f3f5f4;
   color: #656d76;
