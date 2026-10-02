@@ -799,10 +799,23 @@ class PTApp {
     });
 
     // Global mouseup to finish drag selection (cells or rows)
-    document.addEventListener("mousemove", (event) => this.updateFillDrag(event));
+    document.addEventListener("mousemove", (event) => {
+      this.updateFillDrag(event);
+      if (this._isRowDragging && event.buttons === 1 && this._rowDragAnchor !== undefined) {
+        const tr = event.target.closest("tr.excel-row");
+        if (tr && tr.dataset.rowIdx !== undefined) {
+          const rIdx = Number(tr.dataset.rowIdx);
+          if (Number.isInteger(rIdx)) {
+            this.selectRowRange(this._rowDragAnchor, rIdx);
+          }
+        }
+      }
+    });
     window.addEventListener("blur", () => this.cancelFillDrag());
     document.addEventListener("mouseup", (event) => {
       this.isSelectingCrossDate = false;
+      this._isRowDragging = false;
+      this._rowDragAnchor = undefined;
       if (this.fillDrag) this.finishFillDrag(event);
       let changed = false;
       if (this.isSelectingRange) {
@@ -815,6 +828,12 @@ class PTApp {
       }
       if (changed && this.elSheetContainer) {
         this.elSheetContainer.classList.remove("is-selecting");
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      if (document.getElementById("crossDateInnerTable")) {
+        this.syncCrossDateColWidths();
       }
     });
   }
@@ -1091,38 +1110,30 @@ class PTApp {
       const thNum = document.createElement("th");
       thNum.className = "row-num";
       thNum.textContent = excelRowNum;
-      thNum.title = `행 ${excelRowNum}: 드래그하여 이동, Shift+클릭으로 여러 행 선택`;
-      thNum.draggable = true;
+      thNum.title = `행 ${excelRowNum}: 클릭/드래그하여 행 선택, Shift+클릭으로 범위 선택`;
       thNum.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
+        e.preventDefault();
         const range = this.selectedRowRange;
-        if (e.shiftKey && range) this.selectRowRange(this.rowRangeStart ?? range.minRow, rowIdx);
-        else if (!range || rowIdx < range.minRow || rowIdx > range.maxRow) this.selectRowRange(rowIdx, rowIdx);
+        if (e.shiftKey && range) {
+          this.selectRowRange(this.rowRangeStart ?? range.minRow, rowIdx);
+        } else {
+          this.selectRowRange(rowIdx, rowIdx);
+        }
+        // 드래그로 범위 선택 시작
+        this._rowDragAnchor = rowIdx;
+        this._isRowDragging = true;
         this.elSheetContainer.focus({ preventScroll: true });
       });
-      thNum.addEventListener("dragstart", (e) => {
-        if (this.elSearchInput.value.trim()) { e.preventDefault(); return; }
-        this.rowMove = { ...this.selectedRowRange, date: this.currentDate };
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", "행 이동");
+      thNum.addEventListener("mouseenter", (e) => {
+        if (this._isRowDragging && e.buttons === 1 && this._rowDragAnchor !== undefined) {
+          this.selectRowRange(this._rowDragAnchor, rowIdx);
+        }
       });
-      tr.addEventListener("dragover", (e) => {
-        if (!this.rowMove) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        this.clearRowDropMarker();
-        const after = e.clientY >= tr.getBoundingClientRect().top + tr.getBoundingClientRect().height / 2;
-        this.rowDropIndex = rowIdx + (after ? 1 : 0);
-        tr.classList.add(after ? "row-drop-after" : "row-drop-before");
-      });
-      tr.addEventListener("drop", (e) => {
-        if (!this.rowMove) return;
-        e.preventDefault();
-        this.finishRowMove();
-      });
-      thNum.addEventListener("dragend", () => {
-        this.rowMove = null;
-        this.clearRowDropMarker();
+      tr.addEventListener("mouseenter", (e) => {
+        if (this._isRowDragging && e.buttons === 1 && this._rowDragAnchor !== undefined) {
+          this.selectRowRange(this._rowDragAnchor, rowIdx);
+        }
       });
 
       tr.appendChild(thNum);
@@ -3434,8 +3445,19 @@ class PTApp {
   syncCrossDateColWidths() {
     const innerTable = document.getElementById("crossDateInnerTable");
     if (!innerTable) return;
+    const excelTable = document.getElementById("excelTable");
+    if (!excelTable) return;
     const bHeadersRow = document.querySelector(".business-headers-row");
     if (!bHeadersRow) return;
+
+    // 메인 테이블의 실제 전체 가로 너비와 innerTable 1:1 일치
+    const mainTableRect = excelTable.getBoundingClientRect();
+    const mainWidth = mainTableRect.width || excelTable.offsetWidth;
+    if (mainWidth > 0) {
+      innerTable.style.width = `${mainWidth}px`;
+      innerTable.style.minWidth = `${mainWidth}px`;
+      innerTable.style.tableLayout = "fixed";
+    }
 
     let colgroup = innerTable.querySelector("colgroup");
     if (!colgroup) {
@@ -3448,14 +3470,40 @@ class PTApp {
       while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
     }
 
-    // 메인 테이블 비즈니스 헤더의 각 열의 실제 렌더링 너비 복제
-    Array.from(bHeadersRow.children).forEach((th) => {
+    // 메인 테이블 비즈니스 헤더의 모든 14개 열과 1:1로 정확하게 col 및 셀 너비 동기화 (비율 축소 없이 1:1 절대값 적용)
+    const headerThs = Array.from(bHeadersRow.children);
+    const colWidths = headerThs.map((th) => {
       const isHidden = window.getComputedStyle(th).display === "none";
-      if (isHidden) return;
+      if (isHidden) return 0;
       const rect = th.getBoundingClientRect();
+      return rect.width;
+    });
+
+    colWidths.forEach((w) => {
       const col = document.createElement("col");
-      col.style.width = `${rect.width}px`;
+      if (w === 0) {
+        col.style.width = "0px";
+        col.style.display = "none";
+      } else {
+        col.style.width = `${w}px`;
+      }
       colgroup.appendChild(col);
+    });
+
+    // innerTable의 각 cross-date-row 내 모든 셀(th 및 td)에 메인 헤더와 동일한 정확한 픽셀 너비 적용
+    innerTable.querySelectorAll(".cross-date-row").forEach((tr) => {
+      Array.from(tr.children).forEach((cell, idx) => {
+        const w = colWidths[idx];
+        if (w === 0 || w === undefined) {
+          cell.style.display = "none";
+        } else {
+          cell.style.display = "";
+          cell.style.width = `${w}px`;
+          cell.style.minWidth = `${w}px`;
+          cell.style.maxWidth = `${w}px`;
+          cell.style.boxSizing = "border-box";
+        }
+      });
     });
   }
 
@@ -3657,7 +3705,7 @@ class PTApp {
 
     const masterTd = document.createElement("td");
     masterTd.className = "cross-date-master-cell";
-    masterTd.colSpan = 13;
+    masterTd.colSpan = 14;
 
     const scrollWrap = document.createElement("div");
     scrollWrap.className = "cross-date-scroll-wrap";
@@ -3791,13 +3839,14 @@ class PTApp {
     dividerTr.className = "cross-date-divider";
     dividerTr.id = "crossDateDivider";
     const dividerTd = document.createElement("td");
-    dividerTd.colSpan = 13;
+    dividerTd.colSpan = 14;
     const modeText = this.isCrossDateExpanded ? "전체 보기" : "대표 행 보기";
     dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · # 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
 
     // 3) 열 너비 동기화 및 파란 바 고정 위치(sticky top) 설정
+    this.syncCrossDateColWidths();
     requestAnimationFrame(() => {
       this.syncCrossDateColWidths();
       const masterRow = document.querySelector(".cross-date-master-row");
@@ -3813,7 +3862,7 @@ class PTApp {
       }
     });
 
-    // 4) 기본적으로 가장 아래 마지막 행을 전체 선택 상태로 설정
+    // 4) 기본적으로 가장 아래(최신 날짜) 마지막 행을 셀 선택 상태로 설정
     if (renderRows.length > 0) {
       const lastIdx = renderRows.length - 1;
       this.selectCrossDateRow(lastIdx);
@@ -4114,10 +4163,18 @@ class PTApp {
       if (this.liveRefreshBusy || this.supabaseClient !== client) return;
       this.liveRefreshBusy = true;
       try {
-        for (const date of this.pendingSyncDates) if (!this.activePushes.has(date)) void this.pushToCloud(date);
+        // pendingSyncDates를 순차적으로 push하여 완료를 기다림
+        const pending = [...this.pendingSyncDates];
+        for (const date of pending) {
+          if (this.supabaseClient !== client) break;
+          if (!this.activePushes.has(date)) await this.pushToCloud(date);
+        }
         if (this.presetsDirty) await this.pushSharedPresets();
         else await this.pullSharedPresets();
-        await this.pullFromCloud(this.currentDate);
+        // push가 모두 완료된 후 pull 실행
+        if (!this.pendingSyncDates.has(this.currentDate)) {
+          await this.pullFromCloud(this.currentDate);
+        }
       } finally { this.liveRefreshBusy = false; }
     };
     this.liveSyncTimer = setInterval(refresh, 2000);
@@ -4179,6 +4236,11 @@ class PTApp {
     const date = this.currentDate;
     this.pendingSyncDates.add(date);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+    // syncBaselines는 최근 14일분만 유지하여 localStorage 공간 절약
+    const baselineDates = [...this.syncBaselines.keys()].sort();
+    while (baselineDates.length > 14) {
+      this.syncBaselines.delete(baselineDates.shift());
+    }
     localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
     if (!this.supabaseClient) return;
     clearTimeout(this.syncTimers.get(date));
@@ -4186,9 +4248,10 @@ class PTApp {
   }
 
   mergeCloudRows(base, local, remote) {
-    if (!base) return local;
+    if (!base || base.length === 0) return local;
     const merged = JSON.parse(JSON.stringify(remote || []));
-    for (let i = 0; i < local.length; i++) {
+    const maxLen = Math.max(local.length, merged.length, base.length);
+    for (let i = 0; i < maxLen; i++) {
       const before = base[i] || {}, after = local[i] || {};
       merged[i] ||= {};
       for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
@@ -5407,7 +5470,7 @@ class PTApp {
           const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
           if (currentRow <= firstVisibleRowIdx) {
             // ★ 현재 날짜 첫 표시 행에서 ArrowUp -> 파란 가로바를 넘어 이전 날짜 마지막 행 전체 선택!
-            this.clearSelection();
+            // clearSelection()은 데이터를 지우므로 사용하지 않고 시각적 선택만 해제
             this.clearHeaderSelections();
             const lastCrossIdx = this.crossDateResults.length - 1;
             this.selectCrossDateRow(lastCrossIdx);
@@ -5436,8 +5499,10 @@ class PTApp {
         const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
         const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
         if (from.rowIdx <= firstVisibleRowIdx) {
-          this.clearSelection();
+          // clearSelection()은 데이터를 지우므로 사용하지 않고 시각적 선택만 해제
           this.clearHeaderSelections();
+          document.querySelectorAll(".cell-focused, .active-row").forEach(el => el.classList.remove("cell-focused", "active-row"));
+          this.activeCell = null;
           const lastRow = this.crossDateResults.length - 1;
           const targetColIdx = Math.max(1, Math.min(10, from.colIdx)); // No. 열은 숨김이므로 성별(1) 이상
           this.selectCrossDateCell(lastRow, targetColIdx, false);

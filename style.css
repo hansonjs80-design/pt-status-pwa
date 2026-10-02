@@ -769,7 +769,7 @@ body {
 }
 .cross-date-scroll-wrap {
   width: 100%;
-  max-height: 195px; /* 약 4~5행 높이 (행 개수에 맞게 자동 확장, 최대 높이 이후 스크롤) */
+  max-height: 525px; /* 약 15행 높이 (행 개수에 맞게 자동 확장, 최대 높이 이후 스크롤) */
   overflow-y: auto;
   overflow-x: hidden;
   box-shadow: inset 0 -2px 6px rgba(0, 0, 0, 0.04);
@@ -791,6 +791,11 @@ body {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  box-sizing: border-box;
+}
+.cross-date-inner-table th,
+.cross-date-inner-table td {
+  box-sizing: border-box !important;
 }
 
 /* 교차 날짜 검색 결과 구분선 (파란색 바 고정) */
