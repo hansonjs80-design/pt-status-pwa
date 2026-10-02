@@ -238,17 +238,21 @@ test('cross-date search deduplicates identical previous records and toggles with
   // 기본 모드(대표 행 모드)에서는 유니크한 2개 행만 나와야 함!
   assert.equal(app.isCrossDateExpanded, false);
   assert.equal(app.crossDateResults.length, 2);
-  // 가장 최신 날짜(2026-10-01)의 행이 대표 행이어야 함
-  assert.equal(app.crossDateResults[0]._sourceDate, '2026-10-01');
-  assert.equal(app.crossDateResults[0]._dupCount, 2);
+  // 오래된 날짜가 위, 하단에 가장 최신 날짜(2026-10-01)의 행이 위치하며 중복 2건의 대표 행이어야 함
+  assert.equal(app.crossDateResults[0]._sourceDate, '2026-09-29');
+  assert.equal(app.crossDateResults[1]._sourceDate, '2026-10-01');
+  assert.equal(app.crossDateResults[1]._dupCount, 2);
 
   // ★ 창이 열리면 마우스 드래그 상태가 절대 켜져있지 않아야 함 (마우스 움직임 시 임의 선택 방지)
   assert.equal(app.isSelectingCrossDate, false);
 
-  // ★ 창이 열리면 가장 아래 마지막 행(index 1)이 전체 선택되어 있어야 함
+  // ★ 창이 열리면 가장 아래 마지막 행(index 1, 최근 날짜)이 선택되어 있어야 함
   assert.equal(app.isCrossDateRowSelected, true);
   assert.equal(app.crossDateSelection.startRow, 1);
   assert.equal(app.crossDateSelection.endRow, 1);
+  // 선택 테두리는 No.(col 0)부터 특이사항(col 9)까지만 설정
+  assert.equal(app.crossDateSelection.startCol, 0);
+  assert.equal(app.crossDateSelection.endCol, 9);
 
   // 3. # 헤더 클릭 시 전체 보기 토글 검증:
   app.toggleCrossDateExpanded();

@@ -3421,9 +3421,9 @@ class PTApp {
   selectCrossDateRow(idx) {
     if (!this.crossDateResults || idx < 0 || idx >= this.crossDateResults.length) return;
     this.isCrossDateRowSelected = true;
-    // No. 열(col 0)은 숨겨져 있으므로 성별(col 1)부터 방문시간(col 10)까지 전체 행 선택
-    this.selectCrossDateCell(idx, 1);
-    this.selectCrossDateCell(idx, 10, true);
+    // No. 열(col 0)부터 특이사항(col 9)까지만 전체 행 선택
+    this.selectCrossDateCell(idx, 0);
+    this.selectCrossDateCell(idx, 9, true);
     this.isSelectingCrossDate = false; // 마우스 이동 시 임의 선택 방지
 
     this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
@@ -3479,15 +3479,13 @@ class PTApp {
       return rect.width;
     });
 
+    // 브라우저 colgroup에는 보이는 열만 추가해야 렌더링 셀과 1:1로 매핑됨 (display:none 열 제외)
     colWidths.forEach((w) => {
-      const col = document.createElement("col");
-      if (w === 0) {
-        col.style.width = "0px";
-        col.style.display = "none";
-      } else {
+      if (w > 0) {
+        const col = document.createElement("col");
         col.style.width = `${w}px`;
+        colgroup.appendChild(col);
       }
-      colgroup.appendChild(col);
     });
 
     // innerTable의 각 cross-date-row 내 모든 셀(th 및 td)에 메인 헤더와 동일한 정확한 픽셀 너비 적용
@@ -3574,12 +3572,12 @@ class PTApp {
       rowEl.style.display = inRange ? "" : "none";
     });
 
-    // 3) 이전 날짜에서 매칭 기록 수집 (최신 날짜 우선)
+    // 3) 이전 날짜에서 매칭 기록 수집 (오래된 날짜가 위, 최신 날짜가 아래로 오도록 오름차순: 하단에 최근월일 표시)
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const allMatchedRows = [];
 
     const searchStore = this.getSearchDataStore();
-    const allDates = Object.keys(searchStore).sort().reverse(); // 최신 날짜가 위로 오도록 내림차순
+    const allDates = Object.keys(searchStore).sort(); // 오름차순: 하단에 최근월일
     allDates.forEach((dateKey) => {
       if (dateKey >= this.currentDate) return; // 이전 날짜만 대상
       const dateRows = searchStore[dateKey] || [];
@@ -3593,6 +3591,7 @@ class PTApp {
     });
 
     // 4) 중복 그룹화 (No., visitTime 제외, 성별~특이사항 내용 동일 여부)
+    // No.가 달라도 나머지 내용이 같으면 합치는 기능 유지, 최신 날짜의 행을 대표 행으로 지정
     const getDedupeKey = (row) => {
       const compareCols = ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
       return compareCols.map(k => String(row[k] || "").trim().toLowerCase()).join("||");
@@ -3608,7 +3607,11 @@ class PTApp {
           key: dKey
         });
       } else {
-        groupMap.get(dKey).items.push(row);
+        const grp = groupMap.get(dKey);
+        grp.items.push(row);
+        if (row._sourceDate >= grp.representative._sourceDate) {
+          grp.representative = row;
+        }
       }
     });
 
@@ -3650,11 +3653,11 @@ class PTApp {
     // 렌더링할 행 목록 결정
     let renderRows = [];
     if (!this.isCrossDateExpanded) {
-      // 대표 행 모드: 각 중복 그룹의 대표 1행만
+      // 대표 행 모드: 각 중복 그룹의 대표 1행만 (오래된 날짜가 위, 하단에 최근월일)
       renderRows = Array.from(groupMap.values()).map(g => ({
         ...g.representative,
         _dupCount: g.items.length
-      }));
+      })).sort((a, b) => (a._sourceDate > b._sourceDate ? 1 : a._sourceDate < b._sourceDate ? -1 : 0));
     } else {
       // 전체 펼치기 모드: 모든 매칭 행 표시
       renderRows = allMatchedRows.map(row => {
