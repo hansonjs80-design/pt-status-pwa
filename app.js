@@ -698,13 +698,26 @@ class PTApp {
       this.elBtnSearchPromptSubmit.addEventListener("click", () => this.submitSearchPrompt());
     }
     if (this.elSearchPromptInput) {
+      this.elSearchPromptInput.addEventListener("input", () => {
+        this.updateSearchPromptAutocomplete();
+      });
       this.elSearchPromptInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          this.moveSearchPromptAutocomplete(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          this.moveSearchPromptAutocomplete(-1);
+        } else if (e.key === "Enter") {
           e.preventDefault();
           this.submitSearchPrompt();
         } else if (e.key === "Escape") {
           e.preventDefault();
-          this.closeSearchPromptModal();
+          if (this._searchPromptACMenu) {
+            this.closeSearchPromptAutocomplete();
+          } else {
+            this.closeSearchPromptModal();
+          }
         }
       });
     }
@@ -3212,17 +3225,160 @@ class PTApp {
     setTimeout(() => {
       this.elSearchPromptInput.focus();
       this.elSearchPromptInput.select();
-    }, 50);
+      // 기존 검색어가 있으면 자동완성 즉시 표시
+      if (this.elSearchPromptInput.value.trim()) {
+        this.updateSearchPromptAutocomplete();
+      }
+    }, 60);
   }
 
   closeSearchPromptModal() {
     if (!this.elSearchPromptModal) return;
+    this.closeSearchPromptAutocomplete();
     this.elSearchPromptModal.style.display = "none";
     this.elSheetContainer?.focus({ preventScroll: true });
   }
 
+  // 검색 모달 자동완성: 이름(name)과 챠트번호(chartNo) 후보를 통합해서 보여줌
+  getSearchPromptSuggestions(query) {
+    if (!query || !query.trim()) return [];
+    const q = query.trim().toLowerCase();
+    const seen = new Set();
+    const results = [];
+
+    // name, chartNo 두 컬럼에서 후보 수집 (최신 날짜 우선)
+    const searchStore = this.getSearchDataStore();
+    const dateKeys = [this.currentDate, ...Object.keys(searchStore).filter(d => d !== this.currentDate).sort().reverse()];
+
+    for (const dateKey of dateKeys) {
+      const rows = searchStore[dateKey];
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const name = String(row?.name ?? "").trim();
+        const chartNo = String(row?.chartNo ?? "").trim();
+        for (const val of [name, chartNo]) {
+          if (!val) continue;
+          const key = val.toLowerCase();
+          if (seen.has(key)) continue;
+          const matches = key.includes(q) || key.startsWith(q) ||
+            (name && chartNo && `${name} ${chartNo}`.toLowerCase().includes(q));
+          if (matches || val.toLowerCase().startsWith(q)) {
+            seen.add(key);
+            results.push({ value: val, name: name || "", chartNo: chartNo || "" });
+            if (results.length >= 10) return results;
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  updateSearchPromptAutocomplete() {
+    const input = this.elSearchPromptInput;
+    if (!input) return;
+    const q = input.value;
+    const suggestions = this.getSearchPromptSuggestions(q);
+    if (suggestions.length === 0) {
+      this.closeSearchPromptAutocomplete();
+      return;
+    }
+    this.showSearchPromptAutocomplete(input, suggestions, q);
+  }
+
+  showSearchPromptAutocomplete(input, suggestions, query) {
+    this.closeSearchPromptAutocomplete();
+    const menu = document.createElement("div");
+    menu.id = "searchPromptAutocompleteMenu";
+    menu.className = "cell-autocomplete-menu search-prompt-autocomplete";
+    menu.style.zIndex = "10010"; // 모달 위에 표시
+    this._searchPromptACIndex = 0;
+
+    suggestions.forEach((item, idx) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "autocomplete-item" + (idx === 0 ? " is-selected" : "");
+      itemEl.dataset.index = idx;
+
+      const textSpan = document.createElement("span");
+      textSpan.className = "autocomplete-item-text";
+      textSpan.textContent = item.value;
+      itemEl.appendChild(textSpan);
+
+      // 이름/챠트번호 구분 힌트
+      if (item.name && item.chartNo) {
+        const hint = document.createElement("span");
+        hint.className = "autocomplete-hint-badge";
+        hint.textContent = item.name === item.value ? `차트: ${item.chartNo}` : `이름: ${item.name}`;
+        hint.style.fontSize = "10px";
+        hint.style.marginLeft = "6px";
+        hint.style.opacity = "0.7";
+        itemEl.appendChild(hint);
+      }
+
+      itemEl.addEventListener("mousedown", e => e.preventDefault());
+      itemEl.addEventListener("click", () => {
+        input.value = item.value;
+        this.closeSearchPromptAutocomplete();
+        this.submitSearchPrompt();
+      });
+      menu.appendChild(itemEl);
+    });
+
+    document.body.appendChild(menu);
+    this._searchPromptACMenu = menu;
+    this._searchPromptACSuggestions = suggestions;
+
+    // 위치: 모달 input 기준 아래
+    const rect = input.getBoundingClientRect();
+    menu.style.position = "fixed";
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.minWidth = `${rect.width}px`;
+    menu.style.maxWidth = `${rect.width + 100}px`;
+    menu.style.maxHeight = "200px";
+    menu.style.overflowY = "auto";
+
+    const outsideClick = (e) => {
+      if (!menu.contains(e.target) && e.target !== input) this.closeSearchPromptAutocomplete();
+    };
+    document.addEventListener("mousedown", outsideClick);
+    this._searchPromptACCleanup = () => document.removeEventListener("mousedown", outsideClick);
+  }
+
+  closeSearchPromptAutocomplete() {
+    this._searchPromptACCleanup?.();
+    this._searchPromptACCleanup = null;
+    const menu = document.getElementById("searchPromptAutocompleteMenu");
+    if (menu) menu.remove();
+    this._searchPromptACMenu = null;
+    this._searchPromptACSuggestions = null;
+    this._searchPromptACIndex = -1;
+  }
+
+  moveSearchPromptAutocomplete(direction) {
+    const menu = this._searchPromptACMenu;
+    const suggestions = this._searchPromptACSuggestions;
+    if (!menu || !suggestions || suggestions.length === 0) return false;
+    const items = menu.querySelectorAll(".autocomplete-item");
+    let next = (this._searchPromptACIndex ?? 0) + direction;
+    if (next < 0) next = suggestions.length - 1;
+    if (next >= suggestions.length) next = 0;
+    this._searchPromptACIndex = next;
+    items.forEach((it, i) => it.classList.toggle("is-selected", i === next));
+    items[next]?.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
   submitSearchPrompt() {
     if (!this.elSearchPromptInput) return;
+    // 자동완성 선택 중이면 해당 값 우선
+    const menu = this._searchPromptACMenu;
+    if (menu) {
+      const selected = menu.querySelector(".autocomplete-item.is-selected");
+      if (selected) {
+        const textSpan = selected.querySelector(".autocomplete-item-text");
+        if (textSpan) this.elSearchPromptInput.value = textSpan.textContent;
+      }
+    }
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
     this.closeSearchPromptModal();
