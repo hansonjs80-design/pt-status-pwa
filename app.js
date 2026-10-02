@@ -3158,8 +3158,8 @@ class PTApp {
       this.elFormulaInput.readOnly = true;
     }
     this.elSheetContainer?.focus?.({ preventScroll: true });
-    // Extending selection clears temporary state above; keep mouse dragging active.
-    this.isSelectingCrossDate = extend;
+    // 마우스 드래그 상태는 mousedown 핸들러에서만 제어하며 함수 호출로 true가 되지 않도록 방지
+    this.isSelectingCrossDate = false;
   }
 
   handleSearch() {
@@ -3413,6 +3413,7 @@ class PTApp {
     // No. 열(col 0)은 숨겨져 있으므로 성별(col 1)부터 방문시간(col 10)까지 전체 행 선택
     this.selectCrossDateCell(idx, 1);
     this.selectCrossDateCell(idx, 10, true);
+    this.isSelectingCrossDate = false; // 마우스 이동 시 임의 선택 방지
 
     this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
     const tr = this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${idx}"]`)
@@ -3747,8 +3748,12 @@ class PTApp {
           this.selectCrossDateCell(idx, colIdx, e.shiftKey);
           this.isSelectingCrossDate = true;
         });
-        td.addEventListener("mouseenter", () => {
-          if (this.isSelectingCrossDate) this.selectCrossDateCell(idx, colIdx, true);
+        td.addEventListener("mouseenter", (e) => {
+          if (this.isSelectingCrossDate && e.buttons === 1) {
+            this.selectCrossDateCell(idx, colIdx, true);
+          } else {
+            this.isSelectingCrossDate = false;
+          }
         });
 
         tr.appendChild(td);
@@ -3808,9 +3813,15 @@ class PTApp {
       }
     });
 
-    // 4) 기본적으로 가장 최신 행(첫 번째 행)을 전체 선택 상태로 설정
+    // 4) 기본적으로 가장 아래 마지막 행을 전체 선택 상태로 설정
     if (renderRows.length > 0) {
-      this.selectCrossDateRow(0);
+      const lastIdx = renderRows.length - 1;
+      this.selectCrossDateRow(lastIdx);
+      this.isSelectingCrossDate = false;
+      requestAnimationFrame(() => {
+        const scrollWrap = document.getElementById("crossDateScrollWrap");
+        if (scrollWrap) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+      });
     }
   }
 
@@ -5167,15 +5178,25 @@ class PTApp {
       }
       // 행 전체 선택 상태일 때 위/아래 방향키 누르면 전체 행 선택 유지한 채 위아래로 이동
       else if (this.isCrossDateRowSelected && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        const crossRows = Array.from(this.elTableBody.querySelectorAll(".cross-date-row"));
+        const crossRows = Array.from(this.elTableBody.querySelectorAll(".cross-date-row:not([style*='display: none'])"));
         const currentTr = this.elTableBody.querySelector(`[data-cross-idx="${selection.minRow}"]`)?.closest("tr");
         const currentDomIdx = crossRows.indexOf(currentTr);
         if (currentDomIdx >= 0) {
           const nextDomIdx = e.key === "ArrowDown" ? currentDomIdx + 1 : currentDomIdx - 1;
           if (nextDomIdx >= 0 && nextDomIdx < crossRows.length) {
             const nextTr = crossRows[nextDomIdx];
-            const nextIdx = Number(nextTr.querySelector("[data-cross-idx]")?.dataset.crossIdx);
+            const nextIdx = Number(nextTr.dataset.crossIdx ?? nextTr.querySelector("[data-cross-idx]")?.dataset.crossIdx);
             this.selectCrossDateRow(nextIdx);
+          } else if (e.key === "ArrowDown" && nextDomIdx >= crossRows.length) {
+            // ★ 이전 날짜 마지막 행에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행으로 행 전체 선택 이동!
+            const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
+            if (visibleCurrentRows.length > 0) {
+              const targetRowIdx = Number(visibleCurrentRows[0].dataset.rowIdx);
+              this.clearCrossDateSelection();
+              this.isCrossDateRowSelected = false;
+              this.selectRowRange(targetRowIdx, targetRowIdx);
+              visibleCurrentRows[0].scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
           }
         }
       }
@@ -5183,6 +5204,26 @@ class PTApp {
       else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         this.isCrossDateRowSelected = false;
         this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
+        this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
+
+        if (e.key === "ArrowDown" && selection.endRow >= this.crossDateResults.length - 1) {
+          // ★ 이전 날짜 마지막 행의 셀에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행의 동일 열로 이동!
+          const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
+          if (visibleCurrentRows.length > 0) {
+            const targetRowIdx = Number(visibleCurrentRows[0].dataset.rowIdx);
+            const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+            const targetColKey = colOrder[selection.endCol] || "chartNo";
+            this.clearCrossDateSelection();
+            const targetCell = this.elTableBody.querySelector(`[data-row="${targetRowIdx}"][data-col="${targetColKey}"]`);
+            if (targetCell) {
+              this.selectCell(targetRowIdx, targetColKey, targetCell, false);
+              targetCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+            e.preventDefault();
+            return;
+          }
+        }
+
         const row = Math.max(0, Math.min(this.crossDateResults.length - 1, selection.endRow + (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0)));
         const col = Math.max(0, Math.min(10, selection.endCol + (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0)));
         this.selectCrossDateCell(row, col, e.shiftKey);
@@ -5360,6 +5401,21 @@ class PTApp {
           ?.scrollIntoView({ block: "nearest", inline: "nearest" });
       } else {
         const currentRow = this.selectedRowRange.minRow;
+        // 교차 검색이 활성화되어 있고 이전 날짜 기록이 있을 때
+        if (e.key === "ArrowUp" && this.crossDateResults && this.crossDateResults.length > 0) {
+          const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
+          const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
+          if (currentRow <= firstVisibleRowIdx) {
+            // ★ 현재 날짜 첫 표시 행에서 ArrowUp -> 파란 가로바를 넘어 이전 날짜 마지막 행 전체 선택!
+            this.clearSelection();
+            this.clearHeaderSelections();
+            const lastCrossIdx = this.crossDateResults.length - 1;
+            this.selectCrossDateRow(lastCrossIdx);
+            const scrollWrap = document.getElementById("crossDateScrollWrap");
+            if (scrollWrap) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+            return;
+          }
+        }
         const targetRow = Math.max(0, Math.min(rowCount - 1, currentRow + (e.key === "ArrowDown" ? 1 : -1)));
         this.selectRowRange(targetRow, targetRow);
         this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
@@ -5374,6 +5430,22 @@ class PTApp {
       const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
       const from = e.shiftKey && this.selectedRange && this.rangeEnd && !this.selectedRowRange
         ? this.rangeEnd : { rowIdx: this.activeCell.rowIdx, colIdx: colOrder.indexOf(this.activeCell.colKey) };
+
+      // ★ 이전 날짜 기록이 있고, 현재 날짜 첫 표시 행에서 ArrowUp을 누른 경우 -> 파란 가로바를 넘어 이전 날짜 마지막 행의 셀로 이동!
+      if (e.key === "ArrowUp" && !e.shiftKey && this.crossDateResults && this.crossDateResults.length > 0) {
+        const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
+        const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
+        if (from.rowIdx <= firstVisibleRowIdx) {
+          this.clearSelection();
+          this.clearHeaderSelections();
+          const lastRow = this.crossDateResults.length - 1;
+          const targetColIdx = Math.max(1, Math.min(10, from.colIdx)); // No. 열은 숨김이므로 성별(1) 이상
+          this.selectCrossDateCell(lastRow, targetColIdx, false);
+          const scrollWrap = document.getElementById("crossDateScrollWrap");
+          if (scrollWrap) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+          return;
+        }
+      }
       let targetRow = from.rowIdx;
       let targetColIdx = from.colIdx;
       if (e.key === "ArrowUp") targetRow--;

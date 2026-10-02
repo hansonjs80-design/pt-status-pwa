@@ -242,14 +242,24 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(app.crossDateResults[0]._sourceDate, '2026-10-01');
   assert.equal(app.crossDateResults[0]._dupCount, 2);
 
+  // ★ 창이 열리면 마우스 드래그 상태가 절대 켜져있지 않아야 함 (마우스 움직임 시 임의 선택 방지)
+  assert.equal(app.isSelectingCrossDate, false);
+
+  // ★ 창이 열리면 가장 아래 마지막 행(index 1)이 전체 선택되어 있어야 함
+  assert.equal(app.isCrossDateRowSelected, true);
+  assert.equal(app.crossDateSelection.startRow, 1);
+  assert.equal(app.crossDateSelection.endRow, 1);
+
   // 3. # 헤더 클릭 시 전체 보기 토글 검증:
   app.toggleCrossDateExpanded();
   assert.equal(app.isCrossDateExpanded, true);
   // 전체 펼침 모드에서는 3건 모두 표시되어야 함!
   assert.equal(app.crossDateResults.length, 3);
+  assert.equal(app.isSelectingCrossDate, false);
 
   // 다시 한 번 토글하면 대표 행 모드로 복귀 (2건)
   app.toggleCrossDateExpanded();
   assert.equal(app.isCrossDateExpanded, false);
   assert.equal(app.crossDateResults.length, 2);
+  assert.equal(app.isSelectingCrossDate, false);
 });
