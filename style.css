@@ -763,6 +763,9 @@ body {
   margin: 0 !important;
   border: none !important;
   background: #f8fafc;
+  position: sticky;
+  top: 49px;
+  z-index: 8;
 }
 .cross-date-scroll-wrap {
   width: 100%;
@@ -790,7 +793,7 @@ body {
   table-layout: fixed;
 }
 
-/* 교차 날짜 검색 결과 구분선 (파란색 바 고정 느낌) */
+/* 교차 날짜 검색 결과 구분선 (파란색 바 고정) */
 .cross-date-divider {
   background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
   border: none !important;
@@ -803,11 +806,32 @@ body {
   text-align: left;
   border: none !important;
   letter-spacing: 0.3px;
+  position: sticky;
+  z-index: 8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 .cross-date-divider td span {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 상단 테이블 헤더 # 셀 토글 활성화 스타일 */
+.business-headers-row th.row-num-header.cross-date-toggle-active {
+  background: #1e40af !important;
+  color: #ffffff !important;
+  cursor: pointer !important;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+.business-headers-row th.row-num-header.cross-date-toggle-active:hover {
+  background: #1d4ed8 !important;
+}
+.cross-date-th-icon {
+  display: inline-block;
+  margin-left: 2px;
+  font-size: 10px;
+  color: #93c5fd !important;
 }
 
 /* 날짜 라벨 행 */

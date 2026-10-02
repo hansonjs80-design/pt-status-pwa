@@ -3150,12 +3150,14 @@ class PTApp {
     });
     const source = this.crossDateResults[row];
     const cell = this.elTableBody.querySelector(`[data-cross-idx="${row}"][data-cross-col-idx="${col}"]`);
-    const address = `${String.fromCharCode(65 + col)}${BASE_ROW_NUMBER + source._sourceRowIdx}`;
-    this.elCellAddress.textContent = address;
-    this.elSelectedCellCoords.textContent = `${source._sourceDate} · ${address} 선택`;
-    this.elFormulaInput.value = source[cell.dataset.crossCol] ?? "";
-    this.elFormulaInput.readOnly = true;
-    this.elSheetContainer.focus({ preventScroll: true });
+    if (source && cell) {
+      const address = `${String.fromCharCode(65 + col)}${BASE_ROW_NUMBER + source._sourceRowIdx}`;
+      this.elCellAddress.textContent = address;
+      this.elSelectedCellCoords.textContent = `${source._sourceDate} · ${address} 선택`;
+      this.elFormulaInput.value = source[cell.dataset.crossCol] ?? "";
+      this.elFormulaInput.readOnly = true;
+    }
+    this.elSheetContainer?.focus?.({ preventScroll: true });
     // Extending selection clears temporary state above; keep mouse dragging active.
     this.isSelectingCrossDate = extend;
   }
@@ -3191,12 +3193,30 @@ class PTApp {
 
   // 교차 날짜 임시 행 제거
   clearCrossDateRows() {
-    this.elSheetContainer.classList.remove("history-search-active");
+    this.elSheetContainer?.classList.remove("history-search-active");
     this.clearCrossDateSelection();
     this.isCrossDateRowSelected = false;
     this.crossDateResults = [];
+    this.crossDateGroups = null;
+    this.allCrossDateMatchedRows = null;
+    this.isCrossDateExpanded = false;
     if (this.clipboardSelection?.kind === "history") this.clipboardSelection = null;
-    document.querySelectorAll(".cross-date-row, .cross-date-divider").forEach(el => el.remove());
+    document.querySelectorAll(".cross-date-master-row, .cross-date-row, .cross-date-divider").forEach(el => el.remove());
+
+    // # 헤더 토글 상태 원복
+    const thRowNumHeader = document.querySelector(".business-headers-row th.row-num-header");
+    if (thRowNumHeader) {
+      thRowNumHeader.classList.remove("cross-date-toggle-active");
+      thRowNumHeader.style.cursor = "";
+      thRowNumHeader.textContent = "#";
+      thRowNumHeader.title = "";
+      thRowNumHeader.onclick = null;
+    }
+    // 현재 날짜 행 표시 원복
+    this.elTableBody?.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)").forEach(rowEl => {
+      rowEl.style.display = "";
+      rowEl.classList.remove("search-origin-row");
+    });
   }
 
   // ★ 전체 날짜 검색: Ctrl+F 시 현재 날짜 + 이전 날짜의 매칭 기록을 모두 표시
@@ -3394,11 +3414,48 @@ class PTApp {
     this.selectCrossDateCell(idx, 1);
     this.selectCrossDateCell(idx, 10, true);
 
+    this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
+    const tr = this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${idx}"]`)
+      || this.elTableBody.querySelector(`[data-cross-idx="${idx}"]`)?.closest("tr");
+    tr?.classList.add("cross-date-row-selected");
+
     this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
-    const th = this.elTableBody.querySelector(`.cross-date-row th.cross-date-num[data-cross-idx="${idx}"]`)
-      || this.elTableBody.querySelector(`[data-cross-idx="${idx}"]`)?.closest("tr")?.querySelector(".cross-date-num");
+    const th = tr?.querySelector(".cross-date-num");
     th?.classList.add("selected", "header-active");
     th?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  toggleCrossDateExpanded() {
+    this.isCrossDateExpanded = !this.isCrossDateExpanded;
+    this.renderCrossDateSection();
+  }
+
+  syncCrossDateColWidths() {
+    const innerTable = document.getElementById("crossDateInnerTable");
+    if (!innerTable) return;
+    const bHeadersRow = document.querySelector(".business-headers-row");
+    if (!bHeadersRow) return;
+
+    let colgroup = innerTable.querySelector("colgroup");
+    if (!colgroup) {
+      colgroup = document.createElement("colgroup");
+      innerTable.insertBefore(colgroup, innerTable.firstChild);
+    }
+    if (colgroup.replaceChildren) {
+      colgroup.replaceChildren();
+    } else {
+      while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
+    }
+
+    // 메인 테이블 비즈니스 헤더의 각 열의 실제 렌더링 너비 복제
+    Array.from(bHeadersRow.children).forEach((th) => {
+      const isHidden = window.getComputedStyle(th).display === "none";
+      if (isHidden) return;
+      const rect = th.getBoundingClientRect();
+      const col = document.createElement("col");
+      col.style.width = `${rect.width}px`;
+      colgroup.appendChild(col);
+    });
   }
 
   findActiveCell() {
@@ -3436,8 +3493,9 @@ class PTApp {
     this.clearCrossDateRows();
     this.elSheetContainer.classList.add("history-search-active");
 
-    // 2) 현재 날짜 행 필터링: 마지막 내용 있는 행 아래로 2~3행(3행) 더 보이게 설정
-    const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row)");
+    // 2) 현재 날짜 행 필터링:
+    // "현재 날짜 행은 내용있는 행은 가장 마지막 내용있는 행에서 위로 10행만 보이면 되고 마지막 내용이 있는 행 아래로 빈행이 보이면 되게 설정"
+    const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)");
     const rowsData = this.getCurrentRows();
     let lastDataIdx = -1;
     rowsData.forEach((row, idx) => {
@@ -3446,58 +3504,211 @@ class PTApp {
       }
     });
     const originIdx = Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
-    const maxContentIdx = Math.max(lastDataIdx, originIdx);
-    const extraEmptyLimit = maxContentIdx >= 0 ? maxContentIdx + 3 : 2;
+
+    let startIdx, endIdx;
+    if (lastDataIdx >= 0) {
+      startIdx = Math.max(0, lastDataIdx - 9); // 마지막 내용 행에서 위로 10행
+      endIdx = lastDataIdx + 3; // 마지막 내용 행 아래로 빈행 3행
+    } else {
+      startIdx = 0;
+      endIdx = 2; // 내용 없으면 빈행 3행
+    }
+
+    if (originIdx >= 0) {
+      startIdx = Math.min(startIdx, Math.max(0, originIdx - 5));
+      endIdx = Math.max(endIdx, originIdx + 2);
+    }
 
     currentRows.forEach((rowEl) => {
       const rIdx = Number(rowEl.dataset.rowIdx);
-      const text = rowEl.textContent.toLowerCase();
-      const isMatch = text.includes(q);
-      const isExtraEmpty = rIdx >= 0 && rIdx <= extraEmptyLimit;
-      const isTarget = rIdx === originIdx;
-      rowEl.style.display = (isMatch || isExtraEmpty || isTarget) ? "" : "none";
+      const inRange = (rIdx >= startIdx && rIdx <= endIdx);
+      rowEl.style.display = inRange ? "" : "none";
     });
 
-    // 3) 이전 날짜에서 매칭 기록 수집
+    // 3) 이전 날짜에서 매칭 기록 수집 (최신 날짜 우선)
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
-    const crossDateResults = [];
+    const allMatchedRows = [];
 
     const searchStore = this.getSearchDataStore();
-    const allDates = Object.keys(searchStore).sort(); // 오래된 기록부터, 최신 기록이 아래쪽
+    const allDates = Object.keys(searchStore).sort().reverse(); // 최신 날짜가 위로 오도록 내림차순
     allDates.forEach((dateKey) => {
-      if (dateKey >= this.currentDate) return; // 이전 날짜만 표시
+      if (dateKey >= this.currentDate) return; // 이전 날짜만 대상
       const dateRows = searchStore[dateKey] || [];
       dateRows.forEach((row, sourceRowIdx) => {
-        // 유의미한 데이터가 있는 행만
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
-        // 검색어 매칭
         const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
         if (rowText.includes(q)) {
-          crossDateResults.push({ ...row, _sourceDate: dateKey, _sourceRowIdx: sourceRowIdx });
+          allMatchedRows.push({ ...row, _sourceDate: dateKey, _sourceRowIdx: sourceRowIdx });
         }
       });
     });
 
-    this.crossDateResults = crossDateResults;
-    if (crossDateResults.length === 0) { this.scrollToHistoryTarget(); return; }
+    // 4) 중복 그룹화 (No., visitTime 제외, 성별~특이사항 내용 동일 여부)
+    const getDedupeKey = (row) => {
+      const compareCols = ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+      return compareCols.map(k => String(row[k] || "").trim().toLowerCase()).join("||");
+    };
 
-    // 현재 테이블의 첫 번째 행 (삽입 기준점)
+    const groupMap = new Map();
+    allMatchedRows.forEach((row) => {
+      const dKey = getDedupeKey(row);
+      if (!groupMap.has(dKey)) {
+        groupMap.set(dKey, {
+          representative: row,
+          items: [row],
+          key: dKey
+        });
+      } else {
+        groupMap.get(dKey).items.push(row);
+      }
+    });
+
+    this.crossDateGroups = groupMap;
+    this.allCrossDateMatchedRows = allMatchedRows;
+    this.isCrossDateExpanded = false; // 기본값: 대표 행만 표시
+
+    // 5) 이전 날짜 섹션 렌더링
+    this.renderCrossDateSection();
+
+    // 6) 현재 날짜의 마지막 내용 행(또는 0번 행)이 화면 중앙 부근에 오도록 스크롤
+    const scrollTargetIdx = lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
+    const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
+    if (scrollRowEl) {
+      setTimeout(() => {
+        scrollRowEl.scrollIntoView({ block: "center", behavior: "smooth" });
+      }, 50);
+    }
+  }
+
+  renderCrossDateSection() {
+    // 기존 마스터 행 및 구분선 제거
+    document.querySelectorAll(".cross-date-master-row, .cross-date-divider").forEach(el => el.remove());
+
+    const groupMap = this.crossDateGroups;
+    const allMatchedRows = this.allCrossDateMatchedRows || [];
+    if (!groupMap || allMatchedRows.length === 0) {
+      this.crossDateResults = [];
+      const thRowNumHeader = document.querySelector(".business-headers-row th.row-num-header");
+      if (thRowNumHeader) {
+        thRowNumHeader.textContent = "#";
+        thRowNumHeader.classList.remove("cross-date-toggle-active");
+        thRowNumHeader.onclick = null;
+      }
+      this.scrollToHistoryTarget();
+      return;
+    }
+
+    // 렌더링할 행 목록 결정
+    let renderRows = [];
+    if (!this.isCrossDateExpanded) {
+      // 대표 행 모드: 각 중복 그룹의 대표 1행만
+      renderRows = Array.from(groupMap.values()).map(g => ({
+        ...g.representative,
+        _dupCount: g.items.length
+      }));
+    } else {
+      // 전체 펼치기 모드: 모든 매칭 행 표시
+      renderRows = allMatchedRows.map(row => {
+        const grp = groupMap.get(
+          ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"]
+            .map(k => String(row[k] || "").trim().toLowerCase()).join("||")
+        );
+        const isSubRow = grp && grp.items.length > 1 && grp.representative !== row;
+        return {
+          ...row,
+          _dupCount: grp ? grp.items.length : 1,
+          _isSubRow: isSubRow
+        };
+      });
+    }
+
+    this.crossDateResults = renderRows;
+
+    // 상단 # 헤더 셀 상태 업데이트 (화살표 모양 및 클릭 토글)
+    const thRowNumHeader = document.querySelector(".business-headers-row th.row-num-header");
+    if (thRowNumHeader) {
+      thRowNumHeader.classList.add("cross-date-toggle-active");
+      const hasAnyDuplicates = Array.from(groupMap.values()).some(g => g.items.length > 1);
+      if (hasAnyDuplicates) {
+        thRowNumHeader.innerHTML = this.isCrossDateExpanded
+          ? '# <span class="cross-date-th-icon">▲</span>'
+          : '# <span class="cross-date-th-icon">▼</span>';
+        thRowNumHeader.title = this.isCrossDateExpanded
+          ? "클릭하여 대표 행만 보기 (중복 숨기기)"
+          : "클릭하여 전체 날짜 기록 보기 (중복 펼치기)";
+      } else {
+        thRowNumHeader.textContent = "#";
+        thRowNumHeader.title = "이전 날짜 기록 표시 중";
+      }
+      thRowNumHeader.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleCrossDateExpanded();
+      };
+    }
+
     const firstCurrentRow = this.elTableBody.firstChild;
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
-    // 4) 이전 날짜 결과 행을 테이블 상단에 삽입 (최신순, 날짜별 그룹)
-    crossDateResults.forEach((row, idx) => {
+    // 1) 마스터 행 생성 (스크롤 래퍼 및 내부 테이블 포함)
+    const masterTr = document.createElement("tr");
+    masterTr.className = "cross-date-master-row";
+
+    const masterTd = document.createElement("td");
+    masterTd.className = "cross-date-master-cell";
+    masterTd.colSpan = 13;
+
+    const scrollWrap = document.createElement("div");
+    scrollWrap.className = "cross-date-scroll-wrap";
+    scrollWrap.id = "crossDateScrollWrap";
+
+    const innerTable = document.createElement("table");
+    innerTable.className = "cross-date-inner-table";
+    innerTable.id = "crossDateInnerTable";
+
+    const innerTbody = document.createElement("tbody");
+
+    // 행 렌더링
+    renderRows.forEach((row, idx) => {
       const tr = document.createElement("tr");
-      tr.className = "excel-row cross-date-row";
+      tr.className = `excel-row cross-date-row ${row._isSubRow ? "cross-date-subrow" : ""}`;
       tr.dataset.crossDate = row._sourceDate;
+      tr.dataset.crossIdx = idx;
 
-      // 행 번호 (날짜 약어로 표시)
+      // 행 번호 (날짜 약어 + 중복 건수/화살표)
       const thNum = document.createElement("th");
       thNum.className = "row-num cross-date-num";
       thNum.dataset.crossIdx = idx;
-      thNum.textContent = row._sourceDate.slice(5).replace("-", "/");
+
+      const headerContent = document.createElement("div");
+      headerContent.className = "cross-date-header-content";
+
+      const dateSpan = document.createElement("span");
+      dateSpan.textContent = row._sourceDate.slice(5).replace("-", "/");
+      headerContent.appendChild(dateSpan);
+
+      if (row._dupCount > 1) {
+        const toggleArrow = document.createElement("span");
+        toggleArrow.className = `cross-date-toggle-arrow ${this.isCrossDateExpanded ? "expanded" : ""}`;
+        toggleArrow.textContent = this.isCrossDateExpanded ? "▲" : "▼";
+        toggleArrow.title = `${row._dupCount}건 기록 (클릭하여 전체/대표행 토글)`;
+        toggleArrow.addEventListener("mousedown", (e) => {
+          e.stopPropagation();
+        });
+        toggleArrow.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.toggleCrossDateExpanded();
+        });
+        headerContent.appendChild(toggleArrow);
+      }
+
+      thNum.appendChild(headerContent);
       thNum.title = `${row._sourceDate} 기록 (클릭하여 행 전체 선택)`;
+
       thNum.addEventListener("mousedown", (e) => {
         if (e.button !== 0) return;
+        if (e.target.closest(".cross-date-toggle-arrow")) return;
         e.preventDefault();
         this.selectCrossDateRow(idx);
       });
@@ -3529,8 +3740,9 @@ class PTApp {
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           e.preventDefault();
-          this.isCrossDateRowSelected = false; // 단독 셀 클릭 시 전체 행 선택 모드 해제
+          this.isCrossDateRowSelected = false;
           this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
+          this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
           if (e.ctrlKey || e.metaKey) { this.toggleCellSelection(idx, colIdx, "history"); return; }
           this.selectCrossDateCell(idx, colIdx, e.shiftKey);
           this.isSelectingCrossDate = true;
@@ -3542,6 +3754,7 @@ class PTApp {
         tr.appendChild(td);
       });
 
+      // 적용 버튼 셀
       const actionCell = document.createElement("td");
       actionCell.className = "history-apply-cell";
       const applyButton = document.createElement("button");
@@ -3554,28 +3767,50 @@ class PTApp {
       applyButton.addEventListener("click", () => this.applyHistoryRow(row));
       actionCell.appendChild(applyButton);
       tr.appendChild(actionCell);
+
       const spacer = document.createElement("td");
       spacer.className = "cell-spacer";
       tr.appendChild(spacer);
-      this.elTableBody.insertBefore(tr, firstCurrentRow);
+
+      innerTbody.appendChild(tr);
     });
 
-    // 5) 이전 기록과 현재 날짜 사이 구분선
+    innerTable.appendChild(innerTbody);
+    scrollWrap.appendChild(innerTable);
+    masterTd.appendChild(scrollWrap);
+    masterTr.appendChild(masterTd);
+    this.elTableBody.insertBefore(masterTr, firstCurrentRow);
+
+    // 2) 구분선 (파란색 바)
     const dividerTr = document.createElement("tr");
     dividerTr.className = "cross-date-divider";
+    dividerTr.id = "crossDateDivider";
     const dividerTd = document.createElement("td");
     dividerTd.colSpan = 13;
-    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${crossDateResults.length}건 ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
+    const modeText = this.isCrossDateExpanded ? "전체 보기" : "대표 행 보기";
+    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · # 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
 
-    // 6) 기본적으로 이전 날짜 항목 중에 가장 최신 행헤더를 클릭한 것과 같이 전체 행 선택
-    if (crossDateResults.length > 0) {
-      const firstCrossRow = this.elTableBody.querySelector(".cross-date-row");
-      const firstIdx = firstCrossRow ? Number(firstCrossRow.querySelector("[data-cross-idx]")?.dataset.crossIdx ?? (crossDateResults.length - 1)) : 0;
-      this.selectCrossDateRow(firstIdx);
-    } else {
-      this.scrollToHistoryTarget();
+    // 3) 열 너비 동기화 및 파란 바 고정 위치(sticky top) 설정
+    requestAnimationFrame(() => {
+      this.syncCrossDateColWidths();
+      const masterRow = document.querySelector(".cross-date-master-row");
+      const divider = document.getElementById("crossDateDivider");
+      if (masterRow && divider) {
+        const masterHeight = masterRow.getBoundingClientRect().height;
+        const stickyTop = 49 + masterHeight;
+        divider.querySelectorAll("td").forEach(td => {
+          td.style.position = "sticky";
+          td.style.top = `${stickyTop}px`;
+          td.style.zIndex = "8";
+        });
+      }
+    });
+
+    // 4) 기본적으로 가장 최신 행(첫 번째 행)을 전체 선택 상태로 설정
+    if (renderRows.length > 0) {
+      this.selectCrossDateRow(0);
     }
   }
 
