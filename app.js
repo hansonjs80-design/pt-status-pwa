@@ -702,6 +702,7 @@ class PTApp {
         this.updateSearchPromptAutocomplete();
       });
       this.elSearchPromptInput.addEventListener("keydown", (e) => {
+        if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) e.stopPropagation();
         if (e.key === "ArrowDown") {
           e.preventDefault();
           this.moveSearchPromptAutocomplete(1);
@@ -710,7 +711,7 @@ class PTApp {
           this.moveSearchPromptAutocomplete(-1);
         } else if (e.key === "Enter") {
           e.preventDefault();
-          this.submitSearchPrompt();
+          if (!e.repeat) this.submitSearchPrompt();
         } else if (e.key === "Escape") {
           e.preventDefault();
           if (this._searchPromptACMenu) {
@@ -2817,6 +2818,7 @@ class PTApp {
         th.style.width = th.dataset.defaultWidth ? `${th.dataset.defaultWidth}px` : "";
         th.style.minWidth = "";
       }
+      this.syncCrossDateColWidths();
       this.showSaveIndicator("기본 열 너비로 초기화됨");
     } catch (err) {
       console.error("Failed to reset column width:", err);
@@ -3253,6 +3255,8 @@ class PTApp {
 
   // 교차 날짜 임시 행 제거
   clearCrossDateRows() {
+    this.historyLayoutObserver?.disconnect();
+    this.historyLayoutObserver = null;
     this.elSheetContainer?.classList.remove("history-search-active");
     this.clearCrossDateSelection();
     this.isCrossDateRowSelected = false;
@@ -3556,18 +3560,10 @@ class PTApp {
 
   findActiveCell() {
     const { rowIdx, colKey } = this.activeCell || {};
-    const query = String(this.getCurrentRows()[rowIdx]?.[colKey] ?? "").trim();
-    if (["chartNo", "name"].includes(colKey)) {
-      this.openSearchPromptModal(rowIdx, query);
-    } else if (query) {
-      document.querySelectorAll(".search-origin-row").forEach(row => row.classList.remove("search-origin-row"));
-      this.elSheetContainer.querySelector(`tr[data-row-idx="${rowIdx}"]`)?.classList.add("search-origin-row");
-      this.searchAllDates(query, rowIdx);
-    } else {
-      // 빈 셀이거나 셀 선택을 안했어도 컨트롤 f를 누르면 이름이나 챠트 번호를 입력해서 컨트롤 f 창으로 들어갈 수 있게 함
-      const targetIdx = Number.isInteger(rowIdx) ? rowIdx : this.findFirstEmptyRowIndex();
-      this.openSearchPromptModal(targetIdx);
-    }
+    const targetIdx = Number.isInteger(rowIdx) ? rowIdx
+      : this.selectedRange?.minRow ?? this.selectedRowIdx ?? this.findFirstEmptyRowIndex();
+    const query = colKey ? String(this.getCurrentRows()[targetIdx]?.[colKey] ?? "").trim() : "";
+    this.openSearchPromptModal(targetIdx, query);
   }
 
   searchAllDates(query, originRowIdx) {
@@ -3683,7 +3679,22 @@ class PTApp {
     }
   }
 
+  updateCrossDateStickyOffsets() {
+    const masterCell = document.querySelector(".cross-date-master-cell");
+    const divider = document.getElementById("crossDateDivider");
+    if (!masterCell || !divider) return;
+    const header = document.getElementById("excelTable")?.querySelector("thead");
+    const headerHeight = header?.getBoundingClientRect().height || 49;
+    masterCell.style.top = `${headerHeight}px`;
+    const dividerTop = headerHeight + masterCell.getBoundingClientRect().height;
+    divider.querySelectorAll("td").forEach(cell => {
+      cell.style.top = `${dividerTop}px`;
+    });
+  }
+
   renderCrossDateSection() {
+    this.historyLayoutObserver?.disconnect();
+    this.historyLayoutObserver = null;
     // 기존 마스터 행 및 구분선 제거
     document.querySelectorAll(".cross-date-master-row, .cross-date-divider").forEach(el => el.remove());
 
@@ -3926,16 +3937,18 @@ class PTApp {
       const visibleRows = Array.from(innerTbody.children).slice(0, 12);
       const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
       scrollWrap.style.maxHeight = `${historyHead.getBoundingClientRect().height + rowsHeight + 1}px`;
-      const masterRow = document.querySelector(".cross-date-master-row");
-      const divider = document.getElementById("crossDateDivider");
-      if (masterRow && divider) {
-        const masterHeight = masterRow.getBoundingClientRect().height;
-        const stickyTop = 49 + masterHeight;
-        divider.querySelectorAll("td").forEach(td => {
-          td.style.position = "sticky";
-          td.style.top = `${stickyTop}px`;
-          td.style.zIndex = "8";
+      this.updateCrossDateStickyOffsets();
+      if (typeof ResizeObserver !== "undefined") {
+        this.historyLayoutObserver = new ResizeObserver(() => {
+          this.syncCrossDateColWidths();
+          this.updateCrossDateStickyOffsets();
         });
+        this.historyLayoutObserver.observe(scrollWrap);
+        const header = document.getElementById("excelTable")?.querySelector("thead");
+        if (header) {
+          this.historyLayoutObserver.observe(header);
+          header.querySelectorAll(".business-headers-row th").forEach(cell => this.historyLayoutObserver.observe(cell));
+        }
       }
     });
 
@@ -5250,6 +5263,7 @@ class PTApp {
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
   handleGlobalKeyDown(e) {
+    if (e.defaultPrevented) return;
     if (this.handleHistoryShortcut(e)) return;
     if (this.fillDrag) {
       e.preventDefault();
@@ -5264,6 +5278,10 @@ class PTApp {
         e.preventDefault();
         e.stopPropagation();
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
+        if (cellInput?.classList?.contains("is-armed")) {
+          this.findActiveCell();
+          return;
+        }
         const searchVal = cellInput ? cellInput.value.trim() : "";
         if (this.elSearchInput && searchVal) {
           document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
@@ -5273,6 +5291,8 @@ class PTApp {
           e.target.blur();
           this.elSheetContainer.focus({ preventScroll: true });
           this.searchAllDates(searchVal, originRowIdx);
+        } else if (cellInput) {
+          this.openSearchPromptModal(this.activeCell?.rowIdx, "");
         }
         return;
       }
@@ -5294,7 +5314,13 @@ class PTApp {
       const selection = this.crossDateSelection;
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
-      if (e.key === "Enter") this.applyHistoryRow(this.crossDateResults[selection.minRow]);
+      if (e.key === "Enter") {
+        if (!e.repeat) {
+          // 버튼은 기본 클릭 동작으로 처리하고 검색 팝업의 키는 적용에 사용하지 않는다.
+          if (e.target.closest?.("button, #searchPromptModal")) return;
+          this.applyHistoryRow(this.crossDateResults[selection.minRow]);
+        }
+      }
       else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -5413,8 +5439,7 @@ class PTApp {
     }
 
     // 7) Search / Filter (Ctrl+F / Cmd+F)
-    //    셀이 선택된 상태에서 Ctrl+F → 해당 셀 내용으로 테이블 필터링
-    //    셀이 선택되지 않았으면 검색창 포커스
+    //    편집 커서가 없는 셀 선택은 검색어 팝업을 연다.
     if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.SEARCH.key) {
       e.preventDefault();
       this.findActiveCell();

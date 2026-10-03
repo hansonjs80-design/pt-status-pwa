@@ -110,3 +110,79 @@ test('leaving history restores the applied row at No. with a selection border', 
   assert.deepEqual(selected, [1, 'no', cell, false]);
   assert.ok(scrolled);
 });
+
+test('history divider follows header and panel height changes', () => {
+  const { app, context } = createApp();
+  let headerHeight = 51, panelHeight = 365;
+  const master = { style: {}, getBoundingClientRect: () => ({ height: panelHeight }) };
+  const dividerCell = { style: {} };
+  const header = { getBoundingClientRect: () => ({ height: headerHeight }) };
+  context.document.querySelector = () => master;
+  context.document.getElementById = id => id === 'excelTable'
+    ? { querySelector: () => header }
+    : { querySelectorAll: () => [dividerCell] };
+  app.updateCrossDateStickyOffsets();
+  assert.equal(master.style.top, '51px');
+  assert.equal(dividerCell.style.top, '416px');
+  headerHeight = 58; panelHeight = 112;
+  app.updateCrossDateStickyOffsets();
+  assert.equal(master.style.top, '58px');
+  assert.equal(dividerCell.style.top, '170px');
+  context.document.querySelector = () => null;
+  assert.doesNotThrow(() => app.updateCrossDateStickyOffsets());
+});
+
+
+test('history ignores Enter repeats and handled search events until a fresh Enter press', () => {
+  const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
+  app.crossDateSelection = { minRow: 0 };
+  app.crossDateResults = [{ name: '가상환자', chartNo: 'T001', part: '새 내역' }];
+  let applied = 0;
+  app.applyHistoryRow = () => { applied++; };
+  const target = { tagName: 'DIV', closest: () => null };
+  const event = { key: 'Enter', target, preventDefault() {}, stopPropagation() {} };
+  app.handleGlobalKeyDown({ ...event, repeat: true });
+  app.handleGlobalKeyDown({ ...event, defaultPrevented: true });
+  app.handleGlobalKeyDown({ ...event, target: { tagName: 'BUTTON', closest: () => ({}) } });
+  assert.equal(applied, 0);
+  app.handleGlobalKeyDown(event);
+  assert.equal(applied, 1);
+});
+
+test('opening and submitting a history search never changes daily records', () => {
+  const rows = [{ name: '가상환자', chartNo: 'T001', memo: '보존' }];
+  const { app } = createApp(rows);
+  const before = JSON.stringify(rows);
+  app.elSearchPromptModal = { style: {} };
+  app.elSearchPromptInput = { value: '', focus() {}, select() {} };
+  app.updateSearchPromptAutocomplete = app.closeSearchPromptAutocomplete = () => {};
+  app.searchAllDates = () => {};
+  app.findActiveCell();
+  assert.equal(JSON.stringify(rows), before);
+  app.submitSearchPrompt();
+  assert.equal(JSON.stringify(rows), before);
+});
+
+
+test('selected nonediting cells also open a prompt instead of searching directly', () => {
+  const { app } = createApp([{ part: '가상 부위' }]);
+  app.activeCell.colKey = 'part';
+  let prompt;
+  app.openSearchPromptModal = (...args) => { prompt = args; };
+  app.searchAllDates = () => { assert.fail('selection must not search directly'); };
+  app.findActiveCell();
+  assert.deepEqual(prompt, [0, '가상 부위']);
+});
+
+test('a transparent armed chart/name input is a selected cell, not an active editor', () => {
+  for (const colKey of ['name', 'chartNo']) {
+    const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
+    app.activeCell.colKey = colKey;
+    let prompt;
+    app.openSearchPromptModal = (...args) => { prompt = args; };
+    app.searchAllDates = () => { assert.fail('armed input must open a prompt'); };
+    const input = { tagName: 'INPUT', value: '가상환자', closest: () => ({}), classList: { contains: name => name === 'is-armed' } };
+    app.handleGlobalKeyDown({ key: 'f', metaKey: true, target: input, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(prompt, [0, app.getCurrentRows()[0][colKey]]);
+  }
+});
