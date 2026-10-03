@@ -2677,7 +2677,10 @@ class PTApp {
     this.applySavedColumnWidths();
 
     const startResize = (resizerEl, clientX) => {
-      activeTh = resizerEl.closest("th");
+      const sourceTh = resizerEl.closest("th");
+      activeTh = sourceTh.closest(".cross-date-inner-table")
+        ? document.querySelector(`.col-headers-row th[data-col="${sourceTh.dataset.col}"]`)
+        : sourceTh;
       activeColKey = activeTh?.dataset?.col || null;
       startX = clientX;
       startWidth = activeTh.offsetWidth;
@@ -2693,6 +2696,7 @@ class PTApp {
       const newWidth = Math.max(activeColKey === "spacer" ? 10 : 35, startWidth + (activeColKey === "spacer" ? -diff : diff));
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
+      this.syncCrossDateColWidths();
       if (activeColKey === "spacer") {
         // The trailing column grows leftward; compensate horizontal overflow to keep its right edge in place.
         this.elSheetContainer.scrollLeft += activeTh.getBoundingClientRect().right - fixedRight;
@@ -3063,6 +3067,22 @@ class PTApp {
     }
   }
 
+  getHistoryDestinationIndex(source, targetIndex) {
+    const rows = this.getCurrentRows();
+    const targetRow = rows[targetIndex];
+    const samePatient = ["name", "chartNo"].every(key => {
+      const value = String(source?.[key] ?? "").trim();
+      return value && value === String(targetRow?.[key] ?? "").trim();
+    });
+    if (samePatient) return targetIndex;
+    const contentKeys = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    let lastIndex = -1;
+    rows.forEach((row, idx) => {
+      if (contentKeys.some(key => String(row[key] ?? "").trim())) lastIndex = idx;
+    });
+    return lastIndex + 1;
+  }
+
   applyHistoryRow(source) {
     const target = this.historyApplyTarget;
     if (!target || target.date !== this.currentDate) return;
@@ -3071,10 +3091,12 @@ class PTApp {
     const rows = this.getCurrentRows();
     const referenceIndex = rows.indexOf(target.row);
     if (referenceIndex < 0 && target.rows === rows) return;
-    const rowIdx = referenceIndex >= 0 ? referenceIndex : target.rowIdx;
-    if (!Number.isInteger(rowIdx) || !rows[rowIdx]) return;
+    const targetRowIdx = referenceIndex >= 0 ? referenceIndex : target.rowIdx;
+    if (!Number.isInteger(targetRowIdx) || !rows[targetRowIdx]) return;
+    let rowIdx;
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const selection = this.crossDateSelection;
+    const wasRowSelected = this.isCrossDateRowSelected;
     const sourceIndex = this.crossDateResults?.indexOf(source);
     const useSelection = selection && sourceIndex >= selection.minRow && sourceIndex <= selection.maxRow;
     const sources = useSelection ? this.crossDateResults.slice(selection.minRow, selection.maxRow + 1) : [source];
@@ -3083,19 +3105,31 @@ class PTApp {
     for (let offset = 0; offset < sources.length; offset++) {
       const fields = useSelection && this.selectedCellSet ? selectedKeys.filter(key => this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))) : selectedKeys;
       if (!fields.length) continue;
-      while (!rows[rowIdx + offset]) rows.push(this.createDefaultEmptyRows(1)[0]);
-      this.copyHistoryFields(rows[rowIdx + offset], sources[offset], fields);
-      this.setVisitTimeNow(rows[rowIdx + offset], appliedAt);
+      const destinationIdx = this.getHistoryDestinationIndex(sources[offset], targetRowIdx + offset);
+      if (rowIdx === undefined) rowIdx = destinationIdx;
+      while (!rows[destinationIdx]) rows.push(this.createDefaultEmptyRows(1)[0]);
+      this.copyHistoryFields(rows[destinationIdx], sources[offset], fields);
+      this.setVisitTimeNow(rows[destinationIdx], appliedAt);
     }
+    if (rowIdx === undefined) return;
     this.activeCell = null;
     this.clipboardSelection = null;
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
     this.saveDataStore();
     this.renderTable();
-    if (searchQuery) this.searchAllDates(searchQuery, rowIdx);
-    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${target.colKey}"]`);
-    this.selectCell(rowIdx, target.colKey, cell);
+    if (searchQuery) {
+      this.searchAllDates(searchQuery, rowIdx);
+      if (selection && this.crossDateResults?.length) {
+        if (wasRowSelected) this.selectCrossDateRow(selection.minRow);
+        else {
+          this.selectCrossDateCell(selection.startRow, selection.startCol);
+          this.selectCrossDateCell(selection.endRow, selection.endCol, true);
+          this.isCrossDateRowSelected = false;
+          this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
+        }
+      }
+    }
     this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
@@ -3137,6 +3171,7 @@ class PTApp {
 
   selectCrossDateCell(row, col, extend = false) {
     const previous = this.crossDateSelection;
+    const dragging = this.isSelectingCrossDate;
     document.activeElement?.blur();
     this.clearHeaderSelections();
     this.activeCell = null;
@@ -3169,8 +3204,21 @@ class PTApp {
       this.elFormulaInput.readOnly = true;
     }
     this.elSheetContainer?.focus?.({ preventScroll: true });
-    // 마우스 드래그 상태는 mousedown 핸들러에서만 제어하며 함수 호출로 true가 되지 않도록 방지
-    this.isSelectingCrossDate = false;
+    // 확장 선택 중인 드래그를 유지한다. 키보드/초기 선택은 드래그를 시작하지 않는다.
+    this.isSelectingCrossDate = Boolean(extend && dragging);
+  }
+
+  restoreAppliedHistorySelection(target) {
+    if (target?.date !== this.currentDate) return;
+    const rows = this.getCurrentRows();
+    const index = rows.indexOf(target.row);
+    const rowIdx = index >= 0 ? index : target.rowIdx;
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="no"]`);
+    if (cell) {
+      this.selectCell(rowIdx, "no", cell, false);
+      cell.scrollIntoView({ block: "center", inline: "nearest" });
+      this.elSheetContainer.focus({ preventScroll: true });
+    }
   }
 
   handleSearch() {
@@ -3199,6 +3247,7 @@ class PTApp {
       this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"]`)
         ?.scrollIntoView({ block: "center", inline: "nearest" });
     }
+    this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
     this.lastHistoryAppliedTarget = null;
   }
 
@@ -3248,10 +3297,10 @@ class PTApp {
     return rows.length;
   }
 
-  openSearchPromptModal(targetRowIdx) {
+  openSearchPromptModal(targetRowIdx, initialQuery) {
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
-    this.elSearchPromptInput.value = this.elSearchInput?.value?.trim() || "";
+    this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
     this.elSearchPromptModal.style.display = "flex";
     setTimeout(() => {
       this.elSearchPromptInput.focus();
@@ -3450,15 +3499,6 @@ class PTApp {
     const bHeadersRow = document.querySelector(".business-headers-row");
     if (!bHeadersRow) return;
 
-    // 메인 테이블의 실제 전체 가로 너비와 innerTable 1:1 일치
-    const mainTableRect = excelTable.getBoundingClientRect();
-    const mainWidth = mainTableRect.width || excelTable.offsetWidth;
-    if (mainWidth > 0) {
-      innerTable.style.width = `${mainWidth}px`;
-      innerTable.style.minWidth = `${mainWidth}px`;
-      innerTable.style.tableLayout = "fixed";
-    }
-
     let colgroup = innerTable.querySelector("colgroup");
     if (!colgroup) {
       colgroup = document.createElement("colgroup");
@@ -3479,6 +3519,15 @@ class PTApp {
       return rect.width;
     });
 
+    // 숨긴 열과 colspan으로 생긴 빈 공간을 제외한 실제 열 너비 합을 사용한다.
+    const visibleCount = colWidths.filter(w => w > 0).length;
+    document.querySelectorAll(".cross-date-master-cell, .cross-date-divider td").forEach(cell => {
+      cell.colSpan = visibleCount;
+    });
+    const width = colWidths.reduce((sum, w) => sum + w, 0);
+    innerTable.style.width = `${width}px`;
+    innerTable.style.minWidth = `${width}px`;
+
     // 브라우저 colgroup에는 보이는 열만 추가해야 렌더링 셀과 1:1로 매핑됨 (display:none 열 제외)
     colWidths.forEach((w) => {
       if (w > 0) {
@@ -3489,7 +3538,7 @@ class PTApp {
     });
 
     // innerTable의 각 cross-date-row 내 모든 셀(th 및 td)에 메인 헤더와 동일한 정확한 픽셀 너비 적용
-    innerTable.querySelectorAll(".cross-date-row").forEach((tr) => {
+    innerTable.querySelectorAll(".cross-date-row, .cross-date-headers-row").forEach((tr) => {
       Array.from(tr.children).forEach((cell, idx) => {
         const w = colWidths[idx];
         if (w === 0 || w === undefined) {
@@ -3508,7 +3557,9 @@ class PTApp {
   findActiveCell() {
     const { rowIdx, colKey } = this.activeCell || {};
     const query = String(this.getCurrentRows()[rowIdx]?.[colKey] ?? "").trim();
-    if (query) {
+    if (["chartNo", "name"].includes(colKey)) {
+      this.openSearchPromptModal(rowIdx, query);
+    } else if (query) {
       document.querySelectorAll(".search-origin-row").forEach(row => row.classList.remove("search-origin-row"));
       this.elSheetContainer.querySelector(`tr[data-row-idx="${rowIdx}"]`)?.classList.add("search-origin-row");
       this.searchAllDates(query, rowIdx);
@@ -3718,6 +3769,25 @@ class PTApp {
     innerTable.className = "cross-date-inner-table";
     innerTable.id = "crossDateInnerTable";
 
+    const historyHead = document.createElement("thead");
+    const historyHeaders = document.createElement("tr");
+    historyHeaders.className = "cross-date-headers-row";
+    const headerKeys = [null, ...colKeys, "del", "spacer"];
+    const headerLabels = ["날짜", "No.", "성별", "챠트번호", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항", "방문 시간", "적용", ""];
+    headerKeys.forEach((key, idx) => {
+      const th = document.createElement("th");
+      th.textContent = headerLabels[idx];
+      if (key) {
+        th.dataset.col = key;
+        const resizer = document.createElement("span");
+        resizer.className = "col-resizer";
+        resizer.title = "드래그하여 열 너비 조절";
+        th.appendChild(resizer);
+      }
+      historyHeaders.appendChild(th);
+    });
+    historyHead.appendChild(historyHeaders);
+    innerTable.appendChild(historyHead);
     const innerTbody = document.createElement("tbody");
 
     // 행 렌더링
@@ -3852,6 +3922,10 @@ class PTApp {
     this.syncCrossDateColWidths();
     requestAnimationFrame(() => {
       this.syncCrossDateColWidths();
+      // 글꼴/사용자 행 높이가 달라도 첫 12행을 온전히 표시한다.
+      const visibleRows = Array.from(innerTbody.children).slice(0, 12);
+      const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+      scrollWrap.style.maxHeight = `${historyHead.getBoundingClientRect().height + rowsHeight + 1}px`;
       const masterRow = document.querySelector(".cross-date-master-row");
       const divider = document.getElementById("crossDateDivider");
       if (masterRow && divider) {
@@ -5225,7 +5299,8 @@ class PTApp {
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
-        if (value) this.searchAllDates(value);
+        if (["chartNo", "name"].includes(keys[selection.endCol])) this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, value);
+        else if (value) this.searchAllDates(value);
         else this.openSearchPromptModal(this.findFirstEmptyRowIndex());
       }
       // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
@@ -5554,8 +5629,9 @@ class PTApp {
       }
     }
 
-    // 17) Escape -> Hide context menu & clear selection highlights & DESELECT cell & 검색 필터 해제
+    // 17) Escape -> 검색 종료 및 적용한 행의 No. 셀로 복귀
     if (e.key === "Escape") {
+      const appliedTarget = this.lastHistoryAppliedTarget;
       e.preventDefault();
       this.closeAutocompleteMenu();
       this.closeGenderDropdown();
@@ -5608,6 +5684,7 @@ class PTApp {
       this.selectedRowRange = null;
       this.rangeStart = null;
       this.rangeEnd = null;
+      this.restoreAppliedHistorySelection(appliedTarget);
     }
   }
 

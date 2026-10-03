@@ -266,4 +266,15 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(app.isCrossDateExpanded, false);
   assert.equal(app.crossDateResults.length, 2);
   assert.equal(app.isSelectingCrossDate, false);
+
+  // Drag must remain active across every entered cell, including columns right of name.
+  app.selectCrossDateCell(0, 2);
+  app.isSelectingCrossDate = true;
+  for (let col = 3; col <= 9; col++) {
+    app.selectCrossDateCell(0, col, true);
+    assert.equal(app.isSelectingCrossDate, true);
+    assert.equal(app.crossDateSelection.maxCol, col);
+  }
+  app.clearCrossDateSelection();
+  assert.equal(app.isSelectingCrossDate, false);
 });
