@@ -68,6 +68,28 @@ test('selected chart/name opens prefilled prompt with all text selected, includi
   }
 });
 
+test('Ctrl/Cmd+Up goes to the first daily row or the newest history date while keeping cell or row selection', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const rowSelected of [false, true]) {
+    const { app } = createApp([{}, {}, { name: '가상환자' }]);
+    app.activeCell = rowSelected ? null : { rowIdx: 2, colKey: 'name' };
+    app.selectedRowRange = rowSelected ? { minRow: 2, maxRow: 2 } : null;
+    app.isCrossDateRowSelected = true; // A previous history header selection may leave this flag set.
+    app.selectedRange = rowSelected ? { minRow: 2, maxRow: 2, minCol: 0, maxCol: 9 } : null;
+    let selected;
+    app.elTableBody.querySelector = () => ({ closest: () => ({ style: {} }), scrollIntoView() {} });
+    app.selectCell = (row, col) => { selected = ['cell', row, col]; };
+    app.selectRowRange = (...args) => { selected = ['row', ...args]; };
+    app.selectCrossDateCell = (...args) => { selected = ['history-cell', ...args]; };
+    app.selectCrossDateRow = row => { selected = ['history-row', row]; };
+    const event = { key: 'ArrowUp', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {} };
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, rowSelected ? ['row', 0, 0, 9] : ['cell', 0, 'name']);
+    app.crossDateResults = [{ _sourceDate: '2026-09-01' }, { _sourceDate: '2026-10-03' }, { _sourceDate: '2026-09-12' }];
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, rowSelected ? ['history-row', 1] : ['history-cell', 1, 3]);
+  }
+});
+
 test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);

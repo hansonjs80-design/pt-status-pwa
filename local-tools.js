@@ -108,11 +108,12 @@
       const db=await this.db();return new Promise((resolve,reject)=>{
         const tx=db.transaction('files',value===undefined?'readonly':'readwrite');
         const request=value===undefined?tx.objectStore('files').get(key):tx.objectStore('files').put(value,key);
-        tx.oncomplete=()=>resolve(request.result);tx.onerror=()=>reject(tx.error);
+        tx.oncomplete=()=>resolve(request.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('로컬 백업 저장이 중단되었습니다.'));
       });
     }
     async init(){
       this.folder=await this.store('folder');
+      await this.app.migrateTextEditBackups(this.store.bind(this));
       this.timer=setInterval(()=>void this.tick(),30000);
       window.addEventListener('focus',()=>void this.tick());
       void this.tick();

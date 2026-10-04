@@ -2089,9 +2089,7 @@ class PTApp {
       cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
       syncBaselines: Object.fromEntries(this.syncBaselines || []) });
     const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    localStorage.setItem(backupKey, backup);
-    if (localStorage.getItem(backupKey) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
-    JSON.parse(localStorage.getItem(backupKey));
+    await this.persistTextEditBackup(backupKey, backup);
 
     const nextStore = { ...this.dataStore, ...changed };
     const pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
@@ -2110,6 +2108,33 @@ class PTApp {
     }
     if (presetChanged) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
     return count;
+  }
+
+  async migrateTextEditBackups(store) {
+    const keys = Array.from({ length: localStorage.length || 0 }, (_, idx) => localStorage.key(idx))
+      .filter(key => key?.startsWith("PT_TEXT_EDIT_BACKUP_"));
+    for (const key of keys) {
+      const backup = localStorage.getItem(key);
+      JSON.parse(backup);
+      await store(key, backup);
+      if (await store(key) !== backup) throw new Error("기존 문구 백업 이전 검증에 실패했습니다.");
+      // Release the small settings store only after the complete backup is verified.
+      localStorage.removeItem(key);
+    }
+  }
+
+  async persistTextEditBackup(key, backup) {
+    const tools = window.ptLocalTools;
+    if (tools?.store) {
+      const store = tools.store.bind(tools);
+      await this.migrateTextEditBackups(store);
+      await store(key, backup);
+      if (await store(key) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
+    } else {
+      localStorage.setItem(key, backup);
+      if (localStorage.getItem(key) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
+    }
+    JSON.parse(backup);
   }
 
   moveAutocompleteSelection(direction) {
@@ -2343,6 +2368,9 @@ class PTApp {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
       if ((e.ctrlKey || e.metaKey) && e.key === "ArrowDown") {
         e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToLastRecord(); return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === "ArrowUp") {
+        e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToFirstRecord(); return;
       }
       if (input.classList.contains("is-armed")) {
         if (e.key === "F2") {
@@ -2831,9 +2859,27 @@ class PTApp {
     let fixedRight = 0;
 
     // 기기별로 저장된 열 너비 초기 로딩 시 복원 적용
+    document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
+      th.dataset.defaultWidth ||= String(parseFloat(th.style.width));
+    });
     this.applySavedColumnWidths();
 
     const startResize = (resizerEl, clientX) => {
+      // Freeze every displayed column before resizing: table-layout otherwise
+      // redistributes spare width when the viewport or history columns change.
+      const saved = this.getSavedColumnWidths();
+      document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
+        const width = window.getComputedStyle(th).display === "none"
+          ? parseFloat(th.style.width) : th.getBoundingClientRect().width;
+        if (Number.isFinite(width) && width > 0) {
+          th.style.width = `${width}px`;
+          th.style.minWidth = `${width}px`;
+          saved[th.dataset.col] = width;
+        }
+      });
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
+      this.hasFixedColumnWidths = true;
+      this.syncMainColumnWidths();
       const sourceTh = resizerEl.closest("th");
       activeTh = sourceTh.closest(".cross-date-inner-table")
         ? document.querySelector(`.col-headers-row th[data-col="${sourceTh.dataset.col}"]`)
@@ -2853,6 +2899,7 @@ class PTApp {
       const newWidth = Math.max(activeColKey === "spacer" ? 10 : 35, startWidth + (activeColKey === "spacer" ? -diff : diff));
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
+      this.saveColumnWidth(activeColKey, newWidth);
       this.syncCrossDateColWidths();
       if (activeColKey === "spacer") {
         // The trailing column grows leftward; compensate horizontal overflow to keep its right edge in place.
@@ -2867,7 +2914,7 @@ class PTApp {
 
         // 기기별 localStorage에 열 너비 영구 저장
         if (activeColKey) {
-          const finalWidth = parseInt(activeTh.style.width, 10) || activeTh.offsetWidth;
+          const finalWidth = parseFloat(activeTh.style.width) || activeTh.offsetWidth;
           this.saveColumnWidth(activeColKey, finalWidth);
         }
 
@@ -2954,14 +3001,31 @@ class PTApp {
     const saved = this.getSavedColumnWidths();
     if (!saved || typeof saved !== "object") return;
 
-    Object.entries(saved).forEach(([colKey, width]) => {
-      if (!width || typeof width !== "number") return;
-      const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
-      if (th) {
+    this.hasFixedColumnWidths = false;
+    document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
+      const width = saved[th.dataset.col];
+      if (Number.isFinite(width) && width > 0) {
         th.style.width = `${width}px`;
         th.style.minWidth = `${width}px`;
+        this.hasFixedColumnWidths = true;
       }
     });
+    this.syncMainColumnWidths();
+  }
+
+  syncMainColumnWidths() {
+    if (!this.hasFixedColumnWidths) return;
+    const table = document.getElementById("excelTable");
+    if (!table) return;
+    const headers = Array.from(document.querySelectorAll(".col-headers-row th"));
+    const corner = headers.find(th => !th.dataset.col);
+    if (corner) corner.style.width = "48px";
+    const width = headers.reduce((sum, th) => {
+      if (window.getComputedStyle(th).display === "none") return sum;
+      return sum + (parseFloat(th.style.width) || parseFloat(window.getComputedStyle(th).width) || th.getBoundingClientRect().width);
+    }, 0);
+    table.style.width = `${width}px`;
+    table.style.minWidth = `${width}px`;
   }
 
   resetColumnWidth(colKey) {
@@ -3447,6 +3511,7 @@ class PTApp {
       rowEl.style.display = "";
       rowEl.classList.remove("search-origin-row");
     });
+    this.syncMainColumnWidths();
   }
 
   // ★ 전체 날짜 검색: Ctrl+F 시 현재 날짜 + 이전 날짜의 매칭 기록을 모두 표시
@@ -3670,6 +3735,7 @@ class PTApp {
   }
 
   syncCrossDateColWidths() {
+    this.syncMainColumnWidths();
     this.syncHistoryRowHeaderPosition();
     const innerTable = document.getElementById("crossDateInnerTable");
     if (!innerTable) return;
@@ -4900,6 +4966,33 @@ class PTApp {
     }
   }
 
+  jumpToFirstRecord() {
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const rowSelected = Boolean(this.selectedRowRange || (this.crossDateSelection && this.isCrossDateRowSelected));
+    const colIdx = this.crossDateSelection?.endCol ?? keys.indexOf(this.activeCell?.colKey || "no");
+    if (!this.crossDateSelection && this.crossDateResults?.length) {
+      const latestIdx = this.crossDateResults.reduce((latest, row, idx, rows) =>
+        String(row._sourceDate || "") >= String(rows[latest]._sourceDate || "") ? idx : latest, 0);
+      if (rowSelected) this.selectCrossDateRow(latestIdx);
+      else this.selectCrossDateCell(latestIdx, Math.min(9, Math.max(0, colIdx)));
+      this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${latestIdx}"]`)
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return;
+    }
+    if (this.crossDateSelection) {
+      if (rowSelected) this.selectCrossDateRow(0);
+      else this.selectCrossDateCell(0, colIdx);
+      this.elTableBody.querySelector('.cross-date-row[data-cross-idx="0"]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return;
+    }
+    const cell = this.elTableBody.querySelector(`[data-row="0"][data-col="${keys[Math.max(0, colIdx)]}"]`);
+    if (cell) cell.closest("tr").style.display = "";
+    if (rowSelected) this.selectRowRange(0, 0, this.selectedRange?.maxCol ?? 10);
+    else if (cell) this.selectCell(0, keys[Math.max(0, colIdx)], cell);
+    cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
   parseClipboardGrid(text) {
     const grid = [[]]; let value = "", quoted = false;
     text = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -5617,6 +5710,9 @@ class PTApp {
 
     if (isCtrlOrMeta && e.key === "ArrowDown") {
       e.preventDefault(); this.jumpToLastRecord(); return;
+    }
+    if (isCtrlOrMeta && !e.shiftKey && !e.altKey && e.key === "ArrowUp") {
+      e.preventDefault(); this.jumpToFirstRecord(); return;
     }
     if (isCtrlOrMeta && !e.shiftKey && !e.altKey && ["ArrowLeft", "ArrowRight"].includes(e.key)) {
       if (this.jumpToHorizontalContentEdge(e.key === "ArrowRight" ? 1 : -1)) { e.preventDefault(); return; }

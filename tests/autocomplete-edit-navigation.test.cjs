@@ -136,3 +136,45 @@ test('managed prescription, extra, memo and special-note suggestions keep their 
     assert.equal(app.getAutocompleteSuggestions(column, '충')[0], '충 새 문구');
   }
 });
+
+test('renaming uses verified IndexedDB backups and migrates old backups to free local settings capacity', async () => {
+  const { app, context, storage, queued } = createApp({ '2026-10-04': [{ specialNote: '신장1' }] });
+  const backups = new Map();
+  const oldKey = 'PT_TEXT_EDIT_BACKUP_OLD';
+  storage.set(oldKey, JSON.stringify({ dataStore: app.dataStore }));
+  Object.defineProperty(context.localStorage, 'length', { get: () => storage.size });
+  context.localStorage.key = idx => [...storage.keys()][idx];
+  context.localStorage.removeItem = key => storage.delete(key);
+  context.localStorage.setItem = (key, value) => {
+    assert.ok(!key.startsWith('PT_TEXT_EDIT_BACKUP_'), 'large backups must not consume localStorage');
+    assert.ok(!storage.has(oldKey), 'legacy backup must be migrated before records are saved');
+    storage.set(key, value);
+  };
+  context.window.ptLocalTools = { async store(key, value) {
+    if (value !== undefined) backups.set(key, value);
+    return backups.get(key);
+  } };
+  assert.equal(await app.renameAutocompleteValue('specialNote', '신장1', '신장 1'), 1);
+  assert.equal(app.dataStore['2026-10-04'][0].specialNote, '신장 1');
+  assert.equal(backups.size, 2);
+  assert.ok(backups.has(oldKey));
+  const fresh = [...backups.keys()].find(key => key !== oldKey);
+  assert.equal(JSON.parse(backups.get(fresh)).dataStore['2026-10-04'][0].specialNote, '신장1');
+  assert.equal(queued.length, 1);
+});
+
+test('failed IndexedDB backup verification preserves legacy backups and leaves records unchanged', async () => {
+  for (const legacy of [true, false]) {
+    const { app, context, storage, queued } = createApp({ '2026-10-04': [{ memo: '원본' }] });
+    const key = 'PT_TEXT_EDIT_BACKUP_OLD';
+    if (legacy) storage.set(key, JSON.stringify({ dataStore: app.dataStore }));
+    Object.defineProperty(context.localStorage, 'length', { get: () => storage.size });
+    context.localStorage.key = idx => [...storage.keys()][idx];
+    context.localStorage.removeItem = key => storage.delete(key);
+    context.window.ptLocalTools = { async store() { return 'bad readback'; } };
+    await assert.rejects(app.renameAutocompleteValue('memo', '원본', '변경'));
+    assert.equal(app.dataStore['2026-10-04'][0].memo, '원본');
+    if (legacy) assert.ok(storage.has(key));
+    assert.equal(queued.length, 0);
+  }
+});
