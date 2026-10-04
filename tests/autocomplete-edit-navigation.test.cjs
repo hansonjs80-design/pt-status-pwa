@@ -261,3 +261,21 @@ test('gender picker arrows move the outlined option and Enter applies only that 
   assert.equal(focused,true);
   assert.equal(app.genderPickerState,null);
 });
+
+
+test('writer Enter opens its picker once and leaves confirmation and modifier shortcuts to the editor', () => {
+  const {app}=createApp();
+  let opened=0, prevented=0, menuOpen=false;
+  const cell={};
+  app.isAutocompleteOpen=()=>menuOpen;
+  app.openWriterPicker=(row,target)=>{assert.equal(row,2);assert.equal(target,cell);opened++;};
+  const event={key:'Enter',preventDefault(){prevented++;},stopPropagation(){}};
+  assert.equal(app.handleWriterPickerShortcut(event,2,cell),true);
+  menuOpen=true;
+  assert.equal(app.handleWriterPickerShortcut(event,2,cell),false);
+  menuOpen=false;
+  for(const modifier of ['ctrlKey','metaKey','shiftKey','altKey'])
+    assert.equal(app.handleWriterPickerShortcut({...event,[modifier]:true},2,cell),false);
+  assert.equal(opened,1);
+  assert.equal(prevented,1);
+});

@@ -1461,6 +1461,13 @@ class PTApp {
       .map(value => this.normalizeWriterInput(value).trim()).filter(Boolean))];
   }
 
+  handleWriterPickerShortcut(event, rowIdx, cellElement) {
+    if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
+    event.preventDefault(); event.stopPropagation();
+    this.openWriterPicker(rowIdx, cellElement);
+    return true;
+  }
+
   openWriterPicker(rowIdx, cellElement) {
     const values = this.getWriterPresetValues();
     if (!values.length) {
@@ -2496,6 +2503,7 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // Use the physical letter key before the IME can display Korean text.
       if (colKey === "writer" && this.handleWriterLetterKey(e, input)) {
         composing = false;
@@ -6179,6 +6187,12 @@ class PTApp {
           return;
         }
       }
+    }
+
+    if (this.activeCell?.colKey === "writer") {
+      const { rowIdx } = this.activeCell;
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="writer"]`);
+      if (cell && this.handleWriterPickerShortcut(e, rowIdx, cell)) return;
     }
 
     // 13) Enter / Shift+Enter -> Move Down / Up
