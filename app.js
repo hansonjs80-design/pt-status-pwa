@@ -1426,7 +1426,7 @@ class PTApp {
     if (!row || !this.elTableBody.contains(row)) return;
     const endRow = Math.max(this.fillDrag.rowIdx, Number(row.dataset.rowIdx));
     // 카운트 뱃지 위치 항상 업데이트 (endRow 변화 여부 무관)
-    this._updateFillDragBadge(event.clientX, event.clientY, endRow - this.fillDrag.rowIdx);
+    this._updateFillDragBadge(event.clientX, event.clientY, endRow - this.fillDrag.rowIdx + 1);
     if (this.fillDrag.endRow === endRow) return;
     this.fillDrag.endRow = endRow;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
@@ -1437,10 +1437,6 @@ class PTApp {
 
   _updateFillDragBadge(mouseX, mouseY, count) {
     let badge = document.getElementById("fillDragCountBadge");
-    if (count < 1) {
-      if (badge) badge.style.display = "none";
-      return;
-    }
     if (!badge) {
       badge = document.createElement("div");
       badge.id = "fillDragCountBadge";
