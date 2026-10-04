@@ -1205,7 +1205,7 @@ body {
 .cell-chartNo { text-align: center; font-family: monospace; font-size: 12px; }
 .cell-name { text-align: center; font-weight: 600; }
 .cell-part { text-align: center; }
-.cell-prescription { text-align: left; }
+.cell-prescription { text-align: left; padding-left: 10px; }
 .cell-extra { text-align: center; font-weight: 600; color: #1b5e20; }
 .cell-writer { text-align: center; color: #2e7d32; font-weight: bold; }
 .cell-memo { text-align: center; color: #555; }
