@@ -190,6 +190,7 @@ test('writer physical letter keys bypass Korean composition and honor native tex
   const {app,context}=createApp();
   context.Event=class {constructor(type){this.type=type;}};
   app.activateNativeEditor=()=>{};
+  app.closeAutocompleteMenu=()=>{};
   let dispatched;
   const input={value:'JK',selectionStart:0,selectionEnd:2,dataset:{composing:'true'},
     setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;},dispatchEvent(event){dispatched=event.type;}};
@@ -215,4 +216,48 @@ test('late writer IME insertion cannot duplicate a handled letter while paste re
   const input={value:'js',dataset:{writerKeyValue:'J'}};
   assert.equal(app.normalizeWriterEditorInput(input,{inputType:'insertFromPaste'}),'JS');
   assert.equal(input.dataset.writerKeyValue,undefined);
+});
+
+
+test('writer double-click picker uses only configured initials in manager order', () => {
+  const {app}=createApp({'2026-10-04':[{writer:'Z'}]}, {writer:['s','ㅓ','K','S']});
+  const input={value:'Z'}, cell={querySelector:()=>input};
+  let shown;
+  app.startInlineEdit=(row,key,target)=>{assert.equal(row,0);assert.equal(key,'writer');assert.equal(target,cell);};
+  app.showAutocompleteMenu=(row,key,target,editor,values)=>{shown=Array.from(values);assert.equal(editor,input);};
+  app.openWriterPicker(0,cell);
+  assert.deepEqual(shown,['S','J','K']);
+});
+
+test('empty writer presets open the writer manager instead of suggesting historical initials', () => {
+  const {app}=createApp({'2026-10-04':[{writer:'Z'}]});
+  let tab;
+  app.openPresetManager=value=>{tab=value;};
+  app.openWriterPicker(0,{});
+  assert.equal(tab,'writer');
+});
+
+
+test('gender picker arrows move the outlined option and Enter applies only that option', () => {
+  const {app,context}=createApp();
+  const selected=[];
+  context.document={getElementById:()=>({querySelectorAll:()=>[0,1,2].map(index=>({
+    classList:{toggle:(name,value)=>{selected[index]=value;}},setAttribute(){}
+  }))})};
+  const cell={};
+  app.genderPickerState={rowIdx:3,cellElement:cell,items:[{val:'M'},{val:'F'},{val:''}],selectedIndex:0};
+  const event=key=>({key,preventDefault(){},stopImmediatePropagation(){}});
+  app.handleGenderPickerKeyDown(event('ArrowDown'));
+  assert.deepEqual(selected,[false,true,false]);
+  app.handleGenderPickerKeyDown(event('ArrowUp'));
+  assert.deepEqual(selected,[true,false,false]);
+  let applied,focused=false;
+  app.setGenderValue=(row,value,target)=>{applied={row,value,target};};
+  app.closeGenderDropdown=()=>{app.genderPickerState=null;};
+  app.selectCell=(row,key,target)=>{assert.equal(row,3);assert.equal(key,'gender');assert.equal(target,cell);};
+  app.elSheetContainer={focus:()=>{focused=true;}};
+  app.handleGenderPickerKeyDown(event('Enter'));
+  assert.deepEqual(applied,{row:3,value:'M',target:cell});
+  assert.equal(focused,true);
+  assert.equal(app.genderPickerState,null);
 });

@@ -2139,3 +2139,8 @@ body {
 
 .quick-inputs .date-label.is-saturday { color: #1e40af; }
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }
+
+.gender-picker-item.is-selected {
+  background: #e6f3ea;
+  box-shadow: inset 0 0 0 2px #107c41;
+}

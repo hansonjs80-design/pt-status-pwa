@@ -85,6 +85,7 @@ const DEFAULT_PRESETS = {
     "발목",
     "Lt. Thigh"
   ],
+  writer: [],
   extra: [
     "충격파",
     "이온",
@@ -630,6 +631,7 @@ class PTApp {
     this.elBtnManagerDone = document.getElementById("btnManagerDone");
     this.elTabPresetPrescription = document.getElementById("tabPresetPrescription");
     this.elTabPresetExtra = document.getElementById("tabPresetExtra");
+    this.elTabPresetWriter = document.getElementById("tabPresetWriter");
     this.elTabPresetMemo = document.getElementById("tabPresetMemo");
     this.elTabPresetSpecialNote = document.getElementById("tabPresetSpecialNote");
     this.elManagerNewPresetInput = document.getElementById("managerNewPresetInput");
@@ -680,7 +682,7 @@ class PTApp {
     if (this.elTabPresetExtra) {
       this.elTabPresetExtra.addEventListener("click", () => this.switchPresetTab("extra"));
     }
-    for (const [tab, element] of [["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+    for (const [tab, element] of [["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.addEventListener("click", () => this.switchPresetTab(tab));
     }
     if (this.elBtnManagerAddPreset) {
@@ -1283,6 +1285,8 @@ class PTApp {
           if (key === "gender") {
             const dropBtn = td.querySelector(".gender-dropdown-btn");
             this.openGenderDropdown(rowIdx, td, dropBtn);
+          } else if (key === "writer") {
+            this.openWriterPicker(rowIdx, td);
           } else {
             // Preserve the native editor and its active IME composition.
             const editor = td.querySelector("input");
@@ -1335,6 +1339,7 @@ class PTApp {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    if (this.genderPickerState) this.closeGenderDropdown();
     if (colKey === "visitTime" && this.elSearchInput.value.trim()) {
       colKey = "specialNote";
       cellElement = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="specialNote"]`);
@@ -1451,6 +1456,22 @@ class PTApp {
     this.showSaveIndicator(`${drag.endRow - drag.rowIdx}개 셀 채우기 완료`);
   }
 
+  getWriterPresetValues() {
+    return [...new Set((COLUMN_PRESETS.writer || [])
+      .map(value => this.normalizeWriterInput(value).trim()).filter(Boolean))];
+  }
+
+  openWriterPicker(rowIdx, cellElement) {
+    const values = this.getWriterPresetValues();
+    if (!values.length) {
+      this.openPresetManager("writer");
+      return;
+    }
+    this.startInlineEdit(rowIdx, "writer", cellElement);
+    const input = cellElement.querySelector("input");
+    if (input) this.showAutocompleteMenu(rowIdx, "writer", cellElement, input, values);
+  }
+
   normalizePrescriptionInput(value) {
     const text = String(value ?? "").trim();
     return text === "x" || text === "ㅌ" ? "X" : text;
@@ -1459,6 +1480,7 @@ class PTApp {
   handleWriterLetterKey(event, input) {
     if (event.ctrlKey || event.metaKey || event.altKey || !/^Key[A-Z]$/.test(event.code || "")) return false;
     event.preventDefault(); event.stopPropagation();
+    this.closeAutocompleteMenu();
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
     this.activateNativeEditor(input);
@@ -1706,10 +1728,17 @@ class PTApp {
       { val: "", text: "- (선택 안함)", cls: "item-none" }
     ];
 
-    items.forEach((item) => {
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "성별 선택");
+    this.genderPickerState = { rowIdx, cellElement, items,
+      selectedIndex: Math.max(0, items.findIndex(item => item.val === (this.getCurrentRows()[rowIdx]?.gender || ""))) };
+    items.forEach((item, index) => {
       const itemEl = document.createElement("div");
       itemEl.className = `gender-picker-item ${item.cls}`;
       itemEl.textContent = item.text;
+      itemEl.setAttribute("role", "option");
+      itemEl.classList.toggle("is-selected", index === this.genderPickerState.selectedIndex);
+      itemEl.setAttribute("aria-selected", String(index === this.genderPickerState.selectedIndex));
       itemEl.addEventListener("click", (e) => {
         e.stopPropagation();
         this.setGenderValue(rowIdx, item.val, cellElement);
@@ -1720,6 +1749,8 @@ class PTApp {
     });
 
     document.body.appendChild(menu);
+    this.genderPickerKeyListener = event => this.handleGenderPickerKeyDown(event);
+    document.addEventListener("keydown", this.genderPickerKeyListener, true);
 
     // 메뉴 위치 계산 (트리거 버튼 또는 셀 바로 아래)
     const targetRect = (triggerElement || cellElement).getBoundingClientRect();
@@ -1744,12 +1775,38 @@ class PTApp {
         document.removeEventListener("click", outsideClickListener);
       }
     };
-    setTimeout(() => {
-      document.addEventListener("click", outsideClickListener);
+    this.genderPickerOutsideListener = outsideClickListener;
+    this.genderPickerOutsideTimer = setTimeout(() => {
+      if (this.genderPickerState) document.addEventListener("click", outsideClickListener);
     }, 10);
   }
 
+  handleGenderPickerKeyDown(event) {
+    const state = this.genderPickerState;
+    if (!state || !["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      state.selectedIndex = (state.selectedIndex + direction + state.items.length) % state.items.length;
+      document.getElementById("genderPickerMenu")?.querySelectorAll(".gender-picker-item").forEach((item, index) => {
+        item.classList.toggle("is-selected", index === state.selectedIndex);
+        item.setAttribute("aria-selected", String(index === state.selectedIndex));
+      });
+      return;
+    }
+    if (event.key === "Enter") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
+    this.closeGenderDropdown();
+    this.selectCell(state.rowIdx, "gender", state.cellElement, false);
+    this.elSheetContainer?.focus({ preventScroll: true });
+  }
+
   closeGenderDropdown() {
+    clearTimeout(this.genderPickerOutsideTimer);
+    if (this.genderPickerKeyListener) document.removeEventListener("keydown", this.genderPickerKeyListener, true);
+    if (this.genderPickerOutsideListener) document.removeEventListener("click", this.genderPickerOutsideListener);
+    this.genderPickerState = null;
+    this.genderPickerKeyListener = null;
+    this.genderPickerOutsideListener = null;
     const existing = document.getElementById("genderPickerMenu");
     if (existing) {
       existing.remove();
@@ -2021,7 +2078,7 @@ class PTApp {
         e.preventDefault(); e.stopPropagation();
         void this.editAutocompleteValue(colKey, cand, input);
       });
-      itemEl.appendChild(editButton);
+      if (colKey !== "writer") itemEl.appendChild(editButton);
 
       if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
@@ -2853,6 +2910,7 @@ class PTApp {
   }
 
   selectRowRange(startRowIdx, endRowIdx, lastCol = 10) {
+    if (this.genderPickerState) this.closeGenderDropdown();
     // Clear native browser text highlighting before painting the spreadsheet selection.
     window.getSelection()?.removeAllRanges();
     // Finish the current edit before replacing cell selection with row selection.
@@ -3578,6 +3636,7 @@ class PTApp {
   }
 
   selectCrossDateCell(row, col, extend = false) {
+    if (this.genderPickerState) this.closeGenderDropdown();
     const previous = this.crossDateSelection;
     const dragging = this.isSelectingCrossDate;
     document.activeElement?.blur();
@@ -3822,6 +3881,7 @@ class PTApp {
   }
 
   selectCrossDateRow(idx) {
+    if (this.genderPickerState) this.closeGenderDropdown();
     if (!this.crossDateResults || idx < 0 || idx >= this.crossDateResults.length) return;
     this.isCrossDateRowSelected = true;
     // No. 열(col 0)부터 특이사항(col 9)까지만 전체 행 선택
@@ -6434,11 +6494,11 @@ class PTApp {
 
   updatePresetManagerTabs() {
     for (const [tab, element] of [["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
-      ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+      ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.classList.toggle("active", this.activePresetTab === tab);
     }
     if (this.elManagerNewPresetInput) {
-      const labels = { prescription: "처방", extra: "추가 사항", memo: "메모", specialNote: "특이 사항" };
+      const labels = { prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
       this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
     }
   }
@@ -6523,7 +6583,8 @@ class PTApp {
 
   addPresetFromManager() {
     if (!this.elManagerNewPresetInput) return;
-    const val = this.elManagerNewPresetInput.value.trim();
+    const rawValue = this.elManagerNewPresetInput.value.trim();
+    const val = this.activePresetTab === "writer" ? this.normalizeWriterInput(rawValue) : rawValue;
     if (!val) {
       alert("프리셋 내용을 입력해주세요.");
       this.elManagerNewPresetInput.focus();
@@ -6549,7 +6610,7 @@ class PTApp {
 
     const newVal = prompt("프리셋 내용을 수정하세요:", curVal);
     if (newVal === null) return; // 취소
-    const trimmed = newVal.trim();
+    const trimmed = tab === "writer" ? this.normalizeWriterInput(newVal.trim()) : newVal.trim();
     if (!trimmed) {
       alert("내용을 비워둘 수 없습니다.");
       return;
