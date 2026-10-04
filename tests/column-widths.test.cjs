@@ -26,7 +26,7 @@ function device(storage = new Map()) {
   const app = Object.create(context.App.prototype);
   app.syncCrossDateColWidths = () => app.syncMainColumnWidths();
   app.initColumnResizing();
-  return { app, table, headers, listeners, storage };
+  return { app, table, headers, listeners, storage, context };
 }
 
 test('device column widths survive relaunch even before mouseup and history visibility does not redistribute columns', () => {
@@ -47,4 +47,69 @@ test('device column widths survive relaunch even before mouseup and history visi
   relaunched.app.syncMainColumnWidths();
   assert.equal(relaunched.table.style.width, '486.5px');
   assert.equal(device().headers[2].style.width, '130px');
+});
+
+function diskStore(disk = new Map()) {
+  return async (key, value) => {
+    if (value !== undefined) disk.set(key, JSON.parse(JSON.stringify(value)));
+    return disk.get(key);
+  };
+}
+
+test('full localStorage does not interrupt resizing and IndexedDB restores widths on a fresh app', async () => {
+  const storage = new Map();
+  const first = device(storage);
+  const disk = new Map();
+  const store = diskStore(disk);
+  await first.app.restoreDeviceColumnWidths(store);
+  // Reproduce quota failure in the settings store, independently of IndexedDB.
+  vm.runInContext("localStorage.setItem = () => { throw new Error('QuotaExceededError'); };", first.context);
+  const th = first.headers[2];
+  first.listeners.mousedown({ target: { classList: { contains: () => true, add() {} }, closest: () => th }, pageX: 200, preventDefault() {}, stopPropagation() {} });
+  first.listeners.mousemove({ pageX: 281.5 });
+  first.listeners.mousemove({ pageX: 292.5 });
+  first.listeners.mouseup();
+  await first.app.columnWidthsWrite;
+  assert.equal(th.style.width, '222.5px');
+  assert.equal(disk.get('device-column-widths-v1').widths.part, 222.5);
+  const restarted = device(storage);
+  await restarted.app.restoreDeviceColumnWidths(store);
+  assert.equal(restarted.headers[2].style.width, '222.5px');
+  restarted.headers[3].hidden = true;
+  restarted.app.syncMainColumnWidths();
+  assert.equal(restarted.headers[2].style.width, '222.5px');
+  assert.equal(device().headers[2].style.width, '130px');
+});
+
+test('startup disk restoration does not overwrite a resize performed while it is loading', async () => {
+  const first = device();
+  const disk = new Map([['device-column-widths-v1', { widths: { part: 160 }, updatedAt: 10 }]]);
+  const store = diskStore(disk);
+  let release;
+  const loading = first.app.restoreDeviceColumnWidths(async (key, value) => {
+    if (!release && value === undefined) return new Promise(resolve => { release = () => resolve(disk.get(key)); });
+    return store(key, value);
+  });
+  first.app.saveColumnWidth('part', 260);
+  release();
+  await loading;
+  await first.app.columnWidthsWrite;
+  assert.equal(first.app.getSavedColumnWidths().part, 260);
+  assert.equal(disk.get('device-column-widths-v1').widths.part, 260);
+});
+
+test('legacy local widths migrate and a reset remains reset after restarting', async () => {
+  const storage = new Map([['PT_APP_COL_WIDTHS_STORAGE_V1', '{"part":245}']]);
+  const disk = new Map();
+  const first = device(storage);
+  const store = diskStore(disk);
+  await first.app.restoreDeviceColumnWidths(store);
+  assert.equal(disk.get('device-column-widths-v1').widths.part, 245);
+  const widths = first.app.getSavedColumnWidths();
+  delete widths.part;
+  first.app.persistColumnWidths(widths);
+  await first.app.columnWidthsWrite;
+  const restarted = device(storage);
+  await restarted.app.restoreDeviceColumnWidths(store);
+  assert.equal(restarted.headers[2].style.width, '130px');
 });

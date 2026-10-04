@@ -2877,7 +2877,7 @@ class PTApp {
           saved[th.dataset.col] = width;
         }
       });
-      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
+      this.persistColumnWidths(saved);
       this.hasFixedColumnWidths = true;
       this.syncMainColumnWidths();
       const sourceTh = resizerEl.closest("th");
@@ -2979,21 +2979,65 @@ class PTApp {
   }
 
   saveColumnWidth(colKey, width) {
-    try {
-      const saved = this.getSavedColumnWidths();
-      saved[colKey] = width;
-      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
-    } catch (err) {
-      console.error("Failed to save column width:", err);
-    }
+    const saved = this.getSavedColumnWidths();
+    saved[colKey] = width;
+    this.persistColumnWidths(saved);
   }
 
   getSavedColumnWidths() {
+    if (this.deviceColumnWidths) return { ...this.deviceColumnWidths };
     try {
       const data = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
-      return data ? JSON.parse(data) : {};
+      const saved = data ? JSON.parse(data) : {};
+      return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
     } catch (_) {
       return {};
+    }
+  }
+
+  persistColumnWidths(widths) {
+    this.deviceColumnWidths = { ...widths };
+    this.columnWidthsChanged = true;
+    const snapshot = { widths: { ...widths }, updatedAt: Date.now() };
+    this.columnWidthsUpdatedAt = snapshot.updatedAt;
+    try {
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(widths));
+      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`, String(snapshot.updatedAt));
+    } catch (_) {
+      // IndexedDB remains available when the small localStorage quota is full.
+      this.columnWidthsLocalSaveFailed = true;
+    }
+    this.queueDeviceColumnWidths(snapshot);
+  }
+
+  queueDeviceColumnWidths(snapshot) {
+    if (!this.columnWidthsStore) return;
+    this.columnWidthsWrite = (this.columnWidthsWrite || Promise.resolve()).then(async () => {
+      await this.columnWidthsStore("device-column-widths-v1", snapshot);
+      const restored = await this.columnWidthsStore("device-column-widths-v1");
+      if (JSON.stringify(restored) !== JSON.stringify(snapshot)) throw new Error("열 너비 저장 검증에 실패했습니다.");
+    }).catch(error => {
+      console.error("Failed to persist device column widths:", error);
+      this.showSaveIndicator?.("열 너비 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
+    });
+  }
+
+  async restoreDeviceColumnWidths(store) {
+    this.columnWidthsStore = store;
+    const persisted = await store("device-column-widths-v1");
+    let localUpdatedAt = 0;
+    try { localUpdatedAt = Number(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`)) || 0; } catch (_) {}
+    const saved = this.getSavedColumnWidths();
+    // A resize during startup must win over the asynchronous disk read.
+    if (!this.columnWidthsChanged && persisted?.widths && persisted.updatedAt > localUpdatedAt) {
+      this.deviceColumnWidths = { ...persisted.widths };
+      this.columnWidthsUpdatedAt = persisted.updatedAt;
+      this.applySavedColumnWidths();
+      this.syncCrossDateColWidths();
+    } else if (Object.keys(saved).length) {
+      this.deviceColumnWidths = { ...saved };
+      this.queueDeviceColumnWidths({ widths: saved, updatedAt: this.columnWidthsUpdatedAt || localUpdatedAt || Date.now() });
+      await this.columnWidthsWrite;
     }
   }
 
@@ -3032,7 +3076,7 @@ class PTApp {
     try {
       const saved = this.getSavedColumnWidths();
       delete saved[colKey];
-      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(saved));
+      this.persistColumnWidths(saved);
       const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
       if (th) {
         th.style.width = th.dataset.defaultWidth ? `${th.dataset.defaultWidth}px` : "";

@@ -113,6 +113,7 @@
     }
     async init(){
       this.folder=await this.store('folder');
+      await this.app.restoreDeviceColumnWidths(this.store.bind(this));
       await this.app.migrateTextEditBackups(this.store.bind(this));
       this.timer=setInterval(()=>void this.tick(),30000);
       window.addEventListener('focus',()=>void this.tick());
