@@ -1791,12 +1791,12 @@ class PTApp {
     const cell = input.closest(".excel-cell");
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
-    const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+    const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
     if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
     else this.closeAutocompleteMenu();
   }
 
-  getAutocompleteSuggestions(colKey, rawQuery) {
+  getAutocompleteSuggestions(colKey, rawQuery, isComposing = false) {
     if (!rawQuery) return [];
     const query = String(rawQuery).trim().toLowerCase();
     if (!query) return [];
@@ -1840,6 +1840,22 @@ class PTApp {
       const candidate = value.charCodeAt(stem.length) - 0xac00;
       return candidate >= 0 && candidate <= 11171 && Math.floor(candidate / 28) === Math.floor(code / 28);
     };
+    // During IME composition the next syllable's initial may temporarily be
+    // attached as the preceding syllable's final consonant (이 + ㅊ → 잋).
+    const matchesPendingInitial = value => {
+      if (!isComposing || colKey !== "name") return false;
+      const code = query.charCodeAt(query.length - 1) - 0xac00;
+      if (code < 0 || code > 11171 || code % 28 === 0) return false;
+      const finals = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+      const splitFinals = {'ㄳ':['ㄱ','ㅅ'],'ㄵ':['ㄴ','ㅈ'],'ㄶ':['ㄴ','ㅎ'],
+        'ㄺ':['ㄹ','ㄱ'],'ㄻ':['ㄹ','ㅁ'],'ㄼ':['ㄹ','ㅂ'],'ㄽ':['ㄹ','ㅅ'],
+        'ㄾ':['ㄹ','ㅌ'],'ㄿ':['ㄹ','ㅍ'],'ㅀ':['ㄹ','ㅎ'],'ㅄ':['ㅂ','ㅅ']};
+      const final = finals[code % 28];
+      const [retained, initial] = splitFinals[final] || ['', final];
+      const stem = query.slice(0, -1) + String.fromCharCode(0xac00 + code - code % 28 + finals.indexOf(retained));
+      return value.startsWith(stem) && value.length > stem.length &&
+        this.getChosung(value[stem.length]) === initial;
+    };
     const matched = [];
 
     // 관리 목록의 문구와 순서를 우선하고 나머지 기존 값은 매칭 품질로 정렬한다.
@@ -1853,7 +1869,7 @@ class PTApp {
 
       if (itemLower.startsWith(query)) {
         quality = 1; // 접두사 일치 (e.g. '한' -> '한랭...')
-      } else if (matchesComposingPrefix(itemLower)) {
+      } else if (matchesComposingPrefix(itemLower) || matchesPendingInitial(itemLower)) {
         quality = 1.5;
       } else if (matchesInitialsAt(itemLower, 0)) {
         quality = 2; // 초성 접두사 (e.g. 'ㅎ' -> '학생...')
@@ -2298,7 +2314,7 @@ class PTApp {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
           if (!input.isConnected || document.activeElement !== input) return;
-          const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+          const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
           if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
           } else {
@@ -2330,7 +2346,7 @@ class PTApp {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
           if (!input.isConnected || document.activeElement !== input) return;
-          const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
+          const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
           if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
           } else {

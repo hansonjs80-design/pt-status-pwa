@@ -197,3 +197,18 @@ test('numeric variants sort before truncation and compare multiple numbers in or
   ]});
   assert.deepEqual(suggestions(multi,'memo','C/T'),['C/T 2kg 3회','C/T 2kg 10회','C/T 10kg 2회']);
 });
+
+
+test('name IME pending consonants match the next syllable without broadening committed names', () => {
+  const app=createApp({'2026-09-29':[
+    {name:'이춘식'}, {name:'이창수'}, {name:'이연진'}, {name:'김민수'}, {name:'김홍준'}, {name:'길민수'}, {name:'박세영'},
+  ]});
+  const composing=query=>Array.from(app.getAutocompleteSuggestions('name',query,true));
+  assert.deepEqual(composing('잋'),['이춘식','이창수']);
+  assert.deepEqual(composing('긺'),['길민수']);
+  assert.deepEqual(composing('밗'),['박세영']);
+  assert.deepEqual(suggestions(app,'name','잋'),[]);
+  assert.deepEqual(suggestions(app,'name','이연'),['이연진']);
+  assert.deepEqual(composing('김홍'),['김홍준']);
+  assert.equal(composing('김홍').includes('김민수'),false);
+});
