@@ -2870,8 +2870,10 @@ class PTApp {
       // redistributes spare width when the viewport or history columns change.
       const saved = this.getSavedColumnWidths();
       const measured = Array.from(document.querySelectorAll(".col-headers-row th.col-letter"), th => ({
-        th, width: window.getComputedStyle(th).display === "none"
-          ? parseFloat(th.style.width) : th.getBoundingClientRect().width
+        th, width: Number.isFinite(saved[th.dataset.col]) && saved[th.dataset.col] > 0
+          ? saved[th.dataset.col]
+          : this.hasFixedColumnWidths || window.getComputedStyle(th).display === "none"
+            ? parseFloat(th.style.width) : th.getBoundingClientRect().width
       }));
       measured.forEach(({ th, width }) => {
         if (Number.isFinite(width) && width > 0) {
@@ -2889,7 +2891,7 @@ class PTApp {
         : sourceTh;
       activeColKey = activeTh?.dataset?.col || null;
       startX = clientX;
-      startWidth = activeTh.getBoundingClientRect().width;
+      startWidth = saved[activeColKey] || parseFloat(activeTh.style.width) || activeTh.getBoundingClientRect().width;
       fixedRight = activeTh.getBoundingClientRect().right;
       resizerEl.classList.add("resizing");
       document.body.style.cursor = "col-resize";
@@ -3048,13 +3050,14 @@ class PTApp {
     const saved = this.getSavedColumnWidths();
     if (!saved || typeof saved !== "object") return;
 
-    this.hasFixedColumnWidths = false;
+    // Pin all tracks from the first render, even before a device has any saved
+    // widths. Hiding visitTime in history must never redistribute that space.
+    this.hasFixedColumnWidths = true;
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
       const width = saved[th.dataset.col];
       if (Number.isFinite(width) && width > 0) {
         th.style.width = `${width}px`;
         th.style.minWidth = `${width}px`;
-        this.hasFixedColumnWidths = true;
       }
     });
     this.syncMainColumnWidths();
@@ -3065,14 +3068,37 @@ class PTApp {
     const table = document.getElementById("excelTable");
     if (!table) return;
     const headers = Array.from(document.querySelectorAll(".col-headers-row th"));
-    const corner = headers.find(th => !th.dataset.col);
-    if (corner) corner.style.width = "48px";
-    const width = headers.reduce((sum, th) => {
-      if (window.getComputedStyle(th).display === "none") return sum;
-      return sum + (parseFloat(th.style.width) || parseFloat(window.getComputedStyle(th).width) || th.getBoundingClientRect().width);
-    }, 0);
+    const saved = this.getSavedColumnWidths();
+    // A colgroup controls the actual table tracks, including the trailing blank
+    // column. Header widths alone can be redistributed by the table algorithm.
+    let group = table.querySelector("colgroup.device-column-widths");
+    if (!group) {
+      group = document.createElement("colgroup");
+      group.className = "device-column-widths";
+      table.insertBefore(group, table.firstChild);
+    }
+    const cols = [];
+    let width = 0;
+    for (const th of headers) {
+      const key = th.dataset.col;
+      const columnWidth = key
+        ? (Number.isFinite(saved[key]) && saved[key] > 0 ? saved[key] : parseFloat(th.style.width))
+        : 48;
+      if (!Number.isFinite(columnWidth) || columnWidth <= 0) continue;
+      th.style.width = `${columnWidth}px`;
+      th.style.minWidth = `${columnWidth}px`;
+      th.style.maxWidth = `${columnWidth}px`;
+      if (window.getComputedStyle(th).display === "none") continue;
+      const col = document.createElement("col");
+      col.dataset.col = key || "rowHeader";
+      col.style.width = `${columnWidth}px`;
+      cols.push(col);
+      width += columnWidth;
+    }
+    group.replaceChildren(...cols);
     table.style.width = `${width}px`;
     table.style.minWidth = `${width}px`;
+    table.style.maxWidth = `${width}px`;
   }
 
   resetColumnWidth(colKey) {

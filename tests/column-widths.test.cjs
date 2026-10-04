@@ -4,16 +4,17 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-function device(storage = new Map()) {
+function device(storage = new Map(), extraHeaders = []) {
   const listeners = {};
-  const table = { style: {} };
-  const headers = [ ['', 48], ['name', 100], ['part', 130], ['visitTime', 148] ].map(([col, width]) => ({
+  const table = { style: {}, group: null, querySelector() { return this.group; }, insertBefore(group) { this.group = group; } };
+  const headers = [ ['', 48], ['name', 100], ['part', 130], ['visitTime', 148], ...extraHeaders ].map(([col, width]) => ({
     dataset: col ? { col } : {}, style: { width: `${width}px` }, hidden: false,
     get offsetWidth() { return parseFloat(this.style.width); },
     getBoundingClientRect() { return { width: this.offsetWidth, right: 500 }; },
     closest() { return null; }, querySelector() { return { classList: { remove() {} } }; },
   }));
   const document = {
+    createElement() { return { style: {}, dataset: {}, children: [], replaceChildren(...cols) { this.children = cols; } }; },
     body: { style: {} }, addEventListener(name, fn) { listeners[name] = fn; },
     querySelectorAll(selector) { return selector.endsWith('th.col-letter') ? headers.slice(1) : headers; },
     getElementById() { return table; },
@@ -24,6 +25,7 @@ function device(storage = new Map()) {
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
+  app.elSheetContainer = { scrollLeft: 0 };
   app.syncCrossDateColWidths = () => app.syncMainColumnWidths();
   app.initColumnResizing();
   return { app, table, headers, listeners, storage, context };
@@ -111,5 +113,43 @@ test('legacy local widths migrate and a reset remains reset after restarting', a
   await first.app.columnWidthsWrite;
   const restarted = device(storage);
   await restarted.app.restoreDeviceColumnWidths(store);
+  assert.equal(restarted.headers[2].style.width, '130px');
+});
+
+
+test('first launch pins every track including spacer and hiding visit time preserves widths', () => {
+  const first = device(new Map(), [['spacer', 180]]);
+  assert.equal(first.table.style.width, '606px');
+  assert.deepEqual(first.table.group.children.map(col => [col.dataset.col, col.style.width]), [
+    ['rowHeader', '48px'], ['name', '100px'], ['part', '130px'], ['visitTime', '148px'], ['spacer', '180px'],
+  ]);
+  first.headers[3].hidden = true;
+  first.app.syncMainColumnWidths();
+  assert.equal(first.table.style.width, '458px');
+  assert.deepEqual(first.table.group.children.map(col => col.dataset.col), ['rowHeader', 'name', 'part', 'spacer']);
+  first.headers[3].hidden = false;
+  first.app.syncMainColumnWidths();
+  assert.equal(first.table.style.width, '606px');
+});
+
+test('resizing spacer preserves other saved widths despite rendered width differences', () => {
+  const first = device(new Map(), [['spacer', 180]]);
+  first.app.saveColumnWidth('name', 153.5);
+  // Layout measurements must never replace canonical device widths on a drag.
+  first.headers.forEach(th => { th.getBoundingClientRect = () => ({ width: 300, right: 500 }); });
+  const th = first.headers[4];
+  const start = () => first.listeners.mousedown({ target: { classList: { contains: () => true, add() {} }, closest: () => th }, pageX: 200, preventDefault() {}, stopPropagation() {} });
+  start();
+  first.listeners.mousemove({ pageX: 160 });
+  first.listeners.mouseup();
+  assert.equal(first.app.getSavedColumnWidths().spacer, 220);
+  assert.equal(first.app.getSavedColumnWidths().name, 153.5);
+  assert.equal(first.app.getSavedColumnWidths().part, 130);
+  start();
+  first.listeners.mousemove({ pageX: 225 });
+  first.listeners.mouseup();
+  const restarted = device(first.storage, [['spacer', 180]]);
+  assert.equal(restarted.headers[4].style.width, '195px');
+  assert.equal(restarted.headers[1].style.width, '153.5px');
   assert.equal(restarted.headers[2].style.width, '130px');
 });
