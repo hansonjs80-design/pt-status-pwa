@@ -5445,6 +5445,11 @@ class PTApp {
       if (includesName && String(rows[r].name ?? "").trim()) this.setVisitTimeNow(rows[r], pastedAt);
     });
 
+    // Pasting a history range is also an application to the current date.
+    // Remember its actual destination so closing search restores No. there.
+    if (sourceSelection?.kind === "history" || this.elSearchInput?.value?.trim()) {
+      this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[startRow], rowIdx: startRow };
+    }
     this.saveDataStore();
     this.renderTable();
     this.showSaveIndicator("붙여넣기 완료됨");

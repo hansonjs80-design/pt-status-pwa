@@ -160,3 +160,24 @@ test('unselected name gaps in a discrete clipboard copy do not refresh visit tim
   assert.equal(rows[0].part, '목');
   assert.equal(rows[0].visitTime, '00시 00분 00초');
 });
+
+
+test('partial history paste remembers the destination row for No. selection when search closes', async () => {
+  const rows=[{name:'기존'},{}];
+  const app=createPasteApp(rows,'part');
+  app.activeCell.rowIdx=1;
+  app.clipboardBuffer='허리\t치료';
+  app.clipboardSelection={kind:'history',minRow:0,minCol:4,cells:['0:4','0:5']};
+  app.elSearchInput={value:'검색환자'};
+  await app.pasteSelection(app.clipboardBuffer);
+  assert.equal(rows[1].part,'허리');
+  assert.equal(rows[1].prescription,'치료');
+  assert.equal(app.lastHistoryAppliedTarget.row,rows[1]);
+  assert.equal(app.lastHistoryAppliedTarget.rowIdx,1);
+  let selected;
+  app.elTableBody={querySelector:()=>({closest:()=>({style:{}}),scrollIntoView(){}})};
+  app.selectCell=(rowIdx,colKey)=>{selected={rowIdx,colKey};};
+  app.elSheetContainer={focus(){}};
+  app.restoreAppliedHistorySelection(app.lastHistoryAppliedTarget);
+  assert.deepEqual(selected,{rowIdx:1,colKey:'no'});
+});
