@@ -521,11 +521,11 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(message,'해당 이름을 검색할 수 없습니다.');
   assert.equal(app.elSearchPromptInput.value,'이연');
   assert.equal(searched,undefined);
-  assert.equal(closed,0);
+  assert.equal(closed,1);
   app.dataStore['2026-09-27'] = [{name:'이연'}];
   await app.submitSearchPrompt();
   assert.deepEqual(searched,['이연',0]);
-  assert.equal(closed,1);
+  assert.equal(closed,2);
 });
 
 test('cloud-only exact names and chart search remain usable', async () => {
@@ -565,21 +565,19 @@ test('direct cell name search also rejects a nonexistent exact name without chan
 });
 
 
-test('free search uses typed text even if a stale autocomplete candidate exists', async () => {
-  const {app,context}=createApp([{name:'다른환자'}]);
-  app.dataStore={'2026-09-28':[{name:'이연진'}]};
-  app.elSearchPromptInput={value:'이연',focus(){},select(){}};
-  app.searchPromptTargetRowIdx=0;
-  app.searchPromptCellName=null;
-  app._searchPromptACMenu={querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
-  app.closeSearchPromptModal=()=>{};
-  let searched;
-  app.searchAllDates=(...args)=>{searched=args;};
-  context.alert=()=>assert.fail('free typed search must remain available');
-  await app.submitSearchPrompt();
-  assert.deepEqual(searched,['이연',0]);
-  app.elSearchPromptInput.value='없는입력';
-  app._searchPromptACMenu=null;
-  await app.submitSearchPrompt();
-  assert.deepEqual(searched,['없는입력',0]);
+test('missing typed names and chart numbers close the search popup after the alert without changing records', async () => {
+  for (const query of ['이연', '99999']) {
+    const {app,context}=createApp([{name:'다른환자'}]);
+    app.dataStore={'2026-09-28':[{name:'이연진',chartNo:'15889'}]};
+    app.elSearchPromptInput={value:query};
+    app.searchPromptTargetRowIdx=0;
+    const before=JSON.stringify(app.dataStore), events=[];
+    app.closeSearchPromptModal=()=>events.push('closed');
+    app.searchAllDates=()=>assert.fail('missing identity must not open results');
+    context.alert=message=>events.push(message);
+    await app.submitSearchPrompt();
+    assert.deepEqual(events,['해당 이름을 검색할 수 없습니다.','closed']);
+    assert.equal(JSON.stringify(app.dataStore),before);
+    assert.equal(app.searchPromptSubmitting,false);
+  }
 });

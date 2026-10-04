@@ -3684,11 +3684,15 @@ class PTApp {
   }
 
   hasRecordedPatientName(query, targetRowIdx) {
+    return this.hasRecordedPatientValue(query, targetRowIdx, "name");
+  }
+
+  hasRecordedPatientValue(query, targetRowIdx, field) {
     const normalized = String(query).trim().toLowerCase();
     return Object.entries(this.getSearchDataStore()).some(([date, rows]) =>
       date <= this.currentDate && Array.isArray(rows) && rows.some((row, index) =>
         !(date === this.currentDate && index === targetRowIdx) &&
-        String(row?.name ?? "").trim().toLowerCase() === normalized));
+        String(row?.[field] ?? "").trim().toLowerCase() === normalized));
   }
 
   async searchPatientHistory(query, targetRowIdx) {
@@ -3705,8 +3709,6 @@ class PTApp {
   async submitSearchPrompt() {
     if (!this.elSearchPromptInput || this.searchPromptSubmitting) return;
     // Search exactly what the user entered; the popup has no autocomplete.
-    const searchingCellName = Boolean(this.searchPromptCellName &&
-      this.elSearchPromptInput.value.trim() === this.searchPromptCellName);
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
     if (!q) return;
@@ -3716,11 +3718,10 @@ class PTApp {
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
       const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
-      const exists = this.hasRecordedPatientName(normalized, targetIdx);
-      if (searchingCellName && !searchByChart && !exists) {
+      const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+      if (!exists) {
         alert("해당 이름을 검색할 수 없습니다.");
-        this.elSearchPromptInput.focus();
-        this.elSearchPromptInput.select();
+        this.closeSearchPromptModal();
         return;
       }
       this.closeSearchPromptModal();
