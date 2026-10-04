@@ -3537,9 +3537,18 @@ class PTApp {
     const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
       .some(key => text(row[key])));
     const summary = { total: records.length, male: 0, female: 0, unknown: 0,
-      writers: new Map(),
+      writers: new Map(), writerContentCounts: new Map(),
       extras: new Map(), extraSubcounts: new Map(),
       prescriptions: new Map() };
+
+    // 작성 이니셜: 모든 행에서 카운트 (내용 유무 상관없이)
+    for (const row of rows) {
+      if (!row) continue;
+      const writer = text(row.writer);
+      if (!writer) continue;
+      summary.writers.set(writer, (summary.writers.get(writer) || 0) + 1);
+    }
+
     for (const row of records) {
       const gender = text(row.gender).toUpperCase();
       if (gender === "M") summary.male++;
@@ -3556,8 +3565,9 @@ class PTApp {
         summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
         if (extra.includes("충격파") && text(row.specialNote).includes("신장")) summary.extraSubcounts.set(extra, (summary.extraSubcounts.get(extra) || 0) + 1);
       }
-      const writer = text(row.writer) || "미입력";
-      summary.writers.set(writer, (summary.writers.get(writer) || 0) + 1);
+      // 내용 있는 행의 이니셜 카운트
+      const writer = text(row.writer);
+      if (writer) summary.writerContentCounts.set(writer, (summary.writerContentCounts.get(writer) || 0) + 1);
       const prescription = text(row.prescription).replace(/\s+/g, " ") || "미입력";
       summary.prescriptions.set(prescription, (summary.prescriptions.get(prescription) || 0) + 1);
     }
@@ -3587,6 +3597,33 @@ class PTApp {
       value.className = "summary-item-value";
       const number = document.createElement("b");
       number.textContent = summary ? this.formatExtraCount(summary, label, count) : count;
+      const unit = document.createElement("span");
+      unit.textContent = "건";
+      value.append(number, unit);
+      row.append(name, value);
+      container.appendChild(row);
+    }
+  }
+
+  renderWriterSummaryList(container, writers, contentCounts) {
+    container.replaceChildren();
+    if (!writers.size) {
+      const empty = document.createElement("li");
+      empty.className = "summary-empty";
+      empty.textContent = "작성 이니셜 없음";
+      container.appendChild(empty);
+      return;
+    }
+    for (const [label, totalCount] of writers) {
+      const contentCount = contentCounts.get(label) || 0;
+      const row = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "summary-item-name";
+      name.textContent = label;
+      const value = document.createElement("span");
+      value.className = "summary-item-value";
+      const number = document.createElement("b");
+      number.textContent = contentCount > 0 ? `${totalCount}(${contentCount})` : String(totalCount);
       const unit = document.createElement("span");
       unit.textContent = "건";
       value.append(number, unit);
@@ -3629,7 +3666,7 @@ class PTApp {
     this.elStatMaleCount.textContent = summary.male;
     this.elStatFemaleCount.textContent = summary.female;
     this.elStatUnknownCount.textContent = summary.unknown;
-    this.renderSummaryList(this.elStatWriterList, summary.writers, "작성 이니셜 없음");
+    this.renderWriterSummaryList(this.elStatWriterList, summary.writers, summary.writerContentCounts);
     this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음", summary);
     this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");
   }
