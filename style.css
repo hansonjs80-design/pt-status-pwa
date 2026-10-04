@@ -1970,8 +1970,8 @@ body {
 .color-swatch:hover, .color-swatch:focus-visible { outline: 2px solid #107c41; outline-offset: 1px; }
 .custom-color { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
 /* Draw above the grid so collapsed borders and selection cannot hide lunch markers. */
-.excel-row.lunch-break-row { position: relative; }
-.excel-row.lunch-break-row::after {
+.excel-row.lunch-break-row > .row-num::before,
+.excel-row.lunch-break-row > .excel-cell::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0;
   border-top: 1.5px dashed #d93025; background: #fff; background-clip: border-box;
   z-index: 6; pointer-events: none;
