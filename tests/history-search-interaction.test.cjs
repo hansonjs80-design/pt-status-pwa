@@ -61,7 +61,7 @@ test('history applies to matching patient and otherwise appends after the last p
   ]) {
     const rows = [{ name: '가상환자', chartNo: 'T001', part: '원본' }, {}, { name: '마지막환자', memo: '보존' }, {}, {}];
     const { app } = createApp(rows);
-    const same = identity.name === rows[0].name && identity.chartNo === rows[0].chartNo;
+    const same = identity.name === rows[0].name;
     app.applyHistoryRow({ ...identity, part: '새 부위', _sourceDate: '2026-10-01' });
     const idx = same ? 0 : 3;
     assert.equal(rows[idx].part, '새 부위');
@@ -260,7 +260,7 @@ test('search prompt lists only names for a name query and only chart numbers for
 
 test('apply button moves selection to No. on the actual destination row', () => {
   for (const match of [true, false]) {
-    const rows = [{ name: '가상환자', chartNo: match ? 'T001' : 'OTHER' }, {}, {}];
+    const rows = [{ name: match ? '가상환자' : '다른환자', chartNo: match ? 'T001' : 'OTHER' }, {}, {}];
     const { app } = createApp(rows);
     let restored;
     app.restoreAppliedHistorySelection = target => { restored = target; };
@@ -323,4 +323,39 @@ test('Ctrl/Cmd+A leaves search and other external input text selection intact', 
     preventDefault: () => assert.fail('must preserve native text selection'), stopPropagation() {} };
   assert.equal(app.handleCellRowSelectShortcut(event), false);
   assert.equal(app.handleCellRowSelectShortcut({ ...event, altKey: true }), false);
+});
+
+
+test('history applies to the selected name-only row and fills its chart instead of appending', () => {
+  for (const chartNo of ['', 'OLD']) {
+    const rows = [{ name: '보존환자', chartNo: 'X' }, { name: '김선', chartNo, part: '수정 전' }, {}];
+    const { app } = createApp(rows);
+    app.historyApplyTarget = { date: app.currentDate, rows, row: rows[1], rowIdx: 1, colKey: 'name' };
+    app.applyHistoryRow({ name: '김선', chartNo: 'T001', part: '목' });
+    assert.equal(rows[1].part, '목');
+    assert.equal(rows[1].chartNo, 'T001');
+    assert.equal(rows[0].name, '보존환자');
+    assert.equal(rows[2].name, undefined);
+    assert.equal(app.lastHistoryAppliedTarget.rowIdx, 1);
+  }
+});
+
+test('history can populate a chart-only target but does not overwrite a different named patient', () => {
+  const rows = [{ name: '', chartNo: 'T001' }, { name: '다른환자', chartNo: 'T001' }, {}];
+  const { app } = createApp(rows);
+  assert.equal(app.getHistoryDestinationIndex({ name: '김선', chartNo: 'T001' }, 0), 0);
+  assert.equal(app.getHistoryDestinationIndex({ name: '김선', chartNo: 'T001' }, 1), 2);
+});
+
+
+test('Ctrl/Cmd+A daily row selection ends at specialNote, while direct row selection still includes visitTime', () => {
+  const { app, context } = createApp([{}]);
+  context.window.getSelection = () => ({ removeAllRanges() {} });
+  context.document.querySelector = () => null;
+  app.elCellAddress = {}; app.elSelectedCellCoords = {}; app.elFormulaInput = {};
+  app.selectEntireRow(0);
+  assert.equal(app.selectedRange.minCol, 0);
+  assert.equal(app.selectedRange.maxCol, 9);
+  app.selectRowRange(0, 0);
+  assert.equal(app.selectedRange.maxCol, 10);
 });

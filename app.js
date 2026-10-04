@@ -2695,10 +2695,10 @@ class PTApp {
   }
 
   selectEntireRow(rowIdx) {
-    this.selectRowRange(rowIdx, rowIdx);
+    this.selectRowRange(rowIdx, rowIdx, 9);
   }
 
-  selectRowRange(startRowIdx, endRowIdx) {
+  selectRowRange(startRowIdx, endRowIdx, lastCol = 10) {
     // Clear native browser text highlighting before painting the spreadsheet selection.
     window.getSelection()?.removeAllRanges();
     // Finish the current edit before replacing cell selection with row selection.
@@ -2725,8 +2725,8 @@ class PTApp {
     this.selectedRowIdx = minRow;
     this.selectedColKey = null;
 
-    // Apply entire row range (columns 0 to 9) so copy/cut/clear automatically covers all columns
-    this.selectedRange = { minRow, maxRow, minCol: 0, maxCol: 10 };
+    // Ctrl/Cmd+A stops at specialNote; direct row-header selection keeps all data columns.
+    this.selectedRange = { minRow, maxRow, minCol: 0, maxCol: lastCol };
 
     for (let r = minRow; r <= maxRow; r++) {
       const rowTr = document.querySelector(`tr[data-row-idx="${r}"]`);
@@ -2735,11 +2735,12 @@ class PTApp {
         if (rowNumTh) rowNumTh.classList.add("selected");
         const cells = rowTr.querySelectorAll(".excel-cell");
         cells.forEach((cell, colIdx) => {
+          if (colIdx > lastCol) return;
           cell.classList.add("row-selected");
           if (r === minRow) cell.classList.add("range-border-top");
           if (r === maxRow) cell.classList.add("range-border-bottom");
           if (colIdx === 0) cell.classList.add("range-border-left");
-          if (colIdx === cells.length - 1) cell.classList.add("range-border-right");
+          if (colIdx === Math.min(lastCol, cells.length - 1)) cell.classList.add("range-border-right");
         });
       }
     }
@@ -3206,10 +3207,13 @@ class PTApp {
   getHistoryDestinationIndex(source, targetIndex) {
     const rows = this.getCurrentRows();
     const targetRow = rows[targetIndex];
-    const samePatient = ["name", "chartNo"].every(key => {
-      const value = String(source?.[key] ?? "").trim();
-      return value && value === String(targetRow?.[key] ?? "").trim();
-    });
+    const sourceName = String(source?.name ?? "").trim();
+    const targetName = String(targetRow?.name ?? "").trim();
+    const sourceChart = String(source?.chartNo ?? "").trim();
+    const targetChart = String(targetRow?.chartNo ?? "").trim();
+    // A name-only search must update its selected row, even before a chart is filled.
+    const samePatient = (sourceName && sourceName === targetName) ||
+      (sourceChart && sourceChart === targetChart && (!sourceName || !targetName));
     if (samePatient) return targetIndex;
     const contentKeys = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     let lastIndex = -1;
@@ -3256,7 +3260,7 @@ class PTApp {
     this.renderTable();
     if (searchQuery) {
       this.searchAllDates(searchQuery, rowIdx);
-      if (selection && this.crossDateResults?.length) {
+      if (useSelection && this.crossDateResults?.length) {
         if (wasRowSelected) this.selectCrossDateRow(selection.minRow);
         else {
           this.selectCrossDateCell(selection.startRow, selection.startCol);
@@ -3264,6 +3268,10 @@ class PTApp {
           this.isCrossDateRowSelected = false;
           this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
         }
+      } else if (this.crossDateResults?.length) {
+        const appliedSourceIndex = this.crossDateResults.findIndex(row =>
+          row._sourceDate === source._sourceDate && row._sourceRowIdx === source._sourceRowIdx);
+        if (appliedSourceIndex >= 0) this.selectCrossDateRow(appliedSourceIndex);
       }
     }
     this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
@@ -4053,7 +4061,7 @@ class PTApp {
       applyButton.title = "선택한 셀 적용 · Enter (선택이 없으면 이 행 전체 적용)";
       applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
       applyButton.addEventListener("mousedown", e => e.preventDefault());
-      applyButton.addEventListener("click", () => this.applyHistoryRow(row, { focusAppliedRow: true }));
+      applyButton.addEventListener("click", () => this.applyHistoryRow(row));
       actionCell.appendChild(applyButton);
       tr.appendChild(actionCell);
 
