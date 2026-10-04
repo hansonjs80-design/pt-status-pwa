@@ -5341,7 +5341,7 @@ class PTApp {
 
     if (copyRange) {
       this.clipboardBuffer = tsvData;
-      this.clipboardSelection = { ...copyRange, date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
+      this.clipboardSelection = { ...copyRange, rowSelection: Boolean(this.selectedRowRange) && !this.crossDateSelection, date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
@@ -5458,6 +5458,10 @@ class PTApp {
     this.showSaveIndicator("붙여넣기 완료됨");
     this.clipboardSelection = null;
     this.renderClipboardSelection();
+    if (sourceSelection?.rowSelection && startCol === 0) {
+      this.selectRowRange(startRow, startRow + grid.length - 1, Math.min(sourceSelection.maxCol, colKeys.length - 1));
+      this.elSheetContainer.focus({ preventScroll: true });
+    }
   }
 
   clearSelection() {

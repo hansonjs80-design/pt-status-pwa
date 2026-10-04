@@ -181,3 +181,27 @@ test('partial history paste remembers the destination row for No. selection when
   app.restoreAppliedHistorySelection(app.lastHistoryAppliedTarget);
   assert.deepEqual(selected,{rowIdx:1,colKey:'no'});
 });
+
+
+test('row-header and Ctrl/Cmd+A copies and cuts restore the full pasted destination selection', async () => {
+  context.navigator={clipboard:{writeText:async()=>{}}};
+  for(const maxCol of [9,10]) for(const cut of [false,true]) {
+    const rows=[{no:'1',name:'첫째',memo:'유지'},{}];
+    const app=createPasteApp(rows);
+    app.selectedRowRange={minRow:0,maxRow:0};
+    app.selectedRange={minRow:0,maxRow:0,minCol:0,maxCol};
+    if(cut) app.cutSelection(); else app.copySelection();
+    assert.equal(app.clipboardSelection.rowSelection,true);
+    app.selectedRange=null;
+    app.selectedRowRange=null;
+    app.activeCell={rowIdx:1,colKey:'no'};
+    let selection,focused=false;
+    app.selectRowRange=(start,end,lastCol)=>{selection={start,end,lastCol};};
+    app.elSheetContainer={focus(){focused=true;}};
+    await app.pasteSelection(app.clipboardBuffer);
+    assert.deepEqual(selection,{start:1,end:1,lastCol:maxCol});
+    assert.equal(rows[1].name,'첫째');
+    assert.equal(rows[0].name,cut?'':'첫째');
+    assert.ok(focused);
+  }
+});
