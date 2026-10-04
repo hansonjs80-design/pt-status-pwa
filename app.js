@@ -3540,10 +3540,8 @@ class PTApp {
     setTimeout(() => {
       this.elSearchPromptInput.focus();
       this.elSearchPromptInput.select();
-      // 기존 검색어가 있으면 자동완성 즉시 표시
-      if (this.elSearchPromptInput.value.trim()) {
-        this.updateSearchPromptAutocomplete();
-      }
+      // Empty prompts also clear suggestions left over from the previous search.
+      this.updateSearchPromptAutocomplete();
     }, 60);
   }
 
@@ -3803,7 +3801,8 @@ class PTApp {
     const { rowIdx, colKey } = this.activeCell || {};
     const targetIdx = Number.isInteger(rowIdx) ? rowIdx
       : this.selectedRange?.minRow ?? this.selectedRowIdx ?? this.findFirstEmptyRowIndex();
-    const query = colKey ? String(this.getCurrentRows()[targetIdx]?.[colKey] ?? "").trim() : "";
+    const query = ["name", "chartNo"].includes(colKey)
+      ? String(this.getCurrentRows()[targetIdx]?.[colKey] ?? "").trim() : "";
     this.openSearchPromptModal(targetIdx, query);
   }
 
@@ -5730,8 +5729,7 @@ class PTApp {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
         if (["chartNo", "name"].includes(keys[selection.endCol])) this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, value);
-        else if (value) this.searchAllDates(value);
-        else this.openSearchPromptModal(this.findFirstEmptyRowIndex());
+        else this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, "");
       }
       // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
       else if (isCtrlOrMeta && e.shiftKey && e.key === "ArrowRight") {

@@ -214,14 +214,33 @@ test('opening and submitting a history search never changes daily records', () =
 });
 
 
-test('selected nonediting cells also open a prompt instead of searching directly', () => {
-  const { app } = createApp([{ part: '가상 부위' }]);
-  app.activeCell.colKey = 'part';
-  let prompt;
-  app.openSearchPromptModal = (...args) => { prompt = args; };
-  app.searchAllDates = () => { assert.fail('selection must not search directly'); };
-  app.findActiveCell();
-  assert.deepEqual(prompt, [0, '가상 부위']);
+test('selected cells outside chart/name open an empty focused prompt and clear old suggestions', () => {
+  for (const colKey of ['no', 'gender', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime']) {
+    const { app } = createApp([{ [colKey]: '가상 내용' }]);
+    app.activeCell.colKey = colKey;
+    app.elSearchInput.value = '이전 검색어';
+    let focused = false, cleared = false;
+    app.elSearchPromptModal = { style: {} };
+    app.elSearchPromptInput = { value: '기존 입력', focus() { focused = true; }, select() {} };
+    app.updateSearchPromptAutocomplete = () => { cleared = app.elSearchPromptInput.value === ''; };
+    app.findActiveCell();
+    assert.equal(app.elSearchPromptInput.value, '');
+    assert.ok(focused && cleared);
+    assert.equal(app.searchPromptTargetRowIdx, 0);
+  }
+});
+
+test('history nonidentity cells also open an empty search prompt with the original daily target', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    const { app } = createApp([{ name: '가상환자' }]);
+    app.crossDateResults = [{ memo: '검색에 넣지 않을 문구' }];
+    app.crossDateSelection = { endRow: 0, endCol: 8 };
+    let prompt;
+    app.openSearchPromptModal = (...args) => { prompt = args; };
+    app.searchAllDates = () => assert.fail('must open empty prompt');
+    app.handleGlobalKeyDown({ key: 'f', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(prompt, [0, '']);
+  }
 });
 
 test('a transparent armed chart/name input is a selected cell, not an active editor', () => {
