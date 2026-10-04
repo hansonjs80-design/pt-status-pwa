@@ -1884,7 +1884,35 @@ class PTApp {
       return a.isPreset ? 0 : a.item.length - b.item.length;
     });
 
-    let results = matched.map((m) => m.item).slice(0, 10);
+    // Keep unrelated suggestion groups in place, but order numeric variants
+    // of the same wording by their numbers before applying the display limit.
+    const numericGroups = new Map();
+    for (const candidate of matched) {
+      if (colKey === "chartNo") continue; // Patient identifiers retain their match ranking.
+      const numbers = candidate.item.match(/\d+(?:\.\d+)?/g);
+      if (!numbers) continue;
+      const key = candidate.item.toLowerCase().replace(/\d+(?:\.\d+)?/g, "\u0000");
+      if (!numericGroups.has(key)) numericGroups.set(key, []);
+      numericGroups.get(key).push({ candidate, numbers: numbers.map(Number) });
+      candidate.numericGroup = key;
+    }
+    for (const group of numericGroups.values()) {
+      group.sort((a, b) => {
+        for (let i = 0; i < a.numbers.length; i++) {
+          const difference = a.numbers[i] - b.numbers[i];
+          if (difference) return difference;
+        }
+        return 0;
+      });
+    }
+    const groupPositions = new Map();
+    const ordered = matched.map(candidate => {
+      if (candidate.numericGroup === undefined) return candidate.item;
+      const position = groupPositions.get(candidate.numericGroup) || 0;
+      groupPositions.set(candidate.numericGroup, position + 1);
+      return numericGroups.get(candidate.numericGroup)[position].candidate.item;
+    });
+    let results = ordered.slice(0, 10);
 
     // 부위와 차트번호는 현재 입력값을 첫 후보로 유지한다.
     if (colKey === "part" || colKey === "chartNo") {

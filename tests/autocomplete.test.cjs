@@ -173,3 +173,27 @@ test('new patient identity uses older dates or earlier rows, excluding itself an
   app.cloudSearchHistory = {'2026-09-28':[{name:'신규',chartNo:'20'}]};
   assert.equal(app.isNewPatientRow({name:'신규'}, 0), false);
 });
+
+
+test('numeric variants of identical wording sort ascending without moving unrelated groups', () => {
+  const app = createApp({'2026-09-29': [
+    {specialNote:'L/T 16kg'}, {specialNote:'L/T 14kg'}, {specialNote:'L/T 27kg'},
+    {specialNote:'L/T 13kg'}, {specialNote:'L/T 15kg'}, {specialNote:'L/T 12kg'},
+  ]});
+  assert.deepEqual(suggestions(app,'specialNote','L/T'),[
+    'L/T 12kg','L/T 13kg','L/T 14kg','L/T 15kg','L/T 16kg','L/T 27kg',
+  ]);
+  const mixed = createApp({'2026-09-29': [
+    {memo:'신장 10'}, {memo:'신장 2.5'}, {memo:'신장 2'}, {memo:'신장 확인'},
+  ]}, {memo:['신장 확인','신장 10','신장 2.5','신장 2']});
+  assert.deepEqual(suggestions(mixed,'memo','신장'),['신장 확인','신장 2','신장 2.5','신장 10']);
+});
+
+test('numeric variants sort before truncation and compare multiple numbers in order', () => {
+  const app=createApp({'2026-09-29':Array.from({length:15},(_,i)=>({specialNote:`L/T ${20-i}kg`}))});
+  assert.deepEqual(suggestions(app,'specialNote','L/T'),Array.from({length:10},(_,i)=>`L/T ${6+i}kg`));
+  const multi=createApp({'2026-09-29':[
+    {memo:'C/T 10kg 2회'}, {memo:'C/T 2kg 10회'}, {memo:'C/T 2kg 3회'},
+  ]});
+  assert.deepEqual(suggestions(multi,'memo','C/T'),['C/T 2kg 3회','C/T 2kg 10회','C/T 10kg 2회']);
+});
