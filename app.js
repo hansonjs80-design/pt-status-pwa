@@ -6435,6 +6435,31 @@ class PTApp {
       this.clipboardSelection = null;
       this.pendingCut = null;
       this.renderClipboardSelection();
+
+      // ★ 행 헤더 선택 상태에서 ESC → 해당 행의 No. 셀로 커서 이동
+      if (this.selectedRowRange && !this.crossDateSelection) {
+        const targetRow = this.selectedRowRange.minRow;
+        this.clearHeaderSelections();
+        document.querySelectorAll(".cell-focused").forEach(c => c.classList.remove("cell-focused"));
+        document.querySelectorAll(".excel-row.active-row").forEach(r => r.classList.remove("active-row"));
+        document.querySelectorAll(".range-selected, .range-border-top, .range-border-bottom, .range-border-left, .range-border-right").forEach(c => {
+          c.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");
+        });
+        this.selectedRowIdx = null;
+        this.selectedColKey = null;
+        this.selectedRange = null;
+        this.selectedRowRange = null;
+        this.rangeStart = null;
+        this.rangeEnd = null;
+        const cell = this.elTableBody.querySelector(`[data-row="${targetRow}"][data-col="no"]`);
+        if (cell) {
+          this.selectCell(targetRow, "no", cell, false);
+          cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+        this.elSheetContainer.focus({ preventScroll: true });
+        return;
+      }
+
       this.clearHeaderSelections();
 
       // ★ Ctrl+F 검색 필터가 활성화되어 있으면 해제하여 원래 화면으로 복원
