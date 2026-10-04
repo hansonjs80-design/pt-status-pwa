@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v72';
+const CACHE_NAME = 'pt-status-pwa-v73';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      return cache.addAll(ASSETS_TO_CACHE.map(url => new Request(url, { cache: 'reload' })));
     }).then(() => self.skipWaiting())
   );
 });
@@ -37,16 +37,13 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request).then(async (cachedResponse) => {
+      if (!cachedResponse && event.request.mode === 'navigate') {
+        cachedResponse = await caches.match('./index.html');
+      }
       if (cachedResponse) {
-        // Fetch background update
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, networkResponse.clone());
-            });
-          }
-        }).catch(() => {});
+        // Keep each installed release intact. Mixing newly fetched scripts into
+        // an older release can skip device settings restoration during startup.
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {

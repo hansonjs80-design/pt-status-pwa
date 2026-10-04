@@ -1146,6 +1146,7 @@ class PTApp {
 
   // Render main Excel table
   renderTable() {
+    this.restoreCurrentTableHeader();
     this.cancelFillDrag();
     this.clearCrossDateSelection();
     const rows = this.getCurrentRows();
@@ -2868,9 +2869,11 @@ class PTApp {
       // Freeze every displayed column before resizing: table-layout otherwise
       // redistributes spare width when the viewport or history columns change.
       const saved = this.getSavedColumnWidths();
-      document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
-        const width = window.getComputedStyle(th).display === "none"
-          ? parseFloat(th.style.width) : th.getBoundingClientRect().width;
+      const measured = Array.from(document.querySelectorAll(".col-headers-row th.col-letter"), th => ({
+        th, width: window.getComputedStyle(th).display === "none"
+          ? parseFloat(th.style.width) : th.getBoundingClientRect().width
+      }));
+      measured.forEach(({ th, width }) => {
         if (Number.isFinite(width) && width > 0) {
           th.style.width = `${width}px`;
           th.style.minWidth = `${width}px`;
@@ -2886,7 +2889,7 @@ class PTApp {
         : sourceTh;
       activeColKey = activeTh?.dataset?.col || null;
       startX = clientX;
-      startWidth = activeTh.offsetWidth;
+      startWidth = activeTh.getBoundingClientRect().width;
       fixedRight = activeTh.getBoundingClientRect().right;
       resizerEl.classList.add("resizing");
       document.body.style.cursor = "col-resize";
@@ -3529,6 +3532,7 @@ class PTApp {
 
   // 교차 날짜 임시 행 제거
   clearCrossDateRows() {
+    this.restoreCurrentTableHeader();
     this.historyLayoutObserver?.disconnect();
     this.historyLayoutObserver = null;
     this.elSheetContainer?.classList.remove("history-search-active");
@@ -3872,6 +3876,7 @@ class PTApp {
     // 1) 교차 날짜 임시 행 제거
     this.clearCrossDateRows();
     this.elSheetContainer.classList.add("history-search-active");
+    this.syncMainColumnWidths();
 
     // 2) 현재 날짜 행 필터링:
     // "현재 날짜 행은 내용있는 행은 가장 마지막 내용있는 행에서 위로 10행만 보이면 되고 마지막 내용이 있는 행 아래로 빈행이 보이면 되게 설정"
@@ -3972,6 +3977,14 @@ class PTApp {
     }
   }
 
+  restoreCurrentTableHeader() {
+    const row = document.querySelector(".current-history-headers");
+    if (!row) return;
+    row.classList.remove("current-history-headers");
+    row.querySelectorAll("th").forEach(cell => { cell.style.top = ""; });
+    document.getElementById("excelTable")?.querySelector("thead")?.appendChild(row);
+  }
+
   updateCrossDateStickyOffsets() {
     const masterCell = document.querySelector(".cross-date-master-cell");
     const divider = document.getElementById("crossDateDivider");
@@ -3983,9 +3996,13 @@ class PTApp {
     divider.querySelectorAll("td").forEach(cell => {
       cell.style.top = `${dividerTop}px`;
     });
+    const currentHeader = document.querySelector(".current-history-headers");
+    const currentTop = dividerTop + divider.getBoundingClientRect().height;
+    currentHeader?.querySelectorAll("th").forEach(cell => { cell.style.top = `${currentTop}px`; });
   }
 
   renderCrossDateSection({ preserveCurrentSelection = false } = {}) {
+    this.restoreCurrentTableHeader();
     this.historyLayoutObserver?.disconnect();
     this.historyLayoutObserver = null;
     // 기존 마스터 행 및 구분선 제거
@@ -4031,29 +4048,6 @@ class PTApp {
 
     this.crossDateResults = renderRows;
 
-    // 상단 # 헤더 셀 상태 업데이트 (화살표 모양 및 클릭 토글)
-    const thRowNumHeader = document.querySelector(".business-headers-row th.row-num-header");
-    if (thRowNumHeader) {
-      thRowNumHeader.classList.add("cross-date-toggle-active");
-      const hasAnyDuplicates = Array.from(groupMap.values()).some(g => g.items.length > 1);
-      if (hasAnyDuplicates) {
-        thRowNumHeader.innerHTML = this.isCrossDateExpanded
-          ? '# <span class="cross-date-th-icon">▲</span>'
-          : '# <span class="cross-date-th-icon">▼</span>';
-        thRowNumHeader.title = this.isCrossDateExpanded
-          ? "클릭하여 대표 행만 보기 (중복 숨기기)"
-          : "클릭하여 전체 날짜 기록 보기 (중복 펼치기)";
-      } else {
-        thRowNumHeader.textContent = "#";
-        thRowNumHeader.title = "이전 날짜 기록 표시 중";
-      }
-      thRowNumHeader.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggleCrossDateExpanded();
-      };
-    }
-
     const firstCurrentRow = this.elTableBody.firstChild;
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
@@ -4081,6 +4075,19 @@ class PTApp {
     headerKeys.forEach((key, idx) => {
       const th = document.createElement("th");
       th.textContent = headerLabels[idx];
+      if (idx === 0) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "history-date-toggle";
+        toggle.textContent = `날짜 ${this.isCrossDateExpanded ? "▲" : "▼"}`;
+        toggle.title = this.isCrossDateExpanded ? "대표 행만 보기" : "전체 날짜 기록 보기";
+        toggle.setAttribute("aria-expanded", String(this.isCrossDateExpanded));
+        toggle.addEventListener("click", e => {
+          e.preventDefault(); e.stopPropagation(); this.toggleCrossDateExpanded();
+        });
+        th.textContent = "";
+        th.appendChild(toggle);
+      }
       if (headerLabels[idx] === "적용") th.className = "history-apply-header";
       if (key) {
         th.dataset.col = key;
@@ -4219,9 +4226,14 @@ class PTApp {
     const dividerTd = document.createElement("td");
     dividerTd.colSpan = 14;
     const modeText = this.isCrossDateExpanded ? "전체 보기" : "대표 행 보기";
-    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · # 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
+    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · 날짜 ▼ 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
+    const currentHeader = document.querySelector(".business-headers-row");
+    if (currentHeader) {
+      currentHeader.classList.add("current-history-headers");
+      this.elTableBody.insertBefore(currentHeader, firstCurrentRow);
+    }
 
     // 3) 열 너비 동기화 및 파란 바 고정 위치(sticky top) 설정
     this.syncCrossDateColWidths();

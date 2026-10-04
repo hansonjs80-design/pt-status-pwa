@@ -166,18 +166,22 @@ test('history divider follows header and panel height changes', () => {
   let headerHeight = 51, panelHeight = 365;
   const master = { style: {}, getBoundingClientRect: () => ({ height: panelHeight }) };
   const dividerCell = { style: {} };
+  const currentHeaderCell = { style: {} };
   const header = { getBoundingClientRect: () => ({ height: headerHeight }) };
-  context.document.querySelector = () => master;
+  context.document.querySelector = selector => selector === '.current-history-headers'
+    ? { querySelectorAll: () => [currentHeaderCell] } : master;
   context.document.getElementById = id => id === 'excelTable'
     ? { querySelector: () => header }
-    : { querySelectorAll: () => [dividerCell] };
+    : { querySelectorAll: () => [dividerCell], getBoundingClientRect: () => ({ height: 30 }) };
   app.updateCrossDateStickyOffsets();
   assert.equal(master.style.top, '51px');
   assert.equal(dividerCell.style.top, '416px');
+  assert.equal(currentHeaderCell.style.top, '446px');
   headerHeight = 58; panelHeight = 112;
   app.updateCrossDateStickyOffsets();
   assert.equal(master.style.top, '58px');
   assert.equal(dividerCell.style.top, '170px');
+  assert.equal(currentHeaderCell.style.top, '200px');
   context.document.querySelector = () => null;
   assert.doesNotThrow(() => app.updateCrossDateStickyOffsets());
 });
