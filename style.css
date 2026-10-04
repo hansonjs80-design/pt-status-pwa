@@ -2136,3 +2136,6 @@ body {
 
 /* New identities use a computed row color; existing records keep their formatting. */
 .excel-row.new-patient-row > .excel-cell { color: #8b4513 !important; }
+
+.quick-inputs .date-label.is-saturday { color: #1e40af; }
+.quick-inputs .date-label.is-sunday { color: #b91c1c; }

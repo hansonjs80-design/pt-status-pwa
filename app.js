@@ -1107,6 +1107,8 @@ class PTApp {
     const dateFormatted = `${y}.${String(m).padStart(2, "0")}.${String(d).padStart(2, "0")}`;
 
     this.elDateLabel.textContent = `${dateFormatted} (${dayLabel})`;
+    this.elDateLabel.classList.toggle("is-saturday", dateObj.getDay() === 6);
+    this.elDateLabel.classList.toggle("is-sunday", dateObj.getDay() === 0);
     this.elSidebarDateTag.textContent = dateFormatted;
     this.elSheetTabTitle.textContent = dateFormatted;
 
