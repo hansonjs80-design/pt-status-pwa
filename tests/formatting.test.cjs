@@ -113,3 +113,50 @@ test('history Ctrl/Cmd+Down finds the actual last daily record after deletion in
   instance.jumpToLastRecord();
   assert.deepEqual(selected, { rowIdx: 0, colKey: 'chartNo' });
 });
+
+function createPasteApp(rows, colKey = 'no') {
+  const instance = Object.create(context.App.prototype);
+  Object.assign(instance, { currentDate: '2026-10-04', activeCell: { rowIdx: 0, colKey }, selectedRange: null, selectedRowIdx: null, selectedColKey: null });
+  instance.getCurrentRows = () => rows;
+  instance.renderClipboardSelection = instance.showSaveIndicator = instance.saveDataStore = instance.renderTable = () => {};
+  instance.addNewRow = () => rows.push({});
+  return instance;
+}
+
+test('full-row clipboard paste replaces copied old visit times with one current timestamp for every named row', async () => {
+  const rows = [{ name: '기존 이름', visitTime: '01시 00분 00초' }];
+  const app = createPasteApp(rows);
+  const before = Date.now();
+  await app.pasteSelection('1\tF\tT001\t첫째\t목\t치료\t\tK\t메모\t특이 사항\t02시 00분 00초\n2\tM\tT002\t둘째\t허리\t치료\t\tJ\t\t\t03시 00분 00초');
+  assert.equal(rows[0].name, '첫째'); assert.equal(rows[1].name, '둘째');
+  assert.ok(Date.parse(rows[0]._visitedAt) >= before && Date.parse(rows[0]._visitedAt) <= Date.now());
+  assert.equal(rows[0]._visitedAt, rows[1]._visitedAt);
+  assert.equal(rows[0].visitTime, rows[1].visitTime);
+  assert.notEqual(rows[0].visitTime, '02시 00분 00초');
+  assert.equal(rows[0]._visitTimeEdited, true);
+});
+
+test('name-only and compound chart/name paste refresh visits while memo-only paste preserves the existing time', async () => {
+  for (const [column, text, name] of [['name', '새 이름', '새 이름'], ['chartNo', '12345 / 김선', '김선']]) {
+    const rows = [{ name: '기존', visitTime: '00시 00분 00초', _visitedAt: '2000-01-01T00:00:00Z' }];
+    const app = createPasteApp(rows, column);
+    await app.pasteSelection(text);
+    assert.equal(rows[0].name, name);
+    assert.ok(Date.parse(rows[0]._visitedAt) > Date.parse('2000-01-01'));
+  }
+  const rows = [{ name: '유지', visitTime: '00시 00분 00초', _visitedAt: '2000-01-01T00:00:00Z' }];
+  await createPasteApp(rows, 'memo').pasteSelection('메모 변경');
+  assert.equal(rows[0].visitTime, '00시 00분 00초');
+  assert.equal(rows[0]._visitedAt, '2000-01-01T00:00:00Z');
+});
+
+test('unselected name gaps in a discrete clipboard copy do not refresh visit times', async () => {
+  const rows = [{ name: '유지환자', visitTime: '00시 00분 00초' }];
+  const app = createPasteApp(rows, 'chartNo');
+  app.clipboardBuffer = 'T001\t이름 제외\t목';
+  app.clipboardSelection = { minRow: 0, minCol: 2, cells: ['0:2', '0:4'] };
+  await app.pasteSelection(app.clipboardBuffer);
+  assert.equal(rows[0].name, '유지환자');
+  assert.equal(rows[0].part, '목');
+  assert.equal(rows[0].visitTime, '00시 00분 00초');
+});

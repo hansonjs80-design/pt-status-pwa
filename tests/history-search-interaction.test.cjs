@@ -188,7 +188,7 @@ test('a transparent armed chart/name input is a selected cell, not an active edi
 });
 
 
-test('history only applies after the search key is released and a fresh plain Enter is pressed', () => {
+test('a fresh plain history Enter applies even if the previous search keyup was lost', () => {
   const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
   app.crossDateSelection = { minRow: 0 };
   app.crossDateResults = [{ name: '가상환자', chartNo: 'T001', part: '이전 내역' }];
@@ -197,14 +197,16 @@ test('history only applies after the search key is released and a fresh plain En
   const enter = { key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} };
   for (const searchKey of ['f', 'enter']) {
     app.historyApplyBlockedKey = searchKey;
+    app.handleGlobalKeyDown({ ...enter, repeat: true });
+    const before = applied;
     app.handleGlobalKeyDown(enter);
-    assert.equal(applied, 0);
-    app.releaseHistorySearchKey({ key: searchKey });
+    assert.equal(applied, before + 1);
+    assert.equal(app.historyApplyBlockedKey, null);
   }
   for (const modifier of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) app.handleGlobalKeyDown({ ...enter, [modifier]: true });
-  assert.equal(applied, 0);
+  assert.equal(applied, 2);
   app.handleGlobalKeyDown(enter);
-  assert.equal(applied, 1);
+  assert.equal(applied, 3);
 });
 
 

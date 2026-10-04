@@ -785,7 +785,28 @@ class PTApp {
       if (target.matches?.("input, textarea") && !target.matches(".cell-input-element")) return;
       const text = event.clipboardData?.getData("text/plain");
       if (text == null) return;
-      if (target.matches?.(".cell-input-element:not(.is-armed)") && !/[\t\r\n]/.test(text)) return;
+      if (target.matches?.(".cell-input-element:not(.is-armed)") && !/[\t\r\n]/.test(text)) {
+        const cell = target.closest(".excel-cell");
+        const colKey = cell?.dataset.col;
+        if (["name", "chartNo"].includes(colKey)) {
+          // Native paste must keep its caret/text insertion behavior. Refresh only
+          // after the resulting input event, not before the pasted text is inserted.
+          const refreshVisit = () => {
+            const rowIdx = Number(cell.dataset.row);
+            const row = this.getCurrentRows()[rowIdx];
+            if (!row) return;
+            const includesName = colKey === "name" || this.applyCompoundPatientInput(row, colKey, target.value);
+            if (!includesName || !String(row?.name ?? "").trim()) return;
+            this.setVisitTimeNow(row);
+            const timeCell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="visitTime"]`);
+            if (timeCell) this.renderColoredText(timeCell, row, "visitTime");
+            this.saveDataStore();
+          };
+          target.addEventListener("input", refreshVisit, { once: true });
+          setTimeout(() => target.removeEventListener("input", refreshVisit), 0);
+        }
+        return;
+      }
       event.preventDefault();
       if (target.matches?.(".cell-input-element")) target.blur();
       void this.pasteSelection(text);
@@ -3643,6 +3664,9 @@ class PTApp {
     // History has its own vertical scroller; offset its sticky first column by
     // the shared sheet's horizontal scroll so dates remain clickable at the left.
     this.elSheetContainer?.style?.setProperty?.("--history-scroll-left", `${this.elSheetContainer.scrollLeft || 0}px`);
+    const right = Math.max(0, (this.elSheetContainer?.scrollWidth || 0) -
+      (this.elSheetContainer?.clientWidth || 0) - (this.elSheetContainer?.scrollLeft || 0));
+    this.elSheetContainer?.style?.setProperty?.("--history-scroll-right", `${right}px`);
   }
 
   syncCrossDateColWidths() {
@@ -3948,6 +3972,7 @@ class PTApp {
     headerKeys.forEach((key, idx) => {
       const th = document.createElement("th");
       th.textContent = headerLabels[idx];
+      if (headerLabels[idx] === "적용") th.className = "history-apply-header";
       if (key) {
         th.dataset.col = key;
         const resizer = document.createElement("span");
@@ -5185,9 +5210,12 @@ class PTApp {
     }
     this.pendingCut = null;
 
+    // One paste transaction uses the same current time for all pasted names.
+    const pastedAt = new Date();
     // Apply grid data to rows
     grid.forEach((rowVals, rOffset) => {
       const r = startRow + rOffset;
+      let includesName = false;
       while (r >= rows.length) {
         this.addNewRow(false);
       }
@@ -5198,14 +5226,19 @@ class PTApp {
           const k = colKeys[c];
           if (k) {
             const trimmed = val.trim();
+            if (k === "name" && trimmed) includesName = true;
             rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
               : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
           }
         }
       });
       rowVals.forEach((value, offset) => {
-        if (!sourceSelection?.cells || sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+offset}`)) this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value);
+        if (!sourceSelection?.cells || sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+offset}`)) {
+          if (this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value)) includesName = true;
+        }
       });
+      // Apply after every pasted field so an old copied visitTime cannot win.
+      if (includesName && String(rows[r].name ?? "").trim()) this.setVisitTimeNow(rows[r], pastedAt);
     });
 
     this.saveDataStore();
@@ -5561,9 +5594,11 @@ class PTApp {
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
       if (e.key === "Enter") {
-        if (!e.repeat && !this.historyApplyBlockedKey && !isCtrlOrMeta && !e.altKey && !e.shiftKey) {
-          // 버튼은 기본 클릭 동작으로 처리하고 검색 팝업의 키는 적용에 사용하지 않는다.
+        if (!e.repeat && !isCtrlOrMeta && !e.altKey && !e.shiftKey) {
+          // A fresh Enter is an explicit apply action. Popup events are handled
+          // before reaching here; a lost keyup must not leave application blocked.
           if (e.target.closest?.("button, #searchPromptModal")) return;
+          this.historyApplyBlockedKey = null;
           this.applyHistoryRow(this.crossDateResults[selection.minRow]);
         }
       }

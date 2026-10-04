@@ -2102,3 +2102,14 @@ body {
 .autocomplete-item.is-selected .autocomplete-edit-button,
 .autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
 .autocomplete-edit-button:hover { background: #d9eee1; }
+
+/* Keep Apply reachable while all history data columns share the sheet scroll. */
+.cross-date-inner-table .history-apply-cell,
+.cross-date-headers-row .history-apply-header {
+  position: sticky;
+  right: var(--history-scroll-right, 0px);
+  z-index: 5;
+  background: #eff6ff;
+  box-shadow: -1px 0 0 #bdcada;
+}
+.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #e7edf5; }
