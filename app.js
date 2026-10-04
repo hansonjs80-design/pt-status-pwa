@@ -320,6 +320,22 @@ class PTApp {
       (e.key.toLowerCase() === "f" || e.code === "KeyF");
   }
 
+  handleCellRowSelectShortcut(e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey ||
+        (e.key.toLowerCase() !== "a" && e.code !== "KeyA")) return false;
+    const cell = e.target?.closest?.(".excel-cell");
+    // Search/modal/formula inputs retain their normal text selection behavior.
+    if (!cell && e.target?.matches?.("input, textarea, [contenteditable='true']")) return false;
+    const historyRow = cell ? cell.dataset.crossIdx : this.crossDateSelection?.endRow;
+    const currentRow = cell?.dataset.row ?? this.activeCell?.rowIdx ?? this.rangeEnd?.rowIdx ?? this.selectedRowRange?.minRow;
+    if (historyRow == null && currentRow == null) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (historyRow != null) this.selectCrossDateRow(Number(historyRow));
+    else this.selectEntireRow(Number(currentRow));
+    return true;
+  }
+
   handleHistoryShortcut(e) {
     if (e.isComposing || e.keyCode === 229 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
     const key = e.key.toLowerCase();
@@ -2295,6 +2311,7 @@ class PTApp {
     input.addEventListener("keydown", (e) => {
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
+      if (this.handleCellRowSelectShortcut(e)) return;
       // Let the native IME handle candidate selection and composition confirmation.
       if (composing || e.isComposing || e.keyCode === 229) {
         e.stopPropagation();
@@ -5477,6 +5494,7 @@ class PTApp {
 
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    if (this.handleCellRowSelectShortcut(e)) return;
     // 검색을 여는 키를 놓기 전의 이벤트는 이전 내역 적용에 사용하지 않는다.
     if (this.isSearchShortcut(e)) this.historyApplyBlockedKey = "f";
     if (this.handleHistoryShortcut(e)) return;

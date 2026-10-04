@@ -293,3 +293,34 @@ test('the first physical Ctrl/Cmd+F searches a composing editor and releases its
     assert.equal(app.isSearchShortcut({ ...event, altKey: true }), false);
   }
 });
+
+
+test('Ctrl/Cmd+A selects the cell row exactly like its current/history row header, including live IME editors', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const history of [false, true]) {
+    const { app } = createApp();
+    let selected;
+    app.selectEntireRow = row => { selected = ['current', row]; };
+    app.selectCrossDateRow = row => { selected = ['history', row]; };
+    app.crossDateSelection = history ? { endRow: 4 } : null;
+    app.activeCell = history ? null : { rowIdx: 3, colKey: 'memo' };
+    const cell = { dataset: history ? { crossIdx: '4' } : { row: '3' } };
+    const event = { key: 'ㅁ', code: 'KeyA', keyCode: 229, isComposing: true, [modifier]: true,
+      target: { tagName: 'INPUT', closest: () => cell }, preventDefault() {}, stopPropagation() {} };
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, [history ? 'history' : 'current', history ? 4 : 3]);
+    // A selected cell with sheet focus uses the same row, and repeated presses stay on that row.
+    selected = null;
+    app.handleGlobalKeyDown({ ...event, key: 'a', target: { tagName: 'DIV', closest: () => null } });
+    assert.deepEqual(selected, [history ? 'history' : 'current', history ? 4 : 3]);
+  }
+});
+
+test('Ctrl/Cmd+A leaves search and other external input text selection intact', () => {
+  const { app } = createApp();
+  app.selectEntireRow = () => assert.fail('must not select a row from an external input');
+  app.selectCrossDateRow = () => assert.fail('must not select history from an external input');
+  const event = { key: 'a', ctrlKey: true, target: { closest: () => null, matches: () => true },
+    preventDefault: () => assert.fail('must preserve native text selection'), stopPropagation() {} };
+  assert.equal(app.handleCellRowSelectShortcut(event), false);
+  assert.equal(app.handleCellRowSelectShortcut({ ...event, altKey: true }), false);
+});
