@@ -2406,10 +2406,8 @@ class PTApp {
         composing = false; input.dataset.composing = "false";
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
-        if (e.key === "Escape") {
-          input.value = initialVal;
-          commitAndBlur(initialVal);
-        } else commitAndBlur();
+        // Escape ends editing without discarding the typed value or selection.
+        commitAndBlur();
         if (directCommit && e.key === "ArrowRight") this.navigateCol(rowIdx, colKey, 1);
         else this.selectCell(rowIdx, colKey, cellElement, false);
         this.elSheetContainer.focus({ preventScroll: true });
@@ -5771,6 +5769,26 @@ class PTApp {
 
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    if (e.key === "Escape" && this.activeCell) {
+      const editingCell = e.target?.closest?.(".excel-cell");
+      const leavingSearch = Boolean(this.elSearchInput?.value?.trim());
+      const inSheet = e.target === this.elSheetContainer || Boolean(e.target?.closest?.("#sheetContainer"));
+      if (editingCell || (inSheet && !leavingSearch && !this.crossDateSelection)) {
+        e.preventDefault(); e.stopPropagation();
+        const { rowIdx, colKey } = this.activeCell;
+        const cell = editingCell || this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+        if (editingCell) e.target.blur();
+        this.closeAutocompleteMenu();
+        this.closeGenderDropdown();
+        this.hideContextMenu();
+        this.clipboardSelection = null;
+        this.pendingCut = null;
+        this.renderClipboardSelection();
+        if (cell) this.selectCell(rowIdx, colKey, cell, false);
+        this.elSheetContainer.focus({ preventScroll: true });
+        return;
+      }
+    }
     if (this.handleHistoryApplyShortcut(e)) return;
     if (this.handleCellRowSelectShortcut(e)) return;
     // 검색을 여는 키를 놓기 전의 이벤트는 이전 내역 적용에 사용하지 않는다.

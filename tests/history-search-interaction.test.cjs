@@ -581,3 +581,28 @@ test('missing typed names and chart numbers close the search popup after the ale
     assert.equal(app.searchPromptSubmitting,false);
   }
 });
+
+
+test('Escape ends a cell edit or armed selection without clearing its border, including history current rows', () => {
+  for (const editing of [true,false]) {
+    const {app}=createApp([{name:'입력값'}]);
+    app.activeCell={rowIdx:0,colKey:'name'};
+    app.elSearchInput.value=editing?'검색중':'';
+    const cell={};
+    app.elTableBody.querySelector=()=>cell;
+    let selected,blurred=false,focused=false;
+    app.selectCell=(rowIdx,colKey,element)=>{selected={rowIdx,colKey,element};};
+    app.closeAutocompleteMenu=app.closeGenderDropdown=app.hideContextMenu=app.renderClipboardSelection=()=>{};
+    app.elSheetContainer={focus(){focused=true;}};
+    const target=editing?{tagName:'INPUT',closest:()=>cell,blur(){blurred=true;}}:app.elSheetContainer;
+    let prevented=false;
+    app.handleGlobalKeyDown({key:'Escape',target,preventDefault(){prevented=true;},stopPropagation(){}});
+    assert.equal(selected.rowIdx,0);
+    assert.equal(selected.colKey,'name');
+    assert.equal(selected.element,cell);
+    assert.equal(blurred,editing);
+    assert.ok(prevented && focused);
+    assert.equal(app.getCurrentRows()[0].name,'입력값');
+    assert.equal(app.elSearchInput.value,editing?'검색중':'');
+  }
+});
