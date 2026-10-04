@@ -1104,7 +1104,8 @@ body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
   border-radius: 2px;
   z-index: 3000;
-  min-width: 80px;
+  width: 136px;
+  box-sizing: border-box;
   padding: 3px 0;
   font-size: 13px;
   font-weight: bold;
@@ -1113,12 +1114,13 @@ body {
 }
 
 .gender-picker-item {
-  padding: 6px 12px;
+  padding: 6px 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 4px;
+  white-space: nowrap;
   color: #24292f;
   transition: background-color 0.1s;
 }
@@ -1127,16 +1129,13 @@ body {
   background-color: #eef8f2;
 }
 
-.gender-picker-item.item-m {
-  color: #0d6efd;
-}
-
+.gender-picker-item.item-m,
 .gender-picker-item.item-f {
-  color: #d63384;
+  color: #24292f;
 }
 
 .gender-picker-item.item-none {
-  color: #888888;
+  color: #24292f;
   font-size: 11px;
   font-weight: normal;
 }
@@ -2149,3 +2148,7 @@ body {
 .summary-period-tabs button { flex: 1; padding: 8px 2px; border: 0; border-radius: 5px; background: transparent; color: #53675c; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .summary-period-tabs button.active { background: #107c41; color: #fff; box-shadow: 0 1px 3px #163b2726; }
 .summary-period-tabs button:focus-visible { outline: 2px solid #107c41; outline-offset: 2px; }
+
+.writer-picker-menu .autocomplete-item { padding: 6px 8px; gap: 4px; }
+.gender-picker-hint { display: none; margin-left: auto; }
+.gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #cce6d4; color: #107c41; padding: 2px 5px; border-radius: 3px; font-weight: 600; font-size: 10px; }

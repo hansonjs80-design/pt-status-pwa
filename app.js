@@ -1754,7 +1754,13 @@ class PTApp {
     items.forEach((item, index) => {
       const itemEl = document.createElement("div");
       itemEl.className = `gender-picker-item ${item.cls}`;
-      itemEl.textContent = item.text;
+      const label = document.createElement("span");
+      label.textContent = item.text;
+      itemEl.appendChild(label);
+      const hint = document.createElement("span");
+      hint.className = "autocomplete-hint-badge gender-picker-hint";
+      hint.textContent = "↵ Enter";
+      itemEl.appendChild(hint);
       itemEl.setAttribute("role", "option");
       itemEl.classList.toggle("is-selected", index === this.genderPickerState.selectedIndex);
       itemEl.setAttribute("aria-selected", String(index === this.genderPickerState.selectedIndex));
@@ -1773,7 +1779,7 @@ class PTApp {
 
     // 메뉴 위치 계산 (트리거 버튼 또는 셀 바로 아래)
     const targetRect = (triggerElement || cellElement).getBoundingClientRect();
-    const menuWidth = 85;
+    const menuWidth = 136;
     let left = targetRect.left;
     let top = targetRect.bottom + 1;
 
@@ -2076,7 +2082,7 @@ class PTApp {
 
     const menu = document.createElement("div");
     menu.id = "cellAutocompleteMenu";
-    menu.className = "cell-autocomplete-menu";
+    menu.className = "cell-autocomplete-menu" + (colKey === "writer" ? " writer-picker-menu" : "");
 
     candidates.forEach((cand, idx) => {
       const itemEl = document.createElement("div");
@@ -2099,7 +2105,7 @@ class PTApp {
         e.preventDefault(); e.stopPropagation();
         void this.editAutocompleteValue(colKey, cand, input);
       });
-      if (colKey !== "writer") itemEl.appendChild(editButton);
+      if (!["writer", "name"].includes(colKey)) itemEl.appendChild(editButton);
 
       if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
@@ -2147,7 +2153,7 @@ class PTApp {
       if (!menu.isConnected || !cellElement.isConnected) return;
       const rect = cellElement.getBoundingClientRect();
       const margin = 6, gap = 4;
-      const width = Math.min(Math.max(rect.width, 160), window.innerWidth - margin * 2);
+      const width = Math.min(colKey === "writer" ? 104 : Math.max(rect.width, 160), window.innerWidth - margin * 2);
       menu.style.minWidth = `${width}px`;
       menu.style.maxWidth = `${window.innerWidth - margin * 2}px`;
       menu.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - menu.offsetWidth - margin))}px`;
