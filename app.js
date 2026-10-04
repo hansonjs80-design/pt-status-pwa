@@ -963,12 +963,15 @@ class PTApp {
         return button;
       };
       header.append(nav("‹", "이전 달", -1));
-      const yearInput = document.createElement("input"); yearInput.type = "text"; yearInput.inputMode = "numeric"; yearInput.maxLength = 5; yearInput.value = `${year}년`; yearInput.setAttribute("aria-label", "연도");
-      yearInput.onchange = () => { year = Math.max(1900, Math.min(2100, parseInt(yearInput.value, 10) || year)); render(); };
+      const yearSelect = document.createElement("select"); yearSelect.className = "calendar-year-select"; yearSelect.setAttribute("aria-label", "연도");
+      for (let y = Math.max(2100, year); y >= Math.min(1900, year); y--) {
+        yearSelect.add(new Option(`${y}년`, y, false, y === year));
+      }
+      yearSelect.onchange = () => { year = Number(yearSelect.value); render(); };
       const monthSelect = document.createElement("select"); monthSelect.setAttribute("aria-label", "월");
       for (let m = 1; m <= 12; m++) { const option = new Option(`${m}월`, m, false, m === month); monthSelect.add(option); }
       monthSelect.onchange = () => { month = Number(monthSelect.value); render(); };
-      header.append(yearInput, monthSelect, nav("›", "다음 달", 1)); popup.append(header);
+      header.append(yearSelect, monthSelect, nav("›", "다음 달", 1)); popup.append(header);
       const grid = document.createElement("div"); grid.className = "calendar-grid";
       ["일", "월", "화", "수", "목", "금", "토"].forEach(label => { const day = document.createElement("span"); day.className = "calendar-weekday"; day.textContent = label; grid.append(day); });
       const offset = new Date(year, month - 1, 1).getDay();
