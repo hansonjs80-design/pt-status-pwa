@@ -1491,6 +1491,29 @@ class PTApp {
     if (input) this.showAutocompleteMenu(rowIdx, "writer", cellElement, input, values);
   }
 
+  getPrescriptionPresetValues() {
+    return [...new Set((COLUMN_PRESETS.prescription || [])
+      .map(value => String(value ?? "").trim()).filter(Boolean))];
+  }
+
+  handlePrescriptionPickerShortcut(event, rowIdx, cellElement) {
+    if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
+    event.preventDefault(); event.stopPropagation();
+    this.openPrescriptionPicker(rowIdx, cellElement);
+    return true;
+  }
+
+  openPrescriptionPicker(rowIdx, cellElement) {
+    const values = this.getPrescriptionPresetValues();
+    if (!values.length) {
+      this.openPresetManager("prescription");
+      return;
+    }
+    this.startInlineEdit(rowIdx, "prescription", cellElement);
+    const input = cellElement.querySelector("input");
+    if (input) this.showAutocompleteMenu(rowIdx, "prescription", cellElement, input, values);
+  }
+
   normalizePrescriptionInput(value) {
     const text = String(value ?? "").trim();
     return text === "x" || text === "ㅌ" ? "X" : text;
@@ -2523,6 +2546,7 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
       if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // Writer keys may still be reported as composing after physical-key entry.
       if (colKey === "writer" && this.isWriterRightExit(e, input)) {
@@ -6250,6 +6274,12 @@ class PTApp {
           return;
         }
       }
+    }
+
+    if (this.activeCell?.colKey === "prescription") {
+      const { rowIdx } = this.activeCell;
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="prescription"]`);
+      if (cell && this.handlePrescriptionPickerShortcut(e, rowIdx, cell)) return;
     }
 
     if (this.activeCell?.colKey === "writer") {
