@@ -3090,7 +3090,7 @@ class PTApp {
     return lastIndex + 1;
   }
 
-  applyHistoryRow(source) {
+  applyHistoryRow(source, { focusAppliedRow = false } = {}) {
     const target = this.historyApplyTarget;
     if (!target || target.date !== this.currentDate) return;
     // Finish a live editor before assigning; a later blur cannot restore old text.
@@ -3138,6 +3138,7 @@ class PTApp {
       }
     }
     this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
+    if (focusAppliedRow) this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
 
@@ -3170,6 +3171,7 @@ class PTApp {
     if (this.selectedCellKind === "history") { this.selectedCellSet = null; this.selectedCellKind = null; }
     this.crossDateSelection = null;
     this.isSelectingCrossDate = false;
+    this.elTableBody?.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
     if (this.elFormulaInput) this.elFormulaInput.readOnly = false;
     this.elTableBody?.querySelectorAll(".cross-date-cell").forEach(cell => {
       cell.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");
@@ -3223,6 +3225,7 @@ class PTApp {
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="no"]`);
     if (cell) {
       this.selectCell(rowIdx, "no", cell, false);
+      this.isCrossDateRowSelected = false;
       cell.scrollIntoView({ block: "center", inline: "nearest" });
       this.elSheetContainer.focus({ preventScroll: true });
     }
@@ -3328,10 +3331,11 @@ class PTApp {
     this.elSheetContainer?.focus({ preventScroll: true });
   }
 
-  // 검색 모달 자동완성: 이름(name)과 챠트번호(chartNo) 후보를 통합해서 보여줌
+  // 검색어 종류에 맞춰 성함 또는 차트번호 후보만 보여준다.
   getSearchPromptSuggestions(query) {
     if (!query || !query.trim()) return [];
     const q = query.trim().toLowerCase();
+    const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
     const seen = new Set();
     const results = [];
 
@@ -3345,13 +3349,11 @@ class PTApp {
       for (const row of rows) {
         const name = String(row?.name ?? "").trim();
         const chartNo = String(row?.chartNo ?? "").trim();
-        for (const val of [name, chartNo]) {
+        for (const val of searchByChart ? [chartNo] : [name]) {
           if (!val) continue;
           const key = val.toLowerCase();
           if (seen.has(key)) continue;
-          const matches = key.includes(q) || key.startsWith(q) ||
-            (name && chartNo && `${name} ${chartNo}`.toLowerCase().includes(q));
-          if (matches || val.toLowerCase().startsWith(q)) {
+          if (key.includes(q)) {
             seen.add(key);
             results.push({ value: val, name: name || "", chartNo: chartNo || "" });
             if (results.length >= 10) return results;
@@ -3392,11 +3394,11 @@ class PTApp {
       textSpan.textContent = item.value;
       itemEl.appendChild(textSpan);
 
-      // 이름/챠트번호 구분 힌트
-      if (item.name && item.chartNo) {
+      // 성함 검색에는 성함만 표시하고, 차트번호 후보에만 성함 힌트를 붙인다.
+      if (item.name && item.chartNo && item.value === item.chartNo) {
         const hint = document.createElement("span");
         hint.className = "autocomplete-hint-badge";
-        hint.textContent = item.name === item.value ? `차트: ${item.chartNo}` : `이름: ${item.name}`;
+        hint.textContent = `이름: ${item.name}`;
         hint.style.fontSize = "10px";
         hint.style.marginLeft = "6px";
         hint.style.opacity = "0.7";
@@ -3906,7 +3908,7 @@ class PTApp {
       applyButton.title = "선택한 셀 적용 · Enter (선택이 없으면 이 행 전체 적용)";
       applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
       applyButton.addEventListener("mousedown", e => e.preventDefault());
-      applyButton.addEventListener("click", () => this.applyHistoryRow(row));
+      applyButton.addEventListener("click", () => this.applyHistoryRow(row, { focusAppliedRow: true }));
       actionCell.appendChild(applyButton);
       tr.appendChild(actionCell);
 
@@ -5267,6 +5269,34 @@ class PTApp {
   // =============================================================================
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
+  collapseSelectedRowToEdge(e) {
+    const plainArrow = !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
+    const returnLeft = (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key === "ArrowLeft";
+    if (!["ArrowLeft", "ArrowRight"].includes(e.key) || (!plainArrow && !returnLeft)) return false;
+    const history = Boolean(this.crossDateSelection);
+    const range = history ? this.crossDateSelection : this.selectedRange;
+    if (!range || range.minRow !== range.maxRow || range.minCol === range.maxCol) return false;
+    const rowIdx = range.minRow;
+    const colIdx = e.key === "ArrowRight" ? range.maxCol : range.minCol;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const cell = this.elTableBody.querySelector(history
+      ? `[data-cross-idx="${rowIdx}"][data-cross-col-idx="${colIdx}"]`
+      : `[data-row="${rowIdx}"][data-col="${keys[colIdx]}"]`);
+    if (!cell) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (history) {
+      this.isCrossDateRowSelected = false;
+      this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
+      this.elTableBody.querySelectorAll(".cross-date-num").forEach(header => header.classList.remove("selected", "header-active"));
+      this.selectCrossDateCell(rowIdx, colIdx);
+    } else {
+      this.selectCell(rowIdx, keys[colIdx], cell, false);
+    }
+    cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return true;
+  }
+
   releaseHistorySearchKey(e) {
     if (e.key.toLowerCase() === this.historyApplyBlockedKey) this.historyApplyBlockedKey = null;
   }
@@ -5314,6 +5344,8 @@ class PTApp {
       }
       return;
     }
+
+    if (this.collapseSelectedRowToEdge(e)) return;
 
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
     const keyLower = e.key.toLowerCase();

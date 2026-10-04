@@ -206,3 +206,67 @@ test('history only applies after the search key is released and a fresh plain En
   app.handleGlobalKeyDown(enter);
   assert.equal(applied, 1);
 });
+
+
+test('horizontal arrows collapse a one-row range to the requested edge in daily and history tables', () => {
+  for (const history of [false, true]) for (const key of ['ArrowLeft', 'ArrowRight']) for (const startFromRight of [false, true]) {
+    const { app } = createApp([{}]);
+    const range = { minRow: 0, maxRow: 0, minCol: 2, maxCol: 9, startCol: startFromRight ? 9 : 2, endCol: startFromRight ? 2 : 9 };
+    if (history) app.crossDateSelection = range;
+    else app.selectedRange = range;
+    const cell = { scrollIntoView() {} };
+    app.elTableBody = { querySelector: () => cell, querySelectorAll: () => [] };
+    let selected;
+    app.selectCell = (row, col) => { selected = [row, col]; };
+    app.selectCrossDateCell = (row, col) => { selected = [row, col]; };
+    const handled = app.collapseSelectedRowToEdge({ key, preventDefault() {}, stopPropagation() {} });
+    assert.equal(handled, true);
+    assert.deepEqual(selected, [0, history ? (key === 'ArrowLeft' ? 2 : 9) : (key === 'ArrowLeft' ? 'chartNo' : 'specialNote')]);
+  }
+});
+
+test('Ctrl/Cmd+Shift+Left collapses the extended range while ordinary Shift+arrows keep extending', () => {
+  for (const history of [false, true]) for (const modifier of ['ctrlKey', 'metaKey']) {
+    const { app } = createApp([{}]);
+    const range = { minRow: 0, maxRow: 0, minCol: 2, maxCol: 5 };
+    if (history) app.crossDateSelection = range;
+    else app.selectedRange = range;
+    app.elTableBody = { querySelector: () => ({ scrollIntoView() {} }), querySelectorAll: () => [] };
+    let selected;
+    app.selectCell = (row, col) => { selected = [row, col]; };
+    app.selectCrossDateCell = (row, col) => { selected = [row, col]; };
+    const event = { key: 'ArrowLeft', shiftKey: true, preventDefault() {}, stopPropagation() {} };
+    assert.equal(app.collapseSelectedRowToEdge(event), false);
+    assert.equal(app.collapseSelectedRowToEdge({ ...event, [modifier]: true }), true);
+    assert.deepEqual(selected, [0, history ? 2 : 'chartNo']);
+    range.maxRow = 1;
+    assert.equal(app.collapseSelectedRowToEdge({ ...event, shiftKey: false }), false);
+  }
+});
+
+
+test('search prompt lists only names for a name query and only chart numbers for a chart query', () => {
+  const { app } = createApp();
+  app.getSearchDataStore = () => ({
+    [app.currentDate]: [{ name: '임수영', chartNo: '11650' }, { name: '임수민', chartNo: '12323' }],
+    '2026-10-01': [{ name: '임수영', chartNo: '14252' }, { name: '임수정', chartNo: '14081' }],
+  });
+  assert.deepEqual(Array.from(app.getSearchPromptSuggestions('임수'), item => item.value), ['임수영', '임수민', '임수정']);
+  assert.deepEqual(Array.from(app.getSearchPromptSuggestions('14'), item => item.value), ['14252', '14081']);
+  app.getSearchDataStore = () => ({ [app.currentDate]: [{ name: '가상환자', chartNo: 'T001' }] });
+  assert.deepEqual(Array.from(app.getSearchPromptSuggestions('T00'), item => item.value), ['T001']);
+});
+
+
+test('apply button moves selection to No. on the actual destination row', () => {
+  for (const match of [true, false]) {
+    const rows = [{ name: '가상환자', chartNo: match ? 'T001' : 'OTHER' }, {}, {}];
+    const { app } = createApp(rows);
+    let restored;
+    app.restoreAppliedHistorySelection = target => { restored = target; };
+    app.applyHistoryRow({ name: '가상환자', chartNo: 'T001', part: '목' }, { focusAppliedRow: true });
+    const expected = match ? 0 : 1;
+    assert.equal(restored.rowIdx, expected);
+    assert.equal(restored.row, rows[expected]);
+  }
+});
