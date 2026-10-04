@@ -1796,7 +1796,7 @@ class PTApp {
 
   handleGenderPickerKeyDown(event) {
     const state = this.genderPickerState;
-    if (!state || !["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) return;
+    if (!state || !["ArrowUp", "ArrowDown", "ArrowRight", "Enter", "Escape"].includes(event.key)) return;
     event.preventDefault(); event.stopImmediatePropagation();
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -1807,9 +1807,10 @@ class PTApp {
       });
       return;
     }
-    if (event.key === "Enter") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
+    if (event.key === "Enter" || event.key === "ArrowRight") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
     this.closeGenderDropdown();
-    this.selectCell(state.rowIdx, "gender", state.cellElement, false);
+    if (event.key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
+    else this.selectCell(state.rowIdx, "gender", state.cellElement, false);
     this.elSheetContainer?.focus({ preventScroll: true });
   }
 

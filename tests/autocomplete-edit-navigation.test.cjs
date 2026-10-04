@@ -279,3 +279,18 @@ test('writer Enter opens its picker once and leaves confirmation and modifier sh
   assert.equal(opened,1);
   assert.equal(prevented,1);
 });
+
+
+test('gender picker Right applies highlighted gender, closes and moves to the next column', () => {
+  const {app}=createApp();
+  const cell={};
+  app.genderPickerState={rowIdx:2,cellElement:cell,items:[{val:'M'},{val:'F'},{val:''}],selectedIndex:1};
+  const actions=[];
+  app.setGenderValue=(row,value,target)=>{assert.equal(target,cell);actions.push(['apply',row,value]);};
+  app.closeGenderDropdown=()=>{app.genderPickerState=null;actions.push(['close']);};
+  app.navigateCol=(row,key,direction)=>actions.push(['move',row,key,direction]);
+  app.elSheetContainer={focus:()=>actions.push(['focus'])};
+  app.handleGenderPickerKeyDown({key:'ArrowRight',preventDefault(){},stopImmediatePropagation(){}});
+  assert.deepEqual(actions,[['apply',2,'F'],['close'],['move',2,'gender',1],['focus']]);
+  assert.equal(app.genderPickerState,null);
+});
