@@ -5533,8 +5533,30 @@ class PTApp {
         (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
   }
 
+  handleHistoryApplyShortcut(e) {
+    const isEnter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
+    if (!this.crossDateSelection || !isEnter || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
+    const target = e.target;
+    if (target?.closest?.("#searchPromptModal, .modal-overlay")) return false;
+    // A read-only history formula field still belongs to the history selection.
+    if (target?.matches?.("input, textarea, [contenteditable='true']") && target !== this.elFormulaInput) return false;
+    if (target?.closest?.("button") && !target.closest(".history-apply-btn")) return false;
+    const rowIndex = this.crossDateSelection.minRow;
+    const source = this.crossDateResults?.[rowIndex];
+    if (!source) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    this.historyApplyBlockedKey = null;
+    const button = this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${rowIndex}"] .history-apply-btn`);
+    // Use the actual Apply button action so click and keyboard cannot diverge.
+    if (button?.click) button.click();
+    else this.applyHistoryRow(source);
+    return true;
+  }
+
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    if (this.handleHistoryApplyShortcut(e)) return;
     if (this.handleCellRowSelectShortcut(e)) return;
     // 검색을 여는 키를 놓기 전의 이벤트는 이전 내역 적용에 사용하지 않는다.
     if (this.isSearchShortcut(e)) this.historyApplyBlockedKey = "f";
@@ -5594,13 +5616,8 @@ class PTApp {
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
       if (e.key === "Enter") {
-        if (!e.repeat && !isCtrlOrMeta && !e.altKey && !e.shiftKey) {
-          // A fresh Enter is an explicit apply action. Popup events are handled
-          // before reaching here; a lost keyup must not leave application blocked.
-          if (e.target.closest?.("button, #searchPromptModal")) return;
-          this.historyApplyBlockedKey = null;
-          this.applyHistoryRow(this.crossDateResults[selection.minRow]);
-        }
+        // Eligible Enter events already run the shared Apply button action above.
+        if (e.target.closest?.("button, #searchPromptModal")) return;
       }
       else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
       else if (isCtrlOrMeta && keyLower === "f") {

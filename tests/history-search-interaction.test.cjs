@@ -361,3 +361,21 @@ test('Ctrl/Cmd+A daily row selection ends at specialNote, while direct row selec
   app.selectRowRange(0, 0);
   assert.equal(app.selectedRange.maxCol, 10);
 });
+
+
+test('history Enter uses the same Apply button even with focus in the read-only formula and Korean/numpad key reports', () => {
+  for (const key of [{ key: 'Enter' }, { key: 'Process', code: 'Enter', keyCode: 229 }, { key: 'Enter', code: 'NumpadEnter' }]) {
+    const { app } = createApp();
+    app.crossDateSelection = { minRow: 2 };
+    app.crossDateResults = [{}, {}, { name: '가상환자' }];
+    let clicks = 0;
+    app.elTableBody.querySelector = selector => { assert.equal(selector, '.cross-date-row[data-cross-idx="2"] .history-apply-btn'); return { click() { clicks++; } }; };
+    app.elFormulaInput = { tagName: 'INPUT', matches: () => true, closest: () => null };
+    app.applyHistoryRow = () => assert.fail('must use the actual Apply button');
+    const event = { ...key, target: app.elFormulaInput, preventDefault() {}, stopPropagation() {} };
+    app.handleGlobalKeyDown(event);
+    assert.equal(clicks, 1);
+    app.handleGlobalKeyDown({ ...event, repeat: true });
+    assert.equal(clicks, 1);
+  }
+});
