@@ -711,7 +711,10 @@ class PTApp {
           this.moveSearchPromptAutocomplete(-1);
         } else if (e.key === "Enter") {
           e.preventDefault();
-          if (!e.repeat) this.submitSearchPrompt();
+          if (!e.repeat) {
+            this.historyApplyBlockedKey = "enter";
+            this.submitSearchPrompt();
+          }
         } else if (e.key === "Escape") {
           e.preventDefault();
           if (this._searchPromptACMenu) {
@@ -744,6 +747,8 @@ class PTApp {
 
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
+    document.addEventListener("keyup", (e) => this.releaseHistorySearchKey(e));
+    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; });
 
     document.addEventListener("paste", event => {
       const target = event.target;
@@ -5262,8 +5267,14 @@ class PTApp {
   // =============================================================================
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
+  releaseHistorySearchKey(e) {
+    if (e.key.toLowerCase() === this.historyApplyBlockedKey) this.historyApplyBlockedKey = null;
+  }
+
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    // 검색을 여는 키를 놓기 전의 이벤트는 이전 내역 적용에 사용하지 않는다.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") this.historyApplyBlockedKey = "f";
     if (this.handleHistoryShortcut(e)) return;
     if (this.fillDrag) {
       e.preventDefault();
@@ -5315,7 +5326,7 @@ class PTApp {
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
       if (e.key === "Enter") {
-        if (!e.repeat) {
+        if (!e.repeat && !this.historyApplyBlockedKey && !isCtrlOrMeta && !e.altKey && !e.shiftKey) {
           // 버튼은 기본 클릭 동작으로 처리하고 검색 팝업의 키는 적용에 사용하지 않는다.
           if (e.target.closest?.("button, #searchPromptModal")) return;
           this.applyHistoryRow(this.crossDateResults[selection.minRow]);

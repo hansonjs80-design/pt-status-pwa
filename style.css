@@ -912,21 +912,16 @@ body {
   color: #ffffff;
 }
 
-/* 교차 날짜 행 전체 선택 시 (헤더 클릭한 것과 같이 선명한 테두리 및 배경) */
-.excel-row.cross-date-row-selected {
-  background-color: #bfdbfe !important;
-}
-.excel-row.cross-date-row-selected td {
+/* 기본 이전 내역 선택 테두리는 No.부터 특이사항까지의 실제 선택 셀에만 표시한다. */
+.excel-row.cross-date-row-selected .cross-date-cell.range-selected {
   background-color: #dbeafe !important;
   border-top: 2px solid #2563eb !important;
   border-bottom: 2px solid #2563eb !important;
 }
-.excel-row.cross-date-row-selected td.cell-gender,
-.excel-row.cross-date-row-selected td:nth-child(2) {
+.excel-row.cross-date-row-selected .cross-date-cell.range-border-left {
   border-left: 2px solid #2563eb !important;
 }
-.excel-row.cross-date-row-selected td.cell-visitTime,
-.excel-row.cross-date-row-selected td.history-apply-cell {
+.excel-row.cross-date-row-selected .cross-date-cell.range-border-right {
   border-right: 2px solid #2563eb !important;
 }
 .excel-row.cross-date-row-selected .cross-date-num {

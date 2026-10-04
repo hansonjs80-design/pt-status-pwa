@@ -186,3 +186,23 @@ test('a transparent armed chart/name input is a selected cell, not an active edi
     assert.deepEqual(prompt, [0, app.getCurrentRows()[0][colKey]]);
   }
 });
+
+
+test('history only applies after the search key is released and a fresh plain Enter is pressed', () => {
+  const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
+  app.crossDateSelection = { minRow: 0 };
+  app.crossDateResults = [{ name: '가상환자', chartNo: 'T001', part: '이전 내역' }];
+  let applied = 0;
+  app.applyHistoryRow = () => { applied++; };
+  const enter = { key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} };
+  for (const searchKey of ['f', 'enter']) {
+    app.historyApplyBlockedKey = searchKey;
+    app.handleGlobalKeyDown(enter);
+    assert.equal(applied, 0);
+    app.releaseHistorySearchKey({ key: searchKey });
+  }
+  for (const modifier of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) app.handleGlobalKeyDown({ ...enter, [modifier]: true });
+  assert.equal(applied, 0);
+  app.handleGlobalKeyDown(enter);
+  assert.equal(applied, 1);
+});
