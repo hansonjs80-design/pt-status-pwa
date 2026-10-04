@@ -308,7 +308,7 @@ class PTApp {
     }
     if (searchQuery) {
       const target = Math.min(searchTarget?.rowIdx ?? selected?.rowIdx ?? 0, this.getCurrentRows().length - 1);
-      this.searchAllDates(searchQuery, Math.max(0, target));
+      this.searchAllDates(searchQuery, Math.max(0, target), { preserveCurrentSelection: true });
     }
     this.saveDataStore(false);
     this.showSaveIndicator(redo ? "다시 실행됨" : "되돌림 완료");
@@ -1290,7 +1290,7 @@ class PTApp {
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
       if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
     }
-    if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim());
+    if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
   }
 
   // Select and focus cell like Excel
@@ -1738,7 +1738,7 @@ class PTApp {
         this.cloudSearchHistory = history;
         this.searchHistoryLoadedAt = Date.now();
         this.refreshSearchSuggestions();
-        if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim());
+        if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
         return true;
       } catch (error) {
         console.warn("이전 날짜 검색 기록을 불러오지 못했습니다:", error.message || error);
@@ -3676,7 +3676,9 @@ class PTApp {
     this.openSearchPromptModal(targetIdx, query);
   }
 
-  searchAllDates(query, originRowIdx) {
+  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false } = {}) {
+    // Refreshing search results must not steal focus from a current-date edit.
+    const keepCurrentSelection = preserveCurrentSelection && Boolean(this.activeCell);
     if (Number.isInteger(originRowIdx) && originRowIdx >= 0) {
       this.historyApplyTarget = {
         date: this.currentDate, rowIdx: originRowIdx,
@@ -3707,7 +3709,8 @@ class PTApp {
         lastDataIdx = Math.max(lastDataIdx, idx);
       }
     });
-    const originIdx = Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
+    const originIdx = keepCurrentSelection ? this.activeCell.rowIdx
+      : Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
 
     let startIdx, endIdx;
     if (lastDataIdx >= 0) {
@@ -3783,12 +3786,12 @@ class PTApp {
     this.isCrossDateExpanded = false; // 기본값: 대표 행만 표시
 
     // 5) 이전 날짜 섹션 렌더링
-    this.renderCrossDateSection();
+    this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
 
     // 6) 현재 날짜의 마지막 내용 행(또는 0번 행)이 화면 중앙 부근에 오도록 스크롤
     const scrollTargetIdx = lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
-    if (scrollRowEl) {
+    if (scrollRowEl && !keepCurrentSelection) {
       setTimeout(() => {
         scrollRowEl.scrollIntoView({ block: "center", behavior: "smooth" });
       }, 50);
@@ -3808,7 +3811,7 @@ class PTApp {
     });
   }
 
-  renderCrossDateSection() {
+  renderCrossDateSection({ preserveCurrentSelection = false } = {}) {
     this.historyLayoutObserver?.disconnect();
     this.historyLayoutObserver = null;
     // 기존 마스터 행 및 구분선 제거
@@ -3824,7 +3827,7 @@ class PTApp {
         thRowNumHeader.classList.remove("cross-date-toggle-active");
         thRowNumHeader.onclick = null;
       }
-      this.scrollToHistoryTarget();
+      if (!preserveCurrentSelection) this.scrollToHistoryTarget();
       return;
     }
 
@@ -4069,7 +4072,7 @@ class PTApp {
     });
 
     // 4) 기본적으로 가장 아래(최신 날짜) 마지막 행을 셀 선택 상태로 설정
-    if (renderRows.length > 0) {
+    if (renderRows.length > 0 && !preserveCurrentSelection) {
       const lastIdx = renderRows.length - 1;
       this.selectCrossDateRow(lastIdx);
       this.isSelectingCrossDate = false;

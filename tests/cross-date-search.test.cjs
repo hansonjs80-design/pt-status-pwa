@@ -300,4 +300,20 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(app.crossDateResults.length, 1);
   assert.equal(app.crossDateResults[0].name, '김선호');
 
+  // Editing/repainting the daily table and refreshing history cannot select its last row.
+  const editingCell = { rowIdx: 20, colKey: 'memo' };
+  app.clearCrossDateSelection();
+  app.activeCell = editingCell;
+  app.selectedRange = { minRow: 20, maxRow: 20, minCol: 8, maxCol: 8 };
+  app.searchAllDates('김선', undefined, { preserveCurrentSelection: true });
+  assert.equal(app.activeCell, editingCell);
+  assert.equal(app.crossDateSelection, null);
+  assert.equal(app.crossDateResults[0].name, '김선');
+  assert.equal(app.selectedRange.minRow, 20);
+  assert.equal(app.elTableBody.children.find(c => c.dataset?.rowIdx === 20).style.display, '');
+  // An explicit new search still selects the latest history row as before.
+  app.searchAllDates('김선', 20);
+  assert.equal(app.crossDateSelection.startCol, 0);
+  assert.equal(app.crossDateSelection.endCol, 9);
+
 });
