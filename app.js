@@ -963,8 +963,8 @@ class PTApp {
         return button;
       };
       header.append(nav("‹", "이전 달", -1));
-      const yearInput = document.createElement("input"); yearInput.type = "number"; yearInput.min = "1900"; yearInput.max = "2100"; yearInput.value = year; yearInput.setAttribute("aria-label", "연도");
-      yearInput.onchange = () => { year = Math.max(1900, Math.min(2100, Number(yearInput.value) || year)); render(); };
+      const yearInput = document.createElement("input"); yearInput.type = "text"; yearInput.inputMode = "numeric"; yearInput.maxLength = 5; yearInput.value = `${year}년`; yearInput.setAttribute("aria-label", "연도");
+      yearInput.onchange = () => { year = Math.max(1900, Math.min(2100, parseInt(yearInput.value, 10) || year)); render(); };
       const monthSelect = document.createElement("select"); monthSelect.setAttribute("aria-label", "월");
       for (let m = 1; m <= 12; m++) { const option = new Option(`${m}월`, m, false, m === month); monthSelect.add(option); }
       monthSelect.onchange = () => { month = Number(monthSelect.value); render(); };
@@ -2284,6 +2284,7 @@ class PTApp {
     // 2. isComposing 중에는 자동완성 등 DOM 조작도 하지 않음 (IME 방해)
     // 3. assembleHangul은 blur(편집 종료) 시점에서만 최종 보정으로 실행
     let _acDebounceTimer = null;
+    let isCommitted = false;
     let composing = false;
     input.addEventListener("compositionstart", () => {
       this.activateNativeEditor(input);
@@ -2294,6 +2295,7 @@ class PTApp {
     });
 
     input.addEventListener("input", (e) => {
+      if (isCommitted) return; // Late IME events must not overwrite a finished edit.
       this.activateNativeEditor(input);
       const val = input.value;
 
@@ -2325,6 +2327,7 @@ class PTApp {
     });
 
     input.addEventListener("compositionend", () => {
+      if (isCommitted) return;
       composing = false;
       input.dataset.composing = "false";
       if (this._justCommittedFromAutocomplete) return;
@@ -2356,7 +2359,6 @@ class PTApp {
       }
     });
 
-    let isCommitted = false;
     const commitAndBlur = (forcedVal) => {
       if (isCommitted) return;
       isCommitted = true;
@@ -2399,9 +2401,10 @@ class PTApp {
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
       if (this.handleCellRowSelectShortcut(e)) return;
+      const escapePressed = e.key === "Escape" || e.code === "Escape" || e.keyCode === 27;
       const directCommit = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
         (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.key === "ArrowRight");
-      if (!input.classList.contains("is-armed") && (directCommit || e.key === "Escape")) {
+      if (!input.classList.contains("is-armed") && (directCommit || escapePressed)) {
         e.preventDefault(); e.stopPropagation();
         composing = false; input.dataset.composing = "false";
         this._justCommittedFromAutocomplete = true;
