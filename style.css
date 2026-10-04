@@ -422,6 +422,11 @@ body {
 
 /* 프리셋 관리자 모달 스타일 */
 .preset-tab {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
   background: #f1f5f9;
   color: #64748b;
   border: 1px solid #e2e8f0;
@@ -1221,10 +1226,10 @@ body {
 
 .excel-cell.clipboard-source.cell-focused { outline: none; }
 .excel-cell.clipboard-source .cell-fill-handle { display: none; }
-.excel-cell.clipboard-source.clipboard-top { border-top: 2px dashed var(--excel-green) !important; }
-.excel-cell.clipboard-source.clipboard-bottom { border-bottom: 2px dashed var(--excel-green) !important; }
-.excel-cell.clipboard-source.clipboard-left { border-left: 2px dashed var(--excel-green) !important; }
-.excel-cell.clipboard-source.clipboard-right { border-right: 2px dashed var(--excel-green) !important; }
+.excel-table .excel-row .excel-cell.clipboard-source.clipboard-top { border-top: 2px dashed var(--excel-green) !important; }
+.excel-table .excel-row .excel-cell.clipboard-source.clipboard-bottom { border-bottom: 2px dashed var(--excel-green) !important; }
+.excel-table .excel-row .excel-cell.clipboard-source.clipboard-left { border-left: 2px dashed var(--excel-green) !important; }
+.excel-table .excel-row .excel-cell.clipboard-source.clipboard-right { border-right: 2px dashed var(--excel-green) !important; }
 
 /* In-Cell Input */
 .cell-input-element {
@@ -2080,3 +2085,19 @@ body {
 .cross-date-headers-row .col-resizer { cursor: col-resize; }
 
 .cross-date-headers-row th:first-child { left: 0; z-index: 7; }
+
+.autocomplete-edit-button {
+  display: none;
+  margin-left: 8px;
+  padding: 1px 5px;
+  border: 1px solid #a5cfb6;
+  border-radius: 3px;
+  background: #fff;
+  color: #107c41;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 18px;
+}
+.autocomplete-item.is-selected .autocomplete-edit-button,
+.autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
+.autocomplete-edit-button:hover { background: #d9eee1; }

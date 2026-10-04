@@ -277,4 +277,27 @@ test('cross-date search deduplicates identical previous records and toggles with
   }
   app.clearCrossDateSelection();
   assert.equal(app.isSelectingCrossDate, false);
+
+  // A confirmed two-character name must not include longer names or another patient's memo.
+  app.dataStore['2026-09-28'] = [
+    { name: '김선', chartNo: 'N001', part: '목' },
+    { name: '김선자', chartNo: 'N002', part: '허리' },
+    { name: '김선호', chartNo: 'N003', part: '발목' },
+    { name: '다른환자', chartNo: 'N004', memo: '김선' },
+  ];
+  app.searchAllDates('김선', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '김선');
+  app.toggleCrossDateExpanded();
+  assert.equal(app.crossDateResults.length, 1);
+  app.searchAllDates('김선자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '김선자');
+  app.searchAllDates('김', 0);
+  assert.equal(app.crossDateResults.length, 0);
+  // Other fields can still be searched when the query is not a patient name.
+  app.searchAllDates('발목', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '김선호');
+
 });

@@ -608,6 +608,8 @@ class PTApp {
     this.elBtnManagerDone = document.getElementById("btnManagerDone");
     this.elTabPresetPrescription = document.getElementById("tabPresetPrescription");
     this.elTabPresetExtra = document.getElementById("tabPresetExtra");
+    this.elTabPresetMemo = document.getElementById("tabPresetMemo");
+    this.elTabPresetSpecialNote = document.getElementById("tabPresetSpecialNote");
     this.elManagerNewPresetInput = document.getElementById("managerNewPresetInput");
     this.elBtnManagerAddPreset = document.getElementById("btnManagerAddPreset");
     this.elPresetListContainer = document.getElementById("presetListContainer");
@@ -655,6 +657,9 @@ class PTApp {
     }
     if (this.elTabPresetExtra) {
       this.elTabPresetExtra.addEventListener("click", () => this.switchPresetTab("extra"));
+    }
+    for (const [tab, element] of [["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+      element?.addEventListener("click", () => this.switchPresetTab(tab));
     }
     if (this.elBtnManagerAddPreset) {
       this.elBtnManagerAddPreset.addEventListener("click", () => this.addPresetFromManager());
@@ -1705,7 +1710,7 @@ class PTApp {
     return { ...this.cloudSearchHistory, ...this.dataStore };
   }
 
-  async loadSearchHistory() {
+  async loadSearchHistory(force = false) {
     const client = this.supabaseClient;
     if (!client) return false;
     if (this.searchHistoryClient !== client) {
@@ -1715,7 +1720,7 @@ class PTApp {
       this.searchHistoryRequest = null;
     }
     if (this.searchHistoryRequest) return this.searchHistoryRequest;
-    if (Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
+    if (!force && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
     const request = (async () => {
       const history = {};
       const pageSize = 200;
@@ -1802,13 +1807,13 @@ class PTApp {
     };
     const matched = [];
 
-    // 통합 매칭 함수: 매칭 품질 우선, 동일 품질 내 프리셋 우선
+    // 관리 목록의 문구와 순서를 우선하고 나머지 기존 값은 매칭 품질로 정렬한다.
     const matchItem = (item, isPreset) => {
       const itemLower = item.toLowerCase();
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치, 4=초성부분
-      // 출처 보너스: 프리셋이면 +0, 기존값이면 +0.5 (동일 품질 내 프리셋 우선)
+      // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
 
       if (itemLower.startsWith(query)) {
@@ -1824,8 +1829,8 @@ class PTApp {
       }
 
       if (quality >= 0) {
-        const score = quality * 10 + (isPreset ? 0 : 5);
-        matched.push({ item, score });
+        const score = isPreset ? 0 : quality * 10 + 5;
+        matched.push({ item, score, isPreset });
       }
     };
 
@@ -1841,7 +1846,7 @@ class PTApp {
 
     matched.sort((a, b) => {
       if (a.score !== b.score) return a.score - b.score;
-      return a.item.length - b.item.length;
+      return a.isPreset ? 0 : a.item.length - b.item.length;
     });
 
     let results = matched.map((m) => m.item).slice(0, 10);
@@ -1887,6 +1892,19 @@ class PTApp {
       textSpan.className = "autocomplete-item-text";
       textSpan.textContent = cand;
       itemEl.appendChild(textSpan);
+
+      const editButton = document.createElement("button");
+      editButton.type = "button";
+      editButton.className = "autocomplete-edit-button";
+      editButton.textContent = "✎";
+      editButton.title = "모든 날짜의 같은 문구 수정";
+      editButton.setAttribute("aria-label", `${cand} 수정`);
+      editButton.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
+      editButton.addEventListener("click", e => {
+        e.preventDefault(); e.stopPropagation();
+        void this.editAutocompleteValue(colKey, cand, input);
+      });
+      itemEl.appendChild(editButton);
 
       if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
@@ -1964,6 +1982,90 @@ class PTApp {
       window.removeEventListener("resize", positionMenu);
       document.removeEventListener("scroll", scrollListener, true);
     };
+  }
+
+  async editAutocompleteValue(colKey, oldValue, input) {
+    if (this.autocompleteRenameBusy) return;
+    const value = prompt(`모든 날짜의 같은 열에서 “${oldValue}” 문구를 수정합니다:`, oldValue);
+    if (value == null || !value.trim() || value.trim() === oldValue.trim()) return;
+    this.autocompleteRenameBusy = true;
+    try {
+      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim());
+      // Do not let the existing editor restore the old text on blur.
+      if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
+      input?.blur();
+      this.closeAutocompleteMenu();
+      this.renderTable();
+      this.renderQuickChips();
+      this.updateSidebarStats();
+      this.showSaveIndicator(`${count}개 셀 문구 수정 · 변경 전 백업 저장됨`);
+    } catch (error) {
+      alert("문구 수정 실패: " + error.message);
+    } finally { this.autocompleteRenameBusy = false; }
+  }
+
+  async renameAutocompleteValue(colKey, oldValue, newValue) {
+    const allowed = ["name", "chartNo", "part", "prescription", "extra", "memo", "specialNote"];
+    if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
+    const client = this.supabaseClient;
+    if (client) {
+      if (this.searchHistoryRequest) await this.searchHistoryRequest;
+      if (!await this.loadSearchHistory(true) || this.supabaseClient !== client) {
+        throw new Error("모든 날짜의 기록을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.");
+      }
+    }
+    const oldText = String(oldValue).trim(), replacement = newValue.trim();
+    if (oldText === replacement) return 0;
+    const source = this.getSearchDataStore();
+    const changed = {}, baselines = new Map(this.syncBaselines || []);
+    let count = 0;
+    for (const [date, rows] of Object.entries(source)) {
+      if (!Array.isArray(rows)) continue;
+      if (!rows.some(row => String(row?.[colKey] ?? "").trim() === oldText)) continue;
+      const copy = JSON.parse(JSON.stringify(rows));
+      for (const row of copy) {
+        if (!row || String(row[colKey] ?? "").trim() !== oldText) continue;
+        row[colKey] = replacement;
+        if (row._richText) delete row._richText[colKey];
+        count++;
+      }
+      changed[date] = copy;
+      if (!Object.hasOwn(this.dataStore, date) || !baselines.has(date)) {
+        baselines.set(date, JSON.parse(JSON.stringify(this.cloudSearchHistory?.[date] || rows)));
+      }
+    }
+    const presets = JSON.parse(JSON.stringify(COLUMN_PRESETS));
+    const presetChanged = (presets[colKey] || []).some(value => String(value).trim() === oldText);
+    if (presetChanged) presets[colKey] = [...new Set(presets[colKey].map(value => String(value).trim() === oldText ? replacement : value))];
+    if (!count && !presetChanged) return 0;
+
+    // This backup covers records and presets only; no schema/Auth/Storage changes occur.
+    const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
+      oldValue: oldText, newValue: replacement, dataStore: this.dataStore,
+      cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
+      syncBaselines: Object.fromEntries(this.syncBaselines || []) });
+    const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(backupKey, backup);
+    if (localStorage.getItem(backupKey) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
+    JSON.parse(localStorage.getItem(backupKey));
+
+    const nextStore = { ...this.dataStore, ...changed };
+    const pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
+    // Persist the retry queue before the records, so a reload cannot lose bulk edits.
+    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(baselines)));
+    localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore));
+    this.dataStore = nextStore;
+    this.syncBaselines = baselines;
+    this.pendingSyncDates = pending;
+    for (const date of Object.keys(changed)) {
+      this.cloudSearchHistory ||= {};
+      this.cloudSearchHistory[date] = JSON.parse(JSON.stringify(changed[date]));
+      this.editHistory?.delete(date);
+      this.scheduleSupabaseSync(date);
+    }
+    if (presetChanged) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
+    return count;
   }
 
   moveAutocompleteSelection(direction) {
@@ -2417,6 +2519,7 @@ class PTApp {
   }
 
   clearHeaderSelections() {
+    this.horizontalSelectionMode = null;
     this.selectedCellSet = null; this.selectedCellKind = null;
     this.elTableBody?.querySelectorAll(".is-discrete-selected").forEach(cell => cell.classList.remove("is-discrete-selected"));
     this.elSheetContainer.classList.remove("has-cell-range");
@@ -3586,7 +3689,7 @@ class PTApp {
       return;
     }
 
-    const q = query.toLowerCase();
+    const q = String(query).trim().toLowerCase();
     this.elSearchInput.value = query;
     this.elBtnClearSearch.style.display = "block";
 
@@ -3631,6 +3734,9 @@ class PTApp {
     const allMatchedRows = [];
 
     const searchStore = this.getSearchDataStore();
+    // 성함 후보에 해당하는 검색어는 완전 일치로 찾고, 다른 열의 검색은 기존 방식으로 유지한다.
+    const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
+      rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
     const allDates = Object.keys(searchStore).sort(); // 오름차순: 하단에 최근월일
     allDates.forEach((dateKey) => {
       if (dateKey >= this.currentDate) return; // 이전 날짜만 대상
@@ -3638,7 +3744,10 @@ class PTApp {
       dateRows.forEach((row, sourceRowIdx) => {
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
         const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
-        if (rowText.includes(q)) {
+        const matches = isNameQuery
+          ? String(row.name ?? "").trim().toLowerCase() === q
+          : rowText.includes(q);
+        if (matches) {
           allMatchedRows.push({ ...row, _sourceDate: dateKey, _sourceRowIdx: sourceRowIdx });
         }
       });
@@ -4329,12 +4438,11 @@ class PTApp {
     finally { this.presetsPushing = false; }
   }
 
-  scheduleSupabaseSync() {
-    const date = this.currentDate;
+  scheduleSupabaseSync(date = this.currentDate) {
     this.pendingSyncDates.add(date);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
-    // syncBaselines는 최근 14일분만 유지하여 localStorage 공간 절약
-    const baselineDates = [...this.syncBaselines.keys()].sort();
+    // Pending dates keep their merge baseline until every bulk edit is synced.
+    const baselineDates = [...this.syncBaselines.keys()].filter(date => !this.pendingSyncDates.has(date)).sort();
     while (baselineDates.length > 14) {
       this.syncBaselines.delete(baselineDates.shift());
     }
@@ -5262,6 +5370,59 @@ class PTApp {
   // =============================================================================
   // Excel Keyboard Shortcuts Handler (엑셀 기반 키보드 단축키 처리)
   // =============================================================================
+  getHorizontalContentEdge(row, startCol, direction, keys) {
+    const filled = col => Boolean(String(row?.[keys[col]] ?? "").trim());
+    let col = startCol;
+    // Within a filled run, stop at its edge. From an edge/blank, find the next run.
+    if (filled(col) && col + direction >= 0 && col + direction < keys.length && filled(col + direction)) {
+      while (col + direction >= 0 && col + direction < keys.length && filled(col + direction)) col += direction;
+    } else {
+      do { col += direction; } while (col > 0 && col < keys.length - 1 && !filled(col));
+    }
+    return Math.max(0, Math.min(keys.length - 1, col));
+  }
+
+  jumpToHorizontalContentEdge(direction) {
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    if (this.crossDateSelection) {
+      const { endRow, endCol } = this.crossDateSelection;
+      const col = this.getHorizontalContentEdge(this.crossDateResults[endRow], endCol, direction, keys.slice(0, 10));
+      this.selectCrossDateCell(endRow, col, false);
+      this.elTableBody.querySelector(`[data-cross-idx="${endRow}"][data-cross-col-idx="${col}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return true;
+    }
+    if (!this.activeCell) return false;
+    const { rowIdx, colKey } = this.activeCell;
+    const col = this.getHorizontalContentEdge(this.getCurrentRows()[rowIdx], keys.indexOf(colKey), direction, keys);
+    this.navigateCell(rowIdx, keys[col]);
+    return true;
+  }
+
+  rememberHorizontalSelection() {
+    const history = Boolean(this.crossDateSelection);
+    const range = history ? this.crossDateSelection : this.selectedRange;
+    this.horizontalSelectionMode = range ? { history, signature: JSON.stringify(range) } : null;
+  }
+
+  adjustHorizontalSelection(e) {
+    const mode = this.horizontalSelectionMode;
+    if (!mode || !(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey ||
+        !["ArrowLeft", "ArrowRight"].includes(e.key)) return false;
+    const history = Boolean(this.crossDateSelection);
+    const range = history ? this.crossDateSelection : this.selectedRange;
+    if (mode.history !== history || mode.signature !== JSON.stringify(range)) {
+      this.horizontalSelectionMode = null; return false;
+    }
+    const anchor = history ? range.startCol : this.rangeStart.colIdx;
+    const endpoint = history ? range.endCol : this.rangeEnd.colIdx;
+    const col = Math.max(anchor, Math.min(history ? 9 : 10, endpoint + (e.key === "ArrowRight" ? 1 : -1)));
+    if (history) this.selectCrossDateCell(range.endRow, col, true);
+    else this.extendCellSelection(this.rangeEnd.rowIdx, col);
+    this.rememberHorizontalSelection();
+    e.preventDefault(); e.stopPropagation();
+    return true;
+  }
+
   collapseSelectedRowToEdge(e) {
     const plainArrow = !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
     const returnLeft = (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key === "ArrowLeft";
@@ -5338,6 +5499,7 @@ class PTApp {
       return;
     }
 
+    if (this.adjustHorizontalSelection(e)) return;
     if (this.collapseSelectedRowToEdge(e)) return;
 
     const isCtrlOrMeta = e.ctrlKey || e.metaKey;
@@ -5345,6 +5507,9 @@ class PTApp {
 
     if (isCtrlOrMeta && e.key === "ArrowDown") {
       e.preventDefault(); this.jumpToLastRecord(); return;
+    }
+    if (isCtrlOrMeta && !e.shiftKey && !e.altKey && ["ArrowLeft", "ArrowRight"].includes(e.key)) {
+      if (this.jumpToHorizontalContentEdge(e.key === "ArrowRight" ? 1 : -1)) { e.preventDefault(); return; }
     }
     if (this.crossDateSelection && e.key !== "Escape") {
       const selection = this.crossDateSelection;
@@ -5377,7 +5542,8 @@ class PTApp {
             break;
           }
         }
-        this.selectCrossDateCell(selection.startRow, targetCol, true);
+        this.selectCrossDateCell(selection.startRow, Math.min(9, targetCol), true);
+        this.rememberHorizontalSelection();
       }
       // 행 전체 선택 상태일 때 위/아래 방향키 누르면 전체 행 선택 유지한 채 위아래로 이동
       else if (this.isCrossDateRowSelected && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
@@ -5586,6 +5752,7 @@ class PTApp {
         }
       }
       this.extendCellSelection(startRow, targetCol);
+      this.rememberHorizontalSelection();
       return;
     }
 
@@ -5754,67 +5921,6 @@ class PTApp {
   // ===== 프리셋 관리 (빠른 입력 도구 추가/삭제/수정/관리 기능) =====
 
   renderQuickChips() {
-    const container = this.elQuickChipsContainer;
-    if (!container) return;
-    container.innerHTML = "";
-
-    const types = ["prescription", "extra"];
-    types.forEach((type, typeIdx) => {
-      const items = COLUMN_PRESETS[type] || [];
-      if (typeIdx > 0 && items.length > 0) {
-        const sep = document.createElement("span");
-        sep.className = "chip-sep";
-        sep.textContent = "|";
-        container.appendChild(sep);
-      }
-
-      items.forEach((val, idx) => {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = type === "extra" ? "chip highlight" : "chip";
-        chip.dataset.type = type;
-        chip.dataset.val = val;
-        chip.dataset.idx = idx;
-        // 짧은 표시 이름 생성
-        chip.textContent = val.length > 20 ? val.replace(/\s*\(\s*/g, "(").replace(/\s*\/\s*/g, "/").replace(/\s*\)\s*/g, ")") : val;
-        chip.title = `${val}\n(클릭: 입력 | 우클릭: 수정/삭제)`;
-
-        // 클릭: 빠른 입력 적용
-        chip.addEventListener("click", () => {
-          this.applyQuickChip(type, val);
-        });
-
-        // 우클릭: 수정/삭제 메뉴
-        chip.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this._contextPreset = { type, index: idx, value: val };
-          this.showPresetContextMenu(e.pageX, e.pageY);
-        });
-
-        // 모바일 터치 대응: 롱프레스 (500ms 이상 길게 누르면 메뉴 호출)
-        let longPressTimer = null;
-        chip.addEventListener("touchstart", (e) => {
-          longPressTimer = setTimeout(() => {
-            const touch = e.touches[0];
-            this._contextPreset = { type, index: idx, value: val };
-            this.showPresetContextMenu(touch.pageX, touch.pageY);
-          }, 500);
-        }, { passive: true });
-
-        chip.addEventListener("touchend", () => {
-          if (longPressTimer) clearTimeout(longPressTimer);
-        });
-        chip.addEventListener("touchmove", () => {
-          if (longPressTimer) clearTimeout(longPressTimer);
-        });
-        chip.addEventListener("touchcancel", () => {
-          if (longPressTimer) clearTimeout(longPressTimer);
-        });
-
-        container.appendChild(chip);
-      });
-    });
     const controls = document.getElementById("historyControls");
     controls.replaceChildren();
     for (const [id, path, label, redo] of [
@@ -5926,16 +6032,13 @@ class PTApp {
   }
 
   updatePresetManagerTabs() {
-    if (this.elTabPresetPrescription) {
-      this.elTabPresetPrescription.classList.toggle("active", this.activePresetTab === "prescription");
-    }
-    if (this.elTabPresetExtra) {
-      this.elTabPresetExtra.classList.toggle("active", this.activePresetTab === "extra");
+    for (const [tab, element] of [["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
+      ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+      element?.classList.toggle("active", this.activePresetTab === tab);
     }
     if (this.elManagerNewPresetInput) {
-      this.elManagerNewPresetInput.placeholder = this.activePresetTab === "prescription"
-        ? "새 처방 프리셋 입력 (예: 사지 ( HP / Laser / ICT ))"
-        : "새 추가사항 프리셋 입력 (예: 학생 (HP/Laser))";
+      const labels = { prescription: "처방", extra: "추가 사항", memo: "메모", specialNote: "특이 사항" };
+      this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
     }
   }
 
