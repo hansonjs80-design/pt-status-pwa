@@ -407,6 +407,7 @@ class PTApp {
     this.elStatMaleCount = document.getElementById("statMaleCount");
     this.elStatFemaleCount = document.getElementById("statFemaleCount");
     this.elStatUnknownCount = document.getElementById("statUnknownCount");
+    this.elStatWriterList = document.getElementById("statWriterList");
     this.elStatExtraList = document.getElementById("statExtraList");
     this.elStatPrescriptionList = document.getElementById("statPrescriptionList");
 
@@ -3536,6 +3537,7 @@ class PTApp {
     const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
       .some(key => text(row[key])));
     const summary = { total: records.length, male: 0, female: 0, unknown: 0,
+      writers: new Map(),
       extras: new Map(), extraSubcounts: new Map(),
       prescriptions: new Map() };
     for (const row of records) {
@@ -3554,6 +3556,8 @@ class PTApp {
         summary.extras.set(extra, (summary.extras.get(extra) || 0) + 1);
         if (extra.includes("충격파") && text(row.specialNote).includes("신장")) summary.extraSubcounts.set(extra, (summary.extraSubcounts.get(extra) || 0) + 1);
       }
+      const writer = text(row.writer) || "미입력";
+      summary.writers.set(writer, (summary.writers.get(writer) || 0) + 1);
       const prescription = text(row.prescription).replace(/\s+/g, " ") || "미입력";
       summary.prescriptions.set(prescription, (summary.prescriptions.get(prescription) || 0) + 1);
     }
@@ -3625,6 +3629,7 @@ class PTApp {
     this.elStatMaleCount.textContent = summary.male;
     this.elStatFemaleCount.textContent = summary.female;
     this.elStatUnknownCount.textContent = summary.unknown;
+    this.renderSummaryList(this.elStatWriterList, summary.writers, "작성 이니셜 없음");
     this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음", summary);
     this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");
   }
