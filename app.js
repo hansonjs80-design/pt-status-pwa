@@ -4869,6 +4869,16 @@ class PTApp {
 
   jumpToLastRecord() {
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    if (this.selectedRowRange && !this.crossDateSelection) {
+      const rows = this.getCurrentRows();
+      const rowIdx = Math.max(0, rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim())));
+      const lastCol = this.selectedRange?.maxCol ?? 10;
+      const header = this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"] .row-num`);
+      if (header) header.closest("tr").style.display = "";
+      this.selectRowRange(rowIdx, rowIdx, lastCol);
+      header?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return;
+    }
     const copiedRange = this.clipboardSelection?.date === this.currentDate ? this.clipboardSelection : null;
     const range = copiedRange || this.crossDateSelection || this.selectedRange;
     const colKey = range ? keys[range.minCol] : this.activeCell?.colKey || "no";

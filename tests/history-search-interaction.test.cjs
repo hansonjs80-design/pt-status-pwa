@@ -23,6 +23,34 @@ function createApp(rows = []) {
   return { app, context };
 }
 
+test('row-header Ctrl/Cmd+Down keeps row selection on the last actual record, independent of copied columns', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const lastCol of [9, 10]) {
+    const rows = [{ no: '3', chartNo: '1', name: '첫 환자' }, {}, { name: '마지막 환자' }, {}, {}];
+    const { app } = createApp(rows);
+    app.activeCell = null;
+    app.selectedRowRange = { minRow: 0, maxRow: 1 };
+    app.selectedRange = { minRow: 0, maxRow: 1, minCol: 0, maxCol: lastCol };
+    app.clipboardSelection = { date: app.currentDate, minCol: 2, maxCol: 5 };
+    let selected, scrolled = 0, prevented = 0;
+    const tr = { style: { display: 'none' } };
+    app.elTableBody.querySelector = () => ({ closest: () => tr, scrollIntoView() { scrolled++; } });
+    app.selectCell = () => assert.fail('row selection must remain a row selection');
+    app.selectRowRange = (...args) => { selected = args; };
+    const event = { key: 'ArrowDown', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() { prevented++; } };
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, [2, 2, lastCol]);
+    assert.equal(tr.style.display, '');
+    assert.equal(scrolled, 1);
+    rows[2] = {};
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, [0, 0, lastCol]);
+    rows[0] = {};
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(selected, [0, 0, lastCol]);
+    assert.equal(prevented, 3);
+  }
+});
+
 test('selected chart/name opens prefilled prompt with all text selected, including an empty cell', () => {
   for (const colKey of ['name', 'chartNo']) for (const value of ['가상환자', '']) {
     const { app } = createApp([{ [colKey]: value }]);
