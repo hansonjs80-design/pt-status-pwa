@@ -606,3 +606,19 @@ test('Escape ends a cell edit or armed selection without clearing its border, in
     assert.equal(app.elSearchInput.value,editing?'검색중':'');
   }
 });
+
+
+test('Ctrl/Cmd+F in nonidentity live editors opens the empty patient popup without searching the cell text', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for(const colKey of ['no','gender','part','prescription','extra','writer','memo','specialNote','visitTime']) {
+    const {app}=createApp([{[colKey]:'입력중인 내용'}]);
+    app.activeCell={rowIdx:0,colKey};
+    let opened,blurred=false;
+    app.openSearchPromptModal=(...args)=>{opened=args;};
+    app.searchAllDates=app.searchPatientHistory=()=>assert.fail('nonidentity cells must not search their text');
+    const cell={dataset:{col:colKey,row:'0'}};
+    const input={tagName:'INPUT',value:'입력중인 내용',classList:{contains:()=>false},closest:()=>cell,blur(){blurred=true;}};
+    app.handleGlobalKeyDown({key:'f',[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(opened,[0,'']);
+    assert.equal(blurred,true);
+  }
+});

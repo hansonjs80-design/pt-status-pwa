@@ -5827,6 +5827,14 @@ class PTApp {
           this.findActiveCell();
           return;
         }
+        const cell = cellInput?.closest(".excel-cell");
+        const colKey = cell?.dataset?.col || this.activeCell?.colKey;
+        if (cellInput && !["name", "chartNo"].includes(colKey)) {
+          const rowIdx = this.activeCell?.rowIdx ?? Number(cell?.dataset?.row);
+          cellInput.blur();
+          this.openSearchPromptModal(rowIdx, "");
+          return;
+        }
         const searchVal = cellInput ? cellInput.value.trim() : "";
         if (this.elSearchInput && searchVal) {
           document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
