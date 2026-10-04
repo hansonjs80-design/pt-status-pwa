@@ -270,3 +270,26 @@ test('apply button moves selection to No. on the actual destination row', () => 
     assert.equal(restored.row, rows[expected]);
   }
 });
+
+
+test('the first physical Ctrl/Cmd+F searches a composing editor and releases its apply guard on Korean keyup', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    const { app } = createApp([{ name: '가상환자' }]);
+    const searches = [];
+    app.searchAllDates = (...args) => searches.push(args);
+    const row = { dataset: { rowIdx: '0' }, classList: { add() {} } };
+    const input = { tagName: 'INPUT', value: '가상환자', closest: selector => selector === '.excel-row' ? row : {},
+      blur() { this.value = '확정된이름'; } };
+    const event = { key: 'ㄹ', code: 'KeyF', keyCode: 229, isComposing: true, [modifier]: true,
+      target: input, preventDefault() {}, stopPropagation() {} };
+    assert.ok(app.isSearchShortcut(event));
+    app.handleGlobalKeyDown(event);
+    assert.equal(searches.length, 1);
+    assert.deepEqual(searches[0], ['확정된이름', 0]);
+    assert.equal(app.historyApplyBlockedKey, 'f');
+    app.releaseHistorySearchKey({ key: 'ㄹ', code: 'KeyF' });
+    assert.equal(app.historyApplyBlockedKey, null);
+    assert.equal(app.isSearchShortcut({ ...event, ctrlKey: false, metaKey: false }), false);
+    assert.equal(app.isSearchShortcut({ ...event, altKey: true }), false);
+  }
+});

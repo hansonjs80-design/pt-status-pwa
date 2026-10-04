@@ -314,6 +314,12 @@ class PTApp {
     this.showSaveIndicator(redo ? "다시 실행됨" : "되돌림 완료");
   }
 
+  isSearchShortcut(e) {
+    // Korean IME can report keyCode 229 or a Hangul key while the physical key is F.
+    return (e.ctrlKey || e.metaKey) && !e.altKey &&
+      (e.key.toLowerCase() === "f" || e.code === "KeyF");
+  }
+
   handleHistoryShortcut(e) {
     if (e.isComposing || e.keyCode === 229 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
     const key = e.key.toLowerCase();
@@ -2286,6 +2292,8 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      // Search must run on the first press, even before IME composition ends.
+      if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
       // Let the native IME handle candidate selection and composition confirmation.
       if (composing || e.isComposing || e.keyCode === 229) {
         e.stopPropagation();
@@ -5455,13 +5463,14 @@ class PTApp {
   }
 
   releaseHistorySearchKey(e) {
-    if (e.key.toLowerCase() === this.historyApplyBlockedKey) this.historyApplyBlockedKey = null;
+    if (e.key.toLowerCase() === this.historyApplyBlockedKey ||
+        (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
   }
 
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
     // 검색을 여는 키를 놓기 전의 이벤트는 이전 내역 적용에 사용하지 않는다.
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") this.historyApplyBlockedKey = "f";
+    if (this.isSearchShortcut(e)) this.historyApplyBlockedKey = "f";
     if (this.handleHistoryShortcut(e)) return;
     if (this.fillDrag) {
       e.preventDefault();
@@ -5470,9 +5479,8 @@ class PTApp {
     }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      const isCtrl = e.ctrlKey || e.metaKey;
       // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용으로 전체 날짜 검색
-      if (isCtrl && e.key.toLowerCase() === EXCEL_SHORTCUTS.SEARCH.key) {
+      if (this.isSearchShortcut(e)) {
         e.preventDefault();
         e.stopPropagation();
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
@@ -5488,7 +5496,7 @@ class PTApp {
           const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : -1;
           e.target.blur();
           this.elSheetContainer.focus({ preventScroll: true });
-          this.searchAllDates(searchVal, originRowIdx);
+          this.searchAllDates(this.assembleHangul(cellInput.value).trim() || searchVal, originRowIdx);
         } else if (cellInput) {
           this.openSearchPromptModal(this.activeCell?.rowIdx, "");
         }
@@ -5645,7 +5653,7 @@ class PTApp {
 
     // 7) Search / Filter (Ctrl+F / Cmd+F)
     //    편집 커서가 없는 셀 선택은 검색어 팝업을 연다.
-    if (isCtrlOrMeta && keyLower === EXCEL_SHORTCUTS.SEARCH.key) {
+    if (this.isSearchShortcut(e)) {
       e.preventDefault();
       this.findActiveCell();
       return;
