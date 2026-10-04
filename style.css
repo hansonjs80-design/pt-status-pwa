@@ -1993,6 +1993,7 @@ body {
 
 .excel-table { font-family: Arial, sans-serif; }
 .excel-table .excel-cell { font-size: 14px; font-weight: 600; }
+.excel-table .excel-cell.cell-no { font-size: 16px; }
 .excel-table .cell-gender, .excel-table .cell-gender.f, .excel-table .cell-gender.m { color: #000; }
 .excel-table .cell-visitTime { text-align: center; white-space: nowrap; }
 .format-current { display: flex; align-items: center; gap: 8px; padding: 9px 10px; margin-bottom: 8px; border-radius: 8px; background: #eef6f1; color: #27583c; font-size: 12px; }
