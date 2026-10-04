@@ -202,3 +202,17 @@ test('writer physical letter keys bypass Korean composition and honor native tex
   assert.equal(app.handleWriterLetterKey({code:'KeyC',ctrlKey:true},input),false);
   assert.equal(input.value,'S');
 });
+
+
+test('late writer IME insertion cannot duplicate a handled letter while paste remains editable', () => {
+  const {app}=createApp();
+  for (const [inputType, isComposing] of [['insertCompositionText',true], ['insertText',false], ['insertFromComposition',false]]) {
+    const input={value:'Jㅓ',dataset:{writerKeyValue:'J'}};
+    assert.equal(app.normalizeWriterEditorInput(input,{inputType,isComposing}),'J');
+    input.value='Jㅓ';
+    assert.equal(app.normalizeWriterEditorInput(input,{type:'compositionend'}),'J');
+  }
+  const input={value:'js',dataset:{writerKeyValue:'J'}};
+  assert.equal(app.normalizeWriterEditorInput(input,{inputType:'insertFromPaste'}),'JS');
+  assert.equal(input.dataset.writerKeyValue,undefined);
+});

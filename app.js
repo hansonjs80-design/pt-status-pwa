@@ -1464,9 +1464,21 @@ class PTApp {
     this.activateNativeEditor(input);
     input.value = input.value.slice(0, start) + event.code.slice(3) + input.value.slice(end);
     input.dataset.composing = "false";
+    input.dataset.writerKeyValue = input.value;
     input.setSelectionRange(start + 1, start + 1);
     input.dispatchEvent(new Event("input", { bubbles: true }));
     return true;
+  }
+
+  normalizeWriterEditorInput(input, event = {}) {
+    // Some IMEs emit native insertion after the handled physical key.
+    // Keep the value already entered by that key instead of adding it twice.
+    const handled = input.dataset.writerKeyValue;
+    const nativeLetter = event.isComposing || /Composition/.test(event.inputType || "") ||
+      event.inputType === "insertText" || event.type === "compositionend";
+    if (handled !== undefined && nativeLetter) input.value = handled;
+    else if (event.inputType) delete input.dataset.writerKeyValue;
+    return this.normalizeWriterInput(input.value);
   }
 
   // Convert Korean keyboard input to uppercase English writer initials.
@@ -2316,6 +2328,12 @@ class PTApp {
       this.closeAutocompleteMenu();
     });
 
+    input.addEventListener("beforeinput", (e) => {
+      if (colKey === "writer" && input.dataset.writerKeyValue !== undefined &&
+          (e.isComposing || /Composition/.test(e.inputType || "") || e.inputType === "insertText")) {
+        e.preventDefault();
+      }
+    });
     input.addEventListener("input", (e) => {
       if (isCommitted) return; // Late IME events must not overwrite a finished edit.
       this.activateNativeEditor(input);
@@ -2323,8 +2341,8 @@ class PTApp {
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
       if (colKey === "writer") {
-        const normalized = this.normalizeWriterInput(val);
-        if (normalized !== val) input.value = normalized;
+        const normalized = this.normalizeWriterEditorInput(input, e);
+        if (normalized !== input.value) input.value = normalized;
         rows[rowIdx][colKey] = normalized;
       } else {
         rows[rowIdx][colKey] = val;
@@ -2348,7 +2366,7 @@ class PTApp {
       }
     });
 
-    input.addEventListener("compositionend", () => {
+    input.addEventListener("compositionend", (e) => {
       if (isCommitted) return;
       composing = false;
       input.dataset.composing = "false";
@@ -2357,8 +2375,8 @@ class PTApp {
       // assembleHangul은 blur 시점에서만 최종 보정
       const val = input.value;
       if (colKey === "writer") {
-        const normalized = this.normalizeWriterInput(val);
-        if (normalized !== val) input.value = normalized;
+        const normalized = this.normalizeWriterEditorInput(input, e);
+        if (normalized !== input.value) input.value = normalized;
         rows[rowIdx][colKey] = normalized;
       } else {
         rows[rowIdx][colKey] = val;
@@ -2426,6 +2444,7 @@ class PTApp {
         composing = false;
         return;
       }
+      if (colKey === "writer" && !e.isComposing && e.keyCode !== 229) delete input.dataset.writerKeyValue;
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
       if (this.handleCellRowSelectShortcut(e)) return;
