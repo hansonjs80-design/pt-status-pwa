@@ -1886,7 +1886,8 @@ class PTApp {
       const itemLower = item.toLowerCase();
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
-      // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치, 4=초성부분
+      // 초성은 첫 음절부터 일치해야 하며, 완성된 문구는 기존 부분 검색을 유지한다.
+      // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
       // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
 
@@ -1896,10 +1897,8 @@ class PTApp {
         quality = 1.5;
       } else if (matchesInitialsAt(itemLower, 0)) {
         quality = 2; // 초성 접두사 (e.g. 'ㅎ' -> '학생...')
-      } else if (itemLower.includes(query)) {
+      } else if (!hasInitials && itemLower.includes(query)) {
         quality = 3; // 부분 일치
-      } else if (hasInitials && [...itemLower].some((_, index) => matchesInitialsAt(itemLower, index))) {
-        quality = 4; // 초성 부분 일치
       }
 
       if (quality >= 0) {

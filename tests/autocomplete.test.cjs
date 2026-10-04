@@ -106,7 +106,7 @@ test('completed Korean syllables exclude unrelated names while explicit initials
   assert.deepEqual(suggestions(app, 'name', '주ㅎ'), ['주한솔']);
   assert.deepEqual(suggestions(app, 'name', '주해'), []);
   assert.deepEqual(suggestions(app, 'name', '전ㅈ'), ['전재윤', '전지훈']);
-  assert.deepEqual(suggestions(app, 'name', 'ㅈㅎ'), ['주한솔', '정화자', '전지훈']);
+  assert.deepEqual(suggestions(app, 'name', 'ㅈㅎ'), ['주한솔', '정화자']);
 });
 
 test('unfinished final syllable narrows Korean autocomplete before the final consonant', () => {
@@ -211,4 +211,16 @@ test('name IME pending consonants match the next syllable without broadening com
   assert.deepEqual(suggestions(app,'name','이연'),['이연진']);
   assert.deepEqual(composing('김홍'),['김홍준']);
   assert.equal(composing('김홍').includes('김민수'),false);
+});
+
+
+test('initial consonant suggestions must match from the first syllable in presets and history', () => {
+  const app = createApp({ '2026-09-29': [
+    { prescription: '타 치료', name: '김태영', memo: '기타 기록' },
+    { prescription: '기타 기록', name: '태가상', memo: '타 기록' },
+  ] }, { prescription: ['기타 (HP / La / MW)', '테스트 치료', '기ㅌ 문구'] });
+  assert.deepEqual(suggestions(app, 'prescription', 'ㅌ'), ['테스트 치료', '타 치료']);
+  assert.deepEqual(suggestions(app, 'name', 'ㅌ'), ['태가상']);
+  assert.deepEqual(suggestions(app, 'memo', 'ㅌ'), ['타 기록']);
+  assert.deepEqual(suggestions(app, 'name', 'ㄱㅌ'), ['김태영']);
 });
