@@ -4696,19 +4696,12 @@ class PTApp {
     const range = copiedRange || this.crossDateSelection || this.selectedRange;
     const colKey = range ? keys[range.minCol] : this.activeCell?.colKey || "no";
     if (!colKey) return;
-    const origin = this.historyApplyTarget;
-    if (this.crossDateSelection && origin?.date === this.currentDate) {
-      const rows = this.getCurrentRows();
-      const found = rows.indexOf(origin.row);
-      const rowIdx = found >= 0 ? found : origin.rowIdx;
-      this.scrollToHistoryTarget();
-      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
-      if (cell) { this.selectCell(rowIdx, colKey, cell); cell.scrollIntoView({ block: "nearest", inline: "nearest" }); }
-      return;
-    }
     if (!range && !this.activeCell && this.selectedRowIdx == null) return;
     const rows = this.getCurrentRows();
-    let rowIdx = range ? rows.findLastIndex(row => String(row[colKey] ?? "").trim()) : -1;
+    // 이전 내역에서 내려올 때는 삭제/이동 전의 적용 위치 대신 현재 데이터 전체를 확인한다.
+    let rowIdx = this.crossDateSelection
+      ? rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()))
+      : range ? rows.findLastIndex(row => String(row[colKey] ?? "").trim()) : -1;
     // A wholly empty first column (for example No. in a copied row) still lands on the last record.
     if (rowIdx < 0) rowIdx = rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()));
     rowIdx = Math.max(0, rowIdx);

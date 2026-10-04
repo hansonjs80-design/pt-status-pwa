@@ -89,3 +89,27 @@ test('compound patient entry splits chart and name and removes suffixes', () => 
   assert.equal(app.applyCompoundPatientInput(row,'name','123/'),false);
   assert.equal(row.name,'유지');
 });
+
+
+test('history Ctrl/Cmd+Down finds the actual last daily record after deletion instead of a stale apply target', () => {
+  const instance = Object.create(context.App.prototype);
+  const deletedRow = { name: '삭제한 마지막 환자', chartNo: 'OLD' };
+  const rows = [{ name: '첫 환자', chartNo: '1' }, { memo: '마지막 내용' }, {}, {}, {}];
+  Object.assign(instance, {
+    currentDate: '2026-10-04',
+    crossDateSelection: { minCol: 2, maxCol: 9 },
+    historyApplyTarget: { date: '2026-10-04', row: deletedRow, rowIdx: 4 },
+  });
+  instance.getCurrentRows = () => rows;
+  instance.elTableBody = { querySelector: () => ({ closest: () => ({ style: {} }), scrollIntoView() {} }) };
+  let selected;
+  instance.selectCell = (rowIdx, colKey) => { selected = { rowIdx, colKey }; };
+  instance.jumpToLastRecord();
+  assert.deepEqual(selected, { rowIdx: 1, colKey: 'chartNo' });
+  rows[1] = {};
+  instance.jumpToLastRecord();
+  assert.deepEqual(selected, { rowIdx: 0, colKey: 'chartNo' });
+  rows[0] = {};
+  instance.jumpToLastRecord();
+  assert.deepEqual(selected, { rowIdx: 0, colKey: 'chartNo' });
+});
