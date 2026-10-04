@@ -178,3 +178,27 @@ test('failed IndexedDB backup verification preserves legacy backups and leaves r
     assert.equal(queued.length, 0);
   }
 });
+
+
+test('prescription x and Korean keyboard equivalent normalize only standalone cancellation markers', () => {
+  const {app}=createApp();
+  for(const value of ['x','ㅌ',' x ','X']) assert.equal(app.normalizePrescriptionInput(value),'X');
+  for(const value of ['ICT x','ㅌ치료','Laser','']) assert.equal(app.normalizePrescriptionInput(value),value);
+});
+
+test('writer physical letter keys bypass Korean composition and honor native text selection', () => {
+  const {app,context}=createApp();
+  context.Event=class {constructor(type){this.type=type;}};
+  app.activateNativeEditor=()=>{};
+  let dispatched;
+  const input={value:'JK',selectionStart:0,selectionEnd:2,dataset:{composing:'true'},
+    setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;},dispatchEvent(event){dispatched=event.type;}};
+  let prevented=false;
+  assert.equal(app.handleWriterLetterKey({code:'KeyS',key:'Process',isComposing:true,preventDefault(){prevented=true;},stopPropagation(){}},input),true);
+  assert.equal(input.value,'S');
+  assert.equal(input.dataset.composing,'false');
+  assert.equal(dispatched,'input');
+  assert.equal(prevented,true);
+  assert.equal(app.handleWriterLetterKey({code:'KeyC',ctrlKey:true},input),false);
+  assert.equal(input.value,'S');
+});

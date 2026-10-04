@@ -1451,6 +1451,24 @@ class PTApp {
     this.showSaveIndicator(`${drag.endRow - drag.rowIdx}개 셀 채우기 완료`);
   }
 
+  normalizePrescriptionInput(value) {
+    const text = String(value ?? "").trim();
+    return text === "x" || text === "ㅌ" ? "X" : text;
+  }
+
+  handleWriterLetterKey(event, input) {
+    if (event.ctrlKey || event.metaKey || event.altKey || !/^Key[A-Z]$/.test(event.code || "")) return false;
+    event.preventDefault(); event.stopPropagation();
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    this.activateNativeEditor(input);
+    input.value = input.value.slice(0, start) + event.code.slice(3) + input.value.slice(end);
+    input.dataset.composing = "false";
+    input.setSelectionRange(start + 1, start + 1);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
   // Convert Korean keyboard input to uppercase English writer initials.
   normalizeWriterInput(value) {
     const keys = {
@@ -2305,7 +2323,7 @@ class PTApp {
       const val = input.value;
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
-      if (colKey === "writer" && !composing && !e.isComposing) {
+      if (colKey === "writer") {
         const normalized = this.normalizeWriterInput(val);
         if (normalized !== val) input.value = normalized;
         rows[rowIdx][colKey] = normalized;
@@ -2369,7 +2387,8 @@ class PTApp {
       isCommitted = true;
       clearTimeout(_acDebounceTimer);
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
-      finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal) : finalVal.trim();
+      finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
+        : colKey === "prescription" ? this.normalizePrescriptionInput(finalVal) : finalVal.trim();
       rows[rowIdx][colKey] = finalVal;
       const compound = this.applyCompoundPatientInput(rows[rowIdx], colKey, finalVal);
       if (compound) {
@@ -2403,6 +2422,11 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      // Use the physical letter key before the IME can display Korean text.
+      if (colKey === "writer" && this.handleWriterLetterKey(e, input)) {
+        composing = false;
+        return;
+      }
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
       if (this.handleCellRowSelectShortcut(e)) return;
