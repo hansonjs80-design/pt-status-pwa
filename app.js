@@ -725,18 +725,9 @@ class PTApp {
       this.elBtnSearchPromptSubmit.addEventListener("click", () => this.submitSearchPrompt());
     }
     if (this.elSearchPromptInput) {
-      this.elSearchPromptInput.addEventListener("input", () => {
-        this.updateSearchPromptAutocomplete();
-      });
       this.elSearchPromptInput.addEventListener("keydown", (e) => {
         if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) e.stopPropagation();
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          this.moveSearchPromptAutocomplete(1);
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          this.moveSearchPromptAutocomplete(-1);
-        } else if (e.key === "Enter") {
+        if (e.key === "Enter") {
           e.preventDefault();
           if (e.isComposing || e.keyCode === 229) return;
           if (!e.repeat) {
@@ -746,11 +737,7 @@ class PTApp {
           }
         } else if (e.key === "Escape") {
           e.preventDefault();
-          if (this._searchPromptACMenu) {
-            this.closeSearchPromptAutocomplete();
-          } else {
-            this.closeSearchPromptModal();
-          }
+          this.closeSearchPromptModal();
         }
       });
     }
@@ -3641,8 +3628,7 @@ class PTApp {
     setTimeout(() => {
       this.elSearchPromptInput.focus();
       this.elSearchPromptInput.select();
-      // Empty prompts also clear suggestions left over from the previous search.
-      this.updateSearchPromptAutocomplete();
+      this.closeSearchPromptAutocomplete();
     }, 60);
   }
 
@@ -3686,78 +3672,6 @@ class PTApp {
     return results;
   }
 
-  updateSearchPromptAutocomplete() {
-    const input = this.elSearchPromptInput;
-    if (!input) return;
-    const q = input.value;
-    const suggestions = this.getSearchPromptSuggestions(q);
-    if (suggestions.length === 0) {
-      this.closeSearchPromptAutocomplete();
-      return;
-    }
-    this.showSearchPromptAutocomplete(input, suggestions, q);
-  }
-
-  showSearchPromptAutocomplete(input, suggestions, query) {
-    this.closeSearchPromptAutocomplete();
-    const menu = document.createElement("div");
-    menu.id = "searchPromptAutocompleteMenu";
-    menu.className = "cell-autocomplete-menu search-prompt-autocomplete";
-    menu.style.zIndex = "10010"; // 모달 위에 표시
-    this._searchPromptACIndex = 0;
-    this._searchPromptACExplicit = false;
-
-    suggestions.forEach((item, idx) => {
-      const itemEl = document.createElement("div");
-      itemEl.className = "autocomplete-item" + (idx === 0 ? " is-selected" : "");
-      itemEl.dataset.index = idx;
-
-      const textSpan = document.createElement("span");
-      textSpan.className = "autocomplete-item-text";
-      textSpan.textContent = item.value;
-      itemEl.appendChild(textSpan);
-
-      // 성함 검색에는 성함만 표시하고, 차트번호 후보에만 성함 힌트를 붙인다.
-      if (item.name && item.chartNo && item.value === item.chartNo) {
-        const hint = document.createElement("span");
-        hint.className = "autocomplete-hint-badge";
-        hint.textContent = `이름: ${item.name}`;
-        hint.style.fontSize = "10px";
-        hint.style.marginLeft = "6px";
-        hint.style.opacity = "0.7";
-        itemEl.appendChild(hint);
-      }
-
-      itemEl.addEventListener("mousedown", e => e.preventDefault());
-      itemEl.addEventListener("click", () => {
-        input.value = item.value;
-        this.closeSearchPromptAutocomplete();
-        this.submitSearchPrompt();
-      });
-      menu.appendChild(itemEl);
-    });
-
-    document.body.appendChild(menu);
-    this._searchPromptACMenu = menu;
-    this._searchPromptACSuggestions = suggestions;
-
-    // 위치: 모달 input 기준 아래
-    const rect = input.getBoundingClientRect();
-    menu.style.position = "fixed";
-    menu.style.left = `${rect.left}px`;
-    menu.style.top = `${rect.bottom + 4}px`;
-    menu.style.minWidth = `${rect.width}px`;
-    menu.style.maxWidth = `${rect.width + 100}px`;
-    menu.style.maxHeight = "200px";
-    menu.style.overflowY = "auto";
-
-    const outsideClick = (e) => {
-      if (!menu.contains(e.target) && e.target !== input) this.closeSearchPromptAutocomplete();
-    };
-    document.addEventListener("mousedown", outsideClick);
-    this._searchPromptACCleanup = () => document.removeEventListener("mousedown", outsideClick);
-  }
-
   closeSearchPromptAutocomplete() {
     this._searchPromptACCleanup?.();
     this._searchPromptACCleanup = null;
@@ -3767,21 +3681,6 @@ class PTApp {
     this._searchPromptACSuggestions = null;
     this._searchPromptACIndex = -1;
     this._searchPromptACExplicit = false;
-  }
-
-  moveSearchPromptAutocomplete(direction) {
-    const menu = this._searchPromptACMenu;
-    const suggestions = this._searchPromptACSuggestions;
-    if (!menu || !suggestions || suggestions.length === 0) return false;
-    const items = menu.querySelectorAll(".autocomplete-item");
-    let next = (this._searchPromptACIndex ?? 0) + direction;
-    if (next < 0) next = suggestions.length - 1;
-    if (next >= suggestions.length) next = 0;
-    this._searchPromptACIndex = next;
-    this._searchPromptACExplicit = true;
-    items.forEach((it, i) => it.classList.toggle("is-selected", i === next));
-    items[next]?.scrollIntoView({ block: "nearest" });
-    return true;
   }
 
   hasRecordedPatientName(query, targetRowIdx) {
@@ -3805,18 +3704,9 @@ class PTApp {
 
   async submitSearchPrompt() {
     if (!this.elSearchPromptInput || this.searchPromptSubmitting) return;
-    // Preserve an existing cell's exact name when searching it unchanged.
-    // Otherwise keep the established autocomplete confirmation behavior.
+    // Search exactly what the user entered; the popup has no autocomplete.
     const searchingCellName = Boolean(this.searchPromptCellName &&
-      this.elSearchPromptInput.value.trim() === this.searchPromptCellName && !this._searchPromptACExplicit);
-    const menu = this._searchPromptACMenu;
-    if (menu && !searchingCellName) {
-      const selected = menu.querySelector(".autocomplete-item.is-selected");
-      if (selected) {
-        const textSpan = selected.querySelector(".autocomplete-item-text");
-        if (textSpan) this.elSearchPromptInput.value = textSpan.textContent;
-      }
-    }
+      this.elSearchPromptInput.value.trim() === this.searchPromptCellName);
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
     if (!q) return;

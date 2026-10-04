@@ -58,7 +58,7 @@ test('selected chart/name opens prefilled prompt with all text selected, includi
     let selected = false, focused = false;
     app.elSearchPromptModal = { style: {} };
     app.elSearchPromptInput = { value: 'old', focus() { focused = true; }, select() { selected = true; } };
-    app.updateSearchPromptAutocomplete = () => {};
+    app.closeSearchPromptAutocomplete = () => {};
     app.elSearchInput.value = 'old query';
     app.findActiveCell();
     assert.equal(app.elSearchPromptModal.style.display, 'flex');
@@ -227,7 +227,7 @@ test('selected cells outside chart/name open an empty focused prompt and clear o
     let focused = false, cleared = false;
     app.elSearchPromptModal = { style: {} };
     app.elSearchPromptInput = { value: '기존 입력', focus() { focused = true; }, select() {} };
-    app.updateSearchPromptAutocomplete = () => { cleared = app.elSearchPromptInput.value === ''; };
+    app.closeSearchPromptAutocomplete = () => { cleared = app.elSearchPromptInput.value === ''; };
     app.findActiveCell();
     assert.equal(app.elSearchPromptInput.value, '');
     assert.ok(focused && cleared);
@@ -528,10 +528,10 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(closed,1);
 });
 
-test('explicitly selected names, cloud-only exact names and chart search remain usable', async () => {
+test('cloud-only exact names and chart search remain usable', async () => {
   const {app,context} = createApp([{}]);
   app.searchPromptTargetRowIdx = 0;
-  app.elSearchPromptInput = {value:'이연',focus(){},select(){}};
+  app.elSearchPromptInput = {value:'이연진',focus(){},select(){}};
   app._searchPromptACExplicit = true;
   app._searchPromptACMenu = {querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
   app.supabaseClient = {};
@@ -565,7 +565,7 @@ test('direct cell name search also rejects a nonexistent exact name without chan
 });
 
 
-test('free search keeps default autocomplete confirmation while unchanged cell names stay exact', async () => {
+test('free search uses typed text even if a stale autocomplete candidate exists', async () => {
   const {app,context}=createApp([{name:'다른환자'}]);
   app.dataStore={'2026-09-28':[{name:'이연진'}]};
   app.elSearchPromptInput={value:'이연',focus(){},select(){}};
@@ -575,9 +575,9 @@ test('free search keeps default autocomplete confirmation while unchanged cell n
   app.closeSearchPromptModal=()=>{};
   let searched;
   app.searchAllDates=(...args)=>{searched=args;};
-  context.alert=()=>assert.fail('free autocomplete search must remain available');
+  context.alert=()=>assert.fail('free typed search must remain available');
   await app.submitSearchPrompt();
-  assert.deepEqual(searched,['이연진',0]);
+  assert.deepEqual(searched,['이연',0]);
   app.elSearchPromptInput.value='없는입력';
   app._searchPromptACMenu=null;
   await app.submitSearchPrompt();
