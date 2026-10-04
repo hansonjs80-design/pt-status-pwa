@@ -400,6 +400,9 @@ class PTApp {
 
     // Sidebar
     this.elSidebarDateTag = document.getElementById("sidebarDateTag");
+    this.elSidebarSummaryTitle = document.getElementById("sidebarSummaryTitle");
+    this.elStatPeriodLabel = document.getElementById("statPeriodLabel");
+    this.elSummaryPeriodTabs = document.querySelectorAll("[data-summary-period]");
     this.elStatTotalCount = document.getElementById("statTotalCount");
     this.elStatMaleCount = document.getElementById("statMaleCount");
     this.elStatFemaleCount = document.getElementById("statFemaleCount");
@@ -461,6 +464,9 @@ class PTApp {
   }
 
   bindEvents() {
+    this.elSummaryPeriodTabs.forEach(button => {
+      button.addEventListener("click", () => this.setSummaryPeriod(button.dataset.summaryPeriod));
+    });
     // Supabase Cloud Sync Modal
     if (this.elBtnSupabase) {
       this.elBtnSupabase.addEventListener("click", () => this.openSupabaseModal());
@@ -1871,6 +1877,7 @@ class PTApp {
         }
         this.cloudSearchHistory = history;
         this.searchHistoryLoadedAt = Date.now();
+        if (this.elStatTotalCount) this.updateSidebarStats();
         this.refreshSearchSuggestions();
         if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
         return true;
@@ -3510,8 +3517,36 @@ class PTApp {
     }
   }
 
+  setSummaryPeriod(period) {
+    if (!["day", "month", "year"].includes(period)) return;
+    this.summaryPeriod = period;
+    this.updateSidebarStats();
+    if (period !== "day") void this.loadSearchHistory();
+  }
+
+  getPeriodSummary(period = this.summaryPeriod || "day") {
+    if (period === "day") return this.getDailySummary();
+    const prefix = this.currentDate.slice(0, period === "year" ? 4 : 7);
+    const rows = Object.entries(this.getSearchDataStore())
+      .filter(([date, values]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date.startsWith(prefix) && Array.isArray(values))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([, values]) => values);
+    return this.getDailySummary(rows);
+  }
+
   updateSidebarStats() {
-    const summary = this.getDailySummary();
+    const period = this.summaryPeriod || "day";
+    const summary = this.getPeriodSummary(period);
+    const labels = { day: "일일", month: "월간", year: "연간" };
+    if (this.elSidebarSummaryTitle) this.elSidebarSummaryTitle.textContent = `📊 ${labels[period]} 현황 요약`;
+    if (this.elStatPeriodLabel) this.elStatPeriodLabel.textContent = { day: "선택 날짜 전체", month: "선택 월 전체", year: "선택 연도 전체" }[period];
+    this.elSidebarDateTag.textContent = period === "year" ? `${this.currentDate.slice(0, 4)}년`
+      : this.currentDate.slice(0, period === "month" ? 7 : 10).replace(/-/g, ".");
+    this.elSummaryPeriodTabs?.forEach(button => {
+      const selected = button.dataset.summaryPeriod === period;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", String(selected));
+    });
     this.elStatTotalCount.textContent = summary.total;
     this.elStatMaleCount.textContent = summary.male;
     this.elStatFemaleCount.textContent = summary.female;

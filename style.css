@@ -2144,3 +2144,8 @@ body {
   background: #e6f3ea;
   box-shadow: inset 0 0 0 2px #107c41;
 }
+
+.summary-period-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid #d6e2da; border-radius: 8px; background: #eaf1ec; }
+.summary-period-tabs button { flex: 1; padding: 8px 2px; border: 0; border-radius: 5px; background: transparent; color: #53675c; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.summary-period-tabs button.active { background: #107c41; color: #fff; box-shadow: 0 1px 3px #163b2726; }
+.summary-period-tabs button:focus-visible { outline: 2px solid #107c41; outline-offset: 2px; }

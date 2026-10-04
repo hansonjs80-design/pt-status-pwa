@@ -132,17 +132,22 @@
 
       <!-- Right Summary Panel (사진의 L, M 열 역할) -->
       <aside class="excel-sidebar" id="summarySidebar">
-                <div class="tool-group search-group">
-          <input type="text" id="searchInput" placeholder="환자명/차트/부위 검색..." class="search-box">
+        <div hidden style="display:none;">
+          <input type="hidden" id="searchInput">
           <button type="button" id="btnClearSearch" class="btn-clear-search" style="display:none;">✕</button>
         </div>
+        <div class="summary-period-tabs" role="tablist" aria-label="현황 집계 기간">
+          <button type="button" role="tab" aria-selected="true" class="active" data-summary-period="day">일일현황</button>
+          <button type="button" role="tab" aria-selected="false" data-summary-period="month">월간현황</button>
+          <button type="button" role="tab" aria-selected="false" data-summary-period="year">연간현황</button>
+        </div>
         <div class="sidebar-header">
-          <h3>📊 일일 현황 요약</h3>
+          <h3 id="sidebarSummaryTitle">📊 일일 현황 요약</h3>
           <span class="target-date-tag" id="sidebarDateTag">2026.09.29</span>
         </div>
 
         <div class="stat-card primary">
-          <div class="stat-label">총 치료 기록 <span>선택 날짜 전체</span></div>
+          <div class="stat-label">총 치료 기록 <span id="statPeriodLabel">선택 날짜 전체</span></div>
           <div class="stat-value"><span id="statTotalCount">0</span> <small>건</small></div>
           <div class="stat-sub">
             <span>남성 <b id="statMaleCount">0</b></span>
