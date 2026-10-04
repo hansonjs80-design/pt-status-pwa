@@ -1241,6 +1241,25 @@ body {
   box-shadow: inset 0 0 0 1px var(--excel-cell-selected);
 }
 
+/* Fill drag 복사 카운트 뱃지 */
+.fill-drag-count-badge {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  background: #1a6b3a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  white-space: nowrap;
+  user-select: none;
+}
+
 .excel-cell.clipboard-source.cell-focused { outline: none; }
 .excel-cell.clipboard-source .cell-fill-handle { display: none; }
 .excel-table .excel-row .excel-cell.clipboard-source.clipboard-top { border-top: 2px dashed var(--excel-green) !important; }

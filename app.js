@@ -1425,6 +1425,8 @@ class PTApp {
     const row = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-row-idx]");
     if (!row || !this.elTableBody.contains(row)) return;
     const endRow = Math.max(this.fillDrag.rowIdx, Number(row.dataset.rowIdx));
+    // 카운트 뱃지 위치 항상 업데이트 (endRow 변화 여부 무관)
+    this._updateFillDragBadge(event.clientX, event.clientY, endRow - this.fillDrag.rowIdx);
     if (this.fillDrag.endRow === endRow) return;
     this.fillDrag.endRow = endRow;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
@@ -1433,11 +1435,31 @@ class PTApp {
     }
   }
 
+  _updateFillDragBadge(mouseX, mouseY, count) {
+    let badge = document.getElementById("fillDragCountBadge");
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = "fillDragCountBadge";
+      badge.className = "fill-drag-count-badge";
+      document.body.appendChild(badge);
+    }
+    badge.textContent = count > 0 ? `+${count}` : "0";
+    badge.style.left = `${mouseX + 14}px`;
+    badge.style.top  = `${mouseY - 10}px`;
+    badge.style.display = "block";
+  }
+
+  _removeFillDragBadge() {
+    const badge = document.getElementById("fillDragCountBadge");
+    if (badge) badge.remove();
+  }
+
   cancelFillDrag() {
     if (!this.fillDrag) return;
     this.fillDrag = null;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
     this.elSheetContainer.classList.remove("is-selecting");
+    this._removeFillDragBadge();
   }
 
   finishFillDrag(event) {
