@@ -7,6 +7,7 @@
   --excel-header-border: #C6E0B4;
   --excel-header-text: #274e13;
   --excel-grid-line: #e1e3e1;
+  --excel-cell-grid-line: #cbd0cb;
   --excel-cell-selected: #107C41;
   --excel-row-hover: #f0f7f2;
   --excel-row-active: #d7ebdf;
@@ -994,8 +995,8 @@ body {
 }
 
 .excel-cell {
-  border-right: 1px solid var(--excel-grid-line);
-  border-bottom: 1px solid var(--excel-grid-line);
+  border-right: 1px solid var(--excel-cell-grid-line);
+  border-bottom: 1px solid var(--excel-cell-grid-line);
   padding: 0.6px 6px;
   white-space: nowrap;
   overflow: hidden;
