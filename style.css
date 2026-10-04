@@ -9,7 +9,8 @@
   --excel-grid-line: #e1e3e1;
   --excel-cell-selected: #107C41;
   --excel-row-hover: #f0f7f2;
-  --excel-row-active: #e7f5ec;
+  --excel-row-active: #d7ebdf;
+  --excel-selection-bg: #c6e2d0;
   --bg-app: #f4f6f5;
   --surface: #ffffff;
   --text-main: #1f2328;
@@ -1003,17 +1004,17 @@ body {
 .excel-cell.row-selected,
 .excel-cell.all-selected,
 .excel-cell.range-selected {
-  background-color: #e3f2e6 !important;
+  background-color: var(--excel-selection-bg) !important;
 }
 
 .excel-cell.range-selected {
-  background-color: rgba(16, 124, 65, 0.15) !important;
+  background-color: var(--excel-selection-bg) !important;
 }
 
 .excel-cell.col-selected:hover,
 .excel-cell.row-selected:hover,
 .excel-cell.range-selected:hover {
-  background-color: #d2edd9 !important;
+  background-color: #b9dac5 !important;
 }
 
 /* Range Boundaries (Outer borders of selection box like Excel) */
@@ -1199,7 +1200,7 @@ body {
 .excel-cell.cell-focused {
   outline: 2px solid var(--excel-cell-selected);
   outline-offset: -2px;
-  background-color: #ffffff !important;
+  background-color: var(--excel-selection-bg) !important;
   z-index: 2;
 }
 
@@ -1889,7 +1890,7 @@ body {
 }
 
 /* 이전 날짜도 선택한 셀/범위의 외곽선을 명확히 표시 */
-.cross-date-cell.range-selected { background: #dceee4 !important; }
+.cross-date-cell.range-selected { background: var(--excel-selection-bg) !important; }
 .row-num[draggable="true"] { cursor: grab; }
 .row-num[draggable="true"]:active { cursor: grabbing; }
 .excel-row.row-drop-before > * { box-shadow: inset 0 3px 0 #107c41 !important; }
@@ -2067,7 +2068,7 @@ body {
 .cell-visitTime:focus-within .visit-time-refresh { opacity: 1; pointer-events: auto; }
 @media (max-width: 640px) { .quick-chips { grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; } .quick-chips .chip { white-space: normal; } }
 
-.excel-cell.is-discrete-selected { background-color: #d2eadb !important; box-shadow: inset 0 0 0 2px #107c41; }
+.excel-cell.is-discrete-selected { background-color: var(--excel-selection-bg) !important; box-shadow: inset 0 0 0 2px #107c41; }
 
 /* 이전 날짜 표 안에서도 열 경계를 잡아 너비를 조절한다. */
 .cross-date-headers-row th {
@@ -2091,9 +2092,8 @@ body {
   display: none;
   margin-left: 8px;
   padding: 1px 5px;
-  border: 1px solid #a5cfb6;
-  border-radius: 3px;
-  background: #fff;
+  border: 0;
+  background: transparent;
   color: #107c41;
   cursor: pointer;
   font-size: 16px;
@@ -2101,7 +2101,7 @@ body {
 }
 .autocomplete-item.is-selected .autocomplete-edit-button,
 .autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
-.autocomplete-edit-button:hover { background: #d9eee1; }
+.autocomplete-edit-button:hover { background: transparent; color: #0c5b30; }
 
 /* Keep Apply reachable while all history data columns share the sheet scroll. */
 .cross-date-inner-table .history-apply-cell,
