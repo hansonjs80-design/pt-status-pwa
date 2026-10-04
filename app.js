@@ -1467,6 +1467,12 @@ class PTApp {
       .map(value => this.normalizeWriterInput(value).trim()).filter(Boolean))];
   }
 
+  isWriterRightExit(event, input) {
+    const right = event.key === "ArrowRight" || event.code === "ArrowRight";
+    return right && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      (this.isAutocompleteOpen() || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length));
+  }
+
   handleWriterPickerShortcut(event, rowIdx, cellElement) {
     if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
     event.preventDefault(); event.stopPropagation();
@@ -2512,6 +2518,21 @@ class PTApp {
 
     input.addEventListener("keydown", (e) => {
       if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
+      // Writer keys may still be reported as composing after physical-key entry.
+      if (colKey === "writer" && this.isWriterRightExit(e, input)) {
+        e.preventDefault(); e.stopPropagation();
+        composing = false; input.dataset.composing = "false";
+        const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
+        this.closeAutocompleteMenu();
+        commitAndBlur(chosen);
+        this.navigateCol(rowIdx, colKey, 1);
+        this.elSheetContainer.focus({ preventScroll: true });
+        return;
+      }
+      if (colKey === "writer" && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.stopPropagation(); // Keep native caret movement while it is inside the text.
+        return;
+      }
       // Use the physical letter key before the IME can display Korean text.
       if (colKey === "writer" && this.handleWriterLetterKey(e, input)) {
         composing = false;

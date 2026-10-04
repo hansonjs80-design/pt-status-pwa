@@ -294,3 +294,18 @@ test('gender picker Right applies highlighted gender, closes and moves to the ne
   assert.deepEqual(actions,[['apply',2,'F'],['close'],['move',2,'gender',1],['focus']]);
   assert.equal(app.genderPickerState,null);
 });
+
+
+test('writer Right exits at the text end even while IME reports composition, but retains native caret movement inside text', () => {
+  const {app}=createApp();
+  let open=false;
+  app.isAutocompleteOpen=()=>open;
+  const input={value:'JK',selectionStart:2,selectionEnd:2};
+  assert.equal(app.isWriterRightExit({key:'Process',code:'ArrowRight',isComposing:true},input),true);
+  input.selectionStart=input.selectionEnd=1;
+  assert.equal(app.isWriterRightExit({key:'ArrowRight'},input),false);
+  open=true;
+  assert.equal(app.isWriterRightExit({key:'ArrowRight'},input),true);
+  for(const modifier of ['shiftKey','ctrlKey','metaKey','altKey'])
+    assert.equal(app.isWriterRightExit({key:'ArrowRight',[modifier]:true},input),false);
+});
