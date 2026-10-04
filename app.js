@@ -759,6 +759,7 @@ class PTApp {
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
     document.addEventListener("keyup", (e) => this.releaseHistorySearchKey(e));
+    this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
     window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; });
 
     document.addEventListener("paste", event => {
@@ -3613,7 +3614,14 @@ class PTApp {
     this.renderCrossDateSection();
   }
 
+  syncHistoryRowHeaderPosition() {
+    // History has its own vertical scroller; offset its sticky first column by
+    // the shared sheet's horizontal scroll so dates remain clickable at the left.
+    this.elSheetContainer?.style?.setProperty?.("--history-scroll-left", `${this.elSheetContainer.scrollLeft || 0}px`);
+  }
+
   syncCrossDateColWidths() {
+    this.syncHistoryRowHeaderPosition();
     const innerTable = document.getElementById("crossDateInnerTable");
     if (!innerTable) return;
     const excelTable = document.getElementById("excelTable");

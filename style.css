@@ -2084,7 +2084,8 @@ body {
 }
 .cross-date-headers-row .col-resizer { cursor: col-resize; }
 
-.cross-date-headers-row th:first-child { left: 0; z-index: 7; }
+.cross-date-headers-row th:first-child { left: var(--history-scroll-left, 0px); z-index: 7; }
+.excel-table .cross-date-row .cross-date-num { left: var(--history-scroll-left, 0px); }
 
 .autocomplete-edit-button {
   display: none;
