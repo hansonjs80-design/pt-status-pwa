@@ -1437,13 +1437,17 @@ class PTApp {
 
   _updateFillDragBadge(mouseX, mouseY, count) {
     let badge = document.getElementById("fillDragCountBadge");
+    if (count < 1) {
+      if (badge) badge.style.display = "none";
+      return;
+    }
     if (!badge) {
       badge = document.createElement("div");
       badge.id = "fillDragCountBadge";
       badge.className = "fill-drag-count-badge";
       document.body.appendChild(badge);
     }
-    badge.textContent = count > 0 ? `+${count}` : "0";
+    badge.textContent = `+${count}`;
     badge.style.left = `${mouseX + 14}px`;
     badge.style.top  = `${mouseY - 10}px`;
     badge.style.display = "block";
