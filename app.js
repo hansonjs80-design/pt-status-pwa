@@ -3635,6 +3635,8 @@ class PTApp {
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
+    const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
+    this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
     setTimeout(() => {
       this.elSearchPromptInput.focus();
@@ -3794,7 +3796,7 @@ class PTApp {
     if (this.supabaseClient) await this.loadSearchHistory();
     const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
-      alert("해당 이름이 존재하지 않습니다.");
+      alert("해당 이름을 검색할 수 없습니다.");
       return false;
     }
     this.searchAllDates(query, targetRowIdx);
@@ -3803,10 +3805,12 @@ class PTApp {
 
   async submitSearchPrompt() {
     if (!this.elSearchPromptInput || this.searchPromptSubmitting) return;
-    // Only an explicit arrow-key choice may replace the entered search text.
-    // The first automatically highlighted suggestion is not a confirmed name.
+    // Preserve an existing cell's exact name when searching it unchanged.
+    // Otherwise keep the established autocomplete confirmation behavior.
+    const searchingCellName = Boolean(this.searchPromptCellName &&
+      this.elSearchPromptInput.value.trim() === this.searchPromptCellName && !this._searchPromptACExplicit);
     const menu = this._searchPromptACMenu;
-    if (menu && this._searchPromptACExplicit) {
+    if (menu && !searchingCellName) {
       const selected = menu.querySelector(".autocomplete-item.is-selected");
       if (selected) {
         const textSpan = selected.querySelector(".autocomplete-item-text");
@@ -3823,8 +3827,8 @@ class PTApp {
       const normalized = q.toLowerCase();
       const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
       const exists = this.hasRecordedPatientName(normalized, targetIdx);
-      if (!searchByChart && !exists) {
-        alert("해당 이름이 존재하지 않습니다.");
+      if (searchingCellName && !searchByChart && !exists) {
+        alert("해당 이름을 검색할 수 없습니다.");
         this.elSearchPromptInput.focus();
         this.elSearchPromptInput.select();
         return;

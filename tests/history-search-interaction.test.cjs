@@ -510,6 +510,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   const { app, context } = createApp([{name:'이연'}]);
   app.dataStore = {'2026-10-04':[{name:'이연'}], '2026-09-28':[{name:'이연진'}]};
   app.searchPromptTargetRowIdx = 0;
+  app.searchPromptCellName = '이연';
   app.elSearchPromptInput = {value:'이연',focus(){},select(){}};
   app._searchPromptACMenu = {querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
   let searched, closed = 0, message;
@@ -517,7 +518,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   app.searchAllDates = (...args) => { searched = args; };
   context.alert = text => { message = text; };
   await app.submitSearchPrompt();
-  assert.equal(message,'해당 이름이 존재하지 않습니다.');
+  assert.equal(message,'해당 이름을 검색할 수 없습니다.');
   assert.equal(app.elSearchPromptInput.value,'이연');
   assert.equal(searched,undefined);
   assert.equal(closed,0);
@@ -542,6 +543,7 @@ test('explicitly selected names, cloud-only exact names and chart search remain 
   await app.submitSearchPrompt();
   assert.deepEqual(searches[0],['이연진',0]);
   app._searchPromptACExplicit = false;
+  app._searchPromptACMenu = null;
   app.elSearchPromptInput.value = '15889';
   await app.submitSearchPrompt();
   assert.deepEqual(searches[1],['15889',0]);
@@ -557,7 +559,27 @@ test('direct cell name search also rejects a nonexistent exact name without chan
   app.searchAllDates = () => {searched=true;};
   const before=JSON.stringify(rows);
   assert.equal(await app.searchPatientHistory('이연',0),false);
-  assert.equal(message,'해당 이름이 존재하지 않습니다.');
+  assert.equal(message,'해당 이름을 검색할 수 없습니다.');
   assert.equal(searched,false);
   assert.equal(JSON.stringify(rows),before);
+});
+
+
+test('free search keeps default autocomplete confirmation while unchanged cell names stay exact', async () => {
+  const {app,context}=createApp([{name:'다른환자'}]);
+  app.dataStore={'2026-09-28':[{name:'이연진'}]};
+  app.elSearchPromptInput={value:'이연',focus(){},select(){}};
+  app.searchPromptTargetRowIdx=0;
+  app.searchPromptCellName=null;
+  app._searchPromptACMenu={querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
+  app.closeSearchPromptModal=()=>{};
+  let searched;
+  app.searchAllDates=(...args)=>{searched=args;};
+  context.alert=()=>assert.fail('free autocomplete search must remain available');
+  await app.submitSearchPrompt();
+  assert.deepEqual(searched,['이연진',0]);
+  app.elSearchPromptInput.value='없는입력';
+  app._searchPromptACMenu=null;
+  await app.submitSearchPrompt();
+  assert.deepEqual(searched,['없는입력',0]);
 });
