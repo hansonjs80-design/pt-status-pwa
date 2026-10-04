@@ -136,21 +136,40 @@ test('autocomplete refresh preserves the selected value until the query or edito
   const input = { value: '김' };
   const show = candidates => app.showAutocompleteMenu(0, 'name', cell, input, candidates);
   show(['김가', '김나', '김다']);
-  app.autocompleteState.selectedIndex = 2;
+  assert.deepEqual(Array.from(app.autocompleteState.candidates), ['김', '김가', '김나', '김다']);
+  assert.equal(app.autocompleteState.selectedIndex, 1);
+  app.autocompleteState.selectedIndex = 3;
   const originalMenu = menu;
   show(['김가', '김나', '김다']);
   assert.equal(menu, originalMenu);
   assert.equal(app.getSelectedAutocompleteItem(), '김다');
   show(['김새', '김다', '김가', '김나']);
-  assert.equal(app.autocompleteState.selectedIndex, 1);
+  assert.equal(app.autocompleteState.selectedIndex, 2);
   assert.equal(app.getSelectedAutocompleteItem(), '김다');
-  assert.match(menu.children[1].className, /is-selected/);
+  assert.match(menu.children[2].className, /is-selected/);
   input.value = '김가'; show(['김가', '김가나']);
-  assert.equal(app.autocompleteState.selectedIndex, 0);
+  assert.equal(app.autocompleteState.selectedIndex, 1);
   app.autocompleteState.selectedIndex = 1;
   show(['김가']);
   assert.equal(app.getSelectedAutocompleteItem(), '김가');
   show(['김가', '김가나']); app.autocompleteState.selectedIndex = 1;
   app.showAutocompleteMenu(1, 'name', cell, {value: '김가'}, ['김가', '김가나']);
-  assert.equal(app.autocompleteState.selectedIndex, 0);
+  assert.equal(app.autocompleteState.selectedIndex, 1);
+});
+
+
+test('new patient identity uses older dates or earlier rows, excluding itself and future dates', () => {
+  const app = createApp({
+    '2026-09-29': [{name:'기존', chartNo:'10'}],
+    '2026-09-30': [{name:'신규', chartNo:'20'}, {name:'신규', chartNo:'20'}],
+    '2026-10-01': [{name:'미래', chartNo:'30'}],
+  });
+  assert.equal(app.isNewPatientRow({name:'신규',chartNo:'20'}, 0), true);
+  assert.equal(app.isNewPatientRow({name:'신규',chartNo:'20'}, 1), false);
+  assert.equal(app.isNewPatientRow({name:'기존'}, 0), false);
+  assert.equal(app.isNewPatientRow({chartNo:'10'}, 0), false);
+  assert.equal(app.isNewPatientRow({name:'미래',chartNo:'30'}, 0), true);
+  assert.equal(app.isNewPatientRow({}, 0), false);
+  app.cloudSearchHistory = {'2026-09-28':[{name:'신규',chartNo:'20'}]};
+  assert.equal(app.isNewPatientRow({name:'신규'}, 0), false);
 });

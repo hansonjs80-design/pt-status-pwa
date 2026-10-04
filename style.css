@@ -741,7 +741,7 @@ body {
 
 /* Body Rows */
 .excel-row {
-  height: 28px;
+  height: 25.2px;
   transition: background-color 0.1s;
 }
 
@@ -996,7 +996,7 @@ body {
 .excel-cell {
   border-right: 1px solid var(--excel-grid-line);
   border-bottom: 1px solid var(--excel-grid-line);
-  padding: 2px 6px;
+  padding: 0.6px 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2061,7 +2061,7 @@ body {
 .history-search-active [data-col="visitTime"],
 .history-search-active [data-cross-col="visitTime"] { display: none; }
 
-.history-apply-cell { text-align: center; vertical-align: middle; padding: 2px; }
+.history-apply-cell { text-align: center; vertical-align: middle; padding: 0.6px 2px; }
 
 .excel-cell.cell-visitTime { padding-right: 24px; }
 .visit-time-refresh { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); z-index: 4; width: 19px; height: 22px; border: 0; border-radius: 4px; padding: 0; background: transparent; color: #547364; font: 20px/22px Arial, sans-serif; cursor: pointer; }
@@ -2126,3 +2126,6 @@ body {
   box-shadow: -1px 0 0 #bdcada;
 }
 .cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #e7edf5; }
+
+/* New identities use a computed row color; existing records keep their formatting. */
+.excel-row.new-patient-row > .excel-cell { color: #1e40af !important; }

@@ -738,8 +738,10 @@ class PTApp {
           this.moveSearchPromptAutocomplete(-1);
         } else if (e.key === "Enter") {
           e.preventDefault();
+          if (e.isComposing || e.keyCode === 229) return;
           if (!e.repeat) {
             this.historyApplyBlockedKey = "enter";
+            this.historySearchEnterAt = Date.now();
             this.submitSearchPrompt();
           }
         } else if (e.key === "Escape") {
@@ -1159,6 +1161,7 @@ class PTApp {
       const tr = document.createElement("tr");
       tr.className = "excel-row";
       tr.dataset.rowIdx = rowIdx;
+      tr.classList.toggle("new-patient-row", this.isNewPatientRow(row, rowIdx));
       tr.classList.toggle("lunch-break-row", Boolean(row._lunchBefore));
 
       // Row Number Header (1, 2, 3...)
@@ -1802,7 +1805,7 @@ class PTApp {
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
     const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
-    if (suggestions.length) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
+    if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
     else this.closeAutocompleteMenu();
   }
 
@@ -1913,6 +1916,9 @@ class PTApp {
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates) {
     const previous = this.autocompleteState;
     const query = input.value;
+    const typedValue = this.assembleHangul(query).trim();
+    const showTypedValue = ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
+    if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value.toLowerCase() !== typedValue.toLowerCase())];
     const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
       previous.colKey === colKey && previous.query === query;
     // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
@@ -1920,7 +1926,8 @@ class PTApp {
         candidates.every((candidate, index) => candidate === previous.candidates[index]) &&
         document.getElementById("cellAutocompleteMenu")) return;
     const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
-    const selectedIndex = Math.max(0, candidates?.indexOf(selectedValue) ?? -1);
+    const preservedIndex = sameQuery ? candidates?.indexOf(selectedValue) : -1;
+    const selectedIndex = preservedIndex >= 0 ? preservedIndex : (showTypedValue && candidates.length > 1 ? 1 : 0);
     this.closeAutocompleteMenu();
     if (!candidates || candidates.length === 0) return;
 
@@ -1971,6 +1978,7 @@ class PTApp {
         if (rows[rowIdx]) rows[rowIdx][colKey] = cand;
         cellElement.textContent = cand;
         this.saveDataStore();
+        if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
           this.elSheetContainer.focus({ preventScroll: true });
@@ -2276,7 +2284,7 @@ class PTApp {
         _acDebounceTimer = setTimeout(() => {
           if (!input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
-          if (suggestions.length > 0) {
+          if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
           } else {
             this.closeAutocompleteMenu();
@@ -2308,7 +2316,7 @@ class PTApp {
         _acDebounceTimer = setTimeout(() => {
           if (!input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value);
-          if (suggestions.length > 0) {
+          if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
             this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
           } else {
             this.closeAutocompleteMenu();
@@ -2343,6 +2351,7 @@ class PTApp {
         if (finalVal === "M") cellElement.classList.add("m");
       }
       this.saveDataStore();
+      if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
       setTimeout(() => {
         this._justCommittedFromAutocomplete = false;
       }, 60);
@@ -2359,6 +2368,22 @@ class PTApp {
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
       if (this.handleCellRowSelectShortcut(e)) return;
+      const directCommit = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&
+        (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.key === "ArrowRight");
+      if (!input.classList.contains("is-armed") && (directCommit || e.key === "Escape")) {
+        e.preventDefault(); e.stopPropagation();
+        composing = false; input.dataset.composing = "false";
+        this._justCommittedFromAutocomplete = true;
+        this.closeAutocompleteMenu();
+        if (e.key === "Escape") {
+          input.value = initialVal;
+          commitAndBlur(initialVal);
+        } else commitAndBlur();
+        if (directCommit && e.key === "ArrowRight") this.navigateCol(rowIdx, colKey, 1);
+        else this.selectCell(rowIdx, colKey, cellElement, false);
+        this.elSheetContainer.focus({ preventScroll: true });
+        return;
+      }
       // Let the native IME handle candidate selection and composition confirmation.
       if (composing || e.isComposing || e.keyCode === 229) {
         e.stopPropagation();
@@ -5161,6 +5186,25 @@ class PTApp {
     return value;
   }
 
+  isNewPatientRow(row, rowIdx) {
+    const name = String(row?.name ?? "").trim().toLowerCase();
+    const chart = String(row?.chartNo ?? "").trim().toLowerCase();
+    if (!name && !chart) return false;
+    const store = this.getSearchDataStore();
+    return !Object.entries(store).some(([date, rows]) => date <= this.currentDate && Array.isArray(rows) &&
+      rows.some((candidate, index) => (date < this.currentDate || index < rowIdx) &&
+        ((chart && String(candidate?.chartNo ?? "").trim().toLowerCase() === chart) ||
+         (name && String(candidate?.name ?? "").trim().toLowerCase() === name))));
+  }
+
+  refreshNewPatientRows() {
+    const rows = this.getCurrentRows();
+    this.elTableBody.querySelectorAll(".excel-row[data-row-idx]").forEach(tr => {
+      const index = Number(tr.dataset.rowIdx);
+      tr.classList.toggle("new-patient-row", this.isNewPatientRow(rows[index], index));
+    });
+  }
+
   renderColoredText(element, row, key) {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
     const rich = row._richText?.[key];
@@ -5647,9 +5691,19 @@ class PTApp {
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     if (this.crossDateSelection) {
       const { endRow, endCol } = this.crossDateSelection;
-      const col = this.getHorizontalContentEdge(this.crossDateResults[endRow], endCol, direction, keys.slice(0, 10));
+      const col = this.isCrossDateRowSelected
+        ? (direction < 0 ? 0 : 9)
+        : this.getHorizontalContentEdge(this.crossDateResults[endRow], endCol, direction, keys.slice(0, 10));
+      this.isCrossDateRowSelected = false;
       this.selectCrossDateCell(endRow, col, false);
       this.elTableBody.querySelector(`[data-cross-idx="${endRow}"][data-cross-col-idx="${col}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return true;
+    }
+    // Row-header/Ctrl+A selection has no activeCell. Collapse it to the
+    // requested data edge, excluding visit time and action columns.
+    if (this.selectedRowRange) {
+      const rowIdx = this.rowRangeEnd ?? this.selectedRowRange.minRow;
+      this.navigateCell(rowIdx, direction < 0 ? "no" : "specialNote");
       return true;
     }
     if (!this.activeCell) return false;
@@ -5719,6 +5773,8 @@ class PTApp {
 
   handleHistoryApplyShortcut(e) {
     const isEnter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
+    if (e.defaultPrevented || (this.historyApplyBlockedKey === "enter" &&
+        Date.now() - (this.historySearchEnterAt || 0) < 250)) return false;
     if (!this.crossDateSelection || !isEnter || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return false;
     const target = e.target;
     if (target?.closest?.("#searchPromptModal, .modal-overlay")) return false;

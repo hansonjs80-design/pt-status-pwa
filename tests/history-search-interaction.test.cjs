@@ -452,3 +452,53 @@ test('history Enter uses the same Apply button even with focus in the read-only 
     assert.equal(clicks, 1);
   }
 });
+
+
+test('row selection Ctrl/Cmd+Left/Right collapses to No./specialNote in the same current or history row', () => {
+  for (const history of [false, true]) for (const modifier of ['ctrlKey', 'metaKey']) {
+    for (const [key, col, colKey] of [['ArrowLeft', 0, 'no'], ['ArrowRight', 9, 'specialNote']]) {
+      for (const lastCol of [9, 10]) {
+        const { app } = createApp([{}, {}, { gender: 'F', name: '가상환자', visitTime: '10:00' }]);
+        app.activeCell = null;
+        let selected, prevented = 0;
+        app.elTableBody.querySelector = () => ({ scrollIntoView() {} });
+        app.navigateCell = (row, key) => { selected = ['current', row, key]; };
+        app.selectCrossDateCell = (row, column, extend) => { selected = ['history', row, column, extend]; };
+        if (history) {
+          app.crossDateResults = [{}, {}, { gender: 'F', name: '가상환자' }];
+          app.crossDateSelection = { startRow: 2, endRow: 2, minRow: 2, maxRow: 2, minCol: 0, maxCol: 9, endCol: 9 };
+          app.isCrossDateRowSelected = true;
+        } else {
+          app.selectedRowRange = { minRow: 2, maxRow: 2 };
+          app.rowRangeEnd = 2;
+          app.selectedRange = { minRow: 2, maxRow: 2, minCol: 0, maxCol: lastCol };
+          // A stale history selection flag must not affect daily navigation.
+          app.isCrossDateRowSelected = true;
+        }
+        app.handleGlobalKeyDown({ key, [modifier]: true, target: { tagName: 'DIV' }, preventDefault() { prevented++; } });
+        assert.deepEqual(selected, history ? ['history', 2, col, false] : ['current', 2, colKey]);
+        assert.equal(prevented, 1);
+      }
+    }
+  }
+});
+
+
+test('the Enter opening search cannot also apply history before its key release', () => {
+  const { app } = createApp([{}]);
+  app.crossDateSelection = {minRow:0};
+  app.crossDateResults = [{name:'가상환자'}];
+  app.historyApplyBlockedKey = 'enter';
+  app.historySearchEnterAt = Date.now();
+  let applied = 0;
+  app.applyHistoryRow = () => { applied++; };
+  const event = {key:'Enter', target:{tagName:'DIV',closest:()=>null}, preventDefault(){},stopPropagation(){}};
+  app.handleGlobalKeyDown(event);
+  app.handleGlobalKeyDown({...event,repeat:true});
+  assert.equal(applied,0);
+  app.releaseHistorySearchKey({key:'Enter'});
+  app.handleGlobalKeyDown(event);
+  assert.equal(applied,1);
+  app.handleHistoryApplyShortcut({...event,defaultPrevented:true});
+  assert.equal(applied,1);
+});
