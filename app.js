@@ -3703,6 +3703,7 @@ class PTApp {
     menu.className = "cell-autocomplete-menu search-prompt-autocomplete";
     menu.style.zIndex = "10010"; // 모달 위에 표시
     this._searchPromptACIndex = 0;
+    this._searchPromptACExplicit = false;
 
     suggestions.forEach((item, idx) => {
       const itemEl = document.createElement("div");
@@ -3763,6 +3764,7 @@ class PTApp {
     this._searchPromptACMenu = null;
     this._searchPromptACSuggestions = null;
     this._searchPromptACIndex = -1;
+    this._searchPromptACExplicit = false;
   }
 
   moveSearchPromptAutocomplete(direction) {
@@ -3774,16 +3776,37 @@ class PTApp {
     if (next < 0) next = suggestions.length - 1;
     if (next >= suggestions.length) next = 0;
     this._searchPromptACIndex = next;
+    this._searchPromptACExplicit = true;
     items.forEach((it, i) => it.classList.toggle("is-selected", i === next));
     items[next]?.scrollIntoView({ block: "nearest" });
     return true;
   }
 
-  submitSearchPrompt() {
-    if (!this.elSearchPromptInput) return;
-    // 자동완성 선택 중이면 해당 값 우선
+  hasRecordedPatientName(query, targetRowIdx) {
+    const normalized = String(query).trim().toLowerCase();
+    return Object.entries(this.getSearchDataStore()).some(([date, rows]) =>
+      date <= this.currentDate && Array.isArray(rows) && rows.some((row, index) =>
+        !(date === this.currentDate && index === targetRowIdx) &&
+        String(row?.name ?? "").trim().toLowerCase() === normalized));
+  }
+
+  async searchPatientHistory(query, targetRowIdx) {
+    if (this.supabaseClient) await this.loadSearchHistory();
+    const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
+    if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
+      alert("해당 이름이 존재하지 않습니다.");
+      return false;
+    }
+    this.searchAllDates(query, targetRowIdx);
+    return true;
+  }
+
+  async submitSearchPrompt() {
+    if (!this.elSearchPromptInput || this.searchPromptSubmitting) return;
+    // Only an explicit arrow-key choice may replace the entered search text.
+    // The first automatically highlighted suggestion is not a confirmed name.
     const menu = this._searchPromptACMenu;
-    if (menu) {
+    if (menu && this._searchPromptACExplicit) {
       const selected = menu.querySelector(".autocomplete-item.is-selected");
       if (selected) {
         const textSpan = selected.querySelector(".autocomplete-item-text");
@@ -3792,10 +3815,23 @@ class PTApp {
     }
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
-    this.closeSearchPromptModal();
-    if (q) {
+    if (!q) return;
+    this.searchPromptSubmitting = true;
+    try {
+      if (this.supabaseClient) await this.loadSearchHistory();
+      // Ignore the active draft row: typing a new name does not establish history.
+      const normalized = q.toLowerCase();
+      const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
+      const exists = this.hasRecordedPatientName(normalized, targetIdx);
+      if (!searchByChart && !exists) {
+        alert("해당 이름이 존재하지 않습니다.");
+        this.elSearchPromptInput.focus();
+        this.elSearchPromptInput.select();
+        return;
+      }
+      this.closeSearchPromptModal();
       this.searchAllDates(q, targetIdx);
-    }
+    } finally { this.searchPromptSubmitting = false; }
   }
 
   selectCrossDateRow(idx) {
@@ -5825,7 +5861,9 @@ class PTApp {
           const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : -1;
           e.target.blur();
           this.elSheetContainer.focus({ preventScroll: true });
-          this.searchAllDates(this.assembleHangul(cellInput.value).trim() || searchVal, originRowIdx);
+          const query = this.assembleHangul(cellInput.value).trim() || searchVal;
+          if (["name", "chartNo"].includes(this.activeCell?.colKey)) void this.searchPatientHistory(query, originRowIdx);
+          else this.searchAllDates(query, originRowIdx);
         } else if (cellInput) {
           this.openSearchPromptModal(this.activeCell?.rowIdx, "");
         }

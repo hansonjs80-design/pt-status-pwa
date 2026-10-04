@@ -1176,6 +1176,10 @@ body {
   font-weight: 600;
 }
 
+.autocomplete-item.is-selected {
+  box-shadow: inset 0 0 0 1.5px #107C41;
+}
+
 .autocomplete-item-text {
   flex: 1;
 }

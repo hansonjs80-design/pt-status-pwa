@@ -8,7 +8,7 @@ function createApp(rows = []) {
   const context = vm.createContext({
     window: { addEventListener() {} },
     document: { activeElement: null, querySelectorAll: () => [] },
-    setTimeout: fn => fn(), clearTimeout,
+    setTimeout: fn => fn(), clearTimeout, alert() {},
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
@@ -94,6 +94,7 @@ test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     let searched;
+    app.dataStore = {'2026-10-03':[{name:'가상환자'}]};
     app.searchAllDates = (...args) => { searched = args; };
     const row = { dataset: { rowIdx: '0' }, classList: { add() {} } };
     const input = { tagName: 'INPUT', value: '가상환자', closest: selector => selector === '.excel-row' ? row : {}, blur() {} };
@@ -351,6 +352,7 @@ test('the first physical Ctrl/Cmd+F searches a composing editor and releases its
   for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자' }]);
     const searches = [];
+    app.dataStore = {'2026-10-03':[{name:'확정된이름'}]};
     app.searchAllDates = (...args) => searches.push(args);
     const row = { dataset: { rowIdx: '0' }, classList: { add() {} } };
     const input = { tagName: 'INPUT', value: '가상환자', closest: selector => selector === '.excel-row' ? row : {},
@@ -501,4 +503,61 @@ test('the Enter opening search cannot also apply history before its key release'
   assert.equal(applied,1);
   app.handleHistoryApplyShortcut({...event,defaultPrevented:true});
   assert.equal(applied,1);
+});
+
+
+test('search Enter preserves the typed exact name instead of accepting a highlighted longer name', async () => {
+  const { app, context } = createApp([{name:'이연'}]);
+  app.dataStore = {'2026-10-04':[{name:'이연'}], '2026-09-28':[{name:'이연진'}]};
+  app.searchPromptTargetRowIdx = 0;
+  app.elSearchPromptInput = {value:'이연',focus(){},select(){}};
+  app._searchPromptACMenu = {querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
+  let searched, closed = 0, message;
+  app.closeSearchPromptModal = () => { closed++; };
+  app.searchAllDates = (...args) => { searched = args; };
+  context.alert = text => { message = text; };
+  await app.submitSearchPrompt();
+  assert.equal(message,'해당 이름이 존재하지 않습니다.');
+  assert.equal(app.elSearchPromptInput.value,'이연');
+  assert.equal(searched,undefined);
+  assert.equal(closed,0);
+  app.dataStore['2026-09-27'] = [{name:'이연'}];
+  await app.submitSearchPrompt();
+  assert.deepEqual(searched,['이연',0]);
+  assert.equal(closed,1);
+});
+
+test('explicitly selected names, cloud-only exact names and chart search remain usable', async () => {
+  const {app,context} = createApp([{}]);
+  app.searchPromptTargetRowIdx = 0;
+  app.elSearchPromptInput = {value:'이연',focus(){},select(){}};
+  app._searchPromptACExplicit = true;
+  app._searchPromptACMenu = {querySelector:()=>({querySelector:()=>({textContent:'이연진'})})};
+  app.supabaseClient = {};
+  app.loadSearchHistory = async () => {app.cloudSearchHistory={'2026-09-28':[{name:'이연진',chartNo:'15889'}]};};
+  app.closeSearchPromptModal = () => {};
+  const searches = [];
+  app.searchAllDates = (...args) => searches.push(args);
+  context.alert = () => assert.fail('known name and chart search must not report missing name');
+  await app.submitSearchPrompt();
+  assert.deepEqual(searches[0],['이연진',0]);
+  app._searchPromptACExplicit = false;
+  app.elSearchPromptInput.value = '15889';
+  await app.submitSearchPrompt();
+  assert.deepEqual(searches[1],['15889',0]);
+});
+
+
+test('direct cell name search also rejects a nonexistent exact name without changing rows', async () => {
+  const rows = [{name:'이연'}];
+  const {app,context} = createApp(rows);
+  app.dataStore={'2026-10-04':rows,'2026-09-28':[{name:'이연진'}]};
+  let message, searched=false;
+  context.alert = text => {message=text;};
+  app.searchAllDates = () => {searched=true;};
+  const before=JSON.stringify(rows);
+  assert.equal(await app.searchPatientHistory('이연',0),false);
+  assert.equal(message,'해당 이름이 존재하지 않습니다.');
+  assert.equal(searched,false);
+  assert.equal(JSON.stringify(rows),before);
 });
