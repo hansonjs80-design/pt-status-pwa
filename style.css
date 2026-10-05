@@ -1128,13 +1128,13 @@ body {
 .gender-picker-menu {
   position: fixed;
   background: #ffffff;
-  border: 1px solid #107C41;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  border-radius: 2px;
+  border: 1px solid #7bae8e;
+  box-shadow: 0 4px 14px rgba(16, 80, 42, 0.14);
+  border-radius: 6px;
   z-index: 3000;
   width: 136px;
   box-sizing: border-box;
-  padding: 3px 0;
+  padding: 4px;
   font-size: 13px;
   font-weight: bold;
   user-select: none;
@@ -1142,6 +1142,7 @@ body {
 }
 
 .gender-picker-item {
+  border-radius: 3px;
   padding: 6px 8px;
   cursor: pointer;
   display: flex;
@@ -1172,19 +1173,20 @@ body {
 .cell-autocomplete-menu {
   position: fixed;
   background: #ffffff;
-  border: 1px solid #107C41;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-  border-radius: 3px;
+  border: 1px solid #7bae8e;
+  box-shadow: 0 4px 14px rgba(16, 80, 42, 0.14);
+  border-radius: 6px;
   z-index: 3500;
   max-height: 220px;
   overflow-y: auto;
   font-size: 12.5px;
-  padding: 4px 0;
+  padding: 4px;
   box-sizing: border-box;
   animation: contextMenuFadeIn 0.08s ease-out;
 }
 
 .autocomplete-item {
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1204,7 +1206,7 @@ body {
 }
 
 .autocomplete-item.is-selected {
-  box-shadow: inset 0 0 0 1.5px #107C41;
+  box-shadow: inset 0 0 0 1px #409461;
 }
 
 .autocomplete-item-text {
@@ -2196,8 +2198,8 @@ body {
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }
 
 .gender-picker-item.is-selected {
-  background: #e6f3ea;
-  box-shadow: inset 0 0 0 2px #107c41;
+  background: #eef8f2;
+  box-shadow: inset 0 0 0 1px #409461;
 }
 
 .summary-period-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid #d6e2da; border-radius: 8px; background: #eaf1ec; }
