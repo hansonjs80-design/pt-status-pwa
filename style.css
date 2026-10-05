@@ -1230,12 +1230,21 @@ body {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   background-color: var(--excel-cell-selected);
   border: 1px solid #ffffff;
-  cursor: crosshair;
+  cursor: grab;
   z-index: 3;
+}
+
+.cell-fill-handle:hover {
+  box-shadow: 0 0 0 1px var(--excel-cell-selected);
+}
+
+.sheet-container.is-fill-dragging,
+.sheet-container.is-fill-dragging * {
+  cursor: grabbing !important;
 }
 
 .excel-cell.range-selected:not(.range-border-bottom) .cell-fill-handle {

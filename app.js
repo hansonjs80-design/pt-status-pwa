@@ -1380,6 +1380,7 @@ class PTApp {
       this.isSelectingRange = false;
       this.isSelectingRows = false;
       this.elSheetContainer.classList.add("is-selecting");
+      this.elSheetContainer.classList.add("is-fill-dragging");
     });
     handle.addEventListener("click", (event) => event.stopPropagation());
     cellElement.appendChild(handle);
@@ -1424,6 +1425,7 @@ class PTApp {
     this.fillDrag = null;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
     this.elSheetContainer.classList.remove("is-selecting");
+    this.elSheetContainer.classList.remove("is-fill-dragging");
     this._removeFillDragBadge();
   }
 
