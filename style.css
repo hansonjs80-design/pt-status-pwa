@@ -608,6 +608,12 @@ body {
   outline: none;
 }
 
+.sheet-container.history-search-active::after {
+  content: "";
+  display: block;
+  height: var(--history-tail-space, 0px);
+}
+
 /* Excel Table Styling */
 .excel-table {
   width: 100%;

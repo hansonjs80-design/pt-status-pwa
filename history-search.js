@@ -212,9 +212,40 @@ class PTHistorySearch {
     if (cell) {
       this.selectCell(rowIdx, "no", cell, false);
       this.isCrossDateRowSelected = false;
-      this.ensureCurrentCellVisible(cell);
+      this.revealHistoryDestination(cell, rowIdx);
       this.elSheetContainer.focus({ preventScroll: true });
     }
+  }
+
+  revealHistoryDestination(cell, rowIdx = Number(cell?.dataset?.row)) {
+    this.ensureCurrentCellVisible(cell);
+    if (!Number.isInteger(rowIdx) || !cell?.getBoundingClientRect) return;
+    const rows = this.getCurrentRows();
+    let lastDataIdx = rows.length - 1;
+    while (lastDataIdx >= 0) {
+      const row = rows[lastDataIdx];
+      if (row.name || row.chartNo || row.part || row.prescription || row.extra || row.writer || row.memo || row.specialNote) break;
+      lastDataIdx--;
+    }
+    // Tail destinations show twelve preceding rows; middle destinations keep nearest scrolling.
+    if (rowIdx < lastDataIdx) return;
+    const contextCell = this.elTableBody.querySelector(`[data-row="${Math.max(0, rowIdx - 12)}"][data-col="no"]`);
+    const container = this.elSheetContainer;
+    if (!contextCell?.getBoundingClientRect || !container?.getBoundingClientRect) return;
+    const bounds = container.getBoundingClientRect();
+    const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
+    let top = bounds.top + (container.clientTop || 0);
+    container.querySelectorAll("#excelTable thead th, .current-history-headers th").forEach(header => {
+      const rect = header.getBoundingClientRect();
+      if (rect.height && rect.bottom > top && rect.top < bottom) top = Math.max(top, rect.bottom);
+    });
+    const contextTop = contextCell.getBoundingClientRect().top;
+    const contextHeight = cell.getBoundingClientRect().bottom - contextTop;
+    // Supply enough trailing space to align the context even at the scroll limit.
+    container.style?.setProperty?.("--history-tail-space", `${Math.max(0, bottom - top - contextHeight)}px`);
+    container.scrollTop += contextCell.getBoundingClientRect().top - top;
+    // Small viewports may fit fewer than thirteen rows, but the destination must stay visible.
+    this.ensureCurrentCellVisible(cell);
   }
 
   handleSearch() {
@@ -253,6 +284,7 @@ class PTHistorySearch {
     this.historyLayoutObserver?.disconnect();
     this.historyLayoutObserver = null;
     this.elSheetContainer?.classList.remove("history-search-active");
+    this.elSheetContainer?.style?.removeProperty?.("--history-tail-space");
     this.clearCrossDateSelection();
     this.isCrossDateRowSelected = false;
     this.crossDateResults = [];
@@ -647,7 +679,7 @@ class PTHistorySearch {
         // Do not move back after the user has already navigated to another cell.
         if (focusCurrentTarget && this.activeCell && this.activeCell.rowIdx !== originIdx) return;
         if (scrollToAppliedRow || originIdx >= 0) {
-          this.ensureCurrentCellVisible(this.elTableBody.querySelector('.history-destination-row .excel-cell') || scrollRowEl.querySelector('[data-col="no"]'));
+          this.revealHistoryDestination(this.elTableBody.querySelector('.history-destination-row .excel-cell') || scrollRowEl.querySelector('[data-col="no"]'));
         } else {
           scrollRowEl.scrollIntoView({ block: "center" });
         }

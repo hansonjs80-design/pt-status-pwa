@@ -728,3 +728,33 @@ test('destination highlighting touches only old marks and destination cells, ind
   assert.equal(rowLookups,1);
   assert.equal(cellLookups,0,'active daily selection needs no per-cell preview work');
 });
+
+test('tail destinations retain twelve preceding rows after immediate and deferred reveals', () => {
+  const rows = Array.from({length: 35}, (_, i) => i <= 30 ? {name: `시험${i}`} : {});
+  const {app} = createApp(rows);
+  let tailSpace;
+  const container = {scrollTop: 0, clientTop: 0, clientHeight: 900,
+    style: {setProperty: (name, value) => {assert.equal(name, '--history-tail-space'); tailSpace = value;}},
+    getBoundingClientRect: () => ({top: 100}),
+    querySelectorAll: () => [{getBoundingClientRect: () => ({top: 100, bottom: 400, height: 300})}]};
+  const cells = rows.map((_, i) => ({dataset: {row: String(i)}, scrollIntoView() {},
+    getBoundingClientRect: () => ({top: 400 + i * 30 - container.scrollTop, bottom: 430 + i * 30 - container.scrollTop})}));
+  app.elSheetContainer = container;
+  app.elTableBody = {querySelector: selector => cells[Number(selector.match(/data-row="(\d+)"/)[1])]};
+  for (const idx of [30, 31]) {
+    app.revealHistoryDestination(cells[idx]);
+    assert.equal(container.scrollTop, (idx - 12) * 30);
+    assert.equal(cells[idx - 12].getBoundingClientRect().top, 400);
+    assert.ok(cells[idx].getBoundingClientRect().bottom <= 1000);
+    assert.equal(tailSpace, '210px', 'trailing space permits context alignment at the scroll limit');
+    app.revealHistoryDestination(cells[idx]);
+    assert.equal(container.scrollTop, (idx - 12) * 30, 'later layout keeps the same context');
+  }
+  container.scrollTop = 150;
+  app.revealHistoryDestination(cells[10]);
+  assert.equal(container.scrollTop, 150, 'visible middle destinations keep their position');
+  container.clientHeight = 450;
+  app.revealHistoryDestination(cells[30]);
+  assert.equal(tailSpace, '0px');
+  assert.equal(cells[30].getBoundingClientRect().bottom, 550, 'small screens still reveal the destination');
+});
