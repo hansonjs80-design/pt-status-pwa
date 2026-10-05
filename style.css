@@ -608,14 +608,14 @@ body {
   outline: none;
 }
 
-.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 340px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
+.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 272px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
 .search-prompt-card .modal-header { padding: 7px 14px; background: #2563eb; border-bottom: 1px solid #2563eb; }
 .search-prompt-card .modal-header h2 { margin: 0; color: #fff; font-size: 15px; font-weight: 700; }
 .search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #fff; font-size: 16px; }
 .search-prompt-card .modal-body { padding: 14px; }
 .search-prompt-label { display: block; margin-bottom: 6px; color: #64748b; font-size: 12px; }
 .search-prompt-field { position: relative; margin-bottom: 12px; }
-#searchPromptInput { width: 100%; box-sizing: border-box; padding: 9px 10px; font: inherit; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; }
+#searchPromptInput { width: 100%; height: 40px; box-sizing: border-box; padding: 9px 10px; font: inherit; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; }
 #searchPromptInput:focus { border-color: #2563eb; box-shadow: 0 0 0 2px #2563eb1a; }
 .search-prompt-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .search-prompt-actions button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #dce2e8; border-radius: 6px; background: #fff; color: #475569; font: inherit; font-size: 12px; cursor: pointer; }
@@ -2113,7 +2113,7 @@ body {
 .device-settings-dialog footer { margin-top: 20px; border-top: 1px solid #e1e9e4; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
 .device-settings-dialog a { color: #176e40; font-size: 12px; }
 
-.history-search-active [data-col="visitTime"],
+#excelTable [data-col="visitTime"],
 .history-search-active [data-cross-col="visitTime"] { display: none; }
 
 .history-apply-cell { text-align: center; vertical-align: middle; padding: 0.6px 2px; }

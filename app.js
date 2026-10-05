@@ -1280,7 +1280,7 @@ class PTApp {
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
     if (this.genderPickerState) this.closeGenderDropdown();
-    if (colKey === "visitTime" && this.elSearchInput.value.trim()) {
+    if (colKey === "visitTime") {
       colKey = "specialNote";
       cellElement = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="specialNote"]`);
       if (!cellElement) return;
@@ -2705,7 +2705,7 @@ class PTApp {
         }
 
         // 방향에 따라 셀 이동
-        const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+        const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
         const colIdx = colOrder.indexOf(colKey);
         let targetRow = rowIdx;
         let targetColIdx = colIdx;
@@ -2970,7 +2970,8 @@ class PTApp {
     this.selectRowRange(rowIdx, rowIdx, 9);
   }
 
-  selectRowRange(startRowIdx, endRowIdx, lastCol = 10) {
+  selectRowRange(startRowIdx, endRowIdx, lastCol = 9) {
+    lastCol = Math.min(lastCol, 9);
     if (this.genderPickerState) this.closeGenderDropdown();
     // Clear native browser text highlighting before painting the spreadsheet selection.
     window.getSelection()?.removeAllRanges();
@@ -3355,7 +3356,7 @@ class PTApp {
   }
 
   navigateCol(rowIdx, currentColKey, direction) {
-    const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     const curIdx = colOrder.indexOf(currentColKey);
     let nextIdx = curIdx + direction;
     let nextRowIdx = rowIdx;
@@ -4921,7 +4922,7 @@ class PTApp {
   }
 
   jumpToHorizontalContentEdge(direction) {
-    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     if (this.crossDateSelection) {
       const { endRow, endCol } = this.crossDateSelection;
       const col = this.isCrossDateRowSelected
@@ -4963,7 +4964,7 @@ class PTApp {
     }
     const anchor = history ? range.startCol : this.rangeStart.colIdx;
     const endpoint = history ? range.endCol : this.rangeEnd.colIdx;
-    const col = Math.max(anchor, Math.min(history ? 9 : 10, endpoint + (e.key === "ArrowRight" ? 1 : -1)));
+    const col = Math.max(anchor, Math.min(9, endpoint + (e.key === "ArrowRight" ? 1 : -1)));
     if (history) this.selectCrossDateCell(range.endRow, col, true);
     else this.extendCellSelection(this.rangeEnd.rowIdx, col);
     this.rememberHorizontalSelection();
@@ -5184,7 +5185,7 @@ class PTApp {
           if (visibleCurrentRows.length > 0) {
             const topRow = this.getTopVisibleCurrentRow() || visibleCurrentRows[0];
             const targetRowIdx = Number(topRow.dataset.rowIdx);
-            const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+            const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
             const targetColKey = colOrder[selection.endCol] || "chartNo";
             this.clearCrossDateSelection();
             const targetCell = this.elTableBody.querySelector(`[data-row="${targetRowIdx}"][data-col="${targetColKey}"]`);
@@ -5354,7 +5355,7 @@ class PTApp {
     // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
     if (isCtrlOrMeta && e.shiftKey && e.key === "ArrowRight" && this.activeCell) {
       e.preventDefault();
-      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
       const startRow = this.selectedRange ? this.selectedRange.minRow : this.activeCell.rowIdx;
       const startCol = this.selectedRange ? this.selectedRange.minCol : colOrder.indexOf(this.activeCell.colKey);
       const rowData = this.getCurrentRows()[startRow];
@@ -5410,7 +5411,7 @@ class PTApp {
     // 15) Arrow Keys Navigation (위/아래/좌/우 셀 이동)
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && this.activeCell) {
       e.preventDefault();
-      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
       const from = e.shiftKey && this.selectedRange && this.rangeEnd && !this.selectedRowRange
         ? this.rangeEnd : { rowIdx: this.activeCell.rowIdx, colIdx: colOrder.indexOf(this.activeCell.colKey) };
 

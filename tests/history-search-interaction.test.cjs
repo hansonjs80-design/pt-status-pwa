@@ -427,7 +427,7 @@ test('history can populate a chart-only target but does not overwrite a differen
 });
 
 
-test('Ctrl/Cmd+A daily row selection ends at specialNote, while direct row selection still includes visitTime', () => {
+test('daily row selections end at specialNote and exclude the hidden visitTime column', () => {
   const { app, context } = createApp([{}]);
   context.window.getSelection = () => ({ removeAllRanges() {} });
   context.document.querySelector = () => null;
@@ -437,7 +437,20 @@ test('Ctrl/Cmd+A daily row selection ends at specialNote, while direct row selec
   assert.equal(app.selectedRange.minCol, 0);
   assert.equal(app.selectedRange.maxCol, 9);
   app.selectRowRange(0, 0);
-  assert.equal(app.selectedRange.maxCol, 10);
+  assert.equal(app.selectedRange.maxCol, 9);
+  app.selectRowRange(0, 0, 10);
+  assert.equal(app.selectedRange.maxCol, 9);
+});
+
+test('Tab navigation skips hidden visitTime when wrapping at specialNote', () => {
+  const {app, context} = createApp([{}, {}]);
+  context.document.querySelector = () => ({});
+  let selected;
+  app.selectCell = (row, col) => {selected = [row, col];};
+  app.navigateCol(0, 'specialNote', 1);
+  assert.deepEqual(selected, [1, 'no']);
+  app.navigateCol(1, 'no', -1);
+  assert.deepEqual(selected, [0, 'specialNote']);
 });
 
 
