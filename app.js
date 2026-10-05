@@ -4394,8 +4394,7 @@ class PTApp {
     if (!this.crossDateSelection && this.crossDateResults?.length) {
       const latestIdx = this.crossDateResults.reduce((latest, row, idx, rows) =>
         String(row._sourceDate || "") >= String(rows[latest]._sourceDate || "") ? idx : latest, 0);
-      if (rowSelected) this.selectCrossDateRow(latestIdx);
-      else this.selectCrossDateCell(latestIdx, Math.min(9, Math.max(0, colIdx)));
+      this.selectCrossDateRow(latestIdx);
       this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${latestIdx}"]`)
         ?.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;

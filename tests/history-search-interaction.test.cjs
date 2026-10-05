@@ -66,7 +66,7 @@ test('selected chart/name opens prefilled prompt with all text selected, includi
   }
 });
 
-test('Ctrl/Cmd+Up goes to the first daily row or the newest history date while keeping cell or row selection', () => {
+test('Ctrl/Cmd+Up selects the newest history row in full from either a daily cell or row selection', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) for (const rowSelected of [false, true]) {
     const { app } = createApp([{}, {}, { name: '가상환자' }]);
     app.activeCell = rowSelected ? null : { rowIdx: 2, colKey: 'name' };
@@ -84,7 +84,7 @@ test('Ctrl/Cmd+Up goes to the first daily row or the newest history date while k
     assert.deepEqual(selected, rowSelected ? ['row', 0, 0, 9] : ['cell', 0, 'name']);
     app.crossDateResults = [{ _sourceDate: '2026-09-01' }, { _sourceDate: '2026-10-03' }, { _sourceDate: '2026-09-12' }];
     app.handleGlobalKeyDown(event);
-    assert.deepEqual(selected, rowSelected ? ['history-row', 1] : ['history-cell', 1, 3]);
+    assert.deepEqual(selected, ['history-row', 1]);
   }
 });
 
