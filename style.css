@@ -2190,11 +2190,11 @@ body {
 /* Search apply/paste destination: tint the full data row, including empty cells. */
 .history-search-active .excel-row.history-destination-row > .excel-cell,
 .history-search-active .excel-row.history-destination-row > .row-num {
-  background-color: #e8f3eb;
+  background-color: #cce6d5;
 }
 .history-search-active .excel-row.history-destination-row.active-row > .excel-cell,
 .history-search-active .excel-row.history-destination-row.active-row > .row-num {
-  background-color: var(--excel-row-active);
+  background-color: #bdddc9;
 }
 
 .history-search-active .excel-cell.history-destination-cell {
