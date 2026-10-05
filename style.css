@@ -2181,3 +2181,11 @@ body {
 .history-search-active .excel-row.history-destination-row.active-row > .row-num {
   background-color: var(--excel-row-active);
 }
+
+.history-search-active .excel-cell.history-destination-cell {
+  box-shadow: inset 0 0 0 2px var(--excel-green);
+}
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-top { border-top-color: #2563eb !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-bottom { border-bottom-color: #2563eb !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-left { border-left-color: #2563eb !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-right { border-right-color: #2563eb !important; }

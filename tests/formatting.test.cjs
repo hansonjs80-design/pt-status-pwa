@@ -2,7 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
-const context = vm.createContext({ window: { addEventListener() {} }, localStorage: { getItem() { return null; } } });
+const storage = new Map();
+const context = vm.createContext({ window: { addEventListener() {} }, localStorage: { getItem(key) { return storage.get(key) ?? null; }, setItem(key, value) { storage.set(key, value); } } });
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -236,4 +237,29 @@ test('history row and partial-range paste retain the actual destination selectio
       assert.ok(rangeUpdated);
     }
   }
+});
+
+
+test('whole column formatting covers historical and new rows while later cell overrides remain local', () => {
+  const instance = Object.create(context.App.prototype);
+  const oldRow = {name:'이전', _textStyles:{name:{fontSize:12}}, _textColors:{name:'#ff0000'}};
+  const newRow = {name:'새 행'};
+  const before = JSON.stringify(oldRow);
+  for (const [property,value] of [['fontSize',20],['fontWeight',400],['color','#123456']]) {
+    instance.setColumnFormatting({minCol:3,maxCol:3},property,value);
+    assert.equal(instance.getCellFormatting(oldRow,'name',property),value);
+    assert.equal(instance.getCellFormatting(newRow,'name',property),value);
+    assert.equal(instance.getCellFormatting(newRow,'memo',property),undefined);
+  }
+  assert.equal(JSON.stringify(oldRow),before);
+  instance.columnFormatting = instance.loadColumnFormatting();
+  assert.equal(instance.getCellFormatting(newRow,'name','fontSize'),20);
+  instance.markCellFormatting(oldRow,'name','fontSize');
+  oldRow._textStyles.name.fontSize=24;
+  assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),24);
+  assert.equal(instance.getCellFormatting(newRow,'name','fontSize'),20);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
+  assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),16);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'color',null);
+  assert.equal(instance.getCellFormatting(oldRow,'name','color'),null);
 });

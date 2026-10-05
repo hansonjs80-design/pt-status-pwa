@@ -673,3 +673,13 @@ test('destination tint follows actual Apply destination or selected paste row wi
   assert.equal(highlighted.size,0);
   assert.equal(JSON.stringify(rows),before);
 });
+
+test('history Down transition targets the first current row actually visible below sticky headers', () => {
+  const {app}=createApp();
+  const rows=Array.from({length:80},(_,i)=>({dataset:{rowIdx:String(i)},
+    getBoundingClientRect:()=>({top:100+i*30-1200,bottom:130+i*30-1200})}));
+  app.elTableBody={querySelectorAll:()=>rows};
+  app.elSheetContainer={clientTop:0,clientHeight:900,getBoundingClientRect:()=>({top:100}),
+    querySelectorAll:()=>[{getBoundingClientRect:()=>({top:100,bottom:500,height:400})}]};
+  assert.equal(app.getTopVisibleCurrentRow().dataset.rowIdx,'53');
+});

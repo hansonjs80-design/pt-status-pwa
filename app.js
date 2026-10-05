@@ -121,6 +121,7 @@ class PTApp {
   constructor() {
     window.ptApp = this;
     this.dataStore = this.loadDataStore();
+    this.columnFormatting = this.loadColumnFormatting();
     this.editHistory = new Map();
     this.cloudSearchHistory = {};
     this.currentDate = this.getTodayString();
@@ -1049,16 +1050,55 @@ class PTApp {
     return { value, label };
   }
 
+  loadColumnFormatting() {
+    try { return JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING") || "{}"); }
+    catch { return {}; }
+  }
+
+  setColumnFormatting(columns, property, value) {
+    this.columnFormatting ||= {};
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const revision = `${Date.now()}-${Math.random()}`;
+    for (let col = columns.minCol; col <= columns.maxCol; col++) {
+      this.columnFormatting[keys[col]] ||= {};
+      this.columnFormatting[keys[col]][property] = { value, revision };
+    }
+    localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
+  }
+
+  markCellFormatting(row, key, property) {
+    const setting = this.columnFormatting?.[key]?.[property];
+    if (!setting) return;
+    row._formatRevisions ||= {};
+    row._formatRevisions[key] ||= {};
+    row._formatRevisions[key][property] = setting.revision;
+  }
+
+  getCellFormatting(row, key, property) {
+    const setting = this.columnFormatting?.[key]?.[property];
+    const local = property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property];
+    return setting && row._formatRevisions?.[key]?.[property] !== setting.revision ? setting.value : local;
+  }
+
+  applyCellFormatting(element, row, key) {
+    for (const property of ["color", "fontSize", "fontWeight"]) {
+      const value = this.getCellFormatting(row, key, property);
+      if (value != null) element.style[property] = property === "fontSize" ? value + "px" : value;
+    }
+  }
+
   applyColumnTypography(property, value) {
     const range = this.getFormattingRange();
     if (!range || !["fontSize", "fontWeight"].includes(property)) return;
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const columns = this.selectedColumnRange && { ...this.selectedColumnRange };
+    if (columns) this.setColumnFormatting(columns, property, value);
     const rows = this.getCurrentRows();
     for (let r = range.minRow; r <= range.maxRow; r++) for (let col = range.minCol; col <= range.maxCol; col++) {
       if (!this.isSelectedCoordinate(r, col)) continue;
       const row = rows[r]; row._textStyles ||= {}; row._textStyles[keys[col]] ||= {};
+      this.markCellFormatting(row, keys[col], property);
       if (value === null) delete row._textStyles[keys[col]][property];
       else row._textStyles[keys[col]][property] = value;
     }
@@ -1209,9 +1249,7 @@ class PTApp {
         td.dataset.colIdx = colIdx;
         td.dataset.colLetter = colLetters[colIdx];
         td.dataset.excelRow = excelRowNum;
-        if (row._textColors?.[key]) td.style.color = row._textColors[key];
-        if (row._textStyles?.[key]?.fontSize) td.style.fontSize = row._textStyles[key].fontSize + "px";
-        if (row._textStyles?.[key]?.fontWeight) td.style.fontWeight = row._textStyles[key].fontWeight;
+        this.applyCellFormatting(td, row, key);
 
         const val = row[key] || "";
 
@@ -1401,6 +1439,23 @@ class PTApp {
     }
     this.updateHistoryDestinationHighlight();
     this.ensureCurrentCellVisible(cellElement);
+  }
+
+  getTopVisibleCurrentRow() {
+    const rows = Array.from(this.elTableBody.querySelectorAll('.excel-row[data-row-idx]:not([style*="display: none"])'));
+    const container = this.elSheetContainer;
+    if (!container?.getBoundingClientRect) return rows[0];
+    const bounds = container.getBoundingClientRect();
+    const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
+    let top = bounds.top + (container.clientTop || 0);
+    container.querySelectorAll("#excelTable thead th, .current-history-headers th").forEach(header => {
+      const rect = header.getBoundingClientRect();
+      if (rect.height && rect.top < bottom) top = Math.max(top, rect.bottom);
+    });
+    return rows.find(row => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > top + 1 && rect.top < bottom;
+    }) || rows[0];
   }
 
   ensureCurrentCellVisible(cell) {
@@ -3702,7 +3757,7 @@ class PTApp {
   copyHistoryFields(destination, source, keys) {
     for (const key of keys) {
       destination[key] = source[key] ?? "";
-      for (const metadata of ["_textColors", "_textStyles", "_richText"]) {
+      for (const metadata of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
         if (source[metadata]?.[key] !== undefined) {
           destination[metadata] ||= {};
           destination[metadata][key] = JSON.parse(JSON.stringify(source[metadata][key]));
@@ -3712,6 +3767,7 @@ class PTApp {
   }
 
   updateHistoryDestinationHighlight(source) {
+    const previewButton = Boolean(source);
     const indices = new Set();
     if (this.elSearchInput?.value?.trim()) {
       if (!source && !this.crossDateSelection) {
@@ -3730,7 +3786,13 @@ class PTApp {
       }
     }
     this.elTableBody?.querySelectorAll?.(".excel-row[data-row-idx]").forEach(row => {
-      row.classList.toggle("history-destination-row", indices.has(Number(row.dataset.rowIdx)));
+      const selected = indices.has(Number(row.dataset.rowIdx));
+      row.classList.toggle("history-destination-row", selected);
+      const colKey = this.historyApplyTarget?.colKey || "no";
+      row.querySelectorAll?.(".excel-cell[data-col]").forEach(cell => {
+        cell.classList.toggle("history-destination-cell", selected && !this.activeCell && !this.selectedRowRange && cell.dataset.col === colKey);
+      });
+      if (previewButton && selected) this.ensureCurrentCellVisible(row.querySelector?.(".excel-cell"));
     });
   }
 
@@ -4315,14 +4377,14 @@ class PTApp {
     this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
     this.updateHistoryDestinationHighlight();
 
-    // 6) 현재 날짜의 마지막 내용 행(또는 0번 행)이 화면 중앙 부근에 오도록 스크롤
-    const scrollTargetIdx = scrollToAppliedRow && originIdx >= 0 ? originIdx
+    // Searches started from a current row keep that row visible; otherwise show latest entries.
+    const scrollTargetIdx = originIdx >= 0 ? originIdx
       : lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
     if (scrollRowEl && !preserveCurrentSelection) {
       this.historyCurrentScrollTimer = setTimeout(() => {
-        if (scrollToAppliedRow) {
-          this.ensureCurrentCellVisible(scrollRowEl.querySelector('[data-col="no"]'));
+        if (scrollToAppliedRow || originIdx >= 0) {
+          this.ensureCurrentCellVisible(this.elTableBody.querySelector('.history-destination-row .excel-cell') || scrollRowEl.querySelector('[data-col="no"]'));
         } else {
           scrollRowEl.scrollIntoView({ block: "center" });
         }
@@ -4508,9 +4570,7 @@ class PTApp {
         td.dataset.crossIdx = idx;
         td.dataset.crossCol = key;
         td.dataset.crossColIdx = colIdx;
-        if (row._textColors?.[key]) td.style.color = row._textColors[key];
-        if (row._textStyles?.[key]?.fontSize) td.style.fontSize = row._textStyles[key].fontSize + "px";
-        if (row._textStyles?.[key]?.fontWeight) td.style.fontWeight = row._textStyles[key].fontWeight;
+        this.applyCellFormatting(td, row, key);
         const val = row[key] || "";
 
         if (key === "gender") {
@@ -5515,7 +5575,8 @@ class PTApp {
 
   renderColoredText(element, row, key) {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
-    const rich = row._richText?.[key];
+    const setting = this.columnFormatting?.[key]?.color;
+    const rich = !setting || row._formatRevisions?.[key]?.color === setting.revision ? row._richText?.[key] : null;
     element.textContent = "";
     if (rich?.text !== text || !Array.isArray(rich.colors)) {
       element.textContent = text;
@@ -5542,6 +5603,15 @@ class PTApp {
       if (this.isEditingCell()) document.activeElement.blur();
       const row = this.getCurrentRows()[textSelection.rowIdx];
       if (String(row[textSelection.colKey] ?? "") === textSelection.text) {
+        const key = textSelection.colKey;
+        const setting = this.columnFormatting?.[key]?.color;
+        if (setting && row._formatRevisions?.[key]?.color !== setting.revision) {
+          row._textColors ||= {};
+          if (setting.value) row._textColors[key] = setting.value;
+          else delete row._textColors[key];
+          if (row._richText) delete row._richText[key];
+        }
+        this.markCellFormatting(row, key, "color");
         this.setPartialTextColor(row, textSelection.colKey, textSelection.start, textSelection.end, color);
         this.saveDataStore(); this.renderTable(); this.closeFontColorMenu(); return;
       }
@@ -5552,13 +5622,17 @@ class PTApp {
     const range = this.selectedRange || (this.selectedRowRange ? { ...this.selectedRowRange, minCol: 0, maxCol: keys.length - 1 } : null) || (this.selectedColKey ? { minRow: 0, maxRow: rows.length - 1, minCol: keys.indexOf(this.selectedColKey), maxCol: keys.indexOf(this.selectedColKey) }
       : this.activeCell ? { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: keys.indexOf(this.activeCell.colKey), maxCol: keys.indexOf(this.activeCell.colKey) } : null);
     if (!range) return;
+    const columns = this.selectedColumnRange && { ...this.selectedColumnRange };
+    if (columns) this.setColumnFormatting(columns, "color", color);
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
+      this.markCellFormatting(rows[r], keys[c], "color");
       if (rows[r]._richText) delete rows[r]._richText[keys[c]];
       rows[r]._textColors ||= {};
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
     }
     this.saveDataStore(); this.renderTable();
+    if (columns) this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
     this.closeFontColorMenu();
   }
 
@@ -6258,11 +6332,12 @@ class PTApp {
             // ★ 이전 날짜 마지막 행에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행으로 행 전체 선택 이동!
             const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
             if (visibleCurrentRows.length > 0) {
-              const targetRowIdx = Number(visibleCurrentRows[0].dataset.rowIdx);
+              const topRow = this.getTopVisibleCurrentRow() || visibleCurrentRows[0];
+            const targetRowIdx = Number(topRow.dataset.rowIdx);
               this.clearCrossDateSelection();
               this.isCrossDateRowSelected = false;
               this.selectRowRange(targetRowIdx, targetRowIdx);
-              visibleCurrentRows[0].scrollIntoView({ block: "nearest", inline: "nearest" });
+              this.ensureCurrentCellVisible(topRow.querySelector(".excel-cell"));
             }
           }
         }
@@ -6277,14 +6352,15 @@ class PTApp {
           // ★ 이전 날짜 마지막 행의 셀에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행의 동일 열로 이동!
           const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
           if (visibleCurrentRows.length > 0) {
-            const targetRowIdx = Number(visibleCurrentRows[0].dataset.rowIdx);
+            const topRow = this.getTopVisibleCurrentRow() || visibleCurrentRows[0];
+            const targetRowIdx = Number(topRow.dataset.rowIdx);
             const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
             const targetColKey = colOrder[selection.endCol] || "chartNo";
             this.clearCrossDateSelection();
             const targetCell = this.elTableBody.querySelector(`[data-row="${targetRowIdx}"][data-col="${targetColKey}"]`);
             if (targetCell) {
               this.selectCell(targetRowIdx, targetColKey, targetCell, false);
-              targetCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+              this.ensureCurrentCellVisible(targetCell);
             }
             e.preventDefault();
             return;
