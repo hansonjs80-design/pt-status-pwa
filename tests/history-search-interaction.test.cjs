@@ -453,6 +453,40 @@ test('Tab navigation skips hidden visitTime when wrapping at specialNote', () =>
   assert.deepEqual(selected, [0, 'specialNote']);
 });
 
+test('search autocomplete puts the typed value first and omits matching duplicates', () => {
+  const {app} = createApp();
+  app.getSearchPromptSuggestions = () => [{value:'이연진',name:'이연진'}, {value:'이연',name:'이연'}];
+  assert.deepEqual(JSON.parse(JSON.stringify(app.getSearchPromptAutocompleteItems('이연'))),
+    [{value:'이연',typed:true}, {value:'이연진',name:'이연진'}]);
+  assert.equal(app.getSearchPromptAutocompleteItems('')[0], undefined);
+  app.getSearchPromptSuggestions = () => [];
+  assert.equal(app.getSearchPromptAutocompleteItems('없는이름')[0].value, '없는이름');
+});
+
+test('search autocomplete keeps input focus and selects the typed first item until arrows choose a candidate', async () => {
+  const {app} = createApp([{}]);
+  app.dataStore = {'2026-10-04':[{}], '2026-09-28':[{name:'이연진'}]};
+  app.searchPromptTargetRowIdx = 0;
+  app.elSearchPromptInput = {value:'이연',setAttribute(){}};
+  app._searchPromptACSuggestions = [{value:'이연',typed:true},{value:'이연진'}];
+  app._searchPromptACIndex = 0;
+  const selected = new Set();
+  app._searchPromptACMenu = {querySelectorAll: () => [0,1].map(index => ({id:`option${index}`,
+    classList:{toggle: (_, value) => value ? selected.add(index) : selected.delete(index)},
+    setAttribute(){},scrollIntoView(){}}))};
+  app.moveSearchPromptAutocompleteSelection(0);
+  assert.deepEqual([...selected], [0]);
+  assert.equal(app._searchPromptACExplicit, false);
+  app.moveSearchPromptAutocompleteSelection(1);
+  assert.deepEqual([...selected], [1]);
+  assert.equal(app.elSearchPromptInput.value, '이연', 'arrow navigation does not replace the live input');
+  let searched;
+  app.closeSearchPromptModal = () => {};
+  app.searchAllDates = query => {searched=query;};
+  await app.submitSearchPrompt();
+  assert.equal(searched, '이연진');
+});
+
 
 test('history Enter uses the same Apply button even with focus in the read-only formula and Korean/numpad key reports', () => {
   for (const key of [{ key: 'Enter' }, { key: 'Process', code: 'Enter', keyCode: 229 }, { key: 'Enter', code: 'NumpadEnter' }]) {

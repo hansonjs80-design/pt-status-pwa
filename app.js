@@ -735,11 +735,17 @@ class PTApp {
       this.elBtnSearchPromptSubmit.addEventListener("click", () => this.submitSearchPrompt());
     }
     if (this.elSearchPromptInput) {
+      this.elSearchPromptInput.addEventListener("input", () => this.updateSearchPromptAutocomplete());
       this.elSearchPromptInput.addEventListener("keydown", (e) => {
         if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) e.stopPropagation();
+        if (e.isComposing || e.keyCode === 229) return;
+        if (["ArrowDown", "ArrowUp"].includes(e.key) && this._searchPromptACMenu) {
+          e.preventDefault();
+          this.moveSearchPromptAutocompleteSelection(e.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
         if (e.key === "Enter") {
           e.preventDefault();
-          if (e.isComposing || e.keyCode === 229) return;
           if (!e.repeat) {
             this.historyApplyBlockedKey = "enter";
             this.historySearchEnterAt = Date.now();

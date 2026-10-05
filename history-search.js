@@ -331,7 +331,7 @@ class PTHistorySearch {
     setTimeout(() => {
       this.elSearchPromptInput.focus();
       this.elSearchPromptInput.select();
-      this.closeSearchPromptAutocomplete();
+      this.updateSearchPromptAutocomplete();
     }, 60);
   }
 
@@ -340,6 +340,80 @@ class PTHistorySearch {
     this.closeSearchPromptAutocomplete();
     this.elSearchPromptModal.style.display = "none";
     this.elSheetContainer?.focus({ preventScroll: true });
+  }
+
+  getSearchPromptAutocompleteItems(query) {
+    const value = String(query ?? "").trim();
+    if (!value) return [];
+    return [{ value, typed: true }, ...this.getSearchPromptSuggestions(value)
+      .filter(item => item.value.toLowerCase() !== value.toLowerCase())];
+  }
+
+  updateSearchPromptAutocomplete() {
+    this.closeSearchPromptAutocomplete();
+    const input = this.elSearchPromptInput;
+    if (!input?.getBoundingClientRect) return;
+    const suggestions = this.getSearchPromptAutocompleteItems(input.value);
+    if (!suggestions.length) return;
+    const menu = document.createElement("div");
+    menu.id = "searchPromptAutocompleteMenu";
+    menu.className = "cell-autocomplete-menu search-prompt-autocomplete";
+    menu.setAttribute("role", "listbox");
+    suggestions.forEach((item, index) => {
+      const option = document.createElement("div");
+      option.id = `searchPromptOption${index}`;
+      option.className = "autocomplete-item";
+      option.setAttribute("role", "option");
+      const label = document.createElement("span");
+      label.className = "autocomplete-item-text";
+      label.textContent = item.value;
+      const hint = document.createElement("span");
+      hint.className = "search-prompt-option-hint";
+      hint.textContent = item.typed ? "입력값 · Enter" : item.value === item.name ? item.chartNo : item.name;
+      option.append(label, hint);
+      option.addEventListener("mousedown", event => {
+        event.preventDefault();
+        input.value = item.value;
+        this.closeSearchPromptAutocomplete();
+        input.focus();
+      });
+      menu.appendChild(option);
+    });
+    document.body.appendChild(menu);
+    this._searchPromptACMenu = menu;
+    this._searchPromptACSuggestions = suggestions;
+    this._searchPromptACIndex = 0;
+    const position = () => {
+      const rect = input.getBoundingClientRect();
+      menu.style.left = `${rect.left}px`;
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.width = `${rect.width}px`;
+      menu.style.maxHeight = `${Math.max(40, Math.min(220, window.innerHeight - rect.bottom - 12))}px`;
+    };
+    position();
+    window.addEventListener("resize", position);
+    this._searchPromptACCleanup = () => {
+      window.removeEventListener("resize", position);
+      input.removeAttribute("aria-activedescendant");
+      input.setAttribute("aria-expanded", "false");
+    };
+    input.setAttribute("aria-expanded", "true");
+    this.moveSearchPromptAutocompleteSelection(0);
+  }
+
+  moveSearchPromptAutocompleteSelection(delta) {
+    if (!this._searchPromptACMenu || !this._searchPromptACSuggestions?.length) return;
+    this._searchPromptACIndex = Math.max(0, Math.min(this._searchPromptACSuggestions.length - 1, this._searchPromptACIndex + delta));
+    this._searchPromptACExplicit = this._searchPromptACIndex > 0;
+    this._searchPromptACMenu.querySelectorAll('[role="option"]').forEach((option, index) => {
+      const selected = index === this._searchPromptACIndex;
+      option.classList.toggle("is-selected", selected);
+      option.setAttribute("aria-selected", String(selected));
+      if (selected) {
+        this.elSearchPromptInput.setAttribute("aria-activedescendant", option.id);
+        option.scrollIntoView({ block: "nearest" });
+      }
+    });
   }
 
   // 검색어 종류에 맞춰 성함 또는 차트번호 후보만 보여준다.
@@ -411,7 +485,10 @@ class PTHistorySearch {
 
   async submitSearchPrompt() {
     if (!this.elSearchPromptInput || this.searchPromptSubmitting) return;
-    // Search exactly what the user entered; the popup has no autocomplete.
+    if (this._searchPromptACExplicit && this._searchPromptACSuggestions?.[this._searchPromptACIndex]) {
+      this.elSearchPromptInput.value = this._searchPromptACSuggestions[this._searchPromptACIndex].value;
+    }
+    // The first option always searches the current input unchanged.
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
     if (!q) return;
