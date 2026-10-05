@@ -644,3 +644,32 @@ test('current-cell navigation scrolls past pinned history headers only when obsc
   app.ensureCurrentCellVisible(cell);
   assert.equal(app.elSheetContainer.scrollTop,423);
 });
+
+test('destination tint follows actual Apply destination or selected paste row without modifying records', () => {
+  const rows=[{name:'가상환자',chartNo:'T1'},{name:'다른환자'},{}];
+  const {app}=createApp(rows);
+  const before=JSON.stringify(rows);
+  const highlighted=new Set();
+  app.elTableBody={querySelectorAll:()=>rows.map((_,index)=>({dataset:{rowIdx:String(index)},
+    classList:{toggle(_cls,on){if(on)highlighted.add(index);else highlighted.delete(index);}}}))};
+  app.elSearchInput.value='가상환자';
+  app.activeCell=null;
+  app.crossDateSelection={minRow:0};
+  app.crossDateResults=[{name:'가상환자',chartNo:'T1'}];
+  app.updateHistoryDestinationHighlight();
+  assert.deepEqual([...highlighted],[0]);
+  app.updateHistoryDestinationHighlight({name:'새환자',chartNo:'NEW'});
+  assert.deepEqual([...highlighted],[2]);
+  app.crossDateSelection=null;
+  app.activeCell={rowIdx:1,colKey:'memo'};
+  app.updateHistoryDestinationHighlight();
+  assert.deepEqual([...highlighted],[1]);
+  app.activeCell=null;
+  app.selectedRange={minRow:1,maxRow:2};
+  app.updateHistoryDestinationHighlight();
+  assert.deepEqual([...highlighted],[1,2]);
+  app.elSearchInput.value='';
+  app.updateHistoryDestinationHighlight();
+  assert.equal(highlighted.size,0);
+  assert.equal(JSON.stringify(rows),before);
+});

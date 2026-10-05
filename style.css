@@ -2171,3 +2171,13 @@ body {
 .writer-picker-menu .autocomplete-item { padding: 6px 8px; gap: 4px; }
 .gender-picker-hint { display: none; margin-left: auto; }
 .gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #cce6d4; color: #107c41; padding: 2px 5px; border-radius: 3px; font-weight: 600; font-size: 10px; }
+
+/* Search apply/paste destination: tint the full data row, including empty cells. */
+.history-search-active .excel-row.history-destination-row > .excel-cell,
+.history-search-active .excel-row.history-destination-row > .row-num {
+  background-color: #e8f3eb;
+}
+.history-search-active .excel-row.history-destination-row.active-row > .excel-cell,
+.history-search-active .excel-row.history-destination-row.active-row > .row-num {
+  background-color: var(--excel-row-active);
+}

@@ -1399,6 +1399,7 @@ class PTApp {
     } else {
       this.elSheetContainer.focus({ preventScroll: true });
     }
+    this.updateHistoryDestinationHighlight();
     this.ensureCurrentCellVisible(cellElement);
   }
 
@@ -3085,6 +3086,7 @@ class PTApp {
       this.elSelectedCellCoords.textContent = `${startNum}~${endNum}행 선택 (${rowCount}개 행)`;
     }
     this.elFormulaInput.value = "";
+    this.updateHistoryDestinationHighlight();
     this.elSheetContainer.focus({ preventScroll: true });
   }
 
@@ -3709,6 +3711,29 @@ class PTApp {
     }
   }
 
+  updateHistoryDestinationHighlight(source) {
+    const indices = new Set();
+    if (this.elSearchInput?.value?.trim()) {
+      if (!source && !this.crossDateSelection) {
+        if (this.activeCell) indices.add(this.activeCell.rowIdx);
+        else if (this.selectedRange) {
+          for (let row = this.selectedRange.minRow; row <= this.selectedRange.maxRow; row++) indices.add(row);
+        }
+      }
+      if (!indices.size) {
+        source ||= this.crossDateResults?.[this.crossDateSelection?.minRow ?? 0];
+        const target = this.historyApplyTarget;
+        if (source && target?.date === this.currentDate) {
+          const index = this.getCurrentRows().indexOf(target.row);
+          indices.add(this.getHistoryDestinationIndex(source, index >= 0 ? index : target.rowIdx));
+        }
+      }
+    }
+    this.elTableBody?.querySelectorAll?.(".excel-row[data-row-idx]").forEach(row => {
+      row.classList.toggle("history-destination-row", indices.has(Number(row.dataset.rowIdx)));
+    });
+  }
+
   getHistoryDestinationIndex(source, targetIndex) {
     const rows = this.getCurrentRows();
     const targetRow = rows[targetIndex];
@@ -3858,6 +3883,7 @@ class PTApp {
     this.elSheetContainer?.focus?.({ preventScroll: true });
     // 확장 선택 중인 드래그를 유지한다. 키보드/초기 선택은 드래그를 시작하지 않는다.
     this.isSelectingCrossDate = Boolean(extend && dragging);
+    this.updateHistoryDestinationHighlight();
   }
 
   restoreAppliedHistorySelection(target) {
@@ -3886,7 +3912,7 @@ class PTApp {
     rows.forEach((rowEl) => {
       if (!q) {
         rowEl.style.display = "";
-        rowEl.classList.remove("search-origin-row");
+        rowEl.classList.remove("search-origin-row", "history-destination-row");
         return;
       }
       const text = rowEl.textContent.toLowerCase();
@@ -3931,7 +3957,7 @@ class PTApp {
     // 현재 날짜 행 표시 원복
     this.elTableBody?.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)").forEach(rowEl => {
       rowEl.style.display = "";
-      rowEl.classList.remove("search-origin-row");
+      rowEl.classList.remove("search-origin-row", "history-destination-row");
     });
     this.syncMainColumnWidths();
   }
@@ -4287,6 +4313,7 @@ class PTApp {
 
     // 5) 이전 날짜 섹션 렌더링
     this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
+    this.updateHistoryDestinationHighlight();
 
     // 6) 현재 날짜의 마지막 내용 행(또는 0번 행)이 화면 중앙 부근에 오도록 스크롤
     const scrollTargetIdx = scrollToAppliedRow && originIdx >= 0 ? originIdx
@@ -4527,6 +4554,8 @@ class PTApp {
       applyButton.textContent = "적용";
       applyButton.title = "선택한 셀 적용 · Enter (선택이 없으면 이 행 전체 적용)";
       applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
+      applyButton.addEventListener("mouseenter", () => this.updateHistoryDestinationHighlight(row));
+      applyButton.addEventListener("mouseleave", () => this.updateHistoryDestinationHighlight());
       applyButton.addEventListener("mousedown", e => e.preventDefault());
       applyButton.addEventListener("click", () => this.applyHistoryRow(row, { focusAppliedRow: true }));
       actionCell.appendChild(applyButton);
