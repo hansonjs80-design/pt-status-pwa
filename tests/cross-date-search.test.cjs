@@ -148,6 +148,7 @@ test('cross-date search deduplicates identical previous records and toggles with
     localStorage: { getItem() { return null; }, setItem() {} },
     requestAnimationFrame(cb) { cb(); },
     setTimeout(cb) { cb(); },
+    clearTimeout() {},
     BASE_ROW_NUMBER: 1,
     DEFAULT_WRITER: '테스트',
   });

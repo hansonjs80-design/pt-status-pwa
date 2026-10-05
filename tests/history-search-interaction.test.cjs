@@ -626,3 +626,21 @@ test('Ctrl/Cmd+F in nonidentity live editors opens the empty patient popup witho
     assert.equal(blurred,true);
   }
 });
+
+test('current-cell navigation scrolls past pinned history headers only when obscured', () => {
+  const {app}=createApp();
+  let position={top:380,bottom:408};
+  const cell={getBoundingClientRect:()=>position,scrollIntoView(){}};
+  app.elSheetContainer={scrollTop:700,clientTop:0,clientHeight:900,
+    getBoundingClientRect:()=>({top:100}),
+    querySelectorAll:()=>[{getBoundingClientRect:()=>({top:100,bottom:130,height:30})},
+      {getBoundingClientRect:()=>({top:640,bottom:670,height:30})}]};
+  app.ensureCurrentCellVisible(cell);
+  assert.equal(app.elSheetContainer.scrollTop,410);
+  position={top:670,bottom:698};
+  app.ensureCurrentCellVisible(cell);
+  assert.equal(app.elSheetContainer.scrollTop,410);
+  position={top:985,bottom:1013};
+  app.ensureCurrentCellVisible(cell);
+  assert.equal(app.elSheetContainer.scrollTop,423);
+});

@@ -1399,6 +1399,24 @@ class PTApp {
     } else {
       this.elSheetContainer.focus({ preventScroll: true });
     }
+    this.ensureCurrentCellVisible(cellElement);
+  }
+
+  ensureCurrentCellVisible(cell) {
+    const container = this.elSheetContainer;
+    cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!cell?.getBoundingClientRect || !container?.getBoundingClientRect) return;
+    const bounds = container.getBoundingClientRect();
+    const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
+    let top = bounds.top + (container.clientTop || 0);
+    // Sticky rows visually cover the viewport although native scrolling counts it as visible.
+    container.querySelectorAll("#excelTable thead th, .current-history-headers th").forEach(header => {
+      const rect = header.getBoundingClientRect();
+      if (rect.height && rect.bottom > top && rect.top < bottom) top = Math.max(top, rect.bottom);
+    });
+    const rect = cell.getBoundingClientRect();
+    if (rect.top < top) container.scrollTop += rect.top - top;
+    else if (rect.bottom > bottom) container.scrollTop += rect.bottom - bottom;
   }
 
   highlightCell(cellElement) {
@@ -3851,7 +3869,7 @@ class PTApp {
     if (cell) {
       this.selectCell(rowIdx, "no", cell, false);
       this.isCrossDateRowSelected = false;
-      cell.scrollIntoView({ block: "center", inline: "nearest" });
+      this.ensureCurrentCellVisible(cell);
       this.elSheetContainer.focus({ preventScroll: true });
     }
   }
@@ -4156,6 +4174,7 @@ class PTApp {
   }
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false } = {}) {
+    clearTimeout(this.historyCurrentScrollTimer);
     // Refreshing search results must not steal focus from a current-date edit.
     const keepCurrentSelection = preserveCurrentSelection && !this.crossDateSelection &&
       Boolean(this.activeCell || this.selectedRange || this.selectedRowRange);
@@ -4273,9 +4292,13 @@ class PTApp {
     const scrollTargetIdx = scrollToAppliedRow && originIdx >= 0 ? originIdx
       : lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
-    if (scrollRowEl && !keepCurrentSelection) {
-      setTimeout(() => {
-        scrollRowEl.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (scrollRowEl && !preserveCurrentSelection) {
+      this.historyCurrentScrollTimer = setTimeout(() => {
+        if (scrollToAppliedRow) {
+          this.ensureCurrentCellVisible(scrollRowEl.querySelector('[data-col="no"]'));
+        } else {
+          scrollRowEl.scrollIntoView({ block: "center" });
+        }
       }, 50);
     }
   }
@@ -4539,14 +4562,18 @@ class PTApp {
     }
 
     // 3) 열 너비 동기화 및 파란 바 고정 위치(sticky top) 설정
-    this.syncCrossDateColWidths();
-    requestAnimationFrame(() => {
+    const syncHistoryLayout = () => {
       this.syncCrossDateColWidths();
+      // Set the pinned panel geometry before selecting/scrolling the applied row.
       // 글꼴/사용자 행 높이가 달라도 첫 12행을 온전히 표시한다.
       const visibleRows = Array.from(innerTbody.children).slice(0, 12);
       const rowsHeight = visibleRows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
       scrollWrap.style.maxHeight = `${historyHead.getBoundingClientRect().height + rowsHeight + 1}px`;
       this.updateCrossDateStickyOffsets();
+    };
+    syncHistoryLayout();
+    requestAnimationFrame(() => {
+      syncHistoryLayout();
       if (typeof ResizeObserver !== "undefined") {
         this.historyLayoutObserver = new ResizeObserver(() => {
           this.syncCrossDateColWidths();
@@ -6484,7 +6511,7 @@ class PTApp {
       if (targetCell) {
         if (e.shiftKey) this.extendCellSelection(targetRow, targetColIdx);
         else this.selectCell(targetRow, targetColKey, targetCell, false);
-        targetCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+        this.ensureCurrentCellVisible(targetCell);
       }
       return;
     }
