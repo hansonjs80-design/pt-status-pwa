@@ -72,7 +72,7 @@ test('clipboard jump uses leftmost column and its last populated row', () => {
   instance.clipboardSelection.minCol=0; instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:2,colKey:'no'});
   instance.clipboardSelection.minCol=2; instance.crossDateSelection={minCol:2,maxCol:5};
   instance.historyApplyTarget={date:'2026-10-01',row:rows[2],rowIdx:2,colKey:'name'}; instance.scrollToHistoryTarget=()=>{};
-  instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:2,colKey:'chartNo'});
+  instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:1,colKey:'chartNo'});
 });
 
 test('compound patient entry splits chart and name and removes suffixes', () => {
@@ -94,7 +94,7 @@ test('compound patient entry splits chart and name and removes suffixes', () => 
 test('history Ctrl/Cmd+Down finds the actual last daily record after deletion instead of a stale apply target', () => {
   const instance = Object.create(context.App.prototype);
   const deletedRow = { name: '삭제한 마지막 환자', chartNo: 'OLD' };
-  const rows = [{ name: '첫 환자', chartNo: '1' }, { memo: '마지막 내용' }, {}, {}, {}];
+  const rows = [{ name: '첫 환자', chartNo: '1' }, { chartNo: 'LAST' }, { writer: 'J' }, { memo: '미리 입력' }, {}];
   Object.assign(instance, {
     currentDate: '2026-10-04',
     crossDateSelection: { minCol: 2, maxCol: 9 },

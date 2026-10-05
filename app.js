@@ -4415,10 +4415,10 @@ class PTApp {
     const rows = this.getCurrentRows();
     // 이전 내역에서 내려올 때는 삭제/이동 전의 적용 위치 대신 현재 데이터 전체를 확인한다.
     let rowIdx = this.crossDateSelection
-      ? rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()))
+      ? this.getLastPatientRowIndex()
       : range ? rows.findLastIndex(row => String(row[colKey] ?? "").trim()) : -1;
     // A wholly empty first column (for example No. in a copied row) still lands on the last record.
-    if (rowIdx < 0) rowIdx = rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()));
+    if (rowIdx < 0 && !this.crossDateSelection) rowIdx = rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()));
     rowIdx = Math.max(0, rowIdx);
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
     if (cell) {

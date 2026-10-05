@@ -51,6 +51,11 @@ class PTHistorySearch {
     }
   }
 
+  getLastPatientRowIndex() {
+    return this.getCurrentRows().findLastIndex(row =>
+      ["name", "chartNo"].some(key => String(row?.[key] ?? "").trim()));
+  }
+
   getHistoryDestinationIndex(source, targetIndex) {
     const rows = this.getCurrentRows();
     const targetRow = rows[targetIndex];
@@ -63,12 +68,7 @@ class PTHistorySearch {
       (sourceChart && sourceChart === targetChart && (!sourceName || !targetName));
     if (samePatient) return targetIndex;
     // Prepared initials and treatment notes do not mark a patient record.
-    const contentKeys = ["name", "chartNo"];
-    let lastIndex = -1;
-    rows.forEach((row, idx) => {
-      if (contentKeys.some(key => String(row[key] ?? "").trim())) lastIndex = idx;
-    });
-    return lastIndex + 1;
+    return this.getLastPatientRowIndex() + 1;
   }
 
   applyHistoryRow(source, { focusAppliedRow = false } = {}) {

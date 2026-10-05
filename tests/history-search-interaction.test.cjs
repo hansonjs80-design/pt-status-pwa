@@ -49,6 +49,26 @@ test('row-header Ctrl/Cmd+Down keeps row selection on the last actual record, in
   }
 });
 
+test('history Ctrl/Cmd+Down after copy or cut ignores prepared writer rows and selects the last patient', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const cut of [false, true]) {
+    const rows = [{ name: '첫 환자' }, {}, { chartNo: 'LAST' }, { writer: 'J' }, { writer: 'S', memo: '미리 입력' }];
+    const { app } = createApp(rows);
+    app.crossDateSelection = { minRow: 0, maxRow: 0, minCol: 0, maxCol: 9 };
+    app.clipboardSelection = { date: '2026-10-03', minRow: 0, maxRow: 0, minCol: 0, maxCol: 9 };
+    app.pendingCut = cut ? { date: '2026-10-03', cells: [] } : null;
+    let selected, scrolled = 0;
+    app.selectCell = (rowIdx, colKey) => { selected = { rowIdx, colKey }; };
+    app.elTableBody.querySelector = () => ({ closest: () => ({ style: {} }), scrollIntoView() { scrolled++; } });
+    app.handleGlobalKeyDown({ key: 'ArrowDown', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {} });
+    assert.deepEqual(selected, { rowIdx: 2, colKey: 'no' });
+    assert.equal(scrolled, 1);
+    assert.equal(Boolean(app.pendingCut), cut);
+    rows[2] = { writer: 'K' };
+    app.jumpToLastRecord();
+    assert.deepEqual(selected, { rowIdx: 0, colKey: 'no' });
+  }
+});
+
 test('selected chart/name opens prefilled prompt with all text selected, including an empty cell', () => {
   for (const colKey of ['name', 'chartNo']) for (const value of ['가상환자', '']) {
     const { app } = createApp([{ [colKey]: value }]);
