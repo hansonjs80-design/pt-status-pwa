@@ -311,6 +311,15 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(app.crossDateResults[0].name, '김선');
   assert.equal(app.selectedRange.minRow, 20);
   assert.equal(app.elTableBody.children.find(c => c.dataset?.rowIdx === 20).style.display, '');
+  // A delayed history fetch must also preserve pasted row selection with no active cell.
+  app.activeCell = null;
+  app.selectedRowRange = { minRow: 20, maxRow: 21 };
+  const pastedRange = { minRow: 20, maxRow: 21, minCol: 0, maxCol: 9 };
+  app.selectedRange = pastedRange;
+  app.searchAllDates('김선', undefined, { preserveCurrentSelection: true });
+  assert.equal(app.crossDateSelection, null);
+  assert.equal(app.selectedRange, pastedRange);
+  assert.equal(app.selectedRowRange.minRow, 20);
   // An explicit new search still selects the latest history row as before.
   app.searchAllDates('김선', 20);
   assert.equal(app.crossDateSelection.startCol, 0);

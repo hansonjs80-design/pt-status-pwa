@@ -1153,6 +1153,8 @@ class PTApp {
     this.cancelFillDrag();
     this.clearCrossDateSelection();
     const rows = this.getCurrentRows();
+    const selectedRows = this.selectedRowRange && { ...this.selectedRowRange };
+    const selectedRange = this.selectedRange && { ...this.selectedRange };
     this.elTableBody.innerHTML = "";
 
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -1333,6 +1335,12 @@ class PTApp {
         this.highlightCell(targetCell);
         this.updateActiveHeaders(this.activeCell.rowIdx, this.activeCell.colKey);
       }
+    }
+    // Cloud/search refreshes replace DOM nodes; repaint the current selection too.
+    if (selectedRows) {
+      this.selectRowRange(selectedRows.minRow, selectedRows.maxRow, selectedRange?.maxCol ?? 10);
+    } else if (selectedRange && this.rangeStart && this.rangeEnd && !this.selectedCellSet && !this.selectedColumnRange) {
+      this.updateRangeSelection();
     }
     this.paintCellSet();
     this.renderClipboardSelection();
@@ -4149,7 +4157,8 @@ class PTApp {
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false } = {}) {
     // Refreshing search results must not steal focus from a current-date edit.
-    const keepCurrentSelection = preserveCurrentSelection && Boolean(this.activeCell);
+    const keepCurrentSelection = preserveCurrentSelection && !this.crossDateSelection &&
+      Boolean(this.activeCell || this.selectedRange || this.selectedRowRange);
     if (Number.isInteger(originRowIdx) && originRowIdx >= 0) {
       this.historyApplyTarget = {
         date: this.currentDate, rowIdx: originRowIdx,
@@ -4181,7 +4190,7 @@ class PTApp {
         lastDataIdx = Math.max(lastDataIdx, idx);
       }
     });
-    const originIdx = keepCurrentSelection ? this.activeCell.rowIdx
+    const originIdx = keepCurrentSelection ? (this.activeCell?.rowIdx ?? this.selectedRange?.minRow ?? this.selectedRowRange?.minRow)
       : Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
 
     let startIdx, endIdx;
