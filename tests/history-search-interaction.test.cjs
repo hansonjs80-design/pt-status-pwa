@@ -1,8 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const path = require('node:path');
 
 function createApp(rows = []) {
   const context = vm.createContext({
@@ -10,7 +8,7 @@ function createApp(rows = []) {
     document: { activeElement: null, querySelectorAll: () => [] },
     setTimeout: fn => fn(), clearTimeout, alert() {},
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
   Object.assign(app, {
     currentDate: '2026-10-04', activeCell: { rowIdx: 0, colKey: 'name' },
@@ -434,6 +432,7 @@ test('Ctrl/Cmd+A daily row selection ends at specialNote, while direct row selec
   context.window.getSelection = () => ({ removeAllRanges() {} });
   context.document.querySelector = () => null;
   app.elCellAddress = {}; app.elSelectedCellCoords = {}; app.elFormulaInput = {};
+  app.elTableBody.querySelectorAll=()=>[];
   app.selectEntireRow(0);
   assert.equal(app.selectedRange.minCol, 0);
   assert.equal(app.selectedRange.maxCol, 9);
@@ -650,8 +649,10 @@ test('destination tint follows actual Apply destination or selected paste row wi
   const {app}=createApp(rows);
   const before=JSON.stringify(rows);
   const highlighted=new Set();
-  app.elTableBody={querySelectorAll:()=>rows.map((_,index)=>({dataset:{rowIdx:String(index)},
-    classList:{toggle(_cls,on){if(on)highlighted.add(index);else highlighted.delete(index);}}}))};
+  const elements=rows.map((_,index)=>({dataset:{rowIdx:String(index)},
+    classList:{add(){highlighted.add(index);},remove(){highlighted.delete(index);}},querySelector:()=>null}));
+  app.elTableBody={querySelectorAll:()=>[...highlighted].map(index=>elements[index]),
+    querySelector:selector=>elements[Number(selector.match(/data-row-idx="(\d+)"/)[1])]};
   app.elSearchInput.value='가상환자';
   app.activeCell=null;
   app.crossDateSelection={minRow:0};
@@ -684,7 +685,7 @@ test('history Down transition targets the first current row actually visible bel
   assert.equal(app.getTopVisibleCurrentRow().dataset.rowIdx,'53');
 });
 
-test('search prompt keeps an existing middle-row target selected and reveals it before deferred layout', () => {
+test('search prompt keeps last history selection while revealing the middle-row destination before deferred layout', () => {
   const rows=Array.from({length:80},(_,i)=>({name:i===19?'가상환자':`시험${i}`}));
   const {app,context}=createApp(rows);
   app.activeCell={rowIdx:19,colKey:'name'};
@@ -694,18 +695,36 @@ test('search prompt keeps an existing middle-row target selected and reveals it 
   app.elSheetContainer={classList:{add(){}},focus(){}};
   app.elBtnClearSearch={style:{}};
   app.loadSearchHistory=app.clearCrossDateRows=app.syncMainColumnWidths=()=>{};
-  let preserve,selected,revealed=0,highlighted=0;
-  app.renderCrossDateSection=options=>{preserve=options.preserveCurrentSelection;};
-  app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};selected=app.activeCell;};
+  let preserve,revealed=0,highlighted=0;
+  app.renderCrossDateSection=options=>{preserve=options.preserveCurrentSelection;app.activeCell=null;app.crossDateSelection={minRow:6,maxRow:6};};
+  app.selectCell=()=>assert.fail('daily selection must not replace the history selection');
   app.updateHistoryDestinationHighlight=()=>{highlighted++;};
   app.ensureCurrentCellVisible=cell=>{assert.equal(cell,targetCell);revealed++;};
   const deferred=[];context.setTimeout=fn=>{deferred.push(fn);};
   app.searchAllDates('가상환자',19,{focusCurrentTarget:true});
-  assert.equal(preserve,true);
-  assert.deepEqual(selected,{rowIdx:19,colKey:'no'});
+  assert.equal(preserve,false);
+  assert.equal(app.activeCell,null);
+  assert.equal(app.historyApplyTarget.colKey,'no');
+  assert.deepEqual(app.crossDateSelection,{minRow:6,maxRow:6});
   assert.equal(revealed,1,'target is visible immediately, before the timer');
   assert.equal(highlighted,1);
   deferred[0]();assert.equal(revealed,2);
   app.activeCell={rowIdx:20,colKey:'memo'};
   deferred[0]();assert.equal(revealed,2,'deferred layout must not undo subsequent navigation');
+});
+
+test('destination highlighting touches only old marks and destination cells, independent of table size', () => {
+  const rows=Array.from({length:1000},(_,i)=>({name:`시험${i}`}));
+  const {app}=createApp(rows);
+  app.elSearchInput.value='시험500';
+  app.activeCell={rowIdx:500,colKey:'name'};
+  let cleared=0,rowLookups=0,cellLookups=0;
+  const oldMarks=Array.from({length:2},()=>({classList:{remove(){cleared++;}}}));
+  const row={classList:{add(){}},querySelector(){cellLookups++;return null;}};
+  app.elTableBody={querySelectorAll(selector){assert.equal(selector,'.history-destination-row, .history-destination-cell');return oldMarks;},
+    querySelector(selector){rowLookups++;assert.equal(selector,'.excel-row[data-row-idx="500"]');return row;}};
+  app.updateHistoryDestinationHighlight();
+  assert.equal(cleared,2);
+  assert.equal(rowLookups,1);
+  assert.equal(cellLookups,0,'active daily selection needs no per-cell preview work');
 });

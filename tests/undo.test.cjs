@@ -1,7 +1,5 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
 const vm = require('node:vm');
 
 function createApp() {
@@ -12,7 +10,7 @@ function createApp() {
     localStorage: { getItem() { return null; }, setItem(k, v) { storage.set(k, v); } },
     clearTimeout,
   });
-  vm.runInContext(readFileSync(resolve(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
   app.currentDate = '2026-09-30';
   app.dataStore = {};

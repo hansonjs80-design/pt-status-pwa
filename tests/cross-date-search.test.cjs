@@ -1,7 +1,5 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
 const vm = require('node:vm');
 
 function createDomMock() {
@@ -154,7 +152,7 @@ test('cross-date search deduplicates identical previous records and toggles with
   });
 
   vm.runInContext(
-    readFileSync(resolve(__dirname, '../app.js'), 'utf8') +
+    require('./helpers/load-app-source.cjs') +
     '\nglobalThis.App = PTApp;',
     context
   );

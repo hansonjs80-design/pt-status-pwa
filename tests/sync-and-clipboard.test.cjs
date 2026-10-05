@@ -1,8 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8');
+const source = require('./helpers/load-app-source.cjs');
 const clone = value => JSON.parse(JSON.stringify(value));
 function createApp(db = new Map()) {
   const storage = new Map();

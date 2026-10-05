@@ -1,8 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const path = require('node:path');
 
 function createApp(dataStore = {}, presets = {}) {
   const storage = new Map();
@@ -10,7 +8,7 @@ function createApp(dataStore = {}, presets = {}) {
     window: { addEventListener() {} },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8') +
+  vm.runInContext(require('./helpers/load-app-source.cjs') +
     '\nglobalThis.App = PTApp; globalThis.setPresets = v => COLUMN_PRESETS = v; globalThis.getPresets = () => COLUMN_PRESETS;', context);
   context.setPresets(presets);
   const app = Object.create(context.App.prototype);

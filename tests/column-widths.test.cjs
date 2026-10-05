@@ -1,8 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const vm = require('node:vm');
-const path = require('node:path');
 
 function device(storage = new Map(), extraHeaders = []) {
   const listeners = {};
@@ -23,7 +21,7 @@ function device(storage = new Map(), extraHeaders = []) {
     document, window: { addEventListener() {}, getComputedStyle(th) { return { display: th.hidden ? 'none' : 'table-cell', width: th.style.width }; } },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
   });
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
   app.elSheetContainer = { scrollLeft: 0 };
   app.syncCrossDateColWidths = () => app.syncMainColumnWidths();

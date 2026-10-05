@@ -1,7 +1,5 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
 const vm = require('node:vm');
 
 // Load the real suggestion engine without starting the UI or accessing cloud data.
@@ -11,7 +9,7 @@ function createApp(dataStore, presets = {}, environment = {}) {
     localStorage: { getItem() { return null; } },
     ...environment,
   });
-  vm.runInContext(readFileSync(resolve(__dirname, '../app.js'), 'utf8') +
+  vm.runInContext(require('./helpers/load-app-source.cjs') +
     '\n globalThis.App = PTApp; globalThis.setPresets = value => { COLUMN_PRESETS = value; };', context);
   context.setPresets(presets);
   const app = Object.create(context.App.prototype);

@@ -1,10 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
-const { resolve } = require('node:path');
 const vm = require('node:vm');
 const context = vm.createContext({ window: { addEventListener() {} }, localStorage: { getItem() { return null; } } });
-vm.runInContext(readFileSync(resolve(__dirname, '../app.js'), 'utf8') + '\nglobalThis.App = PTApp;', context);
+vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 
 test('summary includes treatment-only rows but excludes unused rows and whitespace', () => {
