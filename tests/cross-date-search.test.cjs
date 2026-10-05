@@ -219,7 +219,7 @@ test('cross-date search deduplicates identical previous records and toggles with
   app.searchAllDates('홍길동', 0);
 
   // 1. 현재 날짜 행 범위 검증:
-  // 마지막 내용 행은 12번. 첫 행부터 빈행 3개(15번)까지 스크롤 가능.
+  // 검색 중에도 내용 뒤의 빈행을 숨기지 않아 스크롤로 접근 가능.
   const row0 = app.elTableBody.children.find(c => c.dataset?.rowIdx === 0);
   const row3 = app.elTableBody.children.find(c => c.dataset?.rowIdx === 3);
   const row12 = app.elTableBody.children.find(c => c.dataset?.rowIdx === 12);
@@ -230,7 +230,7 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(row3.style.display, '');
   assert.equal(row12.style.display, '');
   assert.equal(row15.style.display, '');
-  assert.equal(row16.style.display, 'none');
+  assert.equal(row16.style.display, '');
 
   // 2. 이전 날짜 중복 제거 검증:
   // 총 3건 중 2건은 내용 동일(10/01과 09/30). 1건은 다른 내용(09/29).

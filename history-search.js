@@ -220,15 +220,7 @@ class PTHistorySearch {
   revealHistoryDestination(cell, rowIdx = Number(cell?.dataset?.row)) {
     this.ensureCurrentCellVisible(cell);
     if (!Number.isInteger(rowIdx) || !cell?.getBoundingClientRect) return;
-    const rows = this.getCurrentRows();
-    let lastDataIdx = rows.length - 1;
-    while (lastDataIdx >= 0) {
-      const row = rows[lastDataIdx];
-      if (row.name || row.chartNo || row.part || row.prescription || row.extra || row.writer || row.memo || row.specialNote) break;
-      lastDataIdx--;
-    }
-    // Tail destinations show twelve preceding rows; middle destinations keep nearest scrolling.
-    if (rowIdx < lastDataIdx) return;
+    // Keep twelve preceding rows visible around the destination at any table position.
     const contextCell = this.elTableBody.querySelector(`[data-row="${Math.max(0, rowIdx - 12)}"][data-col="no"]`);
     const container = this.elSheetContainer;
     if (!contextCell?.getBoundingClientRect || !container?.getBoundingClientRect) return;
@@ -577,8 +569,7 @@ class PTHistorySearch {
     this.elSheetContainer.classList.add("history-search-active");
     this.syncMainColumnWidths();
 
-    // Keep every populated current-date row reachable by scrolling.
-    // Initial positioning still shows the latest entries and three empty rows.
+    // Every current-date row remains reachable, including the blank rows through 150.
     const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)");
     const rowsData = this.getCurrentRows();
     let lastDataIdx = -1;
@@ -590,24 +581,8 @@ class PTHistorySearch {
     const originIdx = keepCurrentSelection ? (this.activeCell?.rowIdx ?? this.selectedRange?.minRow ?? this.selectedRowRange?.minRow)
       : Number.isInteger(originRowIdx) ? originRowIdx : (this.historyApplyTarget?.rowIdx ?? -1);
 
-    let startIdx, endIdx;
-    if (lastDataIdx >= 0) {
-      startIdx = 0; // 첫 행까지 스크롤 가능
-      endIdx = lastDataIdx + 3; // 마지막 내용 행 아래로 빈행 3행
-    } else {
-      startIdx = 0;
-      endIdx = 2; // 내용 없으면 빈행 3행
-    }
-
-    if (originIdx >= 0) {
-      startIdx = Math.min(startIdx, Math.max(0, originIdx - 5));
-      endIdx = Math.max(endIdx, originIdx + 2);
-    }
-
     currentRows.forEach((rowEl) => {
-      const rIdx = Number(rowEl.dataset.rowIdx);
-      const inRange = (rIdx >= startIdx && rIdx <= endIdx);
-      rowEl.style.display = inRange ? "" : "none";
+      rowEl.style.display = "";
     });
 
     // 3) 이전 날짜에서 매칭 기록 수집 (오래된 날짜가 위, 최신 날짜가 아래로 오도록 오름차순: 하단에 최근월일 표시)
@@ -681,7 +656,7 @@ class PTHistorySearch {
         if (scrollToAppliedRow || originIdx >= 0) {
           this.revealHistoryDestination(this.elTableBody.querySelector('.history-destination-row .excel-cell') || scrollRowEl.querySelector('[data-col="no"]'));
         } else {
-          scrollRowEl.scrollIntoView({ block: "center" });
+          this.revealHistoryDestination(scrollRowEl.querySelector('[data-col="no"]'), scrollTargetIdx);
         }
       };
       if (focusCurrentTarget) revealTarget();

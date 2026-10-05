@@ -752,7 +752,7 @@ test('tail destinations retain twelve preceding rows after immediate and deferre
   }
   container.scrollTop = 150;
   app.revealHistoryDestination(cells[10]);
-  assert.equal(container.scrollTop, 150, 'visible middle destinations keep their position');
+  assert.equal(container.scrollTop, 0, 'middle destinations also show preceding rows from the beginning');
   container.clientHeight = 450;
   app.revealHistoryDestination(cells[30]);
   assert.equal(tailSpace, '0px');
@@ -776,5 +776,21 @@ test('row selection arrows reveal the endpoint below pinned history headers, inc
     app.handleGlobalKeyDown({key, shiftKey, target: {tagName: 'DIV'}, preventDefault() {}});
     assert.deepEqual(selected, [shiftKey ? 40 : targetRow, targetRow]);
     assert.equal(revealed, 1);
+  }
+});
+
+test('current rows keep at least 150 rows and fifteen blank rows after the last entered cell', () => {
+  for (const [lastIdx, count] of [[49, 150], [149, 165], [179, 195]]) {
+    const {app, context} = createApp();
+    const rows = Array.from({length: lastIdx + 1}, () => ({}));
+    rows[lastIdx] = {name: '가상환자'};
+    app.dataStore = {[app.currentDate]: rows};
+    const before = JSON.stringify(rows);
+    const result = context.App.prototype.getCurrentRows.call(app);
+    assert.equal(result.length, count);
+    assert.equal(JSON.stringify(result.slice(0, lastIdx + 1)), before);
+    assert.ok(result.slice(lastIdx + 1).every(row => !row.name && !row.writer && !row.prescription));
+    context.App.prototype.getCurrentRows.call(app);
+    assert.equal(result.length, count, 'repeated reads must not continually add blank rows');
   }
 });

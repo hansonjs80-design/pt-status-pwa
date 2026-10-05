@@ -892,7 +892,7 @@ class PTApp {
     });
   }
 
-  // Get or initialize rows for a given date (guarantee minimum DEFAULT_ROW_COUNT = 150 rows)
+  // Keep at least 150 rows and fifteen empty rows below the last entered record.
   getCurrentRows() {
     if (!this.dataStore[this.currentDate]) {
       this.dataStore[this.currentDate] = this.createDefaultEmptyRows(DEFAULT_ROW_COUNT);
@@ -918,6 +918,11 @@ class PTApp {
         }
       }
     }
+    const currentRows = this.dataStore[this.currentDate];
+    const contentKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    const lastEnteredIdx = currentRows.findLastIndex(row => contentKeys.some(key => String(row[key] ?? "").trim()));
+    const requiredCount = Math.max(DEFAULT_ROW_COUNT, lastEnteredIdx + 16);
+    if (currentRows.length < requiredCount) currentRows.push(...this.createDefaultEmptyRows(requiredCount - currentRows.length));
     this.visitNameState ||= new WeakMap();
     this.visitTimeState ||= new WeakMap();
     for (const row of this.dataStore[this.currentDate]) {
