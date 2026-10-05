@@ -4149,7 +4149,10 @@ class PTApp {
         return;
       }
       this.closeSearchPromptModal();
-      this.searchAllDates(q, targetIdx);
+      const targetRow = this.getCurrentRows()[targetIdx];
+      const field = searchByChart ? "chartNo" : "name";
+      const focusCurrentTarget = String(targetRow?.[field] ?? "").trim().toLowerCase() === normalized;
+      this.searchAllDates(q, targetIdx, { focusCurrentTarget });
     } finally { this.searchPromptSubmitting = false; }
   }
 
@@ -4261,7 +4264,7 @@ class PTApp {
     this.openSearchPromptModal(targetIdx, query);
   }
 
-  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false } = {}) {
+  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
     clearTimeout(this.historyCurrentScrollTimer);
     // Refreshing search results must not steal focus from a current-date edit.
     const keepCurrentSelection = preserveCurrentSelection && !this.crossDateSelection &&
@@ -4374,7 +4377,14 @@ class PTApp {
     this.isCrossDateExpanded = false; // 기본값: 대표 행만 표시
 
     // 5) 이전 날짜 섹션 렌더링
-    this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
+    this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection || focusCurrentTarget });
+    if (focusCurrentTarget && originIdx >= 0) {
+      const cell = this.elTableBody.querySelector(`[data-row="${originIdx}"][data-col="no"]`);
+      if (cell) {
+        this.selectCell(originIdx, "no", cell, false);
+        this.elSheetContainer.focus({ preventScroll: true });
+      }
+    }
     this.updateHistoryDestinationHighlight();
 
     // Searches started from a current row keep that row visible; otherwise show latest entries.
@@ -4382,13 +4392,17 @@ class PTApp {
       : lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
     if (scrollRowEl && !preserveCurrentSelection) {
-      this.historyCurrentScrollTimer = setTimeout(() => {
+      const revealTarget = () => {
+        // Do not move back after the user has already navigated to another cell.
+        if (focusCurrentTarget && this.activeCell?.rowIdx !== originIdx) return;
         if (scrollToAppliedRow || originIdx >= 0) {
           this.ensureCurrentCellVisible(this.elTableBody.querySelector('.history-destination-row .excel-cell') || scrollRowEl.querySelector('[data-col="no"]'));
         } else {
           scrollRowEl.scrollIntoView({ block: "center" });
         }
-      }, 50);
+      };
+      if (focusCurrentTarget) revealTarget();
+      this.historyCurrentScrollTimer = setTimeout(revealTarget, 50);
     }
   }
 

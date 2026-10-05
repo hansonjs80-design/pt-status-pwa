@@ -528,7 +528,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(closed,1);
   app.dataStore['2026-09-27'] = [{name:'이연'}];
   await app.submitSearchPrompt();
-  assert.deepEqual(searched,['이연',0]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searched)),['이연',0,{focusCurrentTarget:true}]);
   assert.equal(closed,2);
 });
 
@@ -545,12 +545,12 @@ test('cloud-only exact names and chart search remain usable', async () => {
   app.searchAllDates = (...args) => searches.push(args);
   context.alert = () => assert.fail('known name and chart search must not report missing name');
   await app.submitSearchPrompt();
-  assert.deepEqual(searches[0],['이연진',0]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searches[0])),['이연진',0,{focusCurrentTarget:false}]);
   app._searchPromptACExplicit = false;
   app._searchPromptACMenu = null;
   app.elSearchPromptInput.value = '15889';
   await app.submitSearchPrompt();
-  assert.deepEqual(searches[1],['15889',0]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searches[1])),['15889',0,{focusCurrentTarget:false}]);
 });
 
 
@@ -682,4 +682,30 @@ test('history Down transition targets the first current row actually visible bel
   app.elSheetContainer={clientTop:0,clientHeight:900,getBoundingClientRect:()=>({top:100}),
     querySelectorAll:()=>[{getBoundingClientRect:()=>({top:100,bottom:500,height:400})}]};
   assert.equal(app.getTopVisibleCurrentRow().dataset.rowIdx,'53');
+});
+
+test('search prompt keeps an existing middle-row target selected and reveals it before deferred layout', () => {
+  const rows=Array.from({length:80},(_,i)=>({name:i===19?'가상환자':`시험${i}`}));
+  const {app,context}=createApp(rows);
+  app.activeCell={rowIdx:19,colKey:'name'};
+  app.dataStore={'2026-10-04':rows,'2026-09-21':[{name:'가상환자',part:'허리'}]};
+  const targetCell={},currentElements=rows.map((_,i)=>({dataset:{rowIdx:String(i)},style:{}}));
+  app.elTableBody={querySelectorAll:()=>currentElements,querySelector:selector=>selector.includes('history-destination-row')||selector.includes('data-col="no"')?targetCell:{querySelector:()=>targetCell}};
+  app.elSheetContainer={classList:{add(){}},focus(){}};
+  app.elBtnClearSearch={style:{}};
+  app.loadSearchHistory=app.clearCrossDateRows=app.syncMainColumnWidths=()=>{};
+  let preserve,selected,revealed=0,highlighted=0;
+  app.renderCrossDateSection=options=>{preserve=options.preserveCurrentSelection;};
+  app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};selected=app.activeCell;};
+  app.updateHistoryDestinationHighlight=()=>{highlighted++;};
+  app.ensureCurrentCellVisible=cell=>{assert.equal(cell,targetCell);revealed++;};
+  const deferred=[];context.setTimeout=fn=>{deferred.push(fn);};
+  app.searchAllDates('가상환자',19,{focusCurrentTarget:true});
+  assert.equal(preserve,true);
+  assert.deepEqual(selected,{rowIdx:19,colKey:'no'});
+  assert.equal(revealed,1,'target is visible immediately, before the timer');
+  assert.equal(highlighted,1);
+  deferred[0]();assert.equal(revealed,2);
+  app.activeCell={rowIdx:20,colKey:'memo'};
+  deferred[0]();assert.equal(revealed,2,'deferred layout must not undo subsequent navigation');
 });

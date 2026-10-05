@@ -2189,3 +2189,13 @@ body {
 .excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-bottom { border-bottom-color: #2563eb !important; }
 .excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-left { border-left-color: #2563eb !important; }
 .excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-right { border-right-color: #2563eb !important; }
+
+/* 이전 내역은 셀·범위·행 선택을 모두 파란 계열로 표시한다. */
+.excel-row.cross-date-row {
+  --excel-selection-bg: #dbeafe;
+  --excel-green: #2563eb;
+  --excel-cell-selected: #2563eb;
+}
+.excel-row.cross-date-row .cross-date-cell.range-selected:hover {
+  background-color: #bfdbfe !important;
+}
