@@ -3738,7 +3738,7 @@ class PTApp {
     this.saveDataStore();
     this.renderTable();
     if (searchQuery) {
-      this.searchAllDates(searchQuery, rowIdx);
+      this.searchAllDates(searchQuery, rowIdx, { scrollToAppliedRow: focusAppliedRow });
       if (useSelection && this.crossDateResults?.length) {
         if (wasRowSelected) this.selectCrossDateRow(selection.minRow);
         else {
@@ -4147,7 +4147,7 @@ class PTApp {
     this.openSearchPromptModal(targetIdx, query);
   }
 
-  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false } = {}) {
+  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false } = {}) {
     // Refreshing search results must not steal focus from a current-date edit.
     const keepCurrentSelection = preserveCurrentSelection && Boolean(this.activeCell);
     if (Number.isInteger(originRowIdx) && originRowIdx >= 0) {
@@ -4171,8 +4171,8 @@ class PTApp {
     this.elSheetContainer.classList.add("history-search-active");
     this.syncMainColumnWidths();
 
-    // 2) 현재 날짜 행 필터링:
-    // "현재 날짜 행은 내용있는 행은 가장 마지막 내용있는 행에서 위로 10행만 보이면 되고 마지막 내용이 있는 행 아래로 빈행이 보이면 되게 설정"
+    // Keep every populated current-date row reachable by scrolling.
+    // Initial positioning still shows the latest entries and three empty rows.
     const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)");
     const rowsData = this.getCurrentRows();
     let lastDataIdx = -1;
@@ -4186,7 +4186,7 @@ class PTApp {
 
     let startIdx, endIdx;
     if (lastDataIdx >= 0) {
-      startIdx = Math.max(0, lastDataIdx - 9); // 마지막 내용 행에서 위로 10행
+      startIdx = 0; // 첫 행까지 스크롤 가능
       endIdx = lastDataIdx + 3; // 마지막 내용 행 아래로 빈행 3행
     } else {
       startIdx = 0;
@@ -4261,7 +4261,8 @@ class PTApp {
     this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
 
     // 6) 현재 날짜의 마지막 내용 행(또는 0번 행)이 화면 중앙 부근에 오도록 스크롤
-    const scrollTargetIdx = lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
+    const scrollTargetIdx = scrollToAppliedRow && originIdx >= 0 ? originIdx
+      : lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
     if (scrollRowEl && !keepCurrentSelection) {
       setTimeout(() => {
@@ -4495,7 +4496,7 @@ class PTApp {
       applyButton.title = "선택한 셀 적용 · Enter (선택이 없으면 이 행 전체 적용)";
       applyButton.disabled = !this.historyApplyTarget || this.historyApplyTarget.date !== this.currentDate;
       applyButton.addEventListener("mousedown", e => e.preventDefault());
-      applyButton.addEventListener("click", () => this.applyHistoryRow(row));
+      applyButton.addEventListener("click", () => this.applyHistoryRow(row, { focusAppliedRow: true }));
       actionCell.appendChild(applyButton);
       tr.appendChild(actionCell);
 
@@ -5604,7 +5605,7 @@ class PTApp {
 
     if (copyRange) {
       this.clipboardBuffer = tsvData;
-      this.clipboardSelection = { ...copyRange, rowSelection: Boolean(this.selectedRowRange) && !this.crossDateSelection, date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
+      this.clipboardSelection = { ...copyRange, rowSelection: this.crossDateSelection ? Boolean(this.isCrossDateRowSelected) : Boolean(this.selectedRowRange), date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
@@ -5724,7 +5725,19 @@ class PTApp {
     if (sourceSelection?.rowSelection && startCol === 0) {
       this.selectRowRange(startRow, startRow + grid.length - 1, Math.min(sourceSelection.maxCol, colKeys.length - 1));
       this.elSheetContainer.focus({ preventScroll: true });
+    } else {
+      const cell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
+      if (cell) {
+        this.selectCell(startRow, colKeys[startCol], cell, false);
+        this.rangeStart = { rowIdx: startRow, colIdx: startCol, colKey: colKeys[startCol] };
+        const endCol = Math.min(colKeys.length - 1, startCol + Math.max(...grid.map(row => row.length)) - 1);
+        this.rangeEnd = { rowIdx: startRow + grid.length - 1, colIdx: endCol, colKey: colKeys[endCol] };
+        this.updateRangeSelection();
+        this.elSheetContainer.focus({ preventScroll: true });
+      }
     }
+    const pastedCell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
+    pastedCell?.scrollIntoView({ block: "center", inline: "nearest" });
   }
 
   clearSelection() {

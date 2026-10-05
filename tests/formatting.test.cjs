@@ -205,3 +205,35 @@ test('row-header and Ctrl/Cmd+A copies and cuts restore the full pasted destinat
     assert.ok(focused);
   }
 });
+
+test('history row and partial-range paste retain the actual destination selection', async () => {
+  context.navigator = { clipboard: { writeText: async () => {} } };
+  for (const rowSelected of [false, true]) {
+    const rows = [{name:'기존'}, {}, {}];
+    const app = createPasteApp(rows);
+    app.crossDateResults = [{no:'3',gender:'F',chartNo:'T9',name:'가상환자',part:'목'}];
+    app.crossDateSelection = {minRow:0,maxRow:0,minCol:0,maxCol:4};
+    app.isCrossDateRowSelected = rowSelected;
+    app.copySelection();
+    assert.equal(app.clipboardSelection.rowSelection, rowSelected);
+    app.crossDateSelection = null;
+    app.activeCell = {rowIdx:1,colKey:'no'};
+    let selected, rangeUpdated = false, scrolled = false;
+    const cell = {scrollIntoView(){scrolled=true;}};
+    app.elTableBody = {querySelector:()=>cell};
+    app.elSheetContainer = {focus(){}};
+    app.selectCell = (row,key) => {selected={row,key};};
+    app.selectRowRange = (start,end,col) => {selected={start,end,col};};
+    app.updateRangeSelection = () => {rangeUpdated=true;};
+    await app.pasteSelection(app.clipboardBuffer);
+    assert.equal(rows[1].name,'가상환자');
+    assert.ok(scrolled);
+    if(rowSelected) assert.deepEqual(selected,{start:1,end:1,col:4});
+    else {
+      assert.deepEqual(selected,{row:1,key:'no'});
+      assert.equal(app.rangeEnd.colIdx,4);
+      assert.equal(app.rangeEnd.rowIdx,1);
+      assert.ok(rangeUpdated);
+    }
+  }
+});

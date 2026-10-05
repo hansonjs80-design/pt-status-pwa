@@ -338,12 +338,16 @@ test('apply button moves selection to No. on the actual destination row', () => 
   for (const match of [true, false]) {
     const rows = [{ name: match ? '가상환자' : '다른환자', chartNo: match ? 'T001' : 'OTHER' }, {}, {}];
     const { app } = createApp(rows);
-    let restored;
+    let restored, searched;
+    app.elSearchInput.value = '가상환자';
+    app.searchAllDates = (...args) => { searched = args; };
     app.restoreAppliedHistorySelection = target => { restored = target; };
     app.applyHistoryRow({ name: '가상환자', chartNo: 'T001', part: '목' }, { focusAppliedRow: true });
     const expected = match ? 0 : 1;
     assert.equal(restored.rowIdx, expected);
     assert.equal(restored.row, rows[expected]);
+    assert.deepEqual(searched.slice(0, 2), ['가상환자', expected]);
+    assert.equal(searched[2].scrollToAppliedRow, true);
   }
 });
 
