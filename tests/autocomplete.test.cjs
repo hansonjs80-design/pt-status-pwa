@@ -226,6 +226,21 @@ test('patient search and name cells match name prefixes rather than middle or fi
   assert.equal(search('김민수').includes('이춘식'), false);
 });
 
+test('extra, memo and special note candidates match prefixes and keep pending next initials during IME', () => {
+  for (const col of ['extra', 'memo', 'specialNote']) {
+    const app = createApp({ '2026-09-29': [
+      { [col]: '신장 2.5' }, { [col]: '신장 3' }, { [col]: '신경 확인' },
+      { [col]: '내일 신장' }, { [col]: '확인 신장' },
+    ] }, { [col]: ['신장 2', '내일 신장 3'] });
+    const composing = query => Array.from(app.getAutocompleteSuggestions(col, query, true));
+    assert.deepEqual(composing('싡'), ['신장 2', '신장 2.5', '신장 3']);
+    assert.deepEqual(suggestions(app, col, 'ㅅㅈ'), ['신장 2', '신장 2.5', '신장 3']);
+    assert.deepEqual(suggestions(app, col, '신장'), ['신장 2', '신장 2.5', '신장 3']);
+    assert.deepEqual(suggestions(app, col, '싡'), []);
+    assert.deepEqual(composing('신경'), ['신경 확인']);
+  }
+});
+
 
 test('initial consonant suggestions must match from the first syllable in presets and history', () => {
   const app = createApp({ '2026-09-29': [

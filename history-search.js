@@ -439,7 +439,7 @@ class PTHistorySearch {
           if (!val) continue;
           const key = val.toLowerCase();
           if (seen.has(key)) continue;
-          if (searchByChart ? key.includes(q) : this.matchesPatientNamePrefix(val, q, true)) {
+          if (searchByChart ? key.includes(q) : this.matchesHangulPrefix(val, q, true)) {
             seen.add(key);
             results.push({ value: val, name: name || "", chartNo: chartNo || "" });
             if (results.length >= 10) return results;
