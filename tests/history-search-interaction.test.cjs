@@ -426,6 +426,29 @@ test('history can populate a chart-only target but does not overwrite a differen
   assert.equal(app.getHistoryDestinationIndex({ name: '김선', chartNo: 'T001' }, 1), 2);
 });
 
+test('history appends after the last patient identity despite prepared initials and notes below it', () => {
+  const rows = Array.from({ length: 80 }, (_, index) => ({ writer: index >= 50 ? 'J' : '' }));
+  rows[0] = { name: '첫 환자' };
+  rows[49] = { chartNo: 'LAST' };
+  rows[69].memo = '미리 입력';
+  rows[79].visitTime = '09:00';
+  const { app } = createApp(rows);
+  const source = { name: '새 환자', chartNo: 'NEW', part: '허리', writer: 'K' };
+  assert.equal(app.getHistoryDestinationIndex(source, 69), 50);
+  app.applyHistoryRow(source);
+  assert.equal(rows[50].name, '새 환자');
+  assert.equal(rows[50].chartNo, 'NEW');
+  assert.equal(rows[50].writer, 'K');
+  assert.equal(rows[69].writer, 'J');
+  assert.equal(rows[69].memo, '미리 입력');
+  assert.equal(app.lastHistoryAppliedTarget.rowIdx, 50);
+});
+
+test('history starts at the first row when only initials have been prepared', () => {
+  const { app } = createApp([{ writer: 'J' }, { writer: 'K', part: '허리' }, { writer: 'S' }]);
+  assert.equal(app.getHistoryDestinationIndex({ name: '새 환자', chartNo: 'NEW' }, 2), 0);
+});
+
 
 test('daily row selections end at specialNote and exclude the hidden visitTime column', () => {
   const { app, context } = createApp([{}]);

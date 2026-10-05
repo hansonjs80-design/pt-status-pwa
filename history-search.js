@@ -62,7 +62,8 @@ class PTHistorySearch {
     const samePatient = (sourceName && sourceName === targetName) ||
       (sourceChart && sourceChart === targetChart && (!sourceName || !targetName));
     if (samePatient) return targetIndex;
-    const contentKeys = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    // Prepared initials and treatment notes do not mark a patient record.
+    const contentKeys = ["name", "chartNo"];
     let lastIndex = -1;
     rows.forEach((row, idx) => {
       if (contentKeys.some(key => String(row[key] ?? "").trim())) lastIndex = idx;
