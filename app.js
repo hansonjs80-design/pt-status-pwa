@@ -5376,8 +5376,7 @@ class PTApp {
         const end = this.rowRangeEnd ?? this.selectedRowRange.maxRow;
         const targetRow = Math.max(0, Math.min(rowCount - 1, end + (e.key === "ArrowDown" ? 1 : -1)));
         this.selectRowRange(anchor, targetRow);
-        this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
-          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        this.ensureCurrentCellVisible(this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`));
       } else {
         const currentRow = this.selectedRowRange.minRow;
         // 교차 검색이 활성화되어 있고 이전 날짜 기록이 있을 때
@@ -5397,8 +5396,7 @@ class PTApp {
         }
         const targetRow = Math.max(0, Math.min(rowCount - 1, currentRow + (e.key === "ArrowDown" ? 1 : -1)));
         this.selectRowRange(targetRow, targetRow);
-        this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`)
-          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        this.ensureCurrentCellVisible(this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`));
       }
       return;
     }

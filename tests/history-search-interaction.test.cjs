@@ -758,3 +758,23 @@ test('tail destinations retain twelve preceding rows after immediate and deferre
   assert.equal(tailSpace, '0px');
   assert.equal(cells[30].getBoundingClientRect().bottom, 550, 'small screens still reveal the destination');
 });
+
+test('row selection arrows reveal the endpoint below pinned history headers, including Shift extension', () => {
+  for (const shiftKey of [false, true]) for (const key of ['ArrowUp', 'ArrowDown']) {
+    const {app} = createApp(Array.from({length: 80}, (_, i) => ({name: `시험${i}`})));
+    app.activeCell = null;
+    app.selectedRowRange = {minRow: 40, maxRow: 40};
+    app.rowRangeStart = app.rowRangeEnd = 40;
+    app.crossDateResults = [{}];
+    const targetRow = key === 'ArrowUp' ? 39 : 41;
+    const header = {scrollIntoView: () => assert.fail('native scrolling alone misses pinned headers')};
+    app.elTableBody = {querySelectorAll: () => [{dataset: {rowIdx: '0'}}],
+      querySelector: selector => {assert.equal(selector, `tr[data-row-idx="${targetRow}"] .row-num`); return header;}};
+    let selected, revealed = 0;
+    app.selectRowRange = (...args) => {selected = args;};
+    app.ensureCurrentCellVisible = cell => {assert.equal(cell, header); revealed++;};
+    app.handleGlobalKeyDown({key, shiftKey, target: {tagName: 'DIV'}, preventDefault() {}});
+    assert.deepEqual(selected, [shiftKey ? 40 : targetRow, targetRow]);
+    assert.equal(revealed, 1);
+  }
+});
