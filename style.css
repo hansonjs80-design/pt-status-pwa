@@ -609,9 +609,9 @@ body {
 }
 
 .modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 340px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
-.search-prompt-card .modal-header { padding: 12px 14px; background: #fff; border-bottom: 1px solid #edf0f3; }
-.search-prompt-card .modal-header h2 { margin: 0; color: #1f2937; font-size: 15px; font-weight: 700; }
-.search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #64748b; font-size: 16px; }
+.search-prompt-card .modal-header { padding: 7px 14px; background: #2563eb; border-bottom: 1px solid #2563eb; }
+.search-prompt-card .modal-header h2 { margin: 0; color: #fff; font-size: 15px; font-weight: 700; }
+.search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #fff; font-size: 16px; }
 .search-prompt-card .modal-body { padding: 14px; }
 .search-prompt-label { display: block; margin-bottom: 6px; color: #64748b; font-size: 12px; }
 .search-prompt-field { position: relative; margin-bottom: 12px; }
