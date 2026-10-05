@@ -211,6 +211,21 @@ test('name IME pending consonants match the next syllable without broadening com
   assert.equal(composing('김홍').includes('김민수'),false);
 });
 
+test('patient search and name cells match name prefixes rather than middle or final syllables', () => {
+  const app = createApp({ '2026-09-29': [
+    { name: '김민수' }, { name: '기영수' }, { name: '길민수' },
+    { name: '전기운' }, { name: '최일기' }, { name: '이춘식' }, { name: '이창수' }, { name: '이연진' },
+  ] });
+  const search = query => Array.from(app.getSearchPromptSuggestions(query), item => item.value);
+  assert.deepEqual(search('기'), ['김민수', '기영수', '길민수']);
+  assert.deepEqual(new Set(suggestions(app, 'name', '기')), new Set(search('기')));
+  assert.deepEqual(search('잋'), ['이춘식', '이창수']);
+  assert.deepEqual(search('긺'), ['길민수']);
+  assert.deepEqual(search('ㄱㅁ'), ['김민수', '길민수']);
+  assert.deepEqual(search('이춘식'), ['이춘식']);
+  assert.equal(search('김민수').includes('이춘식'), false);
+});
+
 
 test('initial consonant suggestions must match from the first syllable in presets and history', () => {
   const app = createApp({ '2026-09-29': [

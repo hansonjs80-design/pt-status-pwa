@@ -1950,6 +1950,34 @@ class PTApp {
     else this.closeAutocompleteMenu();
   }
 
+  matchesPatientNamePrefix(value, rawQuery, isComposing = false) {
+    const name = String(value ?? "").trim().toLowerCase();
+    const query = String(rawQuery ?? "").trim().toLowerCase();
+    if (!query) return false;
+    if (name.startsWith(query)) return true;
+    if (/[ㄱ-ㅎ]/.test(query)) {
+      return [...query].every((char, index) => name[index] !== undefined &&
+        (/^[ㄱ-ㅎ]$/.test(char) ? this.getChosung(name[index]) === char : name[index] === char));
+    }
+    const code = query.charCodeAt(query.length - 1) - 0xac00;
+    if (code < 0 || code > 11171) return false;
+    const stem = query.slice(0, -1);
+    if (code % 28 === 0) {
+      const candidate = name.charCodeAt(stem.length) - 0xac00;
+      return name.startsWith(stem) && candidate >= 0 && candidate <= 11171 &&
+        Math.floor(candidate / 28) === Math.floor(code / 28);
+    }
+    if (!isComposing) return false;
+    // A pending next initial can be attached as a final consonant: 이 + ㅊ → 잋.
+    const finals = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    const splitFinals = {'ㄳ':['ㄱ','ㅅ'],'ㄵ':['ㄴ','ㅈ'],'ㄶ':['ㄴ','ㅎ'],
+      'ㄺ':['ㄹ','ㄱ'],'ㄻ':['ㄹ','ㅁ'],'ㄼ':['ㄹ','ㅂ'],'ㄽ':['ㄹ','ㅅ'],
+      'ㄾ':['ㄹ','ㅌ'],'ㄿ':['ㄹ','ㅍ'],'ㅀ':['ㄹ','ㅎ'],'ㅄ':['ㅂ','ㅅ']};
+    const [retained, initial] = splitFinals[finals[code % 28]] || ['', finals[code % 28]];
+    const prefix = stem + String.fromCharCode(0xac00 + code - code % 28 + finals.indexOf(retained));
+    return name.startsWith(prefix) && name.length > prefix.length && this.getChosung(name[prefix.length]) === initial;
+  }
+
   getAutocompleteSuggestions(colKey, rawQuery, isComposing = false) {
     if (!rawQuery) return [];
     const query = String(rawQuery).trim().toLowerCase();
@@ -1994,22 +2022,6 @@ class PTApp {
       const candidate = value.charCodeAt(stem.length) - 0xac00;
       return candidate >= 0 && candidate <= 11171 && Math.floor(candidate / 28) === Math.floor(code / 28);
     };
-    // During IME composition the next syllable's initial may temporarily be
-    // attached as the preceding syllable's final consonant (이 + ㅊ → 잋).
-    const matchesPendingInitial = value => {
-      if (!isComposing || colKey !== "name") return false;
-      const code = query.charCodeAt(query.length - 1) - 0xac00;
-      if (code < 0 || code > 11171 || code % 28 === 0) return false;
-      const finals = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-      const splitFinals = {'ㄳ':['ㄱ','ㅅ'],'ㄵ':['ㄴ','ㅈ'],'ㄶ':['ㄴ','ㅎ'],
-        'ㄺ':['ㄹ','ㄱ'],'ㄻ':['ㄹ','ㅁ'],'ㄼ':['ㄹ','ㅂ'],'ㄽ':['ㄹ','ㅅ'],
-        'ㄾ':['ㄹ','ㅌ'],'ㄿ':['ㄹ','ㅍ'],'ㅀ':['ㄹ','ㅎ'],'ㅄ':['ㅂ','ㅅ']};
-      const final = finals[code % 28];
-      const [retained, initial] = splitFinals[final] || ['', final];
-      const stem = query.slice(0, -1) + String.fromCharCode(0xac00 + code - code % 28 + finals.indexOf(retained));
-      return value.startsWith(stem) && value.length > stem.length &&
-        this.getChosung(value[stem.length]) === initial;
-    };
     const matched = [];
 
     // 관리 목록의 문구와 순서를 우선하고 나머지 기존 값은 매칭 품질로 정렬한다.
@@ -2017,14 +2029,16 @@ class PTApp {
       const itemLower = item.toLowerCase();
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
-      // 초성은 첫 음절부터 일치해야 하며, 완성된 문구는 기존 부분 검색을 유지한다.
+      // 성함은 앞부분만 매칭하고 다른 열은 기존 부분 검색을 유지한다.
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
       // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
 
-      if (itemLower.startsWith(query)) {
+      if (colKey === "name") {
+        if (this.matchesPatientNamePrefix(item, query, isComposing)) quality = itemLower.startsWith(query) ? 1 : 1.5;
+      } else if (itemLower.startsWith(query)) {
         quality = 1; // 접두사 일치 (e.g. '한' -> '한랭...')
-      } else if (matchesComposingPrefix(itemLower) || matchesPendingInitial(itemLower)) {
+      } else if (matchesComposingPrefix(itemLower)) {
         quality = 1.5;
       } else if (matchesInitialsAt(itemLower, 0)) {
         quality = 2; // 초성 접두사 (e.g. 'ㅎ' -> '학생...')
