@@ -1492,26 +1492,38 @@ class PTApp {
   }
 
   getPrescriptionPresetValues() {
-    return [...new Set((COLUMN_PRESETS.prescription || [])
+    return this.getPresetPickerValues("prescription");
+  }
+
+  getPresetPickerValues(colKey) {
+    return [...new Set((COLUMN_PRESETS[colKey] || [])
       .map(value => String(value ?? "").trim()).filter(Boolean))];
   }
 
   handlePrescriptionPickerShortcut(event, rowIdx, cellElement) {
+    return this.handlePresetPickerShortcut(event, rowIdx, "prescription", cellElement);
+  }
+
+  handlePresetPickerShortcut(event, rowIdx, colKey, cellElement) {
     if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
     event.preventDefault(); event.stopPropagation();
-    this.openPrescriptionPicker(rowIdx, cellElement);
+    this.openPresetPicker(rowIdx, colKey, cellElement);
     return true;
   }
 
   openPrescriptionPicker(rowIdx, cellElement) {
-    const values = this.getPrescriptionPresetValues();
+    this.openPresetPicker(rowIdx, "prescription", cellElement);
+  }
+
+  openPresetPicker(rowIdx, colKey, cellElement) {
+    const values = this.getPresetPickerValues(colKey);
     if (!values.length) {
-      this.openPresetManager("prescription");
+      this.openPresetManager(colKey);
       return;
     }
-    this.startInlineEdit(rowIdx, "prescription", cellElement);
+    this.startInlineEdit(rowIdx, colKey, cellElement);
     const input = cellElement.querySelector("input");
-    if (input) this.showAutocompleteMenu(rowIdx, "prescription", cellElement, input, values);
+    if (input) this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, values, { includeTypedValue: false });
   }
 
   normalizePrescriptionInput(value) {
@@ -2085,11 +2097,11 @@ class PTApp {
     return results;
   }
 
-  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates) {
+  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true } = {}) {
     const previous = this.autocompleteState;
     const query = input.value;
     const typedValue = this.assembleHangul(query).trim();
-    const showTypedValue = ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
+    const showTypedValue = includeTypedValue && ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
     if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value.toLowerCase() !== typedValue.toLowerCase())];
     const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
       previous.colKey === colKey && previous.query === query;
@@ -2547,6 +2559,7 @@ class PTApp {
 
     input.addEventListener("keydown", (e) => {
       if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
+      if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
       if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // Writer keys may still be reported as composing after physical-key entry.
       if (colKey === "writer" && this.isWriterRightExit(e, input)) {
@@ -5335,6 +5348,12 @@ class PTApp {
       const { rowIdx } = this.activeCell;
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="prescription"]`);
       if (cell && this.handlePrescriptionPickerShortcut(e, rowIdx, cell)) return;
+    }
+
+    if (this.activeCell?.colKey === "extra") {
+      const { rowIdx, colKey } = this.activeCell;
+      const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell && this.handlePresetPickerShortcut(e, rowIdx, colKey, cell)) return;
     }
 
     if (this.activeCell?.colKey === "writer") {
