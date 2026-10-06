@@ -1473,7 +1473,7 @@ class PTApp {
   }
 
   isPresetLeftExit(event, colKey) {
-    return ["prescription", "extra", "memo", "specialNote"].includes(colKey) &&
+    return ["chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"].includes(colKey) &&
       (event.key === "ArrowLeft" || event.code === "ArrowLeft") &&
       !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && this.isAutocompleteOpen();
   }
@@ -1854,10 +1854,13 @@ class PTApp {
 
   handleGenderPickerKeyDown(event) {
     const state = this.genderPickerState;
-    if (!state || !["ArrowUp", "ArrowDown", "ArrowRight", "Enter", "Escape"].includes(event.key)) return;
+    const key = event.key === "Process" ? event.code : event.key;
+    if (!state || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(key)) return;
+    if (key === "ArrowLeft" && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      const direction = event.key === "ArrowDown" ? 1 : -1;
+    if (key === "ArrowLeft") this.presetLeftKeyHeld = true;
+    if (key === "ArrowUp" || key === "ArrowDown") {
+      const direction = key === "ArrowDown" ? 1 : -1;
       state.selectedIndex = (state.selectedIndex + direction + state.items.length) % state.items.length;
       document.getElementById("genderPickerMenu")?.querySelectorAll(".gender-picker-item").forEach((item, index) => {
         item.classList.toggle("is-selected", index === state.selectedIndex);
@@ -1865,9 +1868,10 @@ class PTApp {
       });
       return;
     }
-    if (event.key === "Enter" || event.key === "ArrowRight") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
+    if (key === "Enter" || key === "ArrowRight" || key === "ArrowLeft") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
     this.closeGenderDropdown();
-    if (event.key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
+    if (key === "ArrowLeft") this.selectAutocompleteLeftCell(state.rowIdx, "gender");
+    else if (key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
     else this.selectCell(state.rowIdx, "gender", state.cellElement, false);
     this.elSheetContainer?.focus({ preventScroll: true });
   }
@@ -2607,9 +2611,7 @@ class PTApp {
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
         // Select the adjacent cell without arming another editor for this key.
-        const leftKey = { prescription: "part", extra: "prescription", memo: "writer", specialNote: "memo" }[colKey];
-        const leftCell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${leftKey}"]`);
-        if (leftCell) this.selectCell(rowIdx, leftKey, leftCell, false);
+        this.selectAutocompleteLeftCell(rowIdx, colKey);
         this.elSheetContainer.focus({ preventScroll: true });
         return;
       }

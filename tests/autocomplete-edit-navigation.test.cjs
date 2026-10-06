@@ -309,11 +309,11 @@ test('writer Right exits at the text end even while IME reports composition, but
     assert.equal(app.isWriterRightExit({key:'ArrowRight',[modifier]:true},input),false);
 });
 
-test('prescription and extra Left confirm open suggestions regardless of IME, preserving modified arrows and other columns', () => {
+test('all autocomplete columns Left confirm open suggestions regardless of IME, preserving modified arrows and other columns', () => {
   const { app } = createApp();
   let open = true;
   app.isAutocompleteOpen = () => open;
-  for (const column of ['prescription', 'extra', 'memo', 'specialNote']) {
+  for (const column of ['chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote']) {
     assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), true);
     assert.equal(app.isPresetLeftExit({ key: 'Process', code: 'ArrowLeft', isComposing: true }, column), true);
     for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
@@ -321,12 +321,13 @@ test('prescription and extra Left confirm open suggestions regardless of IME, pr
     }
     assert.equal(app.isPresetLeftExit({ key: 'ArrowRight' }, column), false);
   }
-  for (const column of ['name', 'part', 'writer']) {
+  for (const column of ['no', 'gender', 'visitTime']) {
     assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), false);
   }
   open = false;
   assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'prescription'), false);
   assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'extra'), false);
+  assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'name'), false);
 });
 
 test('inline completion keeps typed syllables and previews only remaining Hangul components', () => {
@@ -389,4 +390,45 @@ test('composed completion tracks only entered initial vowel and final components
     assert.equal(blocks.map(block=>block.char).join(''),candidate);
   }
   assert.equal(app.getInlineCompletionComponents('임연','임연'),null);
+});
+
+
+test('Left confirmation selects exactly the adjacent cell without arming another editor', () => {
+  const { app } = createApp();
+  const columns = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+  for (let index = 1; index < columns.length; index++) {
+    const cell = {};
+    app.elTableBody = { querySelector(selector) {
+      assert.equal(selector, `[data-row="4"][data-col="${columns[index - 1]}"]`);
+      return cell;
+    }};
+    let selections = 0;
+    app.selectCell = (row, key, target, arm) => {
+      selections++;
+      assert.equal(row, 4); assert.equal(key, columns[index - 1]);
+      assert.equal(target, cell); assert.equal(arm, false);
+    };
+    app.selectAutocompleteLeftCell(4, columns[index]);
+    assert.equal(selections, 1);
+  }
+});
+
+test('gender Left confirms the highlighted option and keeps modifier shortcuts unchanged', () => {
+  const { app } = createApp();
+  const cell = {}, leftCell = {}, actions = [];
+  app.genderPickerState = { rowIdx: 2, cellElement: cell, items: [{val:'M'}, {val:'F'}], selectedIndex: 1 };
+  app.setGenderValue = (row, value) => actions.push(['apply', row, value]);
+  app.closeGenderDropdown = () => { app.genderPickerState = null; };
+  app.elTableBody = {querySelector: () => leftCell};
+  app.selectCell = (row, key, target, arm) => {
+    assert.equal(target, leftCell); assert.equal(arm, false); actions.push(['select', row, key]);
+  };
+  app.elSheetContainer = {focus() {}};
+  const event = {key:'ArrowLeft', preventDefault(){}, stopImmediatePropagation(){}};
+  app.handleGenderPickerKeyDown({...event, ctrlKey:true});
+  assert.equal(actions.length, 0);
+  app.handleGenderPickerKeyDown(event);
+  assert.deepEqual(actions, [['apply',2,'F'], ['select',2,'no']]);
+  assert.equal(app.genderPickerState, null);
+  assert.equal(app.presetLeftKeyHeld, true);
 });
