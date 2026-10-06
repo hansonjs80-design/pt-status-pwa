@@ -237,56 +237,11 @@ class PTCellInputTools {
     this.inlineAutocompletePreview = preview; this.inlineAutocompleteInput = input;
   }
 
-  initMemoKoreanInput(input, cell) {
-    if (input.dataset.memoInitialized) return;
-    input.dataset.memoInitialized = 'true';
-    input.lang = 'ko'; input.autocapitalize = 'off'; input.spellcheck = false;
-    const toggle = document.createElement('button'); toggle.type = 'button';
-    toggle.className = 'memo-language-toggle'; toggle.textContent = '한';
-    toggle.title = '한글 우선 입력 · 클릭 또는 Shift+Space로 영문 전환';
-    const switchLanguage = () => {
-      input.dataset.memoEnglish = input.dataset.memoEnglish === 'true' ? 'false' : 'true';
-      input.dataset.composing = 'false';
-      toggle.textContent = input.dataset.memoEnglish === 'true' ? 'EN' : '한';
-      toggle.setAttribute('aria-label', input.dataset.memoEnglish === 'true' ? '영문 입력, 한글로 전환' : '한글 우선 입력, 영문으로 전환');
-    };
-    toggle.setAttribute('aria-label', '한글 우선 입력, 영문으로 전환');
-    toggle.addEventListener('pointerdown', event => event.preventDefault());
-    toggle.addEventListener('click', () => { switchLanguage(); input.focus({preventScroll:true}); });
-    cell.append(toggle);
-    input.addEventListener('keydown', event => {
-      if (event.shiftKey && event.code === 'Space' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        event.preventDefault(); event.stopImmediatePropagation(); switchLanguage();
-      }
-    });
-    input.addEventListener('beforeinput', event => {
-      if (input.dataset.memoEnglish === 'true' || input.dataset.nativeComposing === 'true' || event.isComposing || event.inputType !== 'insertText' || !/^[a-z]+$/i.test(event.data || '')) return;
-      event.preventDefault();
-      input.dataset.composing = 'true';
-      const typed = this.convertMemoKeyboardInput(event.data);
-      const start = input.selectionStart, end = input.selectionEnd;
-      const before = this.assembleMemoInput(input.value.slice(0, start) + typed);
-      input.value = before + input.value.slice(end);
-      input.setSelectionRange(before.length, before.length);
-      input.dispatchEvent(new Event('input', {bubbles:true}));
-    });
-    input.addEventListener('blur', () => toggle.remove());
-  }
-
-  convertMemoKeyboardInput(text) {
-    const latin = 'rsefaqtdwczxvg';
-    const consonants = 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
-    const vowels = {k:'ㅏ',o:'ㅐ',i:'ㅑ',j:'ㅓ',p:'ㅔ',u:'ㅕ',h:'ㅗ',y:'ㅛ',n:'ㅜ',b:'ㅠ',m:'ㅡ',l:'ㅣ'};
-    const shifted = {R:'ㄲ',E:'ㄸ',Q:'ㅃ',T:'ㅆ',W:'ㅉ',O:'ㅒ',P:'ㅖ'};
-    return Array.from(text, key => shifted[key] || vowels[key.toLowerCase()] || consonants[latin.indexOf(key.toLowerCase())] || key).join('');
-  }
-
-  assembleMemoInput(text) {
-    const splitFinals = {3:'ㄱㅅ',5:'ㄴㅈ',6:'ㄴㅎ',9:'ㄹㄱ',10:'ㄹㅁ',11:'ㄹㅂ',12:'ㄹㅅ',13:'ㄹㅌ',14:'ㄹㅍ',15:'ㄹㅎ',18:'ㅂㅅ'};
-    return this.assembleHangul(Array.from(text, char => {
-      const code = char.charCodeAt(0) - 0xac00;
-      if (code < 0 || code > 11171 || !splitFinals[code % 28]) return char;
-      return String.fromCharCode(0xac00 + code - code % 28) + splitFinals[code % 28];
-    }).join(''));
+  initMemoInput(input) {
+    // Let the operating system IME handle both English and Korean input.
+    // Converting insertText Latin keys here prevents native English entry.
+    input.lang = 'ko';
+    input.autocapitalize = 'off';
+    input.spellcheck = false;
   }
 }

@@ -2503,10 +2503,10 @@ class PTApp {
   activateNativeEditor(input) {
     if (!input.classList.contains("is-armed")) return;
     for (const child of [...input.parentElement.childNodes]) {
-      if (child !== input && !child.classList?.contains("visit-time-refresh") && !child.classList?.contains("memo-language-toggle")) child.remove();
+      if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
     }
     input.classList.remove("is-armed");
-    if (input.closest(".excel-cell")?.dataset.col === "memo") this.initMemoKoreanInput(input, input.parentElement);
+    if (input.closest(".excel-cell")?.dataset.col === "memo") this.initMemoInput(input);
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
@@ -2550,7 +2550,7 @@ class PTApp {
     const len = input.value.length;
     input.setSelectionRange(armed ? 0 : len, len);
 
-    if (colKey === "memo") this.initMemoKoreanInput(input, cellElement);
+    if (colKey === "memo") this.initMemoInput(input);
 
     // Input events
     // ★ 한글 IME 보호 원칙:

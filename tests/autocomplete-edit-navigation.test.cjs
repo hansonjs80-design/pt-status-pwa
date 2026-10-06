@@ -352,13 +352,22 @@ test('autocomplete left confirmation suppresses repeated movement until key rele
   assert.equal(prevented, 2);
 });
 
-test('memo English keyboard fallback assembles Korean, including compound final consonants', () => {
+test('memo input preserves English and mixed Korean text without intercepting native typing', () => {
   const { app } = createApp();
-  let text = '';
-  for (const key of 'tlswkd') text = app.assembleMemoInput(text + app.convertMemoKeyboardInput(key));
-  assert.equal(text, '신장');
-  assert.equal(app.assembleHangul(app.convertMemoKeyboardInput('gksrmf')), '한글');
-  assert.equal(app.convertMemoKeyboardInput('Rk'), 'ㄲㅏ');
+  for (const value of ['MW', 'ICT / Laser', 'MW 완료', '신장']) {
+    const input = {
+      value, dataset: {}, selectionStart: value.length, selectionEnd: value.length,
+      addEventListener() { assert.fail('memo must not intercept native input or language shortcuts'); },
+      setSelectionRange() { assert.fail('unchanged native input must retain its cursor'); },
+    };
+    app.initMemoInput(input);
+    assert.equal(input.value, value);
+    assert.equal(app.normalizeCompletedHangulInput(input), false);
+    assert.equal(input.dataset.composing, undefined);
+    assert.equal(input.lang, 'ko');
+    assert.equal(input.autocapitalize, 'off');
+    assert.equal(input.spellcheck, false);
+  }
 });
 
 test('inline preview displays assembled syllables while leaving native composing text untouched', () => {

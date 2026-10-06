@@ -2269,9 +2269,6 @@ body {
 .inline-autocomplete-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
 .inline-completion-prefix { color: #111; }
 .inline-completion-suffix { color: #92979e; }
-.memo-language-toggle { position: absolute; right: 3px; top: 3px; z-index: 5; padding: 1px 3px; border: 1px solid #c9dacf; border-radius: 3px; background: #f0f7f3; color: #36744d; font-size: 9px; line-height: 12px; cursor: pointer; }
-.cell-memo .cell-input-element:not(.is-armed) { padding-right: 24px; box-sizing: border-box; }
-.cell-input-element.is-armed ~ .memo-language-toggle { display: none; }
 .inline-completion-glyph { display: inline-flex; position: relative; align-items: center; }
 .inline-completion-glyph canvas { display: block; }
 .inline-completion-glyph-text { position: absolute; opacity: 0; pointer-events: none; }
