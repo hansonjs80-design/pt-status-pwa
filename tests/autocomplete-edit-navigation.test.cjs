@@ -487,9 +487,26 @@ test('plain Enter on an empty selected cell moves right before picker shortcuts 
 
 test('spaced or partial-vowel matches never hide already typed syllables', () => {
   const {app} = createApp();
-  for (const [query,candidate] of [['오어','오 영'],['오어','오 어'],['오어','오 엉덩이'],['오 어','오 영'],['오어','오영'],['오ㅇ','오 영']]) {
+  for (const [query,candidate] of [['오어','오 영'],['오 어','오 영'],['오어','오영']]) {
     assert.equal(app.getInlineCompletionComponents(query,candidate),null);
   }
   const blocks=app.getInlineCompletionComponents('오 어','오 어깨');
   assert.deepEqual(Array.from(blocks,block=>block.typed),[2,1,2,0]);
+});
+
+
+test('compact Korean completion colors only untyped finals despite candidate spaces', () => {
+  const {app}=createApp();
+  for (const candidate of ['오엉','오 엉']) {
+    const blocks=app.getInlineCompletionComponents('오어',candidate);
+    assert.equal(blocks.map(block=>block.char).join(''),'오엉');
+    assert.deepEqual(Array.from(blocks,block=>block.typed),[2,2]);
+    assert.deepEqual(Array.from(blocks[1].jamo),['ㅇ','ㅓ','ㅇ']);
+  }
+  const tail=app.getInlineCompletionComponents('오어','오 엉덩이');
+  assert.equal(tail.map(block=>block.char).join(''),'오엉덩이');
+  assert.deepEqual(Array.from(tail,block=>block.typed),[2,2,0,0]);
+  const completed=app.getInlineCompletionComponents('오엉','오 엉덩이');
+  assert.deepEqual(Array.from(completed,block=>block.typed),[2,3,0,0]);
+  assert.equal(app.getInlineCompletionComponents('오어','오 영'),null);
 });

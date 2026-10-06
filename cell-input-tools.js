@@ -91,7 +91,11 @@ class PTCellInputTools {
 
   getInlineCompletionComponents(query, candidate) {
     if (!query || !candidate || query === candidate) return null;
-    const blocks = Array.from(candidate, char => ({char, jamo: this.getCompletionJamo(char), typed: 0}));
+    // A compact Korean query previews compact syllables even when the saved
+    // candidate contains spaces; the popup and committed value keep its wording.
+    const displayCandidate = /[가-힣ㄱ-ㅎ]/.test(query) && !/\s/.test(query)
+      ? candidate.replace(/\s+/g, "") : candidate;
+    const blocks = Array.from(displayCandidate, char => ({char, jamo: this.getCompletionJamo(char), typed: 0}));
     // Keep every typed syllable visible in its original position.
     // Space-insensitive or pending-initial matches belong in the popup
     // when the candidate cannot extend the exact typed glyphs.
