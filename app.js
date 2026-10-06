@@ -2158,7 +2158,14 @@ class PTApp {
         document.getElementById("cellAutocompleteMenu")) { this.updateInlineAutocompletePreview(); return; }
     const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
     const preservedIndex = sameQuery ? candidates?.indexOf(selectedValue) : -1;
-    const selectedIndex = preservedIndex >= 0 ? preservedIndex : (showTypedValue && candidates.length > 1 ? 1 : 0);
+    const ruleKey = this.getAutocompleteRuleKey(colKey, query);
+    const registered = COLUMN_PRESETS[ruleKey] || COLUMN_PRESETS[colKey] || [];
+    const preferred = registered.find(value => candidates.includes(value) &&
+      !(COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || []).includes(value) &&
+      !(COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).some(hidden => hidden.toLowerCase() === value.toLowerCase()));
+    const preferredIndex = preferred === undefined ? -1 : candidates.indexOf(preferred);
+    const selectedIndex = preservedIndex >= 0 ? preservedIndex : preferredIndex >= 0 ? preferredIndex
+      : (showTypedValue && candidates.length > 1 ? 1 : 0);
     this.closeAutocompleteMenu();
     if (!candidates || candidates.length === 0) return;
 
@@ -2671,6 +2678,18 @@ class PTApp {
       if (input.classList.contains("is-armed")) { input.remove(); return; }
       this.closeAutocompleteMenu();
       commitAndBlur();
+    });
+
+    input.addEventListener("contextmenu", event => {
+      if (!this.isAutocompleteOpen()) return;
+      event.preventDefault(); event.stopPropagation();
+      const chosen = this.getSelectedAutocompleteItem();
+      this._justCommittedFromAutocomplete = true;
+      composing = false; input.dataset.composing = "false";
+      this.closeAutocompleteMenu();
+      commitAndBlur(chosen);
+      this.selectCell(rowIdx, colKey, cellElement, false);
+      this.elSheetContainer.focus({ preventScroll: true });
     });
 
     input.addEventListener("keydown", (e) => {
