@@ -262,3 +262,33 @@ test('whole column formatting covers historical and new rows while later cell ov
   instance.setColumnFormatting({minCol:3,maxCol:3},'color',null);
   assert.equal(instance.getCellFormatting(oldRow,'name','color'),null);
 });
+
+
+test('column defaults persist across past, future, empty and search rows with independent cell overrides', () => {
+  const instance = Object.create(context.App.prototype);
+  const dates = {
+    '2026-09-01': [{ name: '이전', _textStyles: { name: { fontSize: 11, fontWeight: 700 } } }],
+    '2026-10-06': [{ name: '현재' }],
+    '2026-12-01': [{ name: '미래', _textColors: { name: '#ff0000' } }, {}]
+  };
+  for (const [property, value] of [['fontSize',18], ['fontWeight',600], ['color','#123456']]) {
+    instance.setColumnFormatting({minCol:2,maxCol:9}, property, value);
+  }
+  instance.columnFormatting = instance.loadColumnFormatting();
+  const searchRows = Object.entries(dates).flatMap(([date, rows]) => rows.map(row => ({...row, _sourceDate:date})));
+  for (const row of [...Object.values(dates).flat(), ...searchRows, {name:'새 날짜'}]) {
+    for (const key of ['chartNo','name','part','prescription','extra','writer','memo','specialNote']) {
+      const element = {style:{}};
+      instance.applyCellFormatting(element,row,key);
+      assert.deepEqual(element.style,{color:'#123456',fontSize:'18px',fontWeight:600});
+    }
+    assert.equal(instance.getCellFormatting(row,'no','fontSize'),undefined);
+  }
+  const local = dates['2026-12-01'][0];
+  instance.markCellFormatting(local,'name','fontSize');
+  local._textStyles = {name:{fontSize:24}};
+  assert.equal(instance.getCellFormatting(local,'name','fontSize'),24);
+  assert.equal(instance.getCellFormatting(dates['2026-09-01'][0],'name','fontSize'),18);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
+  assert.equal(instance.getCellFormatting(local,'name','fontSize'),16);
+});

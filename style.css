@@ -2195,7 +2195,7 @@ body {
 .cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #e7edf5; }
 
 /* New identities use a computed row color; existing records keep their formatting. */
-.excel-row.new-patient-row > .excel-cell { color: #8b4513 !important; }
+.excel-row.new-patient-row > .excel-cell { color: #8b4513; }
 
 .quick-inputs .date-label.is-saturday { color: #1e40af; }
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }

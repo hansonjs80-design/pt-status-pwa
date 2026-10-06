@@ -2607,6 +2607,7 @@ class PTApp {
     input.addEventListener("keydown", (e) => {
       if (this.consumePresetLeftRepeat(e)) return;
       if (input.classList.contains("is-armed")) {
+        if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
         if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
@@ -5238,6 +5239,8 @@ class PTApp {
         return;
       }
     }
+
+    if (this.handleEmptyCellEnter(e)) return;
 
     // G열 성별 키보드 직접 입력 ('ㄹ' -> 'F', 'ㅡ' -> 'M', 'f'/'F' -> 'F', 'm'/'M' -> 'M')
     if (this.activeCell && this.activeCell.colKey === "gender" && !isCtrlOrMeta && !e.altKey) {

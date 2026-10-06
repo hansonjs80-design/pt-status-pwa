@@ -1,5 +1,16 @@
 // In-cell completion is a visual overlay; candidate text never enters the native input.
 class PTCellInputTools {
+  handleEmptyCellEnter(event, armedInput = null) {
+    if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !this.activeCell) return false;
+    const { rowIdx, colKey } = this.activeCell;
+    if (String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
+    event.preventDefault(); event.stopPropagation();
+    armedInput?.remove();
+    this.selectAutocompleteRightCell(rowIdx, colKey);
+    this.elSheetContainer?.focus({preventScroll:true});
+    return true;
+  }
+
   selectAutocompleteLeftCell(rowIdx, colKey) {
     this.selectAutocompleteAdjacentCell(rowIdx, colKey, -1);
   }
