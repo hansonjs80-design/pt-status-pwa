@@ -483,3 +483,13 @@ test('plain Enter on an empty selected cell moves right before picker shortcuts 
   app.activeCell={rowIdx:0,colKey:'name'};
   assert.equal(app.handleEmptyCellEnter(event),false);
 });
+
+
+test('spaced or partial-vowel matches never hide already typed syllables', () => {
+  const {app} = createApp();
+  for (const [query,candidate] of [['오어','오 영'],['오어','오 어'],['오어','오 엉덩이'],['오 어','오 영'],['오어','오영'],['오ㅇ','오 영']]) {
+    assert.equal(app.getInlineCompletionComponents(query,candidate),null);
+  }
+  const blocks=app.getInlineCompletionComponents('오 어','오 어깨');
+  assert.deepEqual(Array.from(blocks,block=>block.typed),[2,1,2,0]);
+});

@@ -2166,12 +2166,14 @@ class PTApp {
       editButton.type = "button";
       editButton.className = "autocomplete-edit-button";
       editButton.textContent = "✎";
-      editButton.title = "모든 날짜의 같은 문구 수정";
-      editButton.setAttribute("aria-label", `${cand} 수정`);
+      const managedColumn = ["part", "prescription", "extra", "memo", "specialNote"].includes(colKey);
+      editButton.title = managedColumn ? "자동완성 문구와 우선순서 관리" : "모든 날짜의 같은 문구 수정";
+      editButton.setAttribute("aria-label", `${cand} ${managedColumn ? "자동완성 관리" : "수정"}`);
       editButton.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
       editButton.addEventListener("click", e => {
         e.preventDefault(); e.stopPropagation();
-        void this.editAutocompleteValue(colKey, cand, input);
+        if (managedColumn) this.openAutocompletePresetManager(colKey, cand, input);
+        else void this.editAutocompleteValue(colKey, cand, input);
       });
       if (!["writer", "name"].includes(colKey)) itemEl.appendChild(editButton);
 
@@ -2253,6 +2255,20 @@ class PTApp {
       window.removeEventListener("resize", positionMenu);
       document.removeEventListener("scroll", scrollListener, true);
     };
+  }
+
+  openAutocompletePresetManager(colKey, value, input) {
+    input?.blur();
+    this.closeAutocompleteMenu();
+    this.openPresetManager(colKey);
+    const index = (COLUMN_PRESETS[colKey] || []).indexOf(value);
+    if (index < 0) {
+      this.elManagerNewPresetInput.value = value;
+    } else {
+      const item = this.elPresetListContainer.children[index];
+      item?.classList.add("preset-management-target");
+      item?.scrollIntoView({ block: "nearest" });
+    }
   }
 
   async editAutocompleteValue(colKey, oldValue, input) {

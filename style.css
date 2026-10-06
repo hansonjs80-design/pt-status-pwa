@@ -2297,3 +2297,5 @@ body {
   font-size: 14px;
   font-weight: 500;
 }
+
+.preset-list-item.preset-management-target { background: #e8f4ec; box-shadow: inset 3px 0 0 #107c41; }
