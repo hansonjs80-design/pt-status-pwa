@@ -230,7 +230,8 @@ class PTCellInputTools {
     const state = this.autocompleteState;
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
-    if (input.dataset?.nativeComposing === 'true' || !input.isConnected || document.activeElement !== input || !input.value ||
+    // The preview only paints a separate overlay; never rewrite or refocus the IME input.
+    if (!input.isConnected || document.activeElement !== input || !input.value ||
         input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length) return;
     const blocks = this.getInlineCompletionComponents(input.value, this.getSelectedAutocompleteItem());
     if (!blocks) return;

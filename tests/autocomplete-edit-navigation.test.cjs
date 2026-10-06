@@ -545,13 +545,29 @@ test('completed Korean jamo repair preserves caret and never rewrites an active 
   assert.equal(input.value,'ㄱㅅ');
 });
 
-test('native IME composition keeps actual input visible instead of rendering completion overlay', () => {
-  const { app } = createApp();
-  let cleared=0;
-  app.clearInlineAutocompletePreview=()=>{cleared++;};
-  app.autocompleteState={colKey:'name',input:{dataset:{nativeComposing:'true'}}};
+test('name completion previews gray remaining letters during native composition without changing input or focus', () => {
+  const { app, context } = createApp();
+  let rendered, appended, writes=0;
+  const input={dataset:{nativeComposing:'true'},isConnected:true,
+    get value(){return '임';},set value(value){writes++;},
+    selectionStart:1,selectionEnd:1,offsetLeft:0,offsetTop:0,offsetHeight:28,scrollLeft:0,
+    classList:{add(value){assert.equal(value,'has-inline-completion');}},
+    focus(){assert.fail('preview must not refocus the composing input');},
+    setSelectionRange(){assert.fail('preview must not move the composing caret');}};
+  const preview={style:{},setAttribute(){},append(block){rendered=block;}};
+  context.document={activeElement:input,createElement(){return preview;}};
+  context.getComputedStyle=()=>({font:'14px sans-serif',paddingLeft:'6px',letterSpacing:'normal'});
+  app.clearInlineAutocompletePreview=()=>{};
+  app.getSelectedAutocompleteItem=()=> '임연';
+  app.createPartialHangulPreview=block=>block;
+  app.autocompleteState={colKey:'name',input,cellElement:{append(value){appended=value;}}};
   app.updateInlineAutocompletePreview();
-  assert.equal(cleared,1);
+  assert.equal(writes,0);
+  assert.equal(input.value,'임');
+  assert.equal(rendered.char,'연');
+  assert.equal(rendered.typed,0);
+  assert.equal(appended,preview);
+  assert.equal(context.document.activeElement,input);
 });
 
 
