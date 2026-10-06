@@ -9,8 +9,18 @@ class PTCellInputTools {
     event.preventDefault(); event.stopPropagation();
     armedInput?.remove();
     this.selectAutocompleteRightCell(rowIdx, colKey);
-    this.elSheetContainer?.focus({preventScroll:true});
+    this.focusSelectedCellEditor();
     return true;
+  }
+
+  focusSelectedCellEditor() {
+    const selected = this.activeCell;
+    const input = selected && this.elTableBody?.querySelector(
+      `[data-row="${selected.rowIdx}"][data-col="${selected.colKey}"] input`);
+    // Keep the destination's native input focused before the first IME key.
+    // Moving focus to the sheet makes the first composing key create/refocus an editor.
+    if (input) input.focus({ preventScroll: true });
+    else this.elSheetContainer?.focus({ preventScroll: true });
   }
 
   selectAutocompleteLeftCell(rowIdx, colKey) {

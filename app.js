@@ -1869,7 +1869,7 @@ class PTApp {
     else if (key === "Enter") this.selectAutocompleteRightCell(state.rowIdx, "gender");
     else if (key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
     else this.selectCell(state.rowIdx, "gender", state.cellElement, false);
-    this.elSheetContainer?.focus({ preventScroll: true });
+    this.focusSelectedCellEditor();
   }
 
   closeGenderDropdown() {
@@ -2223,7 +2223,7 @@ class PTApp {
         if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
-          this.elSheetContainer.focus({ preventScroll: true });
+          this.focusSelectedCellEditor();
         }
       });
 
@@ -2711,7 +2711,7 @@ class PTApp {
       this.closeAutocompleteMenu();
       commitAndBlur(chosen);
       this.selectCell(rowIdx, colKey, cellElement, false);
-      this.elSheetContainer.focus({ preventScroll: true });
+      this.focusSelectedCellEditor();
     });
 
     input.addEventListener("keydown", (e) => {
@@ -2733,7 +2733,7 @@ class PTApp {
         commitAndBlur(chosen);
         // Select the adjacent cell without arming another editor for this key.
         this.selectAutocompleteLeftCell(rowIdx, colKey);
-        this.elSheetContainer.focus({ preventScroll: true });
+        this.focusSelectedCellEditor();
         return;
       }
       // Writer keys may still be reported as composing after physical-key entry.
@@ -2744,7 +2744,7 @@ class PTApp {
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
         this.navigateCol(rowIdx, colKey, 1);
-        this.elSheetContainer.focus({ preventScroll: true });
+        this.focusSelectedCellEditor();
         return;
       }
       if (colKey === "writer" && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
@@ -2771,7 +2771,7 @@ class PTApp {
         // Escape confirms the typed value and moves right, like direct commit.
         commitAndBlur();
         this.navigateCol(rowIdx, colKey, 1);
-        this.elSheetContainer.focus({ preventScroll: true });
+        this.focusSelectedCellEditor();
         return;
       }
       // Let the native IME handle candidate selection and composition confirmation.
@@ -2847,7 +2847,7 @@ class PTApp {
           commitAndBlur(chosenVal);
           this.selectAutocompleteRightCell(rowIdx, colKey);
           if (this.elSheetContainer) {
-            this.elSheetContainer.focus({ preventScroll: true });
+            this.focusSelectedCellEditor();
           }
           return;
         }
@@ -2927,7 +2927,7 @@ class PTApp {
         commitAndBlur();
         e.stopPropagation();
         this.selectAutocompleteRightCell(rowIdx, colKey);
-        this.elSheetContainer?.focus({ preventScroll: true });
+        this.focusSelectedCellEditor();
       } else if (e.key === "Tab") {
         e.preventDefault();
         commitAndBlur();

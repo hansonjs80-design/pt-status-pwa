@@ -553,3 +553,21 @@ test('native IME composition keeps actual input visible instead of rendering com
   app.updateInlineAutocompletePreview();
   assert.equal(cleared,1);
 });
+
+
+test('moving from writer to memo keeps the destination native editor focused before IME starts', () => {
+  const {app}=createApp();
+  let editorFocus=0, sheetFocus=0;
+  app.activeCell={rowIdx:0,colKey:'memo'};
+  app.elTableBody={querySelector(selector) {
+    assert.equal(selector, '[data-row="0"][data-col="memo"] input');
+    return {focus(){editorFocus++;}};
+  }};
+  app.elSheetContainer={focus(){sheetFocus++;}};
+  app.focusSelectedCellEditor();
+  assert.equal(editorFocus,1);
+  assert.equal(sheetFocus,0);
+  app.elTableBody.querySelector=()=>null;
+  app.focusSelectedCellEditor();
+  assert.equal(sheetFocus,1);
+});
