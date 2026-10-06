@@ -72,7 +72,15 @@ class PTCellInputTools {
   getInlineCompletionComponents(query, candidate) {
     if (!query || !candidate || query === candidate) return null;
     const blocks = Array.from(candidate, char => ({char, jamo: this.getCompletionJamo(char), typed: 0}));
-    const entered = Array.from(query, char => this.getCompletionJamo(char)).flat().join('');
+    // Keep a typed final consonant in its own syllable. A candidate may
+    // reinterpret it as the next syllable's initial, but only in the popup.
+    const typedChars = Array.from(query);
+    if (typedChars.some((char, index) => {
+      const code = char.charCodeAt(0) - 0xac00;
+      return code >= 0 && code <= 11171 && code % 28 !== 0 &&
+        !blocks[index]?.jamo.join('').startsWith(this.getCompletionJamo(char).join(''));
+    })) return null;
+    const entered = typedChars.flatMap(char => this.getCompletionJamo(char)).join('');
     if (blocks.flatMap(block => block.jamo).join('').toLowerCase().startsWith(entered.toLowerCase())) {
       let remaining = entered.length;
       for (const block of blocks) { block.typed = Math.min(remaining, block.jamo.length); remaining -= block.typed; }

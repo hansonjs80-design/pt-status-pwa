@@ -382,7 +382,6 @@ test('composed completion tracks only entered initial vowel and final components
   for(const [query, candidate, expected] of [
     ['ㅇ','임연',[1,0]], ['이','임연',[2,0]], ['임','임연',[3,0]],
     ['임ㅇ','임연',[3,1]], ['임여','임연',[3,2]],
-    ['잋','이춘식',[2,1,0]], ['싡','신장',[3,1]],
     ['ㅇㅊ','이청용',[1,1,0]], ['고','과장',[2,0]],
   ]) {
     const blocks=app.getInlineCompletionComponents(query,candidate);
@@ -431,4 +430,15 @@ test('gender Left confirms the highlighted option and keeps modifier shortcuts u
   assert.deepEqual(actions, [['apply',2,'F'], ['select',2,'no']]);
   assert.equal(app.genderPickerState, null);
   assert.equal(app.presetLeftKeyHeld, true);
+});
+
+
+test('typed final consonants stay in the native syllable while matching candidates remain available', () => {
+  const {app}=createApp();
+  for (const [query, candidate] of [['이솔','이소림'], ['잋','이춘식'], ['싡','신장']]) {
+    assert.equal(app.getInlineCompletionComponents(query, candidate), null);
+    assert.equal(app.matchesHangulPrefix(candidate, query, true), true);
+  }
+  const blocks = app.getInlineCompletionComponents('이솔','이솔희');
+  assert.deepEqual(Array.from(blocks, block => block.typed), [2,3,0]);
 });
