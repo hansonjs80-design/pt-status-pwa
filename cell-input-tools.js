@@ -206,15 +206,8 @@ class PTCellInputTools {
     preview.style.letterSpacing = font.letterSpacing;
     for (const block of blocks) preview.append(this.createPartialHangulPreview(block, font));
     input.classList.add('has-inline-completion');
-    const measure = document.createElement('canvas').getContext('2d');
-    measure.font = font.font;
-    const spacing = parseFloat(font.letterSpacing) || 0;
-    const typedWidth = measure.measureText(input.value).width + spacing * input.value.length;
-    const paddingLeft = parseFloat(font.paddingLeft) || 0, paddingRight = parseFloat(font.paddingRight) || 0;
-    const contentWidth = input.clientWidth - paddingLeft - paddingRight;
-    const centered = state.colKey !== 'prescription';
-    const offset = centered ? Math.max(0, (contentWidth - typedWidth) / 2) : 0;
-    preview.style.left = `${input.offsetLeft + paddingLeft + offset - input.scrollLeft}px`;
+    const paddingLeft = parseFloat(font.paddingLeft) || 0;
+    preview.style.left = `${input.offsetLeft + paddingLeft - input.scrollLeft}px`;
     preview.style.top = `${input.offsetTop}px`;
     preview.style.height = `${input.offsetHeight}px`;
     cellElement.append(preview);

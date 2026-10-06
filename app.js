@@ -504,14 +504,6 @@ class PTApp {
     });
     document.addEventListener("mouseup", () => { this.columnDragAnchor = null; });
 
-    // Business Headers Click (Sort Column)
-    document.querySelectorAll(".business-headers-row th.b-header").forEach((th) => {
-      th.addEventListener("click", () => {
-        const colKey = th.dataset.col;
-        if (colKey && colKey !== "del") this.sortByColumn(colKey);
-      });
-    });
-
     // Corner Header Click (Select All Sheet)
     const cornerHeader = document.getElementById("cornerHeader");
     if (cornerHeader) {
@@ -637,6 +629,7 @@ class PTApp {
     this.elPresetManagerModal = document.getElementById("presetManagerModal");
     this.elClosePresetManagerModal = document.getElementById("btnClosePresetManagerModal");
     this.elBtnManagerDone = document.getElementById("btnManagerDone");
+    this.elTabPresetPart = document.getElementById("tabPresetPart");
     this.elTabPresetPrescription = document.getElementById("tabPresetPrescription");
     this.elTabPresetExtra = document.getElementById("tabPresetExtra");
     this.elTabPresetWriter = document.getElementById("tabPresetWriter");
@@ -690,7 +683,7 @@ class PTApp {
     if (this.elTabPresetExtra) {
       this.elTabPresetExtra.addEventListener("click", () => this.switchPresetTab("extra"));
     }
-    for (const [tab, element] of [["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+    for (const [tab, element] of [["part", this.elTabPresetPart], ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.addEventListener("click", () => this.switchPresetTab(tab));
     }
     if (this.elBtnManagerAddPreset) {
@@ -4388,7 +4381,7 @@ class PTApp {
     if (!["chartNo", "name"].includes(key)) return false;
     const match = String(value ?? "").trim().match(/^(\d+)\s*\/\s*(.+)$/u);
     if (!match) return false;
-    const name = match[2].replace(/\s*\(\d+\)\s*$/, "").replace(/([가-힣])\s*[MF]\s*$/i, "$1").trim();
+    const name = match[2].replace(/\s*\(\d+\)\s*$/, "").replace(/([가-힣])(?:\s*(?:\d+|[MF]|\*))+\s*$/i, "$1").trim();
     if (!name || !/^[\p{L} .'-]+$/u.test(name)) return false;
     row.chartNo = match[1]; row.name = name;
     for (const field of ["chartNo", "name"]) {
@@ -5635,12 +5628,12 @@ class PTApp {
   }
 
   updatePresetManagerTabs() {
-    for (const [tab, element] of [["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
+    for (const [tab, element] of [["part", this.elTabPresetPart], ["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
       ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.classList.toggle("active", this.activePresetTab === tab);
     }
     if (this.elManagerNewPresetInput) {
-      const labels = { prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
+      const labels = { part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
       this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
     }
   }

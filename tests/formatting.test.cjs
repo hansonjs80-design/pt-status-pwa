@@ -79,6 +79,9 @@ test('compound patient entry splits chart and name and removes suffixes', () => 
   for (const key of ['chartNo','name']) for (const [input,chartNo,name] of [
     ['8364/최정원(3)','8364','최정원'], ['15575/유은정M(3)','15575','유은정'],
     ['00123 / 가상환자F(12)','00123','가상환자'], ['123/가상환자','123','가상환자'],
+    ['823/김광진60','823','김광진'], ['823/김광진40','823','김광진'],
+    ['823/김광진M','823','김광진'], ['823/김광진*','823','김광진'],
+    ['823/김광진40M*','823','김광진'],
   ]) {
     const row={memo:'유지'};assert.equal(app.applyCompoundPatientInput(row,key,input),true);
     assert.deepEqual(row,{memo:'유지',chartNo,name});

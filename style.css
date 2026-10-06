@@ -739,13 +739,8 @@ body {
   top: 22px;
   z-index: 10;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
   transition: background-color 0.15s;
-}
-
-.business-headers-row th.b-header:hover {
-  background: #cfe2c7;
-  color: #15370a;
 }
 
 .business-headers-row th.b-header.header-active {
@@ -2294,9 +2289,8 @@ body {
 .summary-average-tables tbody tr:last-child td { border-bottom: 0; }
 @media (max-width: 900px) { .excel-sidebar.summary-expanded { max-width: none; width: 100%; } }
 
-/* Native editing and completion share the typed text's centered origin. */
-.excel-table .excel-cell:not(.cell-prescription) .cell-input-element { text-align: center; }
-.excel-table .cell-prescription .cell-input-element { text-align: left; }
+/* Native editing and inline completion share the same left-aligned origin. */
+.excel-table .excel-cell .cell-input-element { text-align: left; }
 
 /* Shared defaults for current and historical records; saved formatting overrides these. */
 .excel-table .excel-cell:is(.cell-chartNo, .cell-name, .cell-part, .cell-prescription, .cell-extra, .cell-writer, .cell-memo, .cell-specialNote) {
