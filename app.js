@@ -2736,6 +2736,7 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       if (this.consumePresetLeftRepeat(e)) return;
       this.releaseNavigationInputGuard(input, e);
       if (input.classList.contains("is-armed")) {

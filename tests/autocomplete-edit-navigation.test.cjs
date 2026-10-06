@@ -673,3 +673,18 @@ test('left destination rejects inherited IME text until a fresh typing key, whil
   input.dataset.navigationInputGuard='true';
   assert.equal(app.blockInheritedNavigationInput(input,{inputType:'insertFromPaste'},'왼쪽 원래 내용'),false);
 });
+
+
+test('IME replayed Left after keyup cannot move the destination another column', () => {
+  const {app}=createApp();
+  const destination={dataset:{navigationInputGuard:'true'}};
+  app.presetLeftKeyHeld=false; // OS keyup already arrived before its duplicate arrow.
+  let prevented=0;
+  const base={target:destination,code:'ArrowLeft',preventDefault(){prevented++;},stopPropagation(){}};
+  for(const event of [{key:'Process',isComposing:true,keyCode:229},{key:'ArrowLeft',repeat:true},{key:'ArrowLeft',isComposing:true}])
+    assert.equal(app.consumePresetLeftRepeat({...base,...event}),true);
+  assert.equal(app.consumePresetLeftRepeat({...base,key:'ArrowLeft'}),false,'a fresh released key still navigates normally');
+  app.releaseNavigationInputGuard(destination,{key:'r',code:'KeyR'});
+  assert.equal(app.consumePresetLeftRepeat({...base,key:'Process',isComposing:true}),false,'new typing starts a separate edit');
+  assert.equal(prevented,3);
+});

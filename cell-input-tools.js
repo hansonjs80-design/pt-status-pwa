@@ -74,8 +74,13 @@ class PTCellInputTools {
   }
 
   consumePresetLeftRepeat(event) {
-    if (!this.presetLeftKeyHeld || !(event.key === 'ArrowLeft' || event.code === 'ArrowLeft') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
-    event.preventDefault(); event.stopPropagation(); return true;
+    if (!(event.key === 'ArrowLeft' || event.code === 'ArrowLeft') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+    // An IME can deliver another Process/229 arrow after keyup has released the
+    // original key. The destination still belongs to that same handoff.
+    const inherited = event.target?.dataset?.navigationInputGuard === 'true' &&
+      (event.isComposing || event.key === 'Process' || event.keyCode === 229 || event.repeat);
+    if (!this.presetLeftKeyHeld && !inherited) return false;
+    event.preventDefault(); event.stopImmediatePropagation?.(); event.stopPropagation(); return true;
   }
 
   getInlineCompletionSuffix(query, candidate) {
