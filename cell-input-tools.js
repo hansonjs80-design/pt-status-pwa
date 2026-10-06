@@ -3,6 +3,8 @@ class PTCellInputTools {
   handleEmptyCellEnter(event, armedInput = null) {
     if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !this.activeCell) return false;
     const { rowIdx, colKey } = this.activeCell;
+    // Picker cells open their options on the first Enter, even when empty.
+    if (colKey === 'gender' || colKey === 'writer') return false;
     if (String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
     event.preventDefault(); event.stopPropagation();
     armedInput?.remove();

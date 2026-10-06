@@ -2719,8 +2719,9 @@ class PTApp {
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
-        if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
+      if (colKey === "writer" && !e.isComposing && input.dataset.nativeComposing !== "true" &&
+          this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // A plain Left confirms the highlighted preset even before IME ends.
       if (this.isPresetLeftExit(e, colKey)) {
         e.preventDefault(); e.stopPropagation();

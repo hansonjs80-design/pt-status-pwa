@@ -476,18 +476,23 @@ test('Enter destination moves right exactly once without arming an editor or wra
 });
 
 
-test('plain Enter on an empty selected cell moves right before picker shortcuts and preserves modified Enter', () => {
+test('plain Enter skips empty text cells but leaves gender and writer to their pickers', () => {
   const {app}=createApp({'2026-10-04':[{memo:'',prescription:'',extra:'',writer:'',gender:'',name:'입력됨'}]});
   app.getCurrentRows=()=>app.dataStore[app.currentDate];
   let moved=0,removed=0;
   app.selectAutocompleteRightCell=(row,key)=>{assert.equal(row,0);assert.equal(key,app.activeCell.colKey);moved++;};
   app.elSheetContainer={focus(){}};
   const event={key:'Enter',preventDefault(){},stopPropagation(){}};
-  for(const key of ['memo','prescription','extra','writer','gender']) {
+  for(const key of ['memo','prescription','extra']) {
     app.activeCell={rowIdx:0,colKey:key};
     assert.equal(app.handleEmptyCellEnter(event,{remove(){removed++;}}),true);
   }
-  assert.equal(moved,5);assert.equal(removed,5);
+  assert.equal(moved,3);assert.equal(removed,3);
+  for(const key of ['gender','writer']) {
+    app.activeCell={rowIdx:0,colKey:key};
+    assert.equal(app.handleEmptyCellEnter(event,{remove(){assert.fail('picker editor must remain attached');}}),false);
+  }
+  assert.equal(moved,3);
   for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey']) assert.equal(app.handleEmptyCellEnter({...event,[modifier]:true}),false);
   app.activeCell={rowIdx:0,colKey:'name'};
   assert.equal(app.handleEmptyCellEnter(event),false);
