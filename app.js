@@ -1469,6 +1469,12 @@ class PTApp {
       .map(value => this.normalizeWriterInput(value).trim()).filter(Boolean))];
   }
 
+  isPresetLeftExit(event, colKey) {
+    return ["prescription", "extra"].includes(colKey) &&
+      (event.key === "ArrowLeft" || event.code === "ArrowLeft") &&
+      !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && this.isAutocompleteOpen();
+  }
+
   isWriterRightExit(event, input) {
     const right = event.key === "ArrowRight" || event.code === "ArrowRight";
     return right && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
@@ -2579,6 +2585,18 @@ class PTApp {
       if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
       if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
       if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
+      // A plain Left confirms the highlighted preset even before IME ends.
+      if (this.isPresetLeftExit(e, colKey)) {
+        e.preventDefault(); e.stopPropagation();
+        composing = false; input.dataset.composing = "false";
+        const chosen = this.getSelectedAutocompleteItem();
+        this._justCommittedFromAutocomplete = true;
+        this.closeAutocompleteMenu();
+        commitAndBlur(chosen);
+        this.navigateCol(rowIdx, colKey, -1);
+        this.elSheetContainer.focus({ preventScroll: true });
+        return;
+      }
       // Writer keys may still be reported as composing after physical-key entry.
       if (colKey === "writer" && this.isWriterRightExit(e, input)) {
         e.preventDefault(); e.stopPropagation();

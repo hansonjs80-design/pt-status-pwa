@@ -308,3 +308,23 @@ test('writer Right exits at the text end even while IME reports composition, but
   for(const modifier of ['shiftKey','ctrlKey','metaKey','altKey'])
     assert.equal(app.isWriterRightExit({key:'ArrowRight',[modifier]:true},input),false);
 });
+
+test('prescription and extra Left confirm open suggestions regardless of IME, preserving modified arrows and other columns', () => {
+  const { app } = createApp();
+  let open = true;
+  app.isAutocompleteOpen = () => open;
+  for (const column of ['prescription', 'extra']) {
+    assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), true);
+    assert.equal(app.isPresetLeftExit({ key: 'Process', code: 'ArrowLeft', isComposing: true }, column), true);
+    for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
+      assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft', [modifier]: true }, column), false);
+    }
+    assert.equal(app.isPresetLeftExit({ key: 'ArrowRight' }, column), false);
+  }
+  for (const column of ['name', 'part', 'memo', 'specialNote', 'writer']) {
+    assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), false);
+  }
+  open = false;
+  assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'prescription'), false);
+  assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'extra'), false);
+});
