@@ -1960,8 +1960,8 @@ class PTApp {
   }
 
   matchesHangulPrefix(value, rawQuery, isComposing = false) {
-    const name = String(value ?? "").trim().toLowerCase();
-    const query = String(rawQuery ?? "").trim().toLowerCase();
+    const name = String(value ?? "").replace(/\s+/g, "").toLowerCase();
+    const query = String(rawQuery ?? "").replace(/\s+/g, "").toLowerCase();
     if (!query) return false;
     if (name.startsWith(query)) return true;
     if (/[ㄱ-ㅎ]/.test(query)) {
@@ -2038,12 +2038,12 @@ class PTApp {
       const itemLower = item.toLowerCase();
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
-      // 성함·추가 사항·메모·특이 사항은 앞부분만 매칭한다.
+      // 부위·성함·추가 사항·메모·특이 사항은 앞부분만 매칭한다.
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
       // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
 
-      if (["name", "extra", "memo", "specialNote"].includes(colKey)) {
+      if (["name", "part", "extra", "memo", "specialNote"].includes(colKey)) {
         if (this.matchesHangulPrefix(item, query, isComposing)) quality = itemLower.startsWith(query) ? 1 : 1.5;
       } else if (itemLower.startsWith(query)) {
         quality = 1; // 접두사 일치 (e.g. '한' -> '한랭...')
@@ -2133,7 +2133,10 @@ class PTApp {
     if (sameQuery) {
       const pendingMatches = previous.candidates.filter(value =>
         this.matchesHangulPrefix(value, query, true) && !this.matchesHangulPrefix(value, query, false));
-      candidates = [...new Set([...candidates, ...pendingMatches])];
+      if (pendingMatches.length) {
+        const retained = previous.candidates.filter(value => candidates.includes(value) || pendingMatches.includes(value));
+        candidates = [...new Set([...retained, ...candidates, ...pendingMatches])];
+      }
     }
     // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
     if (sameQuery && candidates?.length === previous.candidates.length &&

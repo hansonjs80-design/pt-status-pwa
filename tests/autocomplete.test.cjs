@@ -262,3 +262,13 @@ test('initial consonant suggestions must match from the first syllable in preset
   assert.deepEqual(suggestions(app, 'memo', 'ㅌ'), ['타 기록']);
   assert.deepEqual(suggestions(app, 'name', 'ㄱㅌ'), ['김태영']);
 });
+
+
+test('body part IME matching ignores spacing and keeps managed order for pending initials', () => {
+  const app = createApp({'2026-09-29':[{part:'오 엉덩이'}, {part:'왼 오 어'}]}, {part:['오 어','오 엉덩이']});
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','옹',true)),['옹','오 어','오 엉덩이']);
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','오ㅇ',true)),['옹','오 어','오 엉덩이']);
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','오어',false)),['오어','오 어','오 엉덩이']);
+  assert.equal(app.matchesHangulPrefix('오 어','옹',true),true);
+  assert.equal(app.matchesHangulPrefix('왼 오 어','옹',true),false);
+});
