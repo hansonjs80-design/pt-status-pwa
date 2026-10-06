@@ -96,7 +96,7 @@ class PTTableFormatting {
     popup.setAttribute("role", "dialog"); popup.setAttribute("aria-label", property === "fontSize" ? "글자 크기" : "글자 굵기");
     const title = document.createElement("strong"); title.textContent = property === "fontSize" ? "글자 크기" : "글자 굵기"; popup.append(title);
     const current = document.createElement("div"); current.className = "format-current"; current.textContent = `현재: ${status.label}`; popup.append(current);
-    const options = property === "fontSize" ? [[null, "기본 크기"], ...[10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32].map(n => [n, `${n}px`])]
+    const options = property === "fontSize" ? [[null, "기본 크기"], ...Array.from({ length: 129 }, (_, i) => 8 + i * 0.5).map(n => [n, `${n}px`])]
       : [[null, "기본 굵기"], [400, "보통"], [500, "중간"], [600, "약간 굵게"], [700, "굵게"], [800, "매우 굵게"]];
     const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
     for (const [value, label] of options) {
@@ -116,7 +116,9 @@ class PTTableFormatting {
     const escape = event => { event.stopPropagation(); if (event.key === "Escape") { close(); this.elSheetContainer.focus(); } };
     document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
     this.typographyCleanup = () => document.removeEventListener("mousedown", outside);
-    popup.querySelector("button").focus();
+    const initial = popup.querySelector(".is-current") || popup.querySelector("button");
+    initial.focus();
+    initial.scrollIntoView({ block: "nearest" });
   }
 
   captureTextColorSelection() {

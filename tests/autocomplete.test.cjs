@@ -272,3 +272,45 @@ test('body part IME matching ignores spacing and keeps managed order for pending
   assert.equal(app.matchesHangulPrefix('오 어','옹',true),true);
   assert.equal(app.matchesHangulPrefix('왼 오 어','옹',true),false);
 });
+
+
+test('input-specific candidate management persists order and additions without changing historical rows', () => {
+  const saved=[];
+  const app=createApp({'2026-09-29':[{part:'오 엉덩이'}]}, {part:['오 어']}, {
+    localStorage:{getItem(){return null;},setItem(key,value){saved.push(JSON.parse(value));}},
+    prompt:()=> '오 어깨', confirm:()=>true,
+  });
+  const key=app.getAutocompleteRuleKey('part','옹');
+  app.autocompleteManagerContext={colKey:'part',query:'옹',key,items:['오 어','오 엉덩이']};
+  app.activePresetTab='part';
+  app.renderPresetManagerList=app.renderQuickChips=app.showSaveIndicator=()=>{};
+  app.elManagerNewPresetInput={value:'오 엄지',focus(){}};
+  app.addPresetFromManager();
+  app.movePresetAt('part',2,-1);
+  app.editPresetAt('part',0);
+  app.deletePresetAt('part',2);
+  app.autocompleteManagerContext=null;
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','옹',true)),['옹','오 어깨','오 엄지']);
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','오ㅇ',true)),['옹','오 어깨','오 엄지']);
+  assert.equal(app.dataStore['2026-09-29'][0].part,'오 엉덩이');
+  assert.deepEqual(saved.at(-1)[key],['오 어깨','오 엄지']);
+  assert.deepEqual(saved.at(-1).part,['오 어']);
+});
+
+
+test('detail management includes displayed historical typo and keeps the corrected candidate when reopened', () => {
+  const query = '척추 ( HP / 자기장 / ICT )';
+  const bad = query + 'd';
+  const app = createApp({ '2026-10-05': [{ prescription: bad }] }, { prescription: [query] }, {
+    localStorage: { getItem() { return null; }, setItem() {} }, prompt: () => query,
+  });
+  app.closeAutocompleteMenu = () => {};
+  app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
+  app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
+  app.openAutocompletePresetManager('prescription', bad, { value: query });
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [bad]);
+  app.editPresetAt('prescription', 0);
+  app.openAutocompletePresetManager('prescription', null, { value: query });
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [query]);
+  assert.equal(app.dataStore['2026-10-05'][0].prescription, bad);
+});

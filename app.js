@@ -525,7 +525,7 @@ class PTApp {
       const status = this.getFormattingStatus("fontSize");
       document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
     };
-    for (const [id, delta] of [["btnFontSmaller", -1], ["btnFontLarger", 1]]) {
+    for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
       const button = document.getElementById(id);
       button.addEventListener("mousedown", e => e.preventDefault());
       button.addEventListener("click", () => {
@@ -1992,6 +1992,15 @@ class PTApp {
     const query = String(rawQuery).trim().toLowerCase();
     if (!query) return [];
 
+    const ruleKey = this.getAutocompleteRuleKey(colKey, rawQuery);
+    if (Object.hasOwn(COLUMN_PRESETS, ruleKey)) {
+      const values = [...COLUMN_PRESETS[ruleKey]];
+      if (["part", "chartNo"].includes(colKey)) {
+        const typed = this.assembleHangul(rawQuery).trim();
+        return [typed, ...values.filter(value => value !== typed)];
+      }
+      return values;
+    }
     const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
     const presetSet = new Set(presets.map((p) => p.toLowerCase()));
 
@@ -2167,7 +2176,7 @@ class PTApp {
       editButton.className = "autocomplete-edit-button";
       editButton.textContent = "✎";
       const managedColumn = ["part", "prescription", "extra", "memo", "specialNote"].includes(colKey);
-      editButton.title = managedColumn ? "자동완성 문구와 우선순서 관리" : "모든 날짜의 같은 문구 수정";
+      editButton.title = managedColumn ? "현재 입력값의 자동완성 세부 관리" : "모든 날짜의 같은 문구 수정";
       editButton.setAttribute("aria-label", `${cand} ${managedColumn ? "자동완성 관리" : "수정"}`);
       editButton.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
       editButton.addEventListener("click", e => {
@@ -2257,18 +2266,34 @@ class PTApp {
     };
   }
 
+  getAutocompleteRuleKey(colKey, query) {
+    return `__query:${colKey}:${this.assembleHangul(String(query).trim()).toLowerCase()}`;
+  }
+
+  getPresetManagerKey(tab) {
+    return this.autocompleteManagerContext?.colKey === tab ? this.autocompleteManagerContext.key : tab;
+  }
+
+  getPresetManagerItems(tab) {
+    const context = this.autocompleteManagerContext;
+    return context?.colKey === tab ? context.items : (COLUMN_PRESETS[tab] ||= []);
+  }
+
+  savePresetManagerItems(tab) {
+    COLUMN_PRESETS[this.getPresetManagerKey(tab)] = [...this.getPresetManagerItems(tab)];
+    saveColumnPresets(COLUMN_PRESETS);
+  }
+
   openAutocompletePresetManager(colKey, value, input) {
-    input?.blur();
+    const query = input?.value || this.autocompleteState?.query || value;
+    const shown = this.autocompleteState?.colKey === colKey && this.autocompleteState?.query === query
+      ? this.autocompleteState.candidates : this.getAutocompleteSuggestions(colKey, query, true);
+    const key = this.getAutocompleteRuleKey(colKey, query);
+    const items = Object.hasOwn(COLUMN_PRESETS, key) ? [...COLUMN_PRESETS[key]]
+      : [...new Set(shown.filter(item => item === value || (item !== query && item !== this.assembleHangul(query))))];
+    input?.blur?.();
     this.closeAutocompleteMenu();
-    this.openPresetManager(colKey);
-    const index = (COLUMN_PRESETS[colKey] || []).indexOf(value);
-    if (index < 0) {
-      this.elManagerNewPresetInput.value = value;
-    } else {
-      const item = this.elPresetListContainer.children[index];
-      item?.classList.add("preset-management-target");
-      item?.scrollIntoView({ block: "nearest" });
-    }
+    this.openPresetManager(colKey, { colKey, query, key, items });
   }
 
   async editAutocompleteValue(colKey, oldValue, input) {
@@ -2285,6 +2310,11 @@ class PTApp {
       this.renderTable();
       this.renderQuickChips();
       this.updateSidebarStats();
+      if (this.autocompleteManagerContext?.colKey === colKey) {
+        this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
+        this.savePresetManagerItems(colKey);
+        this.renderPresetManagerList();
+      }
       this.showSaveIndicator(`${count}개 셀 문구 수정 · 변경 전 백업 저장됨`);
     } catch (error) {
       alert("문구 수정 실패: " + error.message);
@@ -2672,7 +2702,7 @@ class PTApp {
         this.closeAutocompleteMenu();
         // Escape ends editing without discarding the typed value or selection.
         commitAndBlur();
-        if (directCommit && e.key === "ArrowRight") this.navigateCol(rowIdx, colKey, 1);
+        if (directCommit) this.navigateCol(rowIdx, colKey, 1);
         else this.selectCell(rowIdx, colKey, cellElement, false);
         this.elSheetContainer.focus({ preventScroll: true });
         return;
@@ -5619,8 +5649,9 @@ class PTApp {
   }
 
   // --- 통합 빠른 도구 관리 모달 (추가 / 삭제 / 수정 / 순서변경) ---
-  openPresetManager(tab = "prescription") {
+  openPresetManager(tab = "prescription", context = null) {
     if (!this.elPresetManagerModal) return;
+    this.autocompleteManagerContext = context;
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
     this.renderPresetManagerList();
@@ -5638,6 +5669,7 @@ class PTApp {
   }
 
   switchPresetTab(tab) {
+    this.autocompleteManagerContext = null;
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
     this.renderPresetManagerList();
@@ -5647,6 +5679,47 @@ class PTApp {
   }
 
   updatePresetManagerTabs() {
+    const context = this.autocompleteManagerContext;
+    const labels = { part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성", memo: "메모", specialNote: "특이 사항" };
+    const title = this.elPresetManagerModal?.querySelector(".modal-title");
+    if (title) title.textContent = context ? `${labels[this.activePresetTab]} 자동완성 세부 관리` : "⚙️ 빠른 입력 도구 관리";
+    const card = this.elPresetManagerModal?.querySelector(".modal-card");
+    if (card) card.style.maxWidth = context ? "680px" : "520px";
+    const detailControls = document.getElementById("presetDetailControls");
+    if (detailControls) {
+      detailControls.style.display = "flex";
+      const queryInput = document.getElementById("presetDetailQuery");
+      queryInput.value = context?.query || "";
+      queryInput.placeholder = `${labels[this.activePresetTab]} 입력값 (예: 옹)`;
+      const saved = document.getElementById("presetDetailQueries");
+      saved.replaceChildren();
+      const prefix = `__query:${this.activePresetTab}:`;
+      Object.keys(COLUMN_PRESETS).filter(key => key.startsWith(prefix)).forEach(key => {
+        const option = document.createElement("option");
+        option.value = key.slice(prefix.length);
+        saved.appendChild(option);
+      });
+      document.getElementById("btnPresetDetail").onclick = () => {
+        const query = queryInput.value.trim();
+        if (!query) { queryInput.focus(); return; }
+        this.openAutocompletePresetManager(this.activePresetTab, null, { value: query });
+      };
+    }
+    const back = document.getElementById("btnPresetGeneral");
+    if (back) {
+      back.style.display = context ? "inline-block" : "none";
+      back.onclick = () => this.openPresetManager(this.activePresetTab);
+    }
+    const description = this.elPresetManagerModal?.querySelector(".modal-body > p");
+    if (description) {
+      description.dataset.defaultText ||= description.textContent;
+      description.textContent = context
+        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 잘못된 후보를 수정·삭제하거나 우선순서를 바꾸면 이 입력값에만 적용됩니다. 열 전체의 기본 문구는 유지됩니다. 이전 기록 수정은 모든 날짜의 같은 열에 있는 문구를 변경합니다.`
+        : description.dataset.defaultText;
+    }
+    const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
+    if (tabs) tabs.style.display = context ? "none" : "flex";
+    if (this.elBtnManagerResetPresets) this.elBtnManagerResetPresets.textContent = context ? "기본 후보 복원" : "기본값 복원";
     for (const [tab, element] of [["part", this.elTabPresetPart], ["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
       ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.classList.toggle("active", this.activePresetTab === tab);
@@ -5663,7 +5736,7 @@ class PTApp {
     container.innerHTML = "";
 
     const tab = this.activePresetTab;
-    const items = COLUMN_PRESETS[tab] || [];
+    const items = this.getPresetManagerItems(tab);
 
     if (items.length === 0) {
       container.innerHTML = `<div style="padding:28px 16px; text-align:center; color:#94a3b8; font-size:13px;">등록된 프리셋이 없습니다.<br>위 입력창에서 새 프리셋을 추가해보세요.</div>`;
@@ -5718,6 +5791,14 @@ class PTApp {
       btnEdit.title = "프리셋 내용 수정";
       btnEdit.addEventListener("click", () => this.editPresetAt(tab, idx));
       actionsEl.appendChild(btnEdit);
+      if (this.autocompleteManagerContext) {
+        const historyEdit = document.createElement("button");
+        historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
+        historyEdit.textContent = "이전 기록 수정";
+        historyEdit.title = "모든 날짜의 같은 열에서 이 문구 수정";
+        historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
+        actionsEl.appendChild(historyEdit);
+      }
 
       // 삭제 버튼
       const btnDel = document.createElement("button");
@@ -5746,10 +5827,9 @@ class PTApp {
     }
 
     const tab = this.activePresetTab;
-    if (!COLUMN_PRESETS[tab]) COLUMN_PRESETS[tab] = [];
-    COLUMN_PRESETS[tab].push(val);
-
-    saveColumnPresets(COLUMN_PRESETS);
+    const items = this.getPresetManagerItems(tab);
+    items.push(val);
+    this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
     this.showSaveIndicator("프리셋 추가됨");
@@ -5759,7 +5839,7 @@ class PTApp {
   }
 
   editPresetAt(tab, index) {
-    const curVal = COLUMN_PRESETS[tab]?.[index];
+    const curVal = this.getPresetManagerItems(tab)[index];
     if (curVal === undefined) return;
 
     const newVal = prompt("프리셋 내용을 수정하세요:", curVal);
@@ -5770,20 +5850,20 @@ class PTApp {
       return;
     }
 
-    COLUMN_PRESETS[tab][index] = trimmed;
-    saveColumnPresets(COLUMN_PRESETS);
+    this.getPresetManagerItems(tab)[index] = trimmed;
+    this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
     this.showSaveIndicator("프리셋 수정됨");
   }
 
   deletePresetAt(tab, index) {
-    const curVal = COLUMN_PRESETS[tab]?.[index];
+    const curVal = this.getPresetManagerItems(tab)[index];
     if (curVal === undefined) return;
 
     if (confirm(`"${curVal}" 항목을 삭제하시겠습니까?`)) {
-      COLUMN_PRESETS[tab].splice(index, 1);
-      saveColumnPresets(COLUMN_PRESETS);
+      this.getPresetManagerItems(tab).splice(index, 1);
+      this.savePresetManagerItems(tab);
       this.renderPresetManagerList();
       this.renderQuickChips();
       this.showSaveIndicator("프리셋 삭제됨");
@@ -5791,7 +5871,7 @@ class PTApp {
   }
 
   movePresetAt(tab, index, dir) {
-    const arr = COLUMN_PRESETS[tab];
+    const arr = this.getPresetManagerItems(tab);
     if (!arr) return;
     const targetIdx = index + dir;
     if (targetIdx < 0 || targetIdx >= arr.length) return;
@@ -5800,14 +5880,25 @@ class PTApp {
     arr[index] = arr[targetIdx];
     arr[targetIdx] = temp;
 
-    saveColumnPresets(COLUMN_PRESETS);
+    this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
   }
 
   resetPresetsFromManager() {
+    const context = this.autocompleteManagerContext;
+    if (context) {
+      if (!confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
+      delete COLUMN_PRESETS[context.key];
+      const typed = this.assembleHangul(context.query);
+      context.items = this.getAutocompleteSuggestions(context.colKey, context.query, true).filter(value => value !== context.query && value !== typed);
+      saveColumnPresets(COLUMN_PRESETS);
+      this.renderPresetManagerList();
+      return;
+    }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
-      COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+      const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) => key.startsWith("__query:")));
+      COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();
       this.renderQuickChips();
