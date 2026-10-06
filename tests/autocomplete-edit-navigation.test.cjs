@@ -359,3 +359,19 @@ test('memo English keyboard fallback assembles Korean, including compound final 
   assert.equal(app.assembleHangul(app.convertMemoKeyboardInput('gksrmf')), '한글');
   assert.equal(app.convertMemoKeyboardInput('Rk'), 'ㄲㅏ');
 });
+
+test('inline preview displays assembled syllables while leaving native composing text untouched', () => {
+  const { app } = createApp();
+  for (const [query, candidate, prefix, suffix] of [
+    ['ㅇ', '임연', '임', '연'], ['ㅇ', '이청용', '이', '청용'],
+    ['이', '이청용', '이', '청용'], ['잋', '이춘식', '이', '춘식'],
+    ['싡', '신장', '신', '장'], ['기', '김청용', '김', '청용'],
+  ]) {
+    const parts = app.getInlineCompletionParts(query, candidate);
+    assert.equal(parts.prefix, prefix); assert.equal(parts.suffix, suffix);
+    assert.equal(parts.prefix + parts.suffix, candidate);
+    assert.equal(/[ㄱ-ㅎㅏ-ㅣ]/.test(parts.prefix + parts.suffix), false);
+  }
+  assert.equal(app.getInlineCompletionParts('신장', '신장'), null);
+  assert.equal(app.getInlineCompletionParts('이', '김청용'), null);
+});

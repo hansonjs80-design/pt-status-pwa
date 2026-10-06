@@ -42,6 +42,14 @@ class PTCellInputTools {
     this.inlineAutocompleteInput = null;
   }
 
+  getInlineCompletionParts(query, candidate) {
+    if (!this.getInlineCompletionSuffix(query, candidate)) return null;
+    // Render complete candidate syllables instead of separated compatibility jamo.
+    // Native editing still receives the original query (e.g. ㅇ or 잋).
+    const prefixLength = Math.min(query.length, candidate.length);
+    return { prefix: candidate.slice(0, prefixLength), suffix: candidate.slice(prefixLength) };
+  }
+
   updateInlineAutocompletePreview() {
     this.clearInlineAutocompletePreview();
     const state = this.autocompleteState;
@@ -49,12 +57,12 @@ class PTCellInputTools {
     const { input, cellElement } = state;
     if (!input.isConnected || document.activeElement !== input || !input.value ||
         input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length) return;
-    const suffix = this.getInlineCompletionSuffix(input.value, this.getSelectedAutocompleteItem());
-    if (!suffix) return;
+    const parts = this.getInlineCompletionParts(input.value, this.getSelectedAutocompleteItem());
+    if (!parts) return;
     const preview = document.createElement('span');
     preview.className = 'inline-autocomplete-preview'; preview.setAttribute('aria-hidden', 'true');
-    const prefix = document.createElement('span'); prefix.className = 'inline-completion-prefix'; prefix.textContent = input.value;
-    const rest = document.createElement('span'); rest.className = 'inline-completion-suffix'; rest.textContent = suffix;
+    const prefix = document.createElement('span'); prefix.className = 'inline-completion-prefix'; prefix.textContent = parts.prefix;
+    const rest = document.createElement('span'); rest.className = 'inline-completion-suffix'; rest.textContent = parts.suffix;
     preview.append(prefix, rest);
     input.classList.add('has-inline-completion');
     preview.style.left = `${input.offsetLeft - input.scrollLeft}px`;
