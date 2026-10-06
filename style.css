@@ -2299,3 +2299,9 @@ body {
 /* Native editing and completion share the typed text's centered origin. */
 .excel-table .excel-cell:not(.cell-prescription) .cell-input-element { text-align: center; }
 .excel-table .cell-prescription .cell-input-element { text-align: left; }
+
+/* Shared defaults for current and historical records; saved formatting overrides these. */
+.excel-table .excel-cell:is(.cell-chartNo, .cell-name, .cell-part, .cell-prescription, .cell-extra, .cell-writer, .cell-memo, .cell-specialNote) {
+  font-size: 14px;
+  font-weight: 500;
+}
