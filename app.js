@@ -1478,6 +1478,12 @@ class PTApp {
       (this.isAutocompleteOpen() || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length));
   }
 
+  isWriterLeftExit(event, input) {
+    return (event.key === "ArrowLeft" || event.code === "ArrowLeft") &&
+      !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !input.classList.contains("is-armed");
+  }
+
   isWriterEnterExit(event, input) {
     const enter = event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter";
     return enter && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
@@ -2729,11 +2735,12 @@ class PTApp {
         if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
       // A plain Left confirms the highlighted preset even before IME ends.
-      if (this.isPresetLeftExit(e, colKey)) {
+      if (this.isPresetLeftExit(e, colKey) || (colKey === "writer" && this.isWriterLeftExit(e, input))) {
         e.preventDefault(); e.stopPropagation();
         this.presetLeftKeyHeld = true;
         composing = false; input.dataset.composing = "false";
-        const chosen = this.getSelectedAutocompleteItem();
+        input.dataset.nativeComposing = "false";
+        const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
