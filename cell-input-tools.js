@@ -13,6 +13,14 @@ class PTCellInputTools {
     return true;
   }
 
+  endNativeCellEditing(input) {
+    // Finalize the OS composition on its original editor before removing it
+    // or focusing the next cell, so pending text cannot follow the focus.
+    if (document.activeElement === input) input.blur();
+    input.dataset.nativeComposing = 'false';
+    input.dataset.composing = 'false';
+  }
+
   focusSelectedCellEditor() {
     const selected = this.activeCell;
     const input = selected && this.elTableBody?.querySelector(

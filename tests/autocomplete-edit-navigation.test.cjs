@@ -621,3 +621,20 @@ test('manual writer Left exits directly regardless of caret or native IME state 
   armed=false;
   assert.equal(app.isWriterLeftExit({key:'Enter'},input),false);
 });
+
+
+test('ending native cell editing blurs the original composing input before destination focus without copying its text', () => {
+  const {app,context}=createApp();
+  const destination={value:'기존 내용'};
+  let blurred=0;
+  const input={value:'새 내용',dataset:{nativeComposing:'true',composing:'true'},blur(){blurred++;context.document.activeElement=null;}};
+  context.document={activeElement:input};
+  app.endNativeCellEditing(input);
+  assert.equal(blurred,1);
+  assert.equal(input.value,'새 내용');
+  assert.equal(destination.value,'기존 내용');
+  assert.equal(input.dataset.nativeComposing,'false');
+  assert.equal(input.dataset.composing,'false');
+  app.endNativeCellEditing(input);
+  assert.equal(blurred,1);
+});

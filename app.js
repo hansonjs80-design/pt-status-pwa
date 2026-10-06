@@ -2582,6 +2582,7 @@ class PTApp {
       }, 0);
     };
     input.addEventListener("compositionstart", () => {
+      if (isCommitted) return;
       clearTimeout(_hangulRepairTimer);
       input.dataset.nativeComposing = "true";
       this.activateNativeEditor(input);
@@ -2592,6 +2593,7 @@ class PTApp {
     });
 
     input.addEventListener("beforeinput", (e) => {
+      if (isCommitted) { e.preventDefault(); return; }
       if (e.isComposing || e.inputType === "insertCompositionText") {
         composing = true; input.dataset.composing = "true"; input.dataset.nativeComposing = "true";
         clearTimeout(_hangulRepairTimer);
@@ -2681,6 +2683,7 @@ class PTApp {
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
         : colKey === "prescription" ? this.normalizePrescriptionInput(finalVal) : finalVal.trim();
+      this.endNativeCellEditing(input);
       rows[rowIdx][colKey] = finalVal;
       const compound = this.applyCompoundPatientInput(rows[rowIdx], colKey, finalVal);
       if (compound) {
