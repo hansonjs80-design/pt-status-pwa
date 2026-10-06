@@ -780,9 +780,12 @@ class PTApp {
 
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
-    document.addEventListener("keyup", (e) => this.releaseHistorySearchKey(e));
+    document.addEventListener("keyup", (e) => {
+      this.releaseHistorySearchKey(e);
+      if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
+    });
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
-    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; });
+    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; });
 
     document.addEventListener("paste", event => {
       const target = event.target;
@@ -1470,7 +1473,7 @@ class PTApp {
   }
 
   isPresetLeftExit(event, colKey) {
-    return ["prescription", "extra"].includes(colKey) &&
+    return ["prescription", "extra", "memo", "specialNote"].includes(colKey) &&
       (event.key === "ArrowLeft" || event.code === "ArrowLeft") &&
       !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && this.isAutocompleteOpen();
   }
@@ -2130,7 +2133,7 @@ class PTApp {
     // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
     if (sameQuery && candidates?.length === previous.candidates.length &&
         candidates.every((candidate, index) => candidate === previous.candidates[index]) &&
-        document.getElementById("cellAutocompleteMenu")) return;
+        document.getElementById("cellAutocompleteMenu")) { this.updateInlineAutocompletePreview(); return; }
     const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
     const preservedIndex = sameQuery ? candidates?.indexOf(selectedValue) : -1;
     const selectedIndex = preservedIndex >= 0 ? preservedIndex : (showTypedValue && candidates.length > 1 ? 1 : 0);
@@ -2205,6 +2208,7 @@ class PTApp {
       query,
       selectedIndex
     };
+    this.updateInlineAutocompletePreview();
 
     const positionMenu = () => {
       if (!menu.isConnected || !cellElement.isConnected) return;
@@ -2362,6 +2366,7 @@ class PTApp {
     if (nextIdx >= candidates.length) nextIdx = 0;
 
     this.autocompleteState.selectedIndex = nextIdx;
+    this.updateInlineAutocompletePreview();
 
     const menu = document.getElementById("cellAutocompleteMenu");
     if (menu) {
@@ -2396,6 +2401,7 @@ class PTApp {
   }
 
   closeAutocompleteMenu() {
+    this.clearInlineAutocompletePreview();
     this.autocompleteCleanup?.();
     this.autocompleteCleanup = null;
     const existing = document.getElementById("cellAutocompleteMenu");
@@ -2408,9 +2414,10 @@ class PTApp {
   activateNativeEditor(input) {
     if (!input.classList.contains("is-armed")) return;
     for (const child of [...input.parentElement.childNodes]) {
-      if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
+      if (child !== input && !child.classList?.contains("visit-time-refresh") && !child.classList?.contains("memo-language-toggle")) child.remove();
     }
     input.classList.remove("is-armed");
+    if (input.closest(".excel-cell")?.dataset.col === "memo") this.initMemoKoreanInput(input, input.parentElement);
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
@@ -2449,9 +2456,12 @@ class PTApp {
     cellElement.appendChild(input);
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
+    for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, () => this.updateInlineAutocompletePreview());
     // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
     const len = input.value.length;
     input.setSelectionRange(armed ? 0 : len, len);
+
+    if (colKey === "memo") this.initMemoKoreanInput(input, cellElement);
 
     // Input events
     // ★ 한글 IME 보호 원칙:
@@ -2480,6 +2490,7 @@ class PTApp {
     input.addEventListener("input", (e) => {
       if (isCommitted) return; // Late IME events must not overwrite a finished edit.
       this.activateNativeEditor(input);
+      this.clearInlineAutocompletePreview();
       const val = input.value;
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
@@ -2582,18 +2593,23 @@ class PTApp {
     });
 
     input.addEventListener("keydown", (e) => {
+      if (this.consumePresetLeftRepeat(e)) return;
       if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
       if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
       if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // A plain Left confirms the highlighted preset even before IME ends.
       if (this.isPresetLeftExit(e, colKey)) {
         e.preventDefault(); e.stopPropagation();
+        this.presetLeftKeyHeld = true;
         composing = false; input.dataset.composing = "false";
         const chosen = this.getSelectedAutocompleteItem();
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
-        this.navigateCol(rowIdx, colKey, -1);
+        // Select the adjacent cell without arming another editor for this key.
+        const leftKey = { prescription: "part", extra: "prescription", memo: "writer", specialNote: "memo" }[colKey];
+        const leftCell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${leftKey}"]`);
+        if (leftCell) this.selectCell(rowIdx, leftKey, leftCell, false);
         this.elSheetContainer.focus({ preventScroll: true });
         return;
       }
@@ -4946,6 +4962,7 @@ class PTApp {
 
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    if (this.consumePresetLeftRepeat(e)) return;
     if (this.handlePatientEditorSearchShortcut(e)) return;
     if (e.key === "Escape" && this.activeCell) {
       const editingCell = e.target?.closest?.(".excel-cell");
@@ -5838,7 +5855,7 @@ class PTApp {
 }
 
 // Install feature methods before the app starts. Preserve class method descriptors.
-for (const feature of [PTHistorySearch, PTTableFormatting, PTSummary]) {
+for (const feature of [PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools]) {
   for (const name of Object.getOwnPropertyNames(feature.prototype)) {
     if (name === "constructor") continue;
     Object.defineProperty(PTApp.prototype, name, Object.getOwnPropertyDescriptor(feature.prototype, name));

@@ -27,7 +27,7 @@ test('new app releases bypass stale HTTP cache when installing every bundled ass
   });
   handlers.install({ waitUntil(value) { installed = value; } });
   await installed;
-  for (const file of ['app.js', 'history-search.js', 'table-formatting.js', 'summary.js']) {
+  for (const file of ['app.js', 'history-search.js', 'table-formatting.js', 'summary.js', 'cell-input-tools.js']) {
     assert.ok(requests.some(r => r.url === './' + file));
   }
   assert.ok(requests.some(r => r.url === './local-tools.js'));

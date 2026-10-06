@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v137';
+const CACHE_NAME = 'pt-status-pwa-v138';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const ASSETS_TO_CACHE = [
   './history-search.js',
   './table-formatting.js',
   './summary.js',
+  './cell-input-tools.js',
   './app.js',
   './local-tools.js',
   './manifest.json',

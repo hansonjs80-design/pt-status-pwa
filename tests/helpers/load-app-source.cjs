@@ -2,5 +2,5 @@ const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
 // Use the same local script order as index.html, without starting the UI.
-module.exports = ['history-search.js', 'table-formatting.js', 'summary.js', 'app.js']
+module.exports = ['history-search.js', 'table-formatting.js', 'summary.js', 'cell-input-tools.js', 'app.js']
   .map(file => readFileSync(resolve(__dirname, '../..', file), 'utf8')).join('\n');

@@ -313,7 +313,7 @@ test('prescription and extra Left confirm open suggestions regardless of IME, pr
   const { app } = createApp();
   let open = true;
   app.isAutocompleteOpen = () => open;
-  for (const column of ['prescription', 'extra']) {
+  for (const column of ['prescription', 'extra', 'memo', 'specialNote']) {
     assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), true);
     assert.equal(app.isPresetLeftExit({ key: 'Process', code: 'ArrowLeft', isComposing: true }, column), true);
     for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
@@ -321,10 +321,41 @@ test('prescription and extra Left confirm open suggestions regardless of IME, pr
     }
     assert.equal(app.isPresetLeftExit({ key: 'ArrowRight' }, column), false);
   }
-  for (const column of ['name', 'part', 'memo', 'specialNote', 'writer']) {
+  for (const column of ['name', 'part', 'writer']) {
     assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, column), false);
   }
   open = false;
   assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'prescription'), false);
   assert.equal(app.isPresetLeftExit({ key: 'ArrowLeft' }, 'extra'), false);
+});
+
+test('inline completion keeps typed syllables and previews only remaining Hangul components', () => {
+  const { app } = createApp();
+  for (const [query, candidate, suffix] of [
+    ['ㅇ', '이청용', 'ㅣ청용'], ['이', '이청용', '청용'], ['이ㅊ', '이청용', 'ㅓㅇ용'],
+    ['잋', '이춘식', 'ㅜㄴ식'], ['싡', '신장', 'ㅏㅇ'], ['신', '신장', '장'],
+    ['신장', '신장', ''], ['이', '김청용', ''], ['abc', 'abcdef', 'def'],
+  ]) assert.equal(app.getInlineCompletionSuffix(query, candidate), suffix);
+});
+
+test('autocomplete left confirmation suppresses repeated movement until key release', () => {
+  const { app } = createApp();
+  let prevented = 0;
+  const event = { key: 'ArrowLeft', preventDefault() { prevented++; }, stopPropagation() {} };
+  app.presetLeftKeyHeld = true;
+  assert.equal(app.consumePresetLeftRepeat(event), true);
+  assert.equal(app.consumePresetLeftRepeat({ ...event, repeat: true }), true);
+  assert.equal(app.consumePresetLeftRepeat({ ...event, ctrlKey: true }), false);
+  app.presetLeftKeyHeld = false;
+  assert.equal(app.consumePresetLeftRepeat(event), false);
+  assert.equal(prevented, 2);
+});
+
+test('memo English keyboard fallback assembles Korean, including compound final consonants', () => {
+  const { app } = createApp();
+  let text = '';
+  for (const key of 'tlswkd') text = app.assembleMemoInput(text + app.convertMemoKeyboardInput(key));
+  assert.equal(text, '신장');
+  assert.equal(app.assembleHangul(app.convertMemoKeyboardInput('gksrmf')), '한글');
+  assert.equal(app.convertMemoKeyboardInput('Rk'), 'ㄲㅏ');
 });
