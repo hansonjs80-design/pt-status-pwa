@@ -15,6 +15,7 @@
   --bg-app: #f4f6f5;
   --surface: #ffffff;
   --text-main: #1f2328;
+  --cell-font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
   --text-muted: #57606a;
   --border-subtle: #d0d7de;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
@@ -1235,7 +1236,7 @@ body {
   font-weight: 600;
 }
 
-.cell-chartNo { text-align: center; font-family: monospace; font-size: 12px; }
+.cell-chartNo { text-align: center; font-size: 12px; }
 .cell-name { text-align: center; font-weight: 600; }
 .cell-part { text-align: center; }
 .cell-prescription { text-align: left; padding-left: 10px; }
@@ -2071,7 +2072,7 @@ body {
 .cell-input-element { font-weight: inherit; }
 
 .excel-table { font-family: Arial, sans-serif; }
-.excel-table .excel-cell { font-size: 14px; font-weight: 600; }
+.excel-table .excel-cell { font-family: var(--cell-font-family); font-size: 14px; font-weight: 600; }
 .excel-table .excel-cell.cell-no { font-size: 16px; }
 .excel-table .cell-gender, .excel-table .cell-gender.f, .excel-table .cell-gender.m { color: #000; }
 .excel-table .cell-visitTime { text-align: center; white-space: nowrap; }
