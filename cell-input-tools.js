@@ -7,7 +7,9 @@ class PTCellInputTools {
     if (['gender', 'writer', 'prescription', 'extra'].includes(colKey)) return false;
     if (String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
     event.preventDefault(); event.stopPropagation();
-    armedInput?.remove();
+    // blur may remove an armed editor itself; do not remove it twice.
+    armedInput?.blur?.();
+    if (armedInput?.isConnected !== false) armedInput?.remove();
     this.selectAutocompleteRightCell(rowIdx, colKey);
     this.focusSelectedCellEditor();
     return true;

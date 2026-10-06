@@ -712,3 +712,32 @@ test('plain IME Left replay after keyup is consumed during handoff but fresh typ
   assert.equal(app.consumePresetLeftRepeat(event),false);
   assert.equal(prevented,1);
 });
+
+test('blank presets persist in both management scopes and can be selected without falling back to another item', () => {
+  const {app,context}=createApp({}, {extra:['이온']});
+  app.activePresetTab='extra';
+  app.elManagerNewPresetInput={value:'',focus(){}};
+  app.renderPresetManagerList=app.renderQuickChips=app.showSaveIndicator=()=>{};
+  app.addPresetFromManager();
+  assert.deepEqual(Array.from(app.getPresetPickerValues('extra')),['이온','']);
+  app.addPresetFromManager();
+  assert.equal(app.getPresetPickerValues('extra').length,2);
+  app.autocompleteManagerContext={colKey:'extra',query:'충',key:app.getAutocompleteRuleKey('extra','충'),items:['충격파'],hidden:[]};
+  app.addPresetFromManager();
+  assert.deepEqual(Array.from(context.getPresets()[app.getAutocompleteRuleKey('extra','충')]),['충격파','']);
+  assert.deepEqual(Array.from(app.getAutocompleteSuggestions('extra','충')),['충격파','']);
+  app.autocompleteState={candidates:['이온',''],selectedIndex:1};
+  assert.equal(app.getSelectedAutocompleteItem(),'');
+});
+
+test('empty memo Enter blurs before removal, so blur removing its editor cannot abort navigation', () => {
+  const {app}=createApp();
+  app.activeCell={rowIdx:0,colKey:'memo'};
+  app.getCurrentRows=()=>[{}];
+  let moved=0;
+  app.selectAutocompleteRightCell=()=>moved++;
+  app.focusSelectedCellEditor=()=>{};
+  const input={isConnected:true,blur(){this.isConnected=false;},remove(){assert.fail('blur already removed the editor');}};
+  assert.equal(app.handleEmptyCellEnter({key:'Enter',preventDefault(){},stopPropagation(){}},input),true);
+  assert.equal(moved,1);
+});

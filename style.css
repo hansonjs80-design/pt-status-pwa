@@ -2324,3 +2324,9 @@ body {
 
 /* Keep the native IME editor in the same box before and during composition. */
 .excel-table .cell-input-element { position:absolute; inset:0; box-sizing:border-box; padding:0 6px; }
+
+/* Preserve the sidebar's layout space so closing it never resizes the sheet. */
+.summary-toggle { align-self: flex-end; padding: 5px 10px; border: 1px solid #c9ded1; border-radius: 6px; background: #fff; color: #286342; cursor: pointer; font: inherit; font-size: 12px; }
+.summary-toggle:hover { background: #e8f3ec; }
+.excel-sidebar.summary-closed > :not(.summary-toggle) { display: none !important; }
+.excel-sidebar.summary-closed { background: transparent; border-left-color: transparent; box-shadow: none; }

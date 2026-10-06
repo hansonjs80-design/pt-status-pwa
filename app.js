@@ -772,6 +772,14 @@ class PTApp {
     this.elFileRestore.addEventListener("change", (e) => this.handleRestoreFile(e));
     this.elBtnClearAllData.addEventListener("click", () => this.clearCurrentDayData());
 
+    document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
+      const sidebar = document.getElementById("summarySidebar");
+      const closed = sidebar.classList.toggle("summary-closed");
+      const button = document.getElementById("btnToggleSummary");
+      button.textContent = closed ? "현황 열기" : "현황 닫기 ×";
+      button.setAttribute("aria-expanded", String(!closed));
+    });
+
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
     document.addEventListener("keyup", (e) => {
@@ -1463,7 +1471,7 @@ class PTApp {
 
   getWriterPresetValues() {
     return [...new Set((COLUMN_PRESETS.writer || [])
-      .map(value => this.normalizeWriterInput(value).trim()).filter(Boolean))];
+      .map(value => this.normalizeWriterInput(value).trim()))];
   }
 
   isPresetLeftExit(event, colKey) {
@@ -1514,7 +1522,7 @@ class PTApp {
 
   getPresetPickerValues(colKey) {
     return [...new Set((COLUMN_PRESETS[colKey] || [])
-      .map(value => String(value ?? "").trim()).filter(Boolean))];
+      .map(value => String(value ?? "").trim()))];
   }
 
   handlePrescriptionPickerShortcut(event, rowIdx, cellElement) {
@@ -2069,6 +2077,7 @@ class PTApp {
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
       // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
+      if (isPreset && item === "") { matched.push({ item, score: 0, isPreset }); return; }
 
       if (["name", "part", "extra", "memo", "specialNote"].includes(colKey)) {
         if (this.matchesHangulPrefix(item, query, isComposing)) quality = itemLower.startsWith(query) ? 1 : 1.5;
@@ -2194,7 +2203,7 @@ class PTApp {
 
       const textSpan = document.createElement("span");
       textSpan.className = "autocomplete-item-text";
-      textSpan.textContent = cand;
+      textSpan.textContent = cand === "" ? "빈칸" : cand;
       itemEl.appendChild(textSpan);
 
       const editButton = document.createElement("button");
@@ -2233,7 +2242,8 @@ class PTApp {
         cellElement.textContent = cand;
         this.saveDataStore();
         if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
-        this.selectCell(rowIdx, colKey, cellElement, false);
+        if (cand === "") this.selectAutocompleteRightCell(rowIdx, colKey);
+        else this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
           this.focusSelectedCellEditor();
         }
@@ -2495,7 +2505,7 @@ class PTApp {
   getSelectedAutocompleteItem() {
     if (!this.autocompleteState) return null;
     const { candidates, selectedIndex } = this.autocompleteState;
-    return candidates[selectedIndex] || candidates[0] || null;
+    return candidates[selectedIndex] ?? candidates[0] ?? undefined;
   }
 
   isAutocompleteOpen() {
@@ -2739,6 +2749,7 @@ class PTApp {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       if (this.consumePresetLeftRepeat(e)) return;
       this.releaseNavigationInputGuard(input, e);
+      if (colKey === "memo" && input.value === "" && !this.isAutocompleteOpen() && this.handleEmptyCellEnter(e, input)) return;
       if (input.classList.contains("is-armed")) {
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
@@ -2809,7 +2820,8 @@ class PTApp {
         this.closeAutocompleteMenu();
         // Escape confirms the typed value and moves right, like direct commit.
         commitAndBlur();
-        this.navigateCol(rowIdx, colKey, 1);
+        this.guardNextCellInput = true;
+        this.selectAutocompleteRightCell(rowIdx, colKey);
         this.focusSelectedCellEditor();
         return;
       }
@@ -5855,7 +5867,7 @@ class PTApp {
     }
     if (this.elManagerNewPresetInput) {
       const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
-      this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
+      this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 문구 입력 (비우면 빈칸 추가)`;
     }
   }
 
@@ -5979,7 +5991,8 @@ class PTApp {
 
       const textEl = document.createElement("span");
       textEl.className = "preset-item-text";
-      textEl.textContent = hidden ? `${val} · 숨김` : val;
+      const label = val === "" ? "빈칸" : val;
+      textEl.textContent = hidden ? `${label} · 숨김` : label;
       textEl.title = `${val} (더블클릭하여 바로 수정)`;
       textEl.style.cursor = "pointer";
       textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
@@ -6052,14 +6065,9 @@ class PTApp {
     if (!this.elManagerNewPresetInput) return;
     const rawValue = this.elManagerNewPresetInput.value.trim();
     const val = this.activePresetTab === "writer" ? this.normalizeWriterInput(rawValue) : rawValue;
-    if (!val) {
-      alert("프리셋 내용을 입력해주세요.");
-      this.elManagerNewPresetInput.focus();
-      return;
-    }
-
     const tab = this.activePresetTab;
     const items = this.getPresetManagerItems(tab);
+    if (val === "" && items.includes("")) { this.elManagerNewPresetInput.focus(); return; }
     items.push(val);
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
@@ -6077,11 +6085,6 @@ class PTApp {
     const newVal = prompt("프리셋 내용을 수정하세요:", curVal);
     if (newVal === null) return; // 취소
     const trimmed = tab === "writer" ? this.normalizeWriterInput(newVal.trim()) : newVal.trim();
-    if (!trimmed) {
-      alert("내용을 비워둘 수 없습니다.");
-      return;
-    }
-
     const context = this.autocompleteManagerContext;
     if (context?.colKey === tab) context.hidden = (context.hidden || []).map(value => value === curVal ? trimmed : value);
     this.getPresetManagerItems(tab)[index] = trimmed;
