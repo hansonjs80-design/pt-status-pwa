@@ -1994,7 +1994,8 @@ class PTApp {
 
     const ruleKey = this.getAutocompleteRuleKey(colKey, rawQuery);
     if (Object.hasOwn(COLUMN_PRESETS, ruleKey)) {
-      const values = [...COLUMN_PRESETS[ruleKey]];
+      const hidden = COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || [];
+      const values = COLUMN_PRESETS[ruleKey].filter(value => !hidden.includes(value));
       if (["part", "chartNo"].includes(colKey)) {
         const typed = this.assembleHangul(rawQuery).trim();
         return [typed, ...values.filter(value => value !== typed)];
@@ -2270,6 +2271,21 @@ class PTApp {
     return `__query:${colKey}:${this.assembleHangul(String(query).trim()).toLowerCase()}`;
   }
 
+  getAutocompleteHiddenKey(ruleKey) {
+    return ruleKey.replace(/^__query:/, "__hidden:");
+  }
+
+  togglePresetCandidateVisibility(tab, index) {
+    const context = this.autocompleteManagerContext;
+    if (!context || context.colKey !== tab) return;
+    const value = context.items[index];
+    if (value === undefined) return;
+    context.hidden ||= [];
+    context.hidden = context.hidden.includes(value) ? context.hidden.filter(item => item !== value) : [...context.hidden, value];
+    this.savePresetManagerItems(tab);
+    this.renderPresetManagerList();
+  }
+
   getPresetManagerKey(tab) {
     return this.autocompleteManagerContext?.colKey === tab ? this.autocompleteManagerContext.key : tab;
   }
@@ -2281,6 +2297,11 @@ class PTApp {
 
   savePresetManagerItems(tab) {
     COLUMN_PRESETS[this.getPresetManagerKey(tab)] = [...this.getPresetManagerItems(tab)];
+    const context = this.autocompleteManagerContext;
+    if (context?.colKey === tab) {
+      context.hidden = (context.hidden || []).filter(value => context.items.includes(value));
+      COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)] = [...context.hidden];
+    }
     saveColumnPresets(COLUMN_PRESETS);
   }
 
@@ -2293,7 +2314,7 @@ class PTApp {
       : [...new Set(shown.filter(item => item === value || (item !== query && item !== this.assembleHangul(query))))];
     input?.blur?.();
     this.closeAutocompleteMenu();
-    this.openPresetManager(colKey, { colKey, query, key, items });
+    this.openPresetManager(colKey, { colKey, query, key, items, hidden: [...(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || [])] });
   }
 
   async editAutocompleteValue(colKey, oldValue, input) {
@@ -2312,6 +2333,7 @@ class PTApp {
       this.updateSidebarStats();
       if (this.autocompleteManagerContext?.colKey === colKey) {
         this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
+        this.autocompleteManagerContext.hidden = (this.autocompleteManagerContext.hidden || []).map(item => item === oldValue ? value.trim() : item);
         this.savePresetManagerItems(colKey);
         this.renderPresetManagerList();
       }
@@ -5714,7 +5736,7 @@ class PTApp {
     if (description) {
       description.dataset.defaultText ||= description.textContent;
       description.textContent = context
-        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 잘못된 후보를 수정·삭제하거나 우선순서를 바꾸면 이 입력값에만 적용됩니다. 열 전체의 기본 문구는 유지됩니다. 이전 기록 수정은 모든 날짜의 같은 열에 있는 문구를 변경합니다.`
+        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 후보를 수정·삭제·숨김 처리하거나 우선순서를 바꾸면 이 입력값에만 적용됩니다. 숨긴 후보는 여기서 다시 표시할 수 있습니다. 열 전체의 기본 문구는 유지됩니다. 이전 기록 수정은 모든 날짜의 같은 열에 있는 문구를 변경합니다.`
         : description.dataset.defaultText;
     }
     const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
@@ -5746,6 +5768,8 @@ class PTApp {
     items.forEach((val, idx) => {
       const itemEl = document.createElement("div");
       itemEl.className = "preset-list-item";
+      const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
+      itemEl.classList.toggle("preset-candidate-hidden", hidden);
 
       const numEl = document.createElement("span");
       numEl.className = "preset-item-num";
@@ -5753,7 +5777,7 @@ class PTApp {
 
       const textEl = document.createElement("span");
       textEl.className = "preset-item-text";
-      textEl.textContent = val;
+      textEl.textContent = hidden ? `${val} · 숨김` : val;
       textEl.title = `${val} (더블클릭하여 바로 수정)`;
       textEl.style.cursor = "pointer";
       textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
@@ -5792,6 +5816,12 @@ class PTApp {
       btnEdit.addEventListener("click", () => this.editPresetAt(tab, idx));
       actionsEl.appendChild(btnEdit);
       if (this.autocompleteManagerContext) {
+        const visibility = document.createElement("button");
+        visibility.type = "button"; visibility.className = "preset-action-btn";
+        visibility.textContent = hidden ? "표시" : "숨김";
+        visibility.setAttribute("aria-label", `${val} ${hidden ? "다시 표시" : "자동완성에서 숨김"}`);
+        visibility.onclick = () => this.togglePresetCandidateVisibility(tab, idx);
+        actionsEl.appendChild(visibility);
         const historyEdit = document.createElement("button");
         historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
         historyEdit.textContent = "이전 기록 수정";
@@ -5850,6 +5880,8 @@ class PTApp {
       return;
     }
 
+    const context = this.autocompleteManagerContext;
+    if (context?.colKey === tab) context.hidden = (context.hidden || []).map(value => value === curVal ? trimmed : value);
     this.getPresetManagerItems(tab)[index] = trimmed;
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
@@ -5890,6 +5922,8 @@ class PTApp {
     if (context) {
       if (!confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
       delete COLUMN_PRESETS[context.key];
+      delete COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)];
+      context.hidden = [];
       const typed = this.assembleHangul(context.query);
       context.items = this.getAutocompleteSuggestions(context.colKey, context.query, true).filter(value => value !== context.query && value !== typed);
       saveColumnPresets(COLUMN_PRESETS);
@@ -5897,7 +5931,7 @@ class PTApp {
       return;
     }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
-      const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) => key.startsWith("__query:")));
+      const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) => (key.startsWith("__query:") || key.startsWith("__hidden:"))));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();

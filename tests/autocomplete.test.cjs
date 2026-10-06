@@ -314,3 +314,24 @@ test('detail management includes displayed historical typo and keeps the correct
   assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [query]);
   assert.equal(app.dataStore['2026-10-05'][0].prescription, bad);
 });
+
+
+test('hidden detail candidates stay manageable, preserve order and can be restored', () => {
+  const app = createApp({}, { part: ['오어', '오 엉'] }, {
+    localStorage: { getItem() { return null; }, setItem() {} }, prompt: () => '오 엉덩이',
+  });
+  app.closeAutocompleteMenu = () => {};
+  app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
+  app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
+  app.openAutocompletePresetManager('part', null, { value: '옹' });
+  const original = Array.from(app.autocompleteManagerContext.items);
+  app.togglePresetCandidateVisibility('part', 0);
+  assert.equal(suggestions(app, 'part', '옹').includes(original[0]), false);
+  app.openAutocompletePresetManager('part', null, { value: '옹' });
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), original);
+  app.editPresetAt('part', 0);
+  assert.equal(suggestions(app, 'part', '옹').includes('오 엉덩이'), false);
+  app.togglePresetCandidateVisibility('part', 0);
+  assert.equal(suggestions(app, 'part', '옹')[1], '오 엉덩이');
+  assert.deepEqual(suggestions(app, 'part', '오'), ['오', '오어', '오 엉']);
+});

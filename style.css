@@ -2306,3 +2306,6 @@ body {
 .preset-detail-controls button { white-space:nowrap; color:#107c41; font-weight:600; }
 #presetManagerModal .preset-item-text { min-width:0; }
 #presetManagerModal .preset-item-actions { flex-wrap:wrap; justify-content:flex-end; }
+
+.preset-candidate-hidden .preset-item-text { color:#84918a; }
+.preset-candidate-hidden { background:#f3f5f4; }
