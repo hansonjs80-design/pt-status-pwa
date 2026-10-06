@@ -5689,12 +5689,14 @@ class PTApp {
   }
 
   closePresetManager() {
+    this.clearPresetDrag();
     if (this.elPresetManagerModal) {
       this.elPresetManagerModal.style.display = "none";
     }
   }
 
   switchPresetTab(tab) {
+    this.clearPresetDrag();
     this.autocompleteManagerContext = null;
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
@@ -5809,6 +5811,61 @@ class PTApp {
     });
   }
 
+  clearPresetDrag() {
+    this.presetDragState = null;
+    this.elPresetListContainer?.querySelectorAll(".preset-dragging, .preset-drop-before, .preset-drop-after")
+      .forEach(row => row.classList.remove("preset-dragging", "preset-drop-before", "preset-drop-after"));
+  }
+
+  reorderPresetAt(tab, from, insertion) {
+    const items = this.getPresetManagerItems(tab);
+    if (!Number.isInteger(from) || !Number.isInteger(insertion) || from < 0 || from >= items.length || insertion < 0 || insertion > items.length) return;
+    const destination = insertion > from ? insertion - 1 : insertion;
+    if (destination === from) return;
+    const [value] = items.splice(from, 1);
+    items.splice(destination, 0, value);
+    this.savePresetManagerItems(tab);
+    this.renderPresetManagerList();
+    this.renderQuickChips();
+  }
+
+  bindPresetDragRow(row, tab, index) {
+    const handle = document.createElement("span");
+    handle.className = "preset-drag-handle"; handle.draggable = true;
+    handle.textContent = "⠿"; handle.title = "드래그하여 순서 이동";
+    handle.setAttribute("aria-label", "드래그하여 순서 이동");
+    row.appendChild(handle);
+    handle.addEventListener("dragstart", event => {
+      this.presetDragState = { tab, index, context: this.autocompleteManagerContext };
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index));
+      event.dataTransfer.setDragImage(row, 20, row.offsetHeight / 2);
+      row.classList.add("preset-dragging");
+    });
+    handle.addEventListener("dragend", () => this.clearPresetDrag());
+    row.addEventListener("dragover", event => {
+      const state = this.presetDragState;
+      if (!state || state.tab !== tab || state.context !== this.autocompleteManagerContext) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+      this.elPresetListContainer.querySelectorAll(".preset-drop-before, .preset-drop-after")
+        .forEach(item => item.classList.remove("preset-drop-before", "preset-drop-after"));
+      const rect = row.getBoundingClientRect();
+      row.classList.add(event.clientY < rect.top + rect.height / 2 ? "preset-drop-before" : "preset-drop-after");
+      const listRect = this.elPresetListContainer.getBoundingClientRect();
+      if (event.clientY < listRect.top + 32) this.elPresetListContainer.scrollTop -= 24;
+      else if (event.clientY > listRect.bottom - 32) this.elPresetListContainer.scrollTop += 24;
+    });
+    row.addEventListener("drop", event => {
+      const state = this.presetDragState;
+      if (!state || state.tab !== tab || state.context !== this.autocompleteManagerContext) return;
+      event.preventDefault(); event.stopPropagation();
+      const rect = row.getBoundingClientRect();
+      const insertion = index + (event.clientY >= rect.top + rect.height / 2 ? 1 : 0);
+      this.clearPresetDrag();
+      this.reorderPresetAt(tab, state.index, insertion);
+    });
+  }
+
   renderPresetManagerList() {
     const container = this.elPresetListContainer;
     if (!container) return;
@@ -5827,6 +5884,7 @@ class PTApp {
       itemEl.className = "preset-list-item";
       const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
       itemEl.classList.toggle("preset-candidate-hidden", hidden);
+      this.bindPresetDragRow(itemEl, tab, idx);
 
       const numEl = document.createElement("span");
       numEl.className = "preset-item-num";

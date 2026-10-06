@@ -365,3 +365,22 @@ test('name details keep the typed name and an exact registered candidate remains
   app.togglePresetCandidateVisibility('name',0);
   assert.deepEqual(suggestions(app,'name','김홍'),['김홍준']);
 });
+
+
+test('drag reorder moves across multiple rows in either direction and preserves hidden detail candidates', () => {
+  const presets = { part:['가','나','다','라'] };
+  const app = createApp({}, presets, { localStorage:{getItem(){return null;},setItem(){}} });
+  app.renderPresetManagerList = app.renderQuickChips = () => {};
+  app.reorderPresetAt('part',0,4);
+  assert.deepEqual(Array.from(presets.part),['나','다','라','가']);
+  app.reorderPresetAt('part',3,0);
+  assert.deepEqual(Array.from(presets.part),['가','나','다','라']);
+  const key=app.getAutocompleteRuleKey('part','ㄱ');
+  app.autocompleteManagerContext={colKey:'part',key,items:['가','기','구','고'],hidden:['기']};
+  app.reorderPresetAt('part',3,0);
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items),['고','가','기','구']);
+  assert.deepEqual(suggestions(app,'part','ㄱ'),['ㄱ','고','가','구']);
+  assert.deepEqual(Array.from(presets.part),['가','나','다','라']);
+  app.reorderPresetAt('part',-1,0);
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items),['고','가','기','구']);
+});
