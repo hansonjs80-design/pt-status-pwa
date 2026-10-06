@@ -130,9 +130,20 @@
         </div>
       </div>
 
+      <!-- Vertical Toggle Bar for Summary Sidebar (현황창 좌측 세로 토글 바) -->
+      <button type="button" id="btnToggleSummary" class="summary-toggle-bar" aria-expanded="true" title="현황 닫기" aria-label="현황 닫기">
+        <span class="summary-toggle-handle" aria-hidden="true">
+          <svg class="toggle-icon-collapse" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <svg class="toggle-icon-expand" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </span>
+      </button>
+
       <!-- Right Summary Panel (사진의 L, M 열 역할) -->
       <aside class="excel-sidebar" id="summarySidebar">
-        <button type="button" id="btnToggleSummary" class="summary-toggle" aria-expanded="true">현황 닫기 ×</button>
         <div hidden style="display:none;">
           <input type="hidden" id="searchInput">
           <button type="button" id="btnClearSearch" class="btn-clear-search" style="display:none;">✕</button>

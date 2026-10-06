@@ -774,10 +774,17 @@ class PTApp {
 
     document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
       const sidebar = document.getElementById("summarySidebar");
+      if (!sidebar) return;
       const closed = sidebar.classList.toggle("summary-closed");
       const button = document.getElementById("btnToggleSummary");
-      button.textContent = closed ? "현황 열기" : "현황 닫기 ×";
-      button.setAttribute("aria-expanded", String(!closed));
+      if (button) {
+        button.setAttribute("aria-expanded", String(!closed));
+        button.title = closed ? "현황 열기" : "현황 닫기";
+        button.setAttribute("aria-label", closed ? "현황 열기" : "현황 닫기");
+      }
+      if (typeof this.syncMainColumnWidths === "function") {
+        this.syncMainColumnWidths();
+      }
     });
 
     // Keyboard Shortcuts

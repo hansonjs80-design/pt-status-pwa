@@ -2325,8 +2325,72 @@ body {
 /* Keep the native IME editor in the same box before and during composition. */
 .excel-table .cell-input-element { position:absolute; inset:0; box-sizing:border-box; padding:0 6px; }
 
-/* Preserve the sidebar's layout space so closing it never resizes the sheet. */
-.summary-toggle { align-self: flex-end; padding: 5px 10px; border: 1px solid #c9ded1; border-radius: 6px; background: #fff; color: #286342; cursor: pointer; font: inherit; font-size: 12px; }
-.summary-toggle:hover { background: #e8f3ec; }
-.excel-sidebar.summary-closed > :not(.summary-toggle) { display: none !important; }
-.excel-sidebar.summary-closed { background: transparent; border-left-color: transparent; box-shadow: none; }
+/* Table horizontal grid line continuation to fill available sheet width */
+.excel-table {
+  min-width: 100% !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+.excel-table th.col-spacer {
+  width: auto !important;
+  min-width: 10px !important;
+  max-width: none !important;
+}
+.excel-table col[data-col="spacer"] {
+  width: auto !important;
+}
+
+/* Vertical toggle bar located at the left edge of summary sidebar */
+.summary-toggle-bar {
+  flex-shrink: 0;
+  width: 18px;
+  align-self: stretch;
+  background: #edf3ef;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  z-index: 10;
+  color: #4a6856;
+  outline: none;
+  transition: background-color 0.15s, color 0.15s;
+  user-select: none;
+}
+.summary-toggle-bar:hover {
+  background: #d8eade;
+  color: #107c41;
+}
+.summary-toggle-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 52px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  transition: background-color 0.15s, height 0.15s;
+}
+.summary-toggle-bar:hover .summary-toggle-handle {
+  background: rgba(16, 124, 65, 0.18);
+  height: 64px;
+}
+.summary-toggle-bar[aria-expanded="true"] .toggle-icon-expand {
+  display: none !important;
+}
+.summary-toggle-bar[aria-expanded="false"] .toggle-icon-collapse {
+  display: none !important;
+}
+.summary-toggle-bar[aria-expanded="false"] {
+  border-right: none;
+  background: #eef5f1;
+}
+
+/* Collapsed state of summary sidebar */
+#summarySidebar.summary-closed {
+  display: none !important;
+}
