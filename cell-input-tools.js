@@ -146,6 +146,33 @@ class PTCellInputTools {
     return { height, baseline: (height - ascent - descent) / 2 + ascent };
   }
 
+  colorCompletionGlyphComponents(data, width, height, componentAt, typed) {
+    // Classify whole connected strokes, not individual pixels. A rounded or
+    // slanted final consonant can cross the geometric split by a few pixels.
+    const visited = new Uint8Array(width * height);
+    for (let origin = 0; origin < width * height; origin++) {
+      if (visited[origin] || !data[origin * 4 + 3]) continue;
+      const stroke = [origin], votes = [];
+      visited[origin] = 1;
+      for (let cursor = 0; cursor < stroke.length; cursor++) {
+        const index = stroke[cursor], x = index % width, y = Math.floor(index / width);
+        const component = componentAt(x, y);
+        votes[component] = (votes[component] || 0) + data[index * 4 + 3];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const next = ny * width + nx;
+          if (!visited[next] && data[next * 4 + 3]) { visited[next] = 1; stroke.push(next); }
+        }
+      }
+      const component = votes.reduce((best, vote, index) => vote > (votes[best] || 0) ? index : best, 0);
+      const color = component < typed ? [17, 17, 17] : [146, 151, 158];
+      for (const index of stroke) {
+        data[index * 4] = color[0]; data[index * 4 + 1] = color[1]; data[index * 4 + 2] = color[2];
+      }
+    }
+  }
+
   createPartialHangulPreview(block, font) {
     // Every preview glyph uses the same font baseline, including full black
     // and gray syllables. Never center individual ink bounds across fonts.
@@ -194,16 +221,12 @@ class PTCellInputTools {
       const finalX=gap('x',.5,(finalY-y0)/(y1-y0),1,.35,.65);
       const vowelUnits=mixed?2:1;
       const finalUnits=block.jamo.length-1-vowelUnits;
-      for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) {
-        const offset=(y*canvas.width+x)*4;
-        if(!data[offset+3]) continue;
-        let component;
-        if(y>=finalY) component=1+vowelUnits+(finalUnits>1&&x>=finalX?1:0);
-        else if(vertical) component=x<divideX?0:1;
-        else if(mixed) component=x<divideX&&y<vowelY?0:x>=divideX?2:1;
-        else component=y<vowelY?0:1;
-        if(component<block.typed){data[offset]=17;data[offset+1]=17;data[offset+2]=17;}
-      }
+      this.colorCompletionGlyphComponents(data, canvas.width, canvas.height, (x, y) => {
+        if(y>=finalY) return 1+vowelUnits+(finalUnits>1&&x>=finalX?1:0);
+        if(vertical) return x<divideX?0:1;
+        if(mixed) return x<divideX&&y<vowelY?0:x>=divideX?2:1;
+        return y<vowelY?0:1;
+      }, block.typed);
       ctx.putImageData(pixels,0,0);
       }
       cached={canvas,width,height};

@@ -638,3 +638,19 @@ test('ending native cell editing blurs the original composing input before desti
   app.endNativeCellEditing(input);
   assert.equal(blurred,1);
 });
+
+
+test('untyped final consonant strokes stay entirely gray even when their edge crosses the upper boundary', () => {
+  const {app}=createApp();
+  const width=12,height=12,data=new Uint8ClampedArray(width*height*4);
+  const ink=(x,y,alpha=255)=>{data[(y*width+x)*4+3]=alpha;};
+  // Typed upper stroke and a separate ㄴ whose rising left tip crosses the split.
+  for(let x=3;x<9;x++) ink(x,2);
+  for(let y=6;y<=10;y++) ink(2,y,y===6?80:255);
+  for(let x=2;x<10;x++) ink(x,10);
+  app.colorCompletionGlyphComponents(data,width,height,(x,y)=>y<7?0:2,2);
+  for(let y=6;y<=10;y++) assert.deepEqual(Array.from(data.slice((y*width+2)*4,(y*width+2)*4+3)),[146,151,158]);
+  for(let x=2;x<10;x++) assert.deepEqual(Array.from(data.slice((10*width+x)*4,(10*width+x)*4+3)),[146,151,158]);
+  assert.deepEqual(Array.from(data.slice((2*width+4)*4,(2*width+4)*4+3)),[17,17,17]);
+  assert.equal(data[(6*width+2)*4+3],80);
+});
