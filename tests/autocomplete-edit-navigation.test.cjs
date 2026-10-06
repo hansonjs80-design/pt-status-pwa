@@ -571,3 +571,19 @@ test('moving from writer to memo keeps the destination native editor focused bef
   app.focusSelectedCellEditor();
   assert.equal(sheetFocus,1);
 });
+
+
+test('manual writer Enter exits even when the IME reports Process or composition, while selected cells open their picker', () => {
+  const {app}=createApp();
+  let armed=false;
+  const input={classList:{contains:()=>armed}};
+  for(const event of [{key:'Enter'}, {key:'Process',code:'Enter',isComposing:true,keyCode:229}, {key:'Process',code:'NumpadEnter',isComposing:true}]) {
+    assert.equal(app.isWriterEnterExit(event,input),true);
+    for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])
+      assert.equal(app.isWriterEnterExit({...event,[modifier]:true},input),false);
+  }
+  armed=true;
+  assert.equal(app.isWriterEnterExit({key:'Enter'},input),false);
+  armed=false;
+  assert.equal(app.isWriterEnterExit({key:'ArrowRight'},input),false);
+});

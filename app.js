@@ -1478,6 +1478,12 @@ class PTApp {
       (this.isAutocompleteOpen() || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length));
   }
 
+  isWriterEnterExit(event, input) {
+    const enter = event.key === "Enter" || event.code === "Enter" || event.code === "NumpadEnter";
+    return enter && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !input.classList.contains("is-armed");
+  }
+
   handleWriterPickerShortcut(event, rowIdx, cellElement) {
     if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
     event.preventDefault(); event.stopPropagation();
@@ -2733,6 +2739,20 @@ class PTApp {
         commitAndBlur(chosen);
         // Select the adjacent cell without arming another editor for this key.
         this.selectAutocompleteLeftCell(rowIdx, colKey);
+        this.focusSelectedCellEditor();
+        return;
+      }
+      // Physical initial entry can leave the OS IME reporting Process/229.
+      // Writer Enter confirms the normalized initial before the generic IME guard.
+      if (colKey === "writer" && this.isWriterEnterExit(e, input)) {
+        e.preventDefault(); e.stopPropagation();
+        composing = false;
+        input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
+        this.closeAutocompleteMenu();
+        commitAndBlur(chosen);
+        this.selectAutocompleteRightCell(rowIdx, colKey);
         this.focusSelectedCellEditor();
         return;
       }
