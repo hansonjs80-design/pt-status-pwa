@@ -1478,7 +1478,7 @@ class PTApp {
       (this.isAutocompleteOpen() || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length));
   }
 
-  isWriterLeftExit(event, input) {
+  isManualCellLeftExit(event, input) {
     return (event.key === "ArrowLeft" || event.code === "ArrowLeft") &&
       !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
       !input.classList.contains("is-armed");
@@ -2737,8 +2737,8 @@ class PTApp {
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
         if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
-      // A plain Left confirms the highlighted preset even before IME ends.
-      if (this.isPresetLeftExit(e, colKey) || (colKey === "writer" && this.isWriterLeftExit(e, input))) {
+      // A plain Left commits memo/writer editing or the highlighted suggestion once.
+      if (this.isPresetLeftExit(e, colKey) || (["writer", "memo"].includes(colKey) && this.isManualCellLeftExit(e, input))) {
         e.preventDefault(); e.stopPropagation();
         this.presetLeftKeyHeld = true;
         composing = false; input.dataset.composing = "false";
@@ -2912,6 +2912,7 @@ class PTApp {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
+        if (e.key === "ArrowLeft") this.presetLeftKeyHeld = true;
 
         // 자동완성이 열려있으면 선택된 항목을 적용
         if (this.isAutocompleteOpen() && e.key !== "ArrowLeft") {

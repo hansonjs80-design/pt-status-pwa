@@ -605,21 +605,21 @@ test('manual writer Enter exits even when the IME reports Process or composition
 });
 
 
-test('manual writer Left exits directly regardless of caret or native IME state without intercepting modified selection', () => {
+test('manual memo and writer Left exits directly regardless of caret or native IME state without intercepting modified selection', () => {
   const {app}=createApp();
   let armed=false;
   const input={value:'K',selectionStart:1,selectionEnd:1,classList:{contains:()=>armed}};
   for(const event of [{key:'ArrowLeft'},{key:'Process',code:'ArrowLeft',isComposing:true,keyCode:229}]) {
-    assert.equal(app.isWriterLeftExit(event,input),true);
+    assert.equal(app.isManualCellLeftExit(event,input),true);
     input.selectionStart=input.selectionEnd=0;
-    assert.equal(app.isWriterLeftExit(event,input),true);
+    assert.equal(app.isManualCellLeftExit(event,input),true);
     for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])
-      assert.equal(app.isWriterLeftExit({...event,[modifier]:true},input),false);
+      assert.equal(app.isManualCellLeftExit({...event,[modifier]:true},input),false);
   }
   armed=true;
-  assert.equal(app.isWriterLeftExit({key:'ArrowLeft'},input),false);
+  assert.equal(app.isManualCellLeftExit({key:'ArrowLeft'},input),false);
   armed=false;
-  assert.equal(app.isWriterLeftExit({key:'Enter'},input),false);
+  assert.equal(app.isManualCellLeftExit({key:'Enter'},input),false);
 });
 
 
