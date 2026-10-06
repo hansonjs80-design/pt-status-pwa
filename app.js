@@ -2727,10 +2727,9 @@ class PTApp {
         composing = false; input.dataset.composing = "false";
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
-        // Escape ends editing without discarding the typed value or selection.
+        // Escape confirms the typed value and moves right, like direct commit.
         commitAndBlur();
-        if (directCommit) this.navigateCol(rowIdx, colKey, 1);
-        else this.selectCell(rowIdx, colKey, cellElement, false);
+        this.navigateCol(rowIdx, colKey, 1);
         this.elSheetContainer.focus({ preventScroll: true });
         return;
       }
