@@ -243,6 +243,7 @@ class PTCellInputTools {
     // Let the operating system IME handle both English and Korean input.
     // Converting insertText Latin keys here prevents native English entry.
     input.lang = 'ko';
+    input.inputMode = 'text';
     input.autocapitalize = 'off';
     input.spellcheck = false;
   }

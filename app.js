@@ -2165,7 +2165,8 @@ class PTApp {
       !(COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || []).includes(value) &&
       !(COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).some(hidden => hidden.toLowerCase() === value.toLowerCase()));
     const preferredIndex = preferred === undefined ? -1 : candidates.indexOf(preferred);
-    const selectedIndex = preservedIndex >= 0 ? preservedIndex : preferredIndex >= 0 ? preferredIndex
+    const currentWriterIndex = colKey === "writer" ? candidates.indexOf(this.normalizeWriterInput(query).trim()) : -1;
+    const selectedIndex = preservedIndex >= 0 ? preservedIndex : currentWriterIndex >= 0 ? currentWriterIndex : preferredIndex >= 0 ? preferredIndex
       : (showTypedValue && candidates.length > 1 ? 1 : 0);
     this.closeAutocompleteMenu();
     if (!candidates || candidates.length === 0) return;
@@ -2719,9 +2720,8 @@ class PTApp {
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
+        if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
-      if (colKey === "writer" && !e.isComposing && input.dataset.nativeComposing !== "true" &&
-          this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       // A plain Left confirms the highlighted preset even before IME ends.
       if (this.isPresetLeftExit(e, colKey)) {
         e.preventDefault(); e.stopPropagation();
