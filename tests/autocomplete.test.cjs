@@ -44,7 +44,7 @@ test('duplicates across dates and presets are shown once', () => {
   }, { name: ['Kim'] });
   assert.deepEqual(suggestions(app, 'name', 'ki'), ['Kim']);
   assert.deepEqual(suggestions(app, 'chartNo', '123'), ['123', '12345']);
-  assert.deepEqual(suggestions(app, 'name', 'Kim'), []);
+  assert.deepEqual(suggestions(app, 'name', 'Kim'), ['Kim']);
 });
 
 test('suggestions reflect history edits and keep the ten-item limit', () => {
@@ -308,10 +308,11 @@ test('detail management includes displayed historical typo and keeps the correct
   app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
   app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
   app.openAutocompletePresetManager('prescription', bad, { value: query });
-  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [bad]);
-  app.editPresetAt('prescription', 0);
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [query, bad]);
+  app.editPresetAt('prescription', 1);
   app.openAutocompletePresetManager('prescription', null, { value: query });
-  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [query]);
+  assert.equal(app.autocompleteManagerContext.items.includes(bad), false);
+  assert.equal(app.autocompleteManagerContext.items.includes(query), true);
   assert.equal(app.dataStore['2026-10-05'][0].prescription, bad);
 });
 
@@ -346,4 +347,21 @@ test('column hidden phrases exclude preset, historical and detailed candidates w
   delete presets['__columnHidden:memo'];
   assert.deepEqual(suggestions(app, 'memo', '신'), ['신장 3', '신장 4']);
   assert.deepEqual(suggestions(app, 'memo', '신장'), ['신장 2', '신장 3', '신장 4']);
+});
+
+
+test('name details keep the typed name and an exact registered candidate remains visible', () => {
+  const app = createApp({ '2026-10-06': [{name:'김홍준'}] }, {name:['김홍']}, {
+    localStorage:{getItem(){return null;},setItem(){}},
+  });
+  app.closeAutocompleteMenu = () => {};
+  app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
+  app.openAutocompletePresetManager('name','김홍준',{value:'김홍'});
+  assert.deepEqual(Array.from(app.autocompleteManagerContext.items), ['김홍','김홍준']);
+  app.savePresetManagerItems('name');
+  assert.deepEqual(suggestions(app,'name','김홍'),['김홍','김홍준']);
+  app.togglePresetCandidateVisibility = app.togglePresetCandidateVisibility.bind(app);
+  app.renderPresetManagerList = () => {};
+  app.togglePresetCandidateVisibility('name',0);
+  assert.deepEqual(suggestions(app,'name','김홍'),['김홍준']);
 });

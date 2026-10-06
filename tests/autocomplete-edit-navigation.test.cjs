@@ -126,7 +126,7 @@ test('managed prescription, extra, memo and special-note suggestions keep their 
   for (const column of ['prescription', 'extra', 'memo', 'specialNote']) {
     const { app, context } = createApp({ '2026-10-04': [{ [column]: '충 기록' }] }, { [column]: ['메모 충 오래된 문구', '충 새 문구', '충'] });
     assert.deepEqual(Array.from(app.getAutocompleteSuggestions(column, '충')), column === 'prescription'
-      ? ['메모 충 오래된 문구', '충 새 문구', '충 기록'] : ['충 새 문구', '충 기록']);
+      ? ['메모 충 오래된 문구', '충 새 문구', '충', '충 기록'] : ['충 새 문구', '충', '충 기록']);
     // Reordering the manager list changes priority immediately.
     app.activePresetTab = column;
     app.renderPresetManagerList = () => {}; app.renderQuickChips = () => {};

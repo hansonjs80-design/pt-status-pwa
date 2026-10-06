@@ -629,6 +629,7 @@ class PTApp {
     this.elPresetManagerModal = document.getElementById("presetManagerModal");
     this.elClosePresetManagerModal = document.getElementById("btnClosePresetManagerModal");
     this.elBtnManagerDone = document.getElementById("btnManagerDone");
+    this.elTabPresetName = document.getElementById("tabPresetName");
     this.elTabPresetPart = document.getElementById("tabPresetPart");
     this.elTabPresetPrescription = document.getElementById("tabPresetPrescription");
     this.elTabPresetExtra = document.getElementById("tabPresetExtra");
@@ -683,7 +684,7 @@ class PTApp {
     if (this.elTabPresetExtra) {
       this.elTabPresetExtra.addEventListener("click", () => this.switchPresetTab("extra"));
     }
-    for (const [tab, element] of [["part", this.elTabPresetPart], ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
+    for (const [tab, element] of [["name", this.elTabPresetName], ["part", this.elTabPresetPart], ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.addEventListener("click", () => this.switchPresetTab(tab));
     }
     if (this.elBtnManagerAddPreset) {
@@ -2048,7 +2049,8 @@ class PTApp {
     const matchItem = (item, isPreset) => {
       const itemLower = item.toLowerCase();
       if (columnHidden.has(itemLower.trim())) return;
-      if (itemLower === query) return; // 정확히 일치하면 추천 불필요
+      // Explicitly registered candidates remain visible even after complete typing.
+      if (itemLower === query && !isPreset) return;
 
       // 부위·성함·추가 사항·메모·특이 사항은 앞부분만 매칭한다.
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
@@ -2178,7 +2180,7 @@ class PTApp {
       editButton.type = "button";
       editButton.className = "autocomplete-edit-button";
       editButton.textContent = "✎";
-      const managedColumn = ["part", "prescription", "extra", "memo", "specialNote"].includes(colKey);
+      const managedColumn = ["name", "part", "prescription", "extra", "memo", "specialNote"].includes(colKey);
       editButton.title = managedColumn ? "현재 입력값의 자동완성 세부 관리" : "모든 날짜의 같은 문구 수정";
       editButton.setAttribute("aria-label", `${cand} ${managedColumn ? "자동완성 관리" : "수정"}`);
       editButton.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
@@ -2187,7 +2189,7 @@ class PTApp {
         if (managedColumn) this.openAutocompletePresetManager(colKey, cand, input);
         else void this.editAutocompleteValue(colKey, cand, input);
       });
-      if (!["writer", "name"].includes(colKey)) itemEl.appendChild(editButton);
+      if (colKey !== "writer") itemEl.appendChild(editButton);
 
       if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
@@ -2313,7 +2315,8 @@ class PTApp {
       ? this.autocompleteState.candidates : this.getAutocompleteSuggestions(colKey, query, true);
     const key = this.getAutocompleteRuleKey(colKey, query);
     const items = Object.hasOwn(COLUMN_PRESETS, key) ? [...COLUMN_PRESETS[key]]
-      : [...new Set(shown.filter(item => item === value || (item !== query && item !== this.assembleHangul(query))))];
+      : [...new Set(shown.filter(item => colKey === "name" || item === value ||
+        (COLUMN_PRESETS[colKey] || []).includes(item) || (item !== query && item !== this.assembleHangul(query))))];
     input?.blur?.();
     this.closeAutocompleteMenu();
     this.openPresetManager(colKey, { colKey, query, key, items, hidden: [...(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || [])] });
@@ -5704,7 +5707,7 @@ class PTApp {
 
   updatePresetManagerTabs() {
     const context = this.autocompleteManagerContext;
-    const labels = { part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성", memo: "메모", specialNote: "특이 사항" };
+    const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성", memo: "메모", specialNote: "특이 사항" };
     const title = this.elPresetManagerModal?.querySelector(".modal-title");
     if (title) title.textContent = context ? `${labels[this.activePresetTab]} 자동완성 세부 관리` : "⚙️ 빠른 입력 도구 관리";
     const card = this.elPresetManagerModal?.querySelector(".modal-card");
@@ -5758,12 +5761,12 @@ class PTApp {
     const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
     if (tabs) tabs.style.display = context ? "none" : "flex";
     if (this.elBtnManagerResetPresets) this.elBtnManagerResetPresets.textContent = context ? "기본 후보 복원" : "기본값 복원";
-    for (const [tab, element] of [["part", this.elTabPresetPart], ["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
+    for (const [tab, element] of [["name", this.elTabPresetName], ["part", this.elTabPresetPart], ["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
       ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.classList.toggle("active", this.activePresetTab === tab);
     }
     if (this.elManagerNewPresetInput) {
-      const labels = { part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
+      const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
       this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
     }
   }
