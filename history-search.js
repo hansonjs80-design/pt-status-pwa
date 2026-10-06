@@ -612,6 +612,28 @@ class PTHistorySearch {
     });
   }
 
+  handlePatientEditorSearchShortcut(event) {
+    if (!this.isSearchShortcut(event)) return false;
+    const input = event.target;
+    const cell = input?.closest?.(".excel-cell");
+    const formulaEditor = Boolean(input && input === this.elFormulaInput);
+    const colKey = cell?.dataset?.col || this.activeCell?.colKey;
+    if (!cell && !formulaEditor) return false;
+    if (!["name", "chartNo"].includes(colKey) || input.classList?.contains("is-armed")) return false;
+    if (!String(input.value ?? "").trim()) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    this.historyApplyBlockedKey = "f";
+    const rowIdx = cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
+    const rawValue = input.value;
+    input.blur();
+    this.closeAutocompleteMenu();
+    this.elSheetContainer.focus({ preventScroll: true });
+    const query = this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
+    void this.searchPatientHistory(query, rowIdx);
+    return true;
+  }
+
   findActiveCell() {
     const { rowIdx, colKey } = this.activeCell || {};
     const targetIdx = Number.isInteger(rowIdx) ? rowIdx

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 function createApp(rows = []) {
   const context = vm.createContext({
     window: { addEventListener() {} },
-    document: { activeElement: null, querySelectorAll: () => [] },
+    document: { activeElement: null, querySelectorAll: () => [], getElementById: () => null },
     setTimeout: fn => fn(), clearTimeout, alert() {},
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
@@ -118,6 +118,24 @@ test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
     const input = { tagName: 'INPUT', value: '가상환자', closest: selector => selector === '.excel-row' ? row : {}, blur() {} };
     app.handleGlobalKeyDown({ key: 'f', [modifier]: true, target: input, preventDefault() {}, stopPropagation() {} });
     assert.deepEqual(searched, ['가상환자', 0]);
+  }
+});
+
+test('chart/name live and formula editors route Ctrl/Cmd+F directly before other selection shortcuts', () => {
+  for (const colKey of ['chartNo', 'name']) for (const formula of [false, true]) for (const modifier of ['ctrlKey', 'metaKey']) {
+    const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
+    app.activeCell = { rowIdx: 0, colKey };
+    const cell = { dataset: { row: '0', col: colKey } };
+    const input = { tagName: 'INPUT', value: colKey === 'name' ? '가상환자' : 'T001',
+      closest: () => formula ? null : cell, blur() {} };
+    if (formula) app.elFormulaInput = input;
+    let searched;
+    app.searchPatientHistory = (...args) => { searched = args; };
+    app.openSearchPromptModal = () => assert.fail('live editors must skip the prompt');
+    app.handleCellRowSelectShortcut = () => assert.fail('search must run before selection shortcuts');
+    app.handleGlobalKeyDown({ key: 'ㄹ', code: 'KeyF', isComposing: true, [modifier]: true,
+      target: input, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(searched, [input.value, 0]);
   }
 });
 

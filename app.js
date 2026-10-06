@@ -2462,6 +2462,8 @@ class PTApp {
     });
 
     input.addEventListener("beforeinput", (e) => {
+      // Native insertion starts editing before input/composition events arrive.
+      if (!["deleteContentBackward", "deleteContentForward"].includes(e.inputType)) this.activateNativeEditor(input);
       if (colKey === "writer" && input.dataset.writerKeyValue !== undefined &&
           (e.isComposing || /Composition/.test(e.inputType || "") || e.inputType === "insertText")) {
         e.preventDefault();
@@ -5063,6 +5065,7 @@ class PTApp {
 
   handleGlobalKeyDown(e) {
     if (e.defaultPrevented) return;
+    if (this.handlePatientEditorSearchShortcut(e)) return;
     if (e.key === "Escape" && this.activeCell) {
       const editingCell = e.target?.closest?.(".excel-cell");
       const leavingSearch = Boolean(this.elSearchInput?.value?.trim());
