@@ -153,6 +153,16 @@ test('autocomplete refresh preserves the selected value until the query or edito
   show(['김가', '김가나']); app.autocompleteState.selectedIndex = 1;
   app.showAutocompleteMenu(1, 'name', cell, {value: '김가'}, ['김가', '김가나']);
   assert.equal(app.autocompleteState.selectedIndex, 1);
+  input.value = '이솔'; show(['이소림']);
+  app.autocompleteState.selectedIndex = 0;
+  show([]); // Composition ended while the typed-value option was highlighted.
+  assert.deepEqual(Array.from(app.autocompleteState.candidates), ['이솔', '이소림']);
+  assert.equal(app.getSelectedAutocompleteItem(), '이솔');
+  app.autocompleteState.selectedIndex = 1;
+  show([]);
+  assert.equal(app.getSelectedAutocompleteItem(), '이소림');
+  input.value = '김'; show([]);
+  assert.deepEqual(Array.from(app.autocompleteState.candidates), ['김']);
 });
 
 

@@ -2134,6 +2134,13 @@ class PTApp {
     if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value.toLowerCase() !== typedValue.toLowerCase())];
     const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
       previous.colKey === colKey && previous.query === query;
+    // Ending IME composition while browsing must not remove pending-initial
+    // matches. Refresh the list only when the actual typed query changes.
+    if (sameQuery) {
+      const pendingMatches = previous.candidates.filter(value =>
+        this.matchesHangulPrefix(value, query, true) && !this.matchesHangulPrefix(value, query, false));
+      candidates = [...new Set([...candidates, ...pendingMatches])];
+    }
     // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
     if (sameQuery && candidates?.length === previous.candidates.length &&
         candidates.every((candidate, index) => candidate === previous.candidates[index]) &&

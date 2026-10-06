@@ -173,3 +173,35 @@ test('yearly month averages include absent-item zeroes, exclude empty months, an
   assert.equal(instance.formatSummaryAverage(summary.total, 2), '1.5');
   assert.equal(metrics.find(metric => metric.key === 'writerContentCounts:J').value(instance.getDailySummary([{ writer: 'J' }])), 0);
 });
+
+test('summary period controls select another month and year without changing the record date', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.currentDate = '2026-10-06'; instance.cloudSearchHistory = {};
+  instance.dataStore = {
+    '2026-09-07': [{name:'이전 월',extra:'견인'}],
+    '2026-10-05': [{name:'현재 월'}],
+    '2025-01-06': [{name:'이전 연도'}],
+    '2025-02-03': [{name:'둘째 월',extra:'견인'}],
+  };
+  instance.summaryMonth = '2026-09';
+  assert.equal(instance.getPeriodSummary('month').extras.get('견인'),1);
+  assert.equal(instance.getSummaryDates('month')[0].date,'2026-09-07');
+  instance.summaryYear = '2025';
+  assert.equal(instance.getPeriodSummary('year').total,2);
+  assert.equal(instance.getSummaryAverageContext('year').weeks,2);
+  instance.summaryYearMonth = 2;
+  assert.equal(instance.getPeriodSummary('year').total,1);
+  assert.equal(instance.getPeriodSummary('year').extras.get('견인'),1);
+  instance.summaryYearMonth = 0;
+  assert.equal(instance.getPeriodSummary('year').total,2);
+  assert.equal(instance.currentDate,'2026-10-06');
+});
+
+test('table group averages count zero items on active days and exclude writer-only dates', () => {
+  const instance = Object.create(context.App.prototype);
+  const group = [[{name:'첫째',extra:'견인'}],[{name:'둘째'}],[{writer:'J'}]].map(rows => ({summary:instance.getDailySummary(rows)}));
+  const metric = {value:s=>s.extras.get('견인') || 0};
+  const result = instance.getSummaryGroupStats(group,metric);
+  assert.equal(result.days,2);assert.equal(result.sum,1);assert.equal(result.average,'0.5');
+  assert.equal(instance.getSummaryGroupStats([],metric).average,'—');
+});
