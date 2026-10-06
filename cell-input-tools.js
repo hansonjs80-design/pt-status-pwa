@@ -90,10 +90,18 @@ class PTCellInputTools {
     return blocks;
   }
 
+  getCompletionTextLayout(font, metrics) {
+    const size = parseFloat(font.fontSize);
+    const ascent = metrics.fontBoundingBoxAscent ?? metrics.actualBoundingBoxAscent ?? size;
+    const descent = metrics.fontBoundingBoxDescent ?? metrics.actualBoundingBoxDescent ?? size * .25;
+    const height = Math.max(size * 1.35, ascent + descent + 2);
+    return { height, baseline: (height - ascent - descent) / 2 + ascent };
+  }
+
   createPartialHangulPreview(block, font) {
-    // Rasterize the same composed glyph at high resolution. Color its initial,
-    // vowel and final regions using whitespace gaps in the actual font glyph.
-    const scale = 6, size = parseFloat(font.fontSize), height = size * 1.35;
+    // Every preview glyph uses the same font baseline, including full black
+    // and gray syllables. Never center individual ink bounds across fonts.
+    const scale = 6;
     this.completionGlyphCache ||= new Map();
     const key = `${font.font}|${block.char}|${block.typed}`;
     let cached = this.completionGlyphCache.get(key);
@@ -101,11 +109,11 @@ class PTCellInputTools {
       const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
       ctx.font = font.font;
       const width = ctx.measureText(block.char).width;
+      const { height, baseline } = this.getCompletionTextLayout(font, ctx.measureText('한Ag'));
       canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
-      ctx.scale(scale, scale); ctx.font = font.font; ctx.fillStyle = '#92979e';
-      const metric = ctx.measureText(block.char);
-      const baseline = (height + metric.actualBoundingBoxAscent - metric.actualBoundingBoxDescent) / 2;
+      ctx.scale(scale, scale); ctx.font = font.font; ctx.fillStyle = block.typed === block.jamo.length ? '#111' : '#92979e';
       ctx.fillText(block.char, 0, baseline);
+      if (block.typed > 0 && block.typed < block.jamo.length && /[가-힣]/.test(block.char)) {
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), data = pixels.data;
       let x0 = canvas.width, x1 = 0, y0 = canvas.height, y1 = 0;
       for (let y=0;y<canvas.height;y++) for(let x=0;x<canvas.width;x++) if(data[(y*canvas.width+x)*4+3]>30) {
@@ -149,6 +157,7 @@ class PTCellInputTools {
         if(component<block.typed){data[offset]=17;data[offset+1]=17;data[offset+2]=17;}
       }
       ctx.putImageData(pixels,0,0);
+      }
       cached={canvas,width,height};
       if(this.completionGlyphCache.size>=128) this.completionGlyphCache.delete(this.completionGlyphCache.keys().next().value);
       this.completionGlyphCache.set(key,cached);
@@ -173,15 +182,9 @@ class PTCellInputTools {
     const preview = document.createElement('span');
     preview.className = 'inline-autocomplete-preview'; preview.setAttribute('aria-hidden', 'true');
     const font = getComputedStyle(input);
-    for (const block of blocks) {
-      if (block.typed > 0 && block.typed < block.jamo.length && /[가-힣]/.test(block.char)) {
-        preview.append(this.createPartialHangulPreview(block, font));
-      } else {
-        const text = document.createElement('span');
-        text.className = block.typed ? 'inline-completion-prefix' : 'inline-completion-suffix';
-        text.textContent = block.char; preview.append(text);
-      }
-    }
+    preview.style.font = font.font;
+    preview.style.letterSpacing = font.letterSpacing;
+    for (const block of blocks) preview.append(this.createPartialHangulPreview(block, font));
     input.classList.add('has-inline-completion');
     preview.style.left = `${input.offsetLeft - input.scrollLeft}px`;
     preview.style.top = `${input.offsetTop}px`;

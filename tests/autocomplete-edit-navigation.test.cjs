@@ -442,3 +442,15 @@ test('typed final consonants stay in the native syllable while matching candidat
   const blocks = app.getInlineCompletionComponents('이솔','이솔희');
   assert.deepEqual(Array.from(blocks, block => block.typed), [2,3,0]);
 });
+
+
+test('preview baseline uses shared font metrics instead of each glyph ink bounds', () => {
+  const {app}=createApp();
+  const font={fontSize:'14px'};
+  const a=app.getCompletionTextLayout(font,{fontBoundingBoxAscent:15,fontBoundingBoxDescent:4,actualBoundingBoxAscent:10,actualBoundingBoxDescent:0});
+  const b=app.getCompletionTextLayout(font,{fontBoundingBoxAscent:15,fontBoundingBoxDescent:4,actualBoundingBoxAscent:13,actualBoundingBoxDescent:3});
+  assert.equal(a.height,b.height);assert.equal(a.baseline,b.baseline);
+  assert.equal(a.height,21);assert.equal(a.baseline,16);
+  const fallback=app.getCompletionTextLayout(font,{actualBoundingBoxAscent:12,actualBoundingBoxDescent:3});
+  assert.ok(Number.isFinite(fallback.baseline));
+});
