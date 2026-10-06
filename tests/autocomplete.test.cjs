@@ -335,3 +335,15 @@ test('hidden detail candidates stay manageable, preserve order and can be restor
   assert.equal(suggestions(app, 'part', '옹')[1], '오 엉덩이');
   assert.deepEqual(suggestions(app, 'part', '오'), ['오', '오어', '오 엉']);
 });
+
+test('column hidden phrases exclude preset, historical and detailed candidates without changing records', () => {
+  const presets = { memo: ['신장 2'], '__columnHidden:memo': ['신장 2', '신장 3'], '__query:memo:신': ['신장 3', '신장 4'] };
+  const data = { '2026-10-05': [{memo:'신장 3'}, {memo:'신장 4'}] };
+  const app = createApp(data, presets);
+  assert.deepEqual(suggestions(app, 'memo', '신'), ['신장 4']);
+  assert.deepEqual(suggestions(app, 'memo', '신장'), ['신장 4']);
+  assert.equal(data['2026-10-05'][0].memo, '신장 3');
+  delete presets['__columnHidden:memo'];
+  assert.deepEqual(suggestions(app, 'memo', '신'), ['신장 3', '신장 4']);
+  assert.deepEqual(suggestions(app, 'memo', '신장'), ['신장 2', '신장 3', '신장 4']);
+});

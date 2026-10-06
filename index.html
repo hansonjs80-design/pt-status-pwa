@@ -450,6 +450,16 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
           <!-- JS에서 동적으로 목록 렌더링 -->
         </div>
 
+        <section id="columnHiddenPanel" class="column-hidden-panel" aria-label="열 전체 숨김 문구">
+          <strong>숨김 문구</strong>
+          <p>등록한 문구는 이 열의 모든 자동완성 후보에서 제외됩니다. 기존 셀 내용은 유지됩니다.</p>
+          <div class="column-hidden-form">
+            <input id="managerHiddenPresetInput" type="text" aria-label="숨김 문구 입력" placeholder="숨김 문구 입력">
+            <button id="btnManagerAddHiddenPreset" type="button" class="preset-action-btn">숨김 등록</button>
+          </div>
+          <div id="columnHiddenPresetList" class="column-hidden-list"></div>
+        </section>
+
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid #e2e8f0;">
           <button type="button" id="btnManagerResetPresets" style="padding:7px 12px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; color:#ef4444; cursor:pointer; font-size:12px; font-weight:600;">🔄 기본값 복원</button>
           <button type="button" id="btnManagerDone" onclick="if(window.ptApp) window.ptApp.closePresetManager();" style="padding:8px 20px; border:none; border-radius:6px; background:#107c41; color:#fff; cursor:pointer; font-weight:600; font-size:13px;">완료</button>

@@ -1992,10 +1992,11 @@ class PTApp {
     const query = String(rawQuery).trim().toLowerCase();
     if (!query) return [];
 
+    const columnHidden = new Set((COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).map(value => value.trim().toLowerCase()));
     const ruleKey = this.getAutocompleteRuleKey(colKey, rawQuery);
     if (Object.hasOwn(COLUMN_PRESETS, ruleKey)) {
       const hidden = COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || [];
-      const values = COLUMN_PRESETS[ruleKey].filter(value => !hidden.includes(value));
+      const values = COLUMN_PRESETS[ruleKey].filter(value => !hidden.includes(value) && !columnHidden.has(value.trim().toLowerCase()));
       if (["part", "chartNo"].includes(colKey)) {
         const typed = this.assembleHangul(rawQuery).trim();
         return [typed, ...values.filter(value => value !== typed)];
@@ -2046,6 +2047,7 @@ class PTApp {
     // 관리 목록의 문구와 순서를 우선하고 나머지 기존 값은 매칭 품질로 정렬한다.
     const matchItem = (item, isPreset) => {
       const itemLower = item.toLowerCase();
+      if (columnHidden.has(itemLower.trim())) return;
       if (itemLower === query) return; // 정확히 일치하면 추천 불필요
 
       // 부위·성함·추가 사항·메모·특이 사항은 앞부분만 매칭한다.
@@ -5727,6 +5729,20 @@ class PTApp {
         this.openAutocompletePresetManager(this.activePresetTab, null, { value: query });
       };
     }
+    const hiddenPanel = document.getElementById("columnHiddenPanel");
+    if (hiddenPanel) {
+      hiddenPanel.style.display = context ? "none" : "block";
+      const hiddenInput = document.getElementById("managerHiddenPresetInput");
+      hiddenInput.placeholder = `${labels[this.activePresetTab]} 숨김 문구 입력`;
+      hiddenInput.value = "";
+      document.getElementById("btnManagerAddHiddenPreset").onclick = () => this.addColumnHiddenPreset();
+      hiddenInput.onkeydown = event => {
+        if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) {
+          event.preventDefault(); event.stopPropagation(); this.addColumnHiddenPreset();
+        }
+      };
+      this.renderColumnHiddenPresets();
+    }
     const back = document.getElementById("btnPresetGeneral");
     if (back) {
       back.style.display = context ? "inline-block" : "none";
@@ -5750,6 +5766,45 @@ class PTApp {
       const labels = { part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
       this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 우선 문구 입력`;
     }
+  }
+
+  addColumnHiddenPreset() {
+    const input = document.getElementById("managerHiddenPresetInput");
+    const value = input?.value.trim();
+    if (!value) { input?.focus(); return; }
+    const key = `__columnHidden:${this.activePresetTab}`;
+    const items = COLUMN_PRESETS[key] ||= [];
+    if (!items.some(item => item.toLowerCase() === value.toLowerCase())) items.push(value);
+    saveColumnPresets(COLUMN_PRESETS);
+    input.value = "";
+    this.renderColumnHiddenPresets();
+    input.focus();
+  }
+
+  renderColumnHiddenPresets() {
+    const container = document.getElementById("columnHiddenPresetList");
+    if (!container) return;
+    container.replaceChildren();
+    const key = `__columnHidden:${this.activePresetTab}`;
+    const items = COLUMN_PRESETS[key] || [];
+    if (!items.length) {
+      container.textContent = "숨김 문구가 없습니다.";
+      return;
+    }
+    items.forEach((value, index) => {
+      const row = document.createElement("div"); row.className = "preset-list-item";
+      const text = document.createElement("span"); text.className = "preset-item-text";
+      text.textContent = value; text.title = value;
+      const edit = document.createElement("button"); edit.type = "button"; edit.className = "preset-action-btn"; edit.textContent = "수정";
+      edit.onclick = () => {
+        const next = prompt("숨김 문구를 수정하세요:", value);
+        if (!next?.trim()) return;
+        items[index] = next.trim(); saveColumnPresets(COLUMN_PRESETS); this.renderColumnHiddenPresets();
+      };
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "preset-action-btn"; remove.textContent = "숨김 해제";
+      remove.onclick = () => { items.splice(index, 1); saveColumnPresets(COLUMN_PRESETS); this.renderColumnHiddenPresets(); };
+      row.append(text, edit, remove); container.appendChild(row);
+    });
   }
 
   renderPresetManagerList() {
@@ -5936,6 +5991,7 @@ class PTApp {
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();
       this.renderQuickChips();
+      this.renderColumnHiddenPresets();
       this.showSaveIndicator("기본값으로 복원됨");
     }
   }
