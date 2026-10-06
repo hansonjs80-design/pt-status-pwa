@@ -758,6 +758,7 @@ class PTApp {
       });
     }
     if (this.elSearchPromptModal) {
+      this.initSearchPromptDrag();
       this.elSearchPromptModal.addEventListener("click", (e) => {
         if (e.target === this.elSearchPromptModal) this.closeSearchPromptModal();
       });

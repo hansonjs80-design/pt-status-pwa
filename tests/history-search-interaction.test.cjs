@@ -74,7 +74,7 @@ test('selected chart/name opens prefilled prompt with all text selected, includi
     const { app } = createApp([{ [colKey]: value }]);
     app.activeCell.colKey = colKey;
     let selected = false, focused = false;
-    app.elSearchPromptModal = { style: {} };
+    app.elSearchPromptModal = { style: {}, querySelector: () => null };
     app.elSearchPromptInput = { value: 'old', focus() { focused = true; }, select() { selected = true; } };
     app.closeSearchPromptAutocomplete = () => {};
     app.elSearchInput.value = 'old query';
@@ -276,7 +276,7 @@ test('opening and submitting a history search never changes daily records', () =
   const rows = [{ name: '가상환자', chartNo: 'T001', memo: '보존' }];
   const { app } = createApp(rows);
   const before = JSON.stringify(rows);
-  app.elSearchPromptModal = { style: {} };
+  app.elSearchPromptModal = { style: {}, querySelector: () => null };
   app.elSearchPromptInput = { value: '', focus() {}, select() {} };
   app.updateSearchPromptAutocomplete = app.closeSearchPromptAutocomplete = () => {};
   app.searchAllDates = () => {};
@@ -293,7 +293,7 @@ test('selected cells outside chart/name open an empty focused prompt and clear o
     app.activeCell.colKey = colKey;
     app.elSearchInput.value = '이전 검색어';
     let focused = false, cleared = false;
-    app.elSearchPromptModal = { style: {} };
+    app.elSearchPromptModal = { style: {}, querySelector: () => null };
     app.elSearchPromptInput = { value: '기존 입력', focus() { focused = true; }, select() {} };
     app.closeSearchPromptAutocomplete = () => { cleared = app.elSearchPromptInput.value === ''; };
     app.findActiveCell();

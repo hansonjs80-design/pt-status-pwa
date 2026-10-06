@@ -609,6 +609,9 @@ body {
 }
 
 .modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 272px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
+#searchPromptModal { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.search-prompt-card .modal-header { cursor: grab; user-select: none; touch-action: none; }
+.search-prompt-card .modal-header.is-dragging { cursor: grabbing; }
 .search-prompt-card .modal-header { padding: 7px 14px; background: #2563eb; border-bottom: 1px solid #2563eb; }
 .search-prompt-card .modal-header h2 { margin: 0; color: #fff; font-size: 15px; font-weight: 700; }
 .search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #fff; font-size: 16px; }

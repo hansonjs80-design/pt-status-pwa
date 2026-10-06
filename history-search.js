@@ -352,6 +352,8 @@ class PTHistorySearch {
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
+    const card = this.elSearchPromptModal.querySelector(".search-prompt-card");
+    if (card) { card.style.position = ""; card.style.left = ""; card.style.top = ""; }
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
@@ -368,6 +370,38 @@ class PTHistorySearch {
     this.closeSearchPromptAutocomplete();
     this.elSearchPromptModal.style.display = "none";
     this.elSheetContainer?.focus({ preventScroll: true });
+  }
+
+  initSearchPromptDrag() {
+    const card = this.elSearchPromptModal.querySelector(".search-prompt-card");
+    const header = card?.querySelector(".modal-header");
+    if (!header) return;
+    let drag = null;
+    const position = (left, top) => {
+      const rect = card.getBoundingClientRect();
+      card.style.position = "fixed";
+      card.style.left = `${Math.max(8, Math.min(left, window.innerWidth - rect.width - 8))}px`;
+      card.style.top = `${Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))}px`;
+      this._searchPromptACPosition?.();
+    };
+    header.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.target.closest("button")) return;
+      event.preventDefault();
+      const rect = card.getBoundingClientRect();
+      drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
+      header.setPointerCapture(event.pointerId);
+      header.classList.add("is-dragging");
+    });
+    header.addEventListener("pointermove", event => {
+      if (drag?.id !== event.pointerId) return;
+      position(event.clientX - drag.x, event.clientY - drag.y);
+    });
+    const finish = () => { drag = null; header.classList.remove("is-dragging"); };
+    for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) header.addEventListener(event, finish);
+    window.addEventListener("resize", () => {
+      if (this.elSearchPromptModal.style.display === "none" || card.style.position !== "fixed") return;
+      const rect = card.getBoundingClientRect(); position(rect.left, rect.top);
+    });
   }
 
   getSearchPromptAutocompleteItems(query) {
@@ -419,8 +453,10 @@ class PTHistorySearch {
       menu.style.maxHeight = `${Math.max(40, Math.min(220, window.innerHeight - rect.bottom - 12))}px`;
     };
     position();
+    this._searchPromptACPosition = position;
     window.addEventListener("resize", position);
     this._searchPromptACCleanup = () => {
+      this._searchPromptACPosition = null;
       window.removeEventListener("resize", position);
       input.removeAttribute("aria-activedescendant");
       input.setAttribute("aria-expanded", "false");
