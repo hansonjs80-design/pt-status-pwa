@@ -2324,3 +2324,6 @@ body {
 .preset-dragging { opacity:0.45; }
 .preset-list-item.preset-drop-before { box-shadow:inset 0 3px #107c41; }
 .preset-list-item.preset-drop-after { box-shadow:inset 0 -3px #107c41; }
+
+/* Keep the native IME editor in the same box before and during composition. */
+.excel-table .cell-input-element { position:absolute; inset:0; box-sizing:border-box; padding:0 6px; }

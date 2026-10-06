@@ -1604,6 +1604,7 @@ class PTApp {
     const JUNGSUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
     const JONGSUNG = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 
+    str = str.normalize("NFC");
     const hasIsolatedJamo = /[\u3131-\u318E]/.test(str);
     if (!hasIsolatedJamo) return str;
 
@@ -2518,7 +2519,7 @@ class PTApp {
 
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
-      if (!armed) {
+      if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         this.activateNativeEditor(existingEditor);
         existingEditor.focus({ preventScroll: true });
         existingEditor.setSelectionRange(existingEditor.value.length, existingEditor.value.length);
@@ -2554,12 +2555,22 @@ class PTApp {
     // Input events
     // ★ 한글 IME 보호 원칙:
     // 1. input 이벤트에서 절대로 input.value를 변경하지 않음
-    // 2. isComposing 중에는 자동완성 등 DOM 조작도 하지 않음 (IME 방해)
-    // 3. assembleHangul은 blur(편집 종료) 시점에서만 최종 보정으로 실행
+    // 2. 조합 중에는 입력창 위치와 실제 글자 표시를 유지함
+    // 3. 남은 자모 보정은 네이티브 조합 종료 후에만 예약하고 재조합 시 취소함
     let _acDebounceTimer = null;
+    let _hangulRepairTimer = null;
     let isCommitted = false;
     let composing = false;
+    const repairCompletedInput = () => {
+      clearTimeout(_hangulRepairTimer);
+      _hangulRepairTimer = setTimeout(() => {
+        if (isCommitted || composing || input.dataset.nativeComposing === "true" || !input.isConnected || document.activeElement !== input || colKey === "writer") return;
+        if (this.normalizeCompletedHangulInput(input)) input.dispatchEvent(new Event("input", { bubbles: true }));
+      }, 0);
+    };
     input.addEventListener("compositionstart", () => {
+      clearTimeout(_hangulRepairTimer);
+      input.dataset.nativeComposing = "true";
       this.activateNativeEditor(input);
       composing = true;
       input.dataset.composing = "true";
@@ -2568,6 +2579,10 @@ class PTApp {
     });
 
     input.addEventListener("beforeinput", (e) => {
+      if (e.isComposing || e.inputType === "insertCompositionText") {
+        composing = true; input.dataset.composing = "true"; input.dataset.nativeComposing = "true";
+        clearTimeout(_hangulRepairTimer);
+      }
       // Native insertion starts editing before input/composition events arrive.
       if (!["deleteContentBackward", "deleteContentForward"].includes(e.inputType)) this.activateNativeEditor(input);
       if (colKey === "writer" && input.dataset.writerKeyValue !== undefined &&
@@ -2577,6 +2592,7 @@ class PTApp {
     });
     input.addEventListener("input", (e) => {
       if (isCommitted) return; // Late IME events must not overwrite a finished edit.
+      if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
       const val = input.value;
@@ -2591,6 +2607,7 @@ class PTApp {
       }
       this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
+      if (!composing && input.dataset.nativeComposing !== "true") repairCompletedInput();
 
       // Keep the native input and focus intact during composition.
       // Only the separate suggestion popup is refreshed, including Windows IME input.
@@ -2612,6 +2629,8 @@ class PTApp {
       if (isCommitted) return;
       composing = false;
       input.dataset.composing = "false";
+      input.dataset.nativeComposing = "false";
+      repairCompletedInput();
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
       // assembleHangul은 blur 시점에서만 최종 보정
@@ -2644,6 +2663,7 @@ class PTApp {
     const commitAndBlur = (forcedVal) => {
       if (isCommitted) return;
       isCommitted = true;
+      clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(input.value);
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
@@ -2674,6 +2694,7 @@ class PTApp {
     };
 
     input.addEventListener("blur", () => {
+      clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       if (input.classList.contains("is-armed")) { input.remove(); return; }
       this.closeAutocompleteMenu();

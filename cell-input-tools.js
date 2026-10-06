@@ -198,12 +198,27 @@ class PTCellInputTools {
     glyph.append(canvas,text);return glyph;
   }
 
+  normalizeCompletedHangulInput(input) {
+    if (input.dataset.nativeComposing === 'true') return false;
+    const value = input.value;
+    const assembled = this.assembleHangul(value.normalize('NFC'));
+    if (assembled === value) return false;
+    const start = input.selectionStart, end = input.selectionEnd;
+    const direction = input.selectionDirection;
+    input.value = assembled;
+    if (start !== null && end !== null) {
+      input.setSelectionRange(this.assembleHangul(value.slice(0, start).normalize('NFC')).length,
+        this.assembleHangul(value.slice(0, end).normalize('NFC')).length, direction);
+    }
+    return true;
+  }
+
   updateInlineAutocompletePreview() {
     this.clearInlineAutocompletePreview();
     const state = this.autocompleteState;
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
-    if (!input.isConnected || document.activeElement !== input || !input.value ||
+    if (input.dataset?.nativeComposing === 'true' || !input.isConnected || document.activeElement !== input || !input.value ||
         input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length) return;
     const blocks = this.getInlineCompletionComponents(input.value, this.getSelectedAutocompleteItem());
     if (!blocks) return;
@@ -245,7 +260,7 @@ class PTCellInputTools {
       }
     });
     input.addEventListener('beforeinput', event => {
-      if (input.dataset.memoEnglish === 'true' || event.isComposing || event.inputType !== 'insertText' || !/^[a-z]+$/i.test(event.data || '')) return;
+      if (input.dataset.memoEnglish === 'true' || input.dataset.nativeComposing === 'true' || event.isComposing || event.inputType !== 'insertText' || !/^[a-z]+$/i.test(event.data || '')) return;
       event.preventDefault();
       input.dataset.composing = 'true';
       const typed = this.convertMemoKeyboardInput(event.data);

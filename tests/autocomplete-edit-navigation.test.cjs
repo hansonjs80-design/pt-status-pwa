@@ -510,3 +510,32 @@ test('compact Korean completion colors only untyped finals despite candidate spa
   assert.deepEqual(Array.from(completed,block=>block.typed),[2,3,0,0]);
   assert.equal(app.getInlineCompletionComponents('오어','오 영'),null);
 });
+
+
+test('completed Korean jamo repair preserves caret and never rewrites an active native composition', () => {
+  const { app } = createApp();
+  for (const [source,expected] of [['ㅈㅣㄴ','진'],['지ㄴ','진'],['진','진'],['김ㅈㅣㄴ','김진']]) {
+    let writes=0;
+    const input={dataset:{nativeComposing:'true'},selectionStart:source.length,selectionEnd:source.length,selectionDirection:'none',
+      get value(){return this.text;},set value(value){writes++;this.text=value;},text:source,
+      setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+    assert.equal(app.normalizeCompletedHangulInput(input),false);
+    assert.equal(writes,0); assert.equal(input.value,source);
+    input.dataset.nativeComposing='false';
+    assert.equal(app.normalizeCompletedHangulInput(input),true);
+    assert.equal(input.value,expected); assert.equal(input.selectionStart,expected.length);
+    assert.equal(input.selectionEnd,expected.length);
+  }
+  const input={dataset:{nativeComposing:'false'},value:'ㄱㅅ',selectionStart:2,selectionEnd:2};
+  assert.equal(app.normalizeCompletedHangulInput(input),false);
+  assert.equal(input.value,'ㄱㅅ');
+});
+
+test('native IME composition keeps actual input visible instead of rendering completion overlay', () => {
+  const { app } = createApp();
+  let cleared=0;
+  app.clearInlineAutocompletePreview=()=>{cleared++;};
+  app.autocompleteState={colKey:'name',input:{dataset:{nativeComposing:'true'}}};
+  app.updateInlineAutocompletePreview();
+  assert.equal(cleared,1);
+});
