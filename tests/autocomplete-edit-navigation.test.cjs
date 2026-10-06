@@ -375,3 +375,18 @@ test('inline preview displays assembled syllables while leaving native composing
   assert.equal(app.getInlineCompletionParts('신장', '신장'), null);
   assert.equal(app.getInlineCompletionParts('이', '김청용'), null);
 });
+
+test('composed completion tracks only entered initial vowel and final components', () => {
+  const {app}=createApp();
+  for(const [query, candidate, expected] of [
+    ['ㅇ','임연',[1,0]], ['이','임연',[2,0]], ['임','임연',[3,0]],
+    ['임ㅇ','임연',[3,1]], ['임여','임연',[3,2]],
+    ['잋','이춘식',[2,1,0]], ['싡','신장',[3,1]],
+    ['ㅇㅊ','이청용',[1,1,0]], ['고','과장',[2,0]],
+  ]) {
+    const blocks=app.getInlineCompletionComponents(query,candidate);
+    assert.deepEqual(Array.from(blocks, block=>block.typed),expected);
+    assert.equal(blocks.map(block=>block.char).join(''),candidate);
+  }
+  assert.equal(app.getInlineCompletionComponents('임연','임연'),null);
+});
