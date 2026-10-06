@@ -2745,9 +2745,10 @@ class PTApp {
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
         if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
-      // A plain Left commits memo/writer editing or the highlighted suggestion once.
-      if (this.isPresetLeftExit(e, colKey) || (["writer", "memo"].includes(colKey) && this.isManualCellLeftExit(e, input))) {
+      // Every editable column commits and moves left through this single path.
+      if (this.isPresetLeftExit(e, colKey) || this.isManualCellLeftExit(e, input)) {
         e.preventDefault(); e.stopPropagation();
+        e.stopImmediatePropagation();
         this.presetLeftKeyHeld = true;
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
@@ -5547,7 +5548,13 @@ class PTApp {
       const targetCell = this.elTableBody.querySelector(`[data-row="${targetRow}"][data-col="${targetColKey}"]`);
       if (targetCell) {
         if (e.shiftKey) this.extendCellSelection(targetRow, targetColIdx);
-        else this.selectCell(targetRow, targetColKey, targetCell, false);
+        else {
+          if (e.key === "ArrowLeft" && !isCtrlOrMeta && !e.altKey) {
+            this.presetLeftKeyHeld = true;
+            this.guardNextCellInput = targetColKey !== "gender";
+          }
+          this.selectCell(targetRow, targetColKey, targetCell, false);
+        }
         this.ensureCurrentCellVisible(targetCell);
       }
       return;
