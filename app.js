@@ -97,6 +97,7 @@ const DEFAULT_PRESETS = {
 
 const PRESETS_STORAGE_KEY = "PT_APP_CUSTOM_PRESETS_V1";
 const SHARED_PRESETS_RECORD = "__pt_shared_presets_v1__";
+const SUMMARY_CLOSED_STORAGE_KEY = "device-summary-closed-v1";
 
 // localStorage에서 사용자 커스텀 프리셋 로드 (없으면 기본값 사용)
 function loadColumnPresets() {
@@ -772,20 +773,8 @@ class PTApp {
     this.elFileRestore.addEventListener("change", (e) => this.handleRestoreFile(e));
     this.elBtnClearAllData.addEventListener("click", () => this.clearCurrentDayData());
 
-    document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
-      const sidebar = document.getElementById("summarySidebar");
-      if (!sidebar) return;
-      const closed = sidebar.classList.toggle("summary-closed");
-      const button = document.getElementById("btnToggleSummary");
-      if (button) {
-        button.setAttribute("aria-expanded", String(!closed));
-        button.title = closed ? "현황 열기" : "현황 닫기";
-        button.setAttribute("aria-label", closed ? "현황 열기" : "현황 닫기");
-      }
-      if (typeof this.syncMainColumnWidths === "function") {
-        this.syncMainColumnWidths();
-      }
-    });
+    // Summary Sidebar Toggle
+    this.initSummaryToggle();
 
     // Keyboard Shortcuts
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
@@ -3327,6 +3316,50 @@ class PTApp {
     document.querySelectorAll(".sort-indicator").forEach(el => { el.textContent = ""; });
     const indicator = document.querySelector(`.b-header[data-col="${colKey}"] .sort-indicator`);
     if (indicator) indicator.textContent = direction === "asc" ? " ▲" : direction === "desc" ? " ▼" : " ↺";
+  }
+
+  isSummaryClosed() {
+    try {
+      return localStorage.getItem(SUMMARY_CLOSED_STORAGE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setSummaryClosed(closed, save = true) {
+    const sidebar = document.getElementById("summarySidebar");
+    const button = document.getElementById("btnToggleSummary");
+    if (sidebar) {
+      sidebar.classList.toggle("summary-closed", closed);
+    }
+    if (button) {
+      button.setAttribute("aria-expanded", String(!closed));
+      button.title = closed ? "현황 열기" : "현황 닫기";
+      button.setAttribute("aria-label", closed ? "현황 열기" : "현황 닫기");
+    }
+    if (save) {
+      try {
+        if (closed) {
+          localStorage.setItem(SUMMARY_CLOSED_STORAGE_KEY, "1");
+        } else {
+          localStorage.removeItem(SUMMARY_CLOSED_STORAGE_KEY);
+        }
+      } catch (_) {}
+    }
+    if (typeof this.syncMainColumnWidths === "function") {
+      this.syncMainColumnWidths();
+    }
+  }
+
+  initSummaryToggle() {
+    if (this.isSummaryClosed()) {
+      this.setSummaryClosed(true, false);
+    }
+    document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
+      const sidebar = document.getElementById("summarySidebar");
+      const nextClosed = sidebar ? !sidebar.classList.contains("summary-closed") : true;
+      this.setSummaryClosed(nextClosed, true);
+    });
   }
 
   initColumnResizing() {

@@ -205,3 +205,82 @@ test('table group averages count zero items on active days and exclude writer-on
   assert.equal(result.days,2);assert.equal(result.sum,1);assert.equal(result.average,'0.5');
   assert.equal(instance.getSummaryGroupStats([],metric).average,'—');
 });
+
+test('summary sidebar toggle persists closed state per device in localStorage and restores on launch', () => {
+  const storage = new Map();
+  const sidebar = { classList: new Set(), style: {} };
+  sidebar.classList.toggle = function(cls, force) {
+    if (force !== undefined) {
+      if (force) this.add(cls); else this.delete(cls);
+      return force;
+    }
+    if (this.has(cls)) { this.delete(cls); return false; }
+    this.add(cls); return true;
+  };
+  sidebar.classList.contains = function(cls) { return this.has(cls); };
+
+  const buttonAttrs = {};
+  const button = {
+    setAttribute(k, v) { buttonAttrs[k] = String(v); },
+    getAttribute(k) { return buttonAttrs[k]; },
+  };
+
+  let toggleListener = null;
+  const doc = {
+    getElementById(id) {
+      if (id === 'summarySidebar') return sidebar;
+      if (id === 'btnToggleSummary') return button;
+      return null;
+    },
+  };
+  button.addEventListener = (evt, fn) => { if (evt === 'click') toggleListener = fn; };
+
+  const testContext = vm.createContext({
+    document: doc,
+    window: { addEventListener() {} },
+    localStorage: {
+      getItem: key => storage.get(key) || null,
+      setItem: (key, val) => storage.set(key, String(val)),
+      removeItem: key => storage.delete(key),
+    },
+  });
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', testContext);
+
+  const instance = Object.create(testContext.App.prototype);
+  assert.equal(instance.isSummaryClosed(), false);
+
+  // 초기 로딩: 기본 열림 상태
+  instance.initSummaryToggle();
+  assert.equal(sidebar.classList.contains('summary-closed'), false);
+
+  // 토글 클릭 -> 닫힘으로 전환 및 localStorage 저장
+  toggleListener();
+  assert.equal(sidebar.classList.contains('summary-closed'), true);
+  assert.equal(button.getAttribute('aria-expanded'), 'false');
+  assert.equal(storage.get('device-summary-closed-v1'), '1');
+  assert.equal(instance.isSummaryClosed(), true);
+
+  // 다음 접속(앱 재실행) 시뮬레이션: 새 인스턴스 생성
+  const relaunched = Object.create(testContext.App.prototype);
+  const newSidebar = { classList: new Set(), style: {} };
+  newSidebar.classList.toggle = sidebar.classList.toggle;
+  newSidebar.classList.contains = sidebar.classList.contains;
+  const newButtonAttrs = {};
+  const newButton = {
+    setAttribute(k, v) { newButtonAttrs[k] = String(v); },
+    getAttribute(k) { return newButtonAttrs[k]; },
+    addEventListener(evt, fn) { if (evt === 'click') toggleListener = fn; },
+  };
+  doc.getElementById = id => id === 'summarySidebar' ? newSidebar : (id === 'btnToggleSummary' ? newButton : null);
+
+  relaunched.initSummaryToggle();
+  assert.equal(newSidebar.classList.contains('summary-closed'), true);
+  assert.equal(newButton.getAttribute('aria-expanded'), 'false');
+
+  // 다시 클릭 -> 열림 상태로 전환 및 localStorage 키 삭제
+  toggleListener();
+  assert.equal(newSidebar.classList.contains('summary-closed'), false);
+  assert.equal(newButton.getAttribute('aria-expanded'), 'true');
+  assert.equal(storage.has('device-summary-closed-v1'), false);
+  assert.equal(relaunched.isSummaryClosed(), false);
+});
