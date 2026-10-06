@@ -2238,3 +2238,31 @@ body {
 .excel-row.cross-date-row .cross-date-cell.range-selected:hover {
   background-color: #bfdbfe !important;
 }
+
+/* Period analytics keeps the daily sheet compact and widens only comparative views. */
+.excel-sidebar.summary-expanded { width: 360px; }
+.summary-analytics[hidden] { display: none; }
+.summary-filters fieldset { display: flex; flex-wrap: wrap; gap: 5px; border: 0; padding: 0; margin: 10px 0; }
+.summary-filters legend { color: #566a5d; font-size: 12px; margin-bottom: 6px; }
+.summary-filters label { cursor: pointer; }
+.summary-filters input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.summary-filters label span { display: block; padding: 5px 8px; border: 1px solid #dbe6df; border-radius: 5px; color: #627468; background: #fff; font-size: 12px; }
+.summary-filters input:checked + span { color: #096637; border-color: #96c6aa; background: #e2f2e8; font-weight: 700; }
+.summary-filters input:focus-visible + span { outline: 2px solid #107c41; outline-offset: 2px; }
+.summary-reset { border: 0; background: transparent; color: #107c41; padding: 2px 0 8px; font-size: 12px; cursor: pointer; }
+.summary-average-cards { display: flex; gap: 8px; margin: 10px 0; }
+.summary-average-cards div { flex: 1; background: #edf5f0; color: #126637; padding: 10px 8px; border-radius: 6px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.summary-average-note { color: #738277; font-size: 11px; line-height: 1.6; margin: 8px 0 12px; }
+.summary-metric-label { display: block; font-size: 12px; color: #566a5d; }
+.summary-metric-label select { display: block; box-sizing: border-box; width: 100%; padding: 8px; margin: 5px 0 12px; border: 1px solid #d7e5dc; border-radius: 6px; background: #fff; color: #294c36; font: inherit; }
+.summary-average-tables h5 { margin: 16px 0 7px; font-size: 12px; color: #42624e; }
+.summary-average-tables table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.summary-average-tables th, .summary-average-tables td { padding: 7px 6px; border-bottom: 1px solid #e5eee8; text-align: right; }
+.summary-average-tables th:first-child { text-align: left; }
+.summary-average-tables thead { background: #eff5f1; color: #617566; }
+.summary-average-tables tbody th { font-weight: 500; }
+.summary-average-tables td:last-child { color: #107c41; font-weight: 700; }
+.summary-average-columns { text-align: right; color: #78877d; font-size: 11px; margin: 8px 0 0; }
+.summary-expanded .stat-list li:not(.summary-empty) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.summary-list-average { grid-column: 2; text-align: right; color: #568064; font-size: 11px; font-variant-numeric: tabular-nums; }
+@media (max-width: 1050px) and (min-width: 901px) { .excel-sidebar.summary-expanded { width: 300px; } }

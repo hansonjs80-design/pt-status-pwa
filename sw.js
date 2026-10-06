@@ -1,10 +1,11 @@
-const CACHE_NAME = 'pt-status-pwa-v134';
+const CACHE_NAME = 'pt-status-pwa-v135';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './style.css',
   './history-search.js',
   './table-formatting.js',
+  './summary.js',
   './app.js',
   './local-tools.js',
   './manifest.json',

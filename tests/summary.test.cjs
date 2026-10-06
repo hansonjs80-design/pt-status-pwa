@@ -123,3 +123,53 @@ test('period switching refreshes summary and loads historical data for month and
   assert.equal(instance.summaryPeriod,'year');
   assert.equal(renders,3);
 });
+
+test('weekday and Monday-based week filters intersect and ignore prepared writer-only dates in average divisors', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.currentDate = '2026-10-06';
+  instance.dataStore = {
+    '2026-10-01': [{ name: '첫째', extra: '충격파' }], // Thursday, week 1
+    '2026-10-05': [{ name: '둘째' }, { name: '셋째', extra: '충격파' }], // Monday, week 2
+    '2026-10-12': [{ name: '넷째' }], // Monday, week 3
+    '2026-10-19': [{ writer: 'J' }], // Prepared initials are not a treatment day
+    '2026-09-30': [{ name: '이전 월' }],
+  };
+  instance.cloudSearchHistory = { '2026-10-05': [{ name: '중복 서버' }] };
+  assert.equal(instance.getPeriodSummary('month').total, 4);
+  assert.deepEqual(JSON.parse(JSON.stringify(instance.getSummaryAverageContext('month'))), { days: 3, weeks: 3, months: 1 });
+  instance.summaryWeekdays = [1];
+  assert.equal(instance.getPeriodSummary('month').total, 3);
+  assert.equal(instance.getSummaryAverageContext('month').days, 2);
+  instance.summaryWeeks = [2];
+  const summary = instance.getPeriodSummary('month');
+  assert.equal(summary.total, 2);
+  assert.equal(summary.extras.get('충격파'), 1);
+  assert.equal(instance.formatSummaryAverage(summary.total, instance.getSummaryAverageContext('month').days), '2.0');
+  instance.summaryWeeks = [];
+  assert.equal(instance.getPeriodSummary('month').total, 0);
+  assert.equal(instance.formatSummaryAverage(0, 0), '—');
+});
+
+test('yearly month averages include absent-item zeroes, exclude empty months, and ignore monthly filters', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.currentDate = '2026-10-06';
+  instance.dataStore = {
+    '2026-01-05': [{ name: '환자1', extra: '충격파', writer: 'J' }],
+    '2026-01-06': [{ name: '환자2', extra: '견인', writer: 'K' }],
+    '2026-03-01': [{ name: '환자3', extra: '충격파' }],
+    '2026-02-01': [{ writer: 'J' }],
+  };
+  instance.cloudSearchHistory = {};
+  instance.summaryWeeks = [];
+  instance.summaryWeekdays = [];
+  const dates = instance.getSummaryDates('year', true);
+  const summary = instance.getPeriodSummary('year');
+  const metrics = instance.getSummaryMetrics(summary);
+  const shockwave = metrics.find(metric => metric.key === 'extras:충격파');
+  const january = dates.filter(entry => entry.date.startsWith('2026-01'));
+  assert.equal(instance.formatSummaryAverage(january.reduce((n, entry) => n + shockwave.value(entry.summary), 0), january.length), '0.5');
+  assert.equal(summary.total, 3);
+  assert.equal(instance.getSummaryAverageContext('year').months, 2);
+  assert.equal(instance.formatSummaryAverage(summary.total, 2), '1.5');
+  assert.equal(metrics.find(metric => metric.key === 'writerContentCounts:J').value(instance.getDailySummary([{ writer: 'J' }])), 0);
+});
