@@ -33,6 +33,7 @@ class PTCellInputTools {
     // A fresh physical typing key proves that this cell owns the next input.
     if (event.key?.length === 1 || /^(Key[A-Z]|Digit[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || event.key || '')) {
       delete input.dataset.navigationInputGuard;
+      this.leftEditHandoffUntil = 0;
     }
   }
 
@@ -56,6 +57,7 @@ class PTCellInputTools {
 
   selectAutocompleteLeftCell(rowIdx, colKey) {
     this.guardNextCellInput = true;
+    this.leftEditHandoffUntil = Date.now() + 100;
     this.selectAutocompleteAdjacentCell(rowIdx, colKey, -1);
   }
 
@@ -79,7 +81,10 @@ class PTCellInputTools {
     // original key. The destination still belongs to that same handoff.
     const inherited = event.target?.dataset?.navigationInputGuard === 'true' &&
       (event.isComposing || event.key === 'Process' || event.keyCode === 229 || event.repeat);
-    if (!this.presetLeftKeyHeld && !inherited) return false;
+    // Some IMEs replay a plain ArrowLeft (without Process/229 or repeat) after
+    // composition commits and keyup. It still belongs to the editor handoff.
+    const replay = Date.now() < (this.leftEditHandoffUntil || 0);
+    if (!this.presetLeftKeyHeld && !inherited && !replay) return false;
     event.preventDefault(); event.stopImmediatePropagation?.(); event.stopPropagation(); return true;
   }
 
@@ -196,8 +201,14 @@ class PTCellInputTools {
         }
       }
       const component = votes.reduce((best, vote, index) => vote > (votes[best] || 0) ? index : best, 0);
-      const color = component < typed ? [17, 17, 17] : [146, 151, 158];
+      const total = votes.reduce((sum, vote) => sum + vote, 0);
+      // Fonts can join an initial and a vowel into one connected shape (오, 홍).
+      // Keep substantial components separate; absorb only small boundary spill
+      // into the dominant stroke, such as the rising tip of an untyped ㄴ.
+      const shared = votes.filter(vote => vote >= total * .2).length > 1;
       for (const index of stroke) {
+        const part = shared ? componentAt(index % width, Math.floor(index / width)) : component;
+        const color = part < typed ? [17, 17, 17] : [146, 151, 158];
         data[index * 4] = color[0]; data[index * 4 + 1] = color[1]; data[index * 4 + 2] = color[2];
       }
     }
@@ -247,7 +258,9 @@ class PTCellInputTools {
       const finalY=hasFinal?gap('y',.7,0,1,.56,.8):y1+1;
       const upperRatio=(finalY-y0)/(y1-y0);
       const divideX=gap('x',mixed?.55:.5,0,upperRatio,.35,.7);
-      const vowelY=gap('y',hasFinal?.35:.5,0,mixed?.65:1,.2,hasFinal?.5:.65);
+      const vowelY=mixed
+        ? gap('y',hasFinal?.35:.5,0,.65,.2,hasFinal?.5:.65)
+        : gap('y',upperRatio*.7,0,1,upperRatio*.55,Math.min(.9,upperRatio*.88));
       const finalX=gap('x',.5,(finalY-y0)/(y1-y0),1,.35,.65);
       const vowelUnits=mixed?2:1;
       const finalUnits=block.jamo.length-1-vowelUnits;

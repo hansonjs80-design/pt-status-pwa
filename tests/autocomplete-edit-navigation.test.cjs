@@ -688,3 +688,27 @@ test('IME replayed Left after keyup cannot move the destination another column',
   assert.equal(app.consumePresetLeftRepeat({...base,key:'Process',isComposing:true}),false,'new typing starts a separate edit');
   assert.equal(prevented,3);
 });
+
+test('connected initial and vowel retain separate colors when the font joins both shapes', () => {
+  const {app}=createApp();
+  const width=12,height=12,data=new Uint8ClampedArray(width*height*4);
+  for(let y=1;y<11;y++) for(let x=3;x<9;x++) data[(y*width+x)*4+3]=255;
+  app.colorCompletionGlyphComponents(data,width,height,(x,y)=>y<6?0:1,1);
+  for(let y=1;y<11;y++) for(let x=3;x<9;x++)
+    assert.deepEqual(Array.from(data.slice((y*width+x)*4,(y*width+x)*4+3)),y<6?[17,17,17]:[146,151,158]);
+});
+
+test('plain IME Left replay after keyup is consumed during handoff but fresh typing and later navigation work', () => {
+  const {app}=createApp();
+  const destination={dataset:{navigationInputGuard:'true'}};
+  app.presetLeftKeyHeld=false;
+  app.leftEditHandoffUntil=Date.now()+100;
+  let prevented=0;
+  const event={target:destination,key:'ArrowLeft',code:'ArrowLeft',preventDefault(){prevented++;},stopPropagation(){}};
+  assert.equal(app.consumePresetLeftRepeat(event),true);
+  app.releaseNavigationInputGuard(destination,{key:'Process',code:'KeyR'});
+  assert.equal(app.consumePresetLeftRepeat(event),false);
+  app.leftEditHandoffUntil=Date.now()-1;
+  assert.equal(app.consumePresetLeftRepeat(event),false);
+  assert.equal(prevented,1);
+});
