@@ -1871,6 +1871,7 @@ class PTApp {
     if (key === "Enter" || key === "ArrowRight" || key === "ArrowLeft") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
     this.closeGenderDropdown();
     if (key === "ArrowLeft") this.selectAutocompleteLeftCell(state.rowIdx, "gender");
+    else if (key === "Enter") this.selectAutocompleteRightCell(state.rowIdx, "gender");
     else if (key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
     else this.selectCell(state.rowIdx, "gender", state.cellElement, false);
     this.elSheetContainer?.focus({ preventScroll: true });
@@ -2605,9 +2606,11 @@ class PTApp {
 
     input.addEventListener("keydown", (e) => {
       if (this.consumePresetLeftRepeat(e)) return;
-      if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
-      if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
-      if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
+      if (input.classList.contains("is-armed")) {
+        if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
+        if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
+        if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
+      }
       // A plain Left confirms the highlighted preset even before IME ends.
       if (this.isPresetLeftExit(e, colKey)) {
         e.preventDefault(); e.stopPropagation();
@@ -2732,8 +2735,7 @@ class PTApp {
             input.value = chosenVal;
           }
           commitAndBlur(chosenVal);
-          // 다음 행으로 가지 않고 해당 셀 선택 테두리 유지 (커서는 비활성화된 셀 선택 상태)
-          this.selectCell(rowIdx, colKey, cellElement, false);
+          this.selectAutocompleteRightCell(rowIdx, colKey);
           if (this.elSheetContainer) {
             this.elSheetContainer.focus({ preventScroll: true });
           }
@@ -2813,8 +2815,9 @@ class PTApp {
       if (e.key === "Enter") {
         e.preventDefault();
         commitAndBlur();
-        // Move to next row in same column
-        this.navigateCell(rowIdx + 1, colKey);
+        e.stopPropagation();
+        this.selectAutocompleteRightCell(rowIdx, colKey);
+        this.elSheetContainer?.focus({ preventScroll: true });
       } else if (e.key === "Tab") {
         e.preventDefault();
         commitAndBlur();

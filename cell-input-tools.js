@@ -1,11 +1,20 @@
 // In-cell completion is a visual overlay; candidate text never enters the native input.
 class PTCellInputTools {
   selectAutocompleteLeftCell(rowIdx, colKey) {
+    this.selectAutocompleteAdjacentCell(rowIdx, colKey, -1);
+  }
+
+  selectAutocompleteRightCell(rowIdx, colKey) {
+    this.selectAutocompleteAdjacentCell(rowIdx, colKey, 1);
+  }
+
+  selectAutocompleteAdjacentCell(rowIdx, colKey, direction) {
     const columns = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    const leftKey = columns[columns.indexOf(colKey) - 1];
-    if (!leftKey) return;
-    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${leftKey}"]`);
-    if (cell) this.selectCell(rowIdx, leftKey, cell, false);
+    const index = columns.indexOf(colKey);
+    if (index < 0) return;
+    const targetKey = columns[Math.max(0, Math.min(columns.length - 1, index + direction))];
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${targetKey}"]`);
+    if (cell) this.selectCell(rowIdx, targetKey, cell, false);
   }
 
   consumePresetLeftRepeat(event) {

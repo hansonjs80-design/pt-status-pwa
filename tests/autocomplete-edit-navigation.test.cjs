@@ -253,7 +253,7 @@ test('gender picker arrows move the outlined option and Enter applies only that 
   let applied,focused=false;
   app.setGenderValue=(row,value,target)=>{applied={row,value,target};};
   app.closeGenderDropdown=()=>{app.genderPickerState=null;};
-  app.selectCell=(row,key,target)=>{assert.equal(row,3);assert.equal(key,'gender');assert.equal(target,cell);};
+  app.selectAutocompleteRightCell=(row,key)=>{assert.equal(row,3);assert.equal(key,'gender');};
   app.elSheetContainer={focus:()=>{focused=true;}};
   app.handleGenderPickerKeyDown(event('Enter'));
   assert.deepEqual(applied,{row:3,value:'M',target:cell});
@@ -453,4 +453,15 @@ test('preview baseline uses shared font metrics instead of each glyph ink bounds
   assert.equal(a.height,21);assert.equal(a.baseline,16);
   const fallback=app.getCompletionTextLayout(font,{actualBoundingBoxAscent:12,actualBoundingBoxDescent:3});
   assert.ok(Number.isFinite(fallback.baseline));
+});
+
+
+test('Enter destination moves right exactly once without arming an editor or wrapping rows', () => {
+  const {app}=createApp();
+  for (const [column,expected] of [['no','gender'],['name','part'],['prescription','extra'],['extra','writer'],['writer','memo'],['memo','specialNote'],['specialNote','specialNote']]) {
+    const cell={};let selected=0;
+    app.elTableBody={querySelector(selector){assert.equal(selector,`[data-row="3"][data-col="${expected}"]`);return cell;}};
+    app.selectCell=(row,key,target,arm)=>{assert.equal(row,3);assert.equal(key,expected);assert.equal(target,cell);assert.equal(arm,false);selected++;};
+    app.selectAutocompleteRightCell(3,column);assert.equal(selected,1);
+  }
 });
