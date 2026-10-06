@@ -13,6 +13,29 @@ class PTCellInputTools {
     return true;
   }
 
+  blockInheritedNavigationInput(input, event, originalValue) {
+    if (input.dataset.navigationInputGuard !== 'true') return false;
+    if (['insertFromPaste', 'insertFromDrop'].includes(event.inputType)) {
+      delete input.dataset.navigationInputGuard;
+      return false;
+    }
+    if (event.cancelable) event.preventDefault();
+    if (event.type === 'input' || event.type === 'compositionend') {
+      if (input.value !== originalValue) {
+        input.value = originalValue;
+        if (input.classList?.contains('is-armed')) input.setSelectionRange(0, originalValue.length);
+      }
+    }
+    return true;
+  }
+
+  releaseNavigationInputGuard(input, event) {
+    // A fresh physical typing key proves that this cell owns the next input.
+    if (event.key?.length === 1 || /^(Key[A-Z]|Digit[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || event.key || '')) {
+      delete input.dataset.navigationInputGuard;
+    }
+  }
+
   endNativeCellEditing(input) {
     // Finalize the OS composition on its original editor before removing it
     // or focusing the next cell, so pending text cannot follow the focus.
@@ -32,6 +55,7 @@ class PTCellInputTools {
   }
 
   selectAutocompleteLeftCell(rowIdx, colKey) {
+    this.guardNextCellInput = true;
     this.selectAutocompleteAdjacentCell(rowIdx, colKey, -1);
   }
 
@@ -45,6 +69,7 @@ class PTCellInputTools {
     if (index < 0) return;
     const targetKey = columns[Math.max(0, Math.min(columns.length - 1, index + direction))];
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${targetKey}"]`);
+    if (!cell || targetKey === "gender") this.guardNextCellInput = false;
     if (cell) this.selectCell(rowIdx, targetKey, cell, false);
   }
 

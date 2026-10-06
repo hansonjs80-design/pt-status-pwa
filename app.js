@@ -2533,6 +2533,7 @@ class PTApp {
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
+        delete existingEditor.dataset.navigationInputGuard;
         this.activateNativeEditor(existingEditor);
         existingEditor.focus({ preventScroll: true });
         existingEditor.setSelectionRange(existingEditor.value.length, existingEditor.value.length);
@@ -2550,6 +2551,10 @@ class PTApp {
     input.type = "text";
     input.className = "cell-input-element" + (armed ? " is-armed" : "");
     input.value = initialVal;
+    if (this.guardNextCellInput) {
+      input.dataset.navigationInputGuard = "true";
+      this.guardNextCellInput = false;
+    }
     if (colKey === "writer") {
       input.autocapitalize = "characters";
       input.spellcheck = false;
@@ -2581,8 +2586,8 @@ class PTApp {
         if (this.normalizeCompletedHangulInput(input)) input.dispatchEvent(new Event("input", { bubbles: true }));
       }, 0);
     };
-    input.addEventListener("compositionstart", () => {
-      if (isCommitted) return;
+    input.addEventListener("compositionstart", (e) => {
+      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       clearTimeout(_hangulRepairTimer);
       input.dataset.nativeComposing = "true";
       this.activateNativeEditor(input);
@@ -2594,6 +2599,7 @@ class PTApp {
 
     input.addEventListener("beforeinput", (e) => {
       if (isCommitted) { e.preventDefault(); return; }
+      if (this.blockInheritedNavigationInput(input, e, initialVal)) return;
       if (e.isComposing || e.inputType === "insertCompositionText") {
         composing = true; input.dataset.composing = "true"; input.dataset.nativeComposing = "true";
         clearTimeout(_hangulRepairTimer);
@@ -2606,7 +2612,7 @@ class PTApp {
       }
     });
     input.addEventListener("input", (e) => {
-      if (isCommitted) return; // Late IME events must not overwrite a finished edit.
+      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
@@ -2641,7 +2647,7 @@ class PTApp {
     });
 
     input.addEventListener("compositionend", (e) => {
-      if (isCommitted) return;
+      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       composing = false;
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
@@ -2731,6 +2737,7 @@ class PTApp {
 
     input.addEventListener("keydown", (e) => {
       if (this.consumePresetLeftRepeat(e)) return;
+      this.releaseNavigationInputGuard(input, e);
       if (input.classList.contains("is-armed")) {
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
@@ -2912,7 +2919,7 @@ class PTApp {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
-        if (e.key === "ArrowLeft") this.presetLeftKeyHeld = true;
+        if (e.key === "ArrowLeft") { this.presetLeftKeyHeld = true; this.guardNextCellInput = true; }
 
         // 자동완성이 열려있으면 선택된 항목을 적용
         if (this.isAutocompleteOpen() && e.key !== "ArrowLeft") {

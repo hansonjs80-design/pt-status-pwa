@@ -654,3 +654,22 @@ test('untyped final consonant strokes stay entirely gray even when their edge cr
   assert.deepEqual(Array.from(data.slice((2*width+4)*4,(2*width+4)*4+3)),[17,17,17]);
   assert.equal(data[(6*width+2)*4+3],80);
 });
+
+
+test('left destination rejects inherited IME text until a fresh typing key, while allowing explicit paste', () => {
+  const {app}=createApp();
+  const input={dataset:{navigationInputGuard:'true'},value:'왼쪽 원래 내용'};
+  let prevented=0;
+  const event={type:'beforeinput',inputType:'insertCompositionText',cancelable:true,preventDefault(){prevented++;}};
+  assert.equal(app.blockInheritedNavigationInput(input,event,'왼쪽 원래 내용'),true);
+  assert.equal(prevented,1);
+  input.value='이전 셀 글자';
+  assert.equal(app.blockInheritedNavigationInput(input,{type:'input'},'왼쪽 원래 내용'),true);
+  assert.equal(input.value,'왼쪽 원래 내용');
+  app.releaseNavigationInputGuard(input,{key:'Process',code:'ArrowLeft'});
+  assert.equal(input.dataset.navigationInputGuard,'true');
+  app.releaseNavigationInputGuard(input,{key:'Process',code:'KeyR'});
+  assert.equal(app.blockInheritedNavigationInput(input,event,'왼쪽 원래 내용'),false);
+  input.dataset.navigationInputGuard='true';
+  assert.equal(app.blockInheritedNavigationInput(input,{inputType:'insertFromPaste'},'왼쪽 원래 내용'),false);
+});
