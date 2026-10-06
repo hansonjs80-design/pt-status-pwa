@@ -1038,6 +1038,7 @@ class PTApp {
     if (this.currentDate !== dateStr) this.sortState = { colKey: null, direction: "original" };
     this.pendingCut = null;
     this.lastHistoryAppliedTarget = null;
+    this.historyOriginSelection = undefined;
     this.currentDate = dateStr;
     this.elDatePicker.value = dateStr;
 
@@ -5524,6 +5525,14 @@ class PTApp {
       this.clipboardSelection = null;
       this.pendingCut = null;
       this.renderClipboardSelection();
+
+      if (this.elSearchInput?.value?.trim()) {
+        this.clearHeaderSelections();
+        this.elSearchInput.value = "";
+        this.handleSearch();
+        this.historyOriginSelection = undefined;
+        return;
+      }
 
       // ★ 행 헤더 선택 상태에서 ESC → 해당 행의 No. 셀로 커서 이동
       if (this.selectedRowRange && !this.crossDateSelection) {

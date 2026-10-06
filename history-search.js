@@ -218,6 +218,30 @@ class PTHistorySearch {
     }
   }
 
+  captureHistoryOriginSelection() {
+    if (this.elSearchInput?.value?.trim()) return;
+    const selection = this.activeCell;
+    this.historyOriginSelection = selection ? {
+      date: this.currentDate, rowIdx: selection.rowIdx, colKey: selection.colKey,
+      row: this.getCurrentRows()[selection.rowIdx]
+    } : null;
+  }
+
+  restoreHistoryOriginSelection() {
+    const origin = this.historyOriginSelection;
+    const rows = this.getCurrentRows();
+    const index = origin?.date === this.currentDate ? rows.indexOf(origin.row) : -1;
+    const rowIdx = index >= 0 ? index : Math.max(0, this.getLastPatientRowIndex());
+    const colKey = index >= 0 ? origin.colKey : "name";
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+    if (cell) {
+      this.selectCell(rowIdx, colKey, cell, false);
+      this.ensureCurrentCellVisible(cell);
+      this.elSheetContainer.focus({ preventScroll: true });
+    }
+    this.historyOriginSelection = undefined;
+  }
+
   revealHistoryDestination(cell, rowIdx = Number(cell?.dataset?.row)) {
     this.ensureCurrentCellVisible(cell);
     if (!Number.isInteger(rowIdx) || !cell?.getBoundingClientRect) return;
@@ -267,7 +291,9 @@ class PTHistorySearch {
       this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"]`)
         ?.scrollIntoView({ block: "center", inline: "nearest" });
     }
-    this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
+    if (this.lastHistoryAppliedTarget) this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
+    else this.restoreHistoryOriginSelection();
+    this.historyOriginSelection = undefined;
     this.lastHistoryAppliedTarget = null;
   }
 
@@ -323,6 +349,7 @@ class PTHistorySearch {
   }
 
   openSearchPromptModal(targetRowIdx, initialQuery) {
+    this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
@@ -623,6 +650,7 @@ class PTHistorySearch {
     if (!String(input.value ?? "").trim()) return false;
     event.preventDefault();
     event.stopPropagation();
+    this.captureHistoryOriginSelection();
     this.historyApplyBlockedKey = "f";
     const rowIdx = cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
     const rawValue = input.value;
@@ -645,6 +673,7 @@ class PTHistorySearch {
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
     clearTimeout(this.historyCurrentScrollTimer);
+    if (!this.elSearchInput?.value?.trim() && this.historyOriginSelection === undefined) this.captureHistoryOriginSelection();
     // Refreshing search results must not steal focus from a current-date edit.
     const keepCurrentSelection = preserveCurrentSelection && !this.crossDateSelection &&
       Boolean(this.activeCell || this.selectedRange || this.selectedRowRange);

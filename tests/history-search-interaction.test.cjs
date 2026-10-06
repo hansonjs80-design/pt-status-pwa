@@ -198,6 +198,38 @@ test('leaving history restores the applied row at No. with a selection border', 
   assert.ok(scrolled);
 });
 
+test('exiting history without applying restores the original cell, or the last patient name when unselected', () => {
+  for (const original of [true, false]) {
+    const rows = [{ name: '첫 환자' }, { chartNo: 'LAST' }, { writer: 'J' }];
+    const { app } = createApp(rows);
+    app.activeCell = original ? { rowIdx: 0, colKey: 'part' } : null;
+    app.captureHistoryOriginSelection();
+    app.activeCell = null;
+    app.elBtnClearSearch = { style: {} };
+    app.clearCrossDateRows = () => {};
+    app.historyApplyTarget = null;
+    let selected;
+    const cell = { scrollIntoView() {} };
+    app.elTableBody.querySelector = () => cell;
+    app.selectCell = (...args) => { selected = args; };
+    app.handleSearch();
+    assert.deepEqual(selected, [original ? 0 : 1, original ? 'part' : 'name', cell, false]);
+    assert.equal(app.historyOriginSelection, undefined);
+  }
+});
+
+test('Escape exits history without clearing the restored selection again', () => {
+  const { app } = createApp([{ name: '원래 환자' }]);
+  app.activeCell = null;
+  app.elSearchInput.value = '검색';
+  app.crossDateSelection = { minRow: 0, maxRow: 0, minCol: 0, maxCol: 9 };
+  for (const key of ['closeAutocompleteMenu', 'closeGenderDropdown', 'hideContextMenu', 'renderClipboardSelection']) app[key] = () => {};
+  app.handleSearch = () => { app.activeCell = { rowIdx: 0, colKey: 'name' }; };
+  app.handleGlobalKeyDown({ key: 'Escape', target: { tagName: 'DIV' }, preventDefault() {} });
+  assert.equal(app.elSearchInput.value, '');
+  assert.deepEqual(app.activeCell, { rowIdx: 0, colKey: 'name' });
+});
+
 test('history divider follows header and panel height changes', () => {
   const { app, context } = createApp();
   let headerHeight = 51, panelHeight = 365;
