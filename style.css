@@ -2272,7 +2272,7 @@ body {
 
 /* Native input contains only typed text; the completion is never saved until confirmed. */
 .excel-table .cell-input-element:not(.is-armed) { color: #111; caret-color: #111; }
-.excel-table .cell-input-element.has-inline-completion { text-align: left; color: transparent; -webkit-text-fill-color: transparent; caret-color: #111; }
+.excel-table .cell-input-element.has-inline-completion { color: transparent; -webkit-text-fill-color: transparent; caret-color: #111; }
 .inline-autocomplete-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
 .inline-completion-prefix { color: #111; }
 .inline-completion-suffix { color: #92979e; }
@@ -2295,3 +2295,7 @@ body {
 .summary-average-tables tbody tr:hover td { background: #f4f8f5; }
 .summary-average-tables tbody tr:last-child td { border-bottom: 0; }
 @media (max-width: 900px) { .excel-sidebar.summary-expanded { max-width: none; width: 100%; } }
+
+/* Native editing and completion share the typed text's centered origin. */
+.excel-table .excel-cell:not(.cell-prescription) .cell-input-element { text-align: center; }
+.excel-table .cell-prescription .cell-input-element { text-align: left; }
