@@ -813,14 +813,14 @@ body {
   width: 6px;
 }
 .cross-date-scroll-wrap::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f4f4f5;
 }
 .cross-date-scroll-wrap::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #a1a1aa;
   border-radius: 3px;
 }
 .cross-date-scroll-wrap::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #71717a;
 }
 .cross-date-inner-table {
   width: 100%;
@@ -833,13 +833,13 @@ body {
   box-sizing: border-box !important;
 }
 
-/* 교차 날짜 검색 결과 구분선 (파란색 바 고정) */
+/* 교차 날짜 검색 결과 구분선 (검은색 바 고정) */
 .cross-date-divider {
-  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
+  background: #18181b !important;
   border: none !important;
 }
 .cross-date-divider td {
-  background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
+  background: #18181b !important;
   padding: 6px 14px !important;
   color: #fff !important;
   font-size: 12px;
@@ -849,7 +849,7 @@ body {
   letter-spacing: 0.3px;
   position: sticky;
   z-index: 9;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 .cross-date-divider td span {
   display: flex;
@@ -859,26 +859,26 @@ body {
 
 /* 상단 테이블 헤더 # 셀 토글 활성화 스타일 */
 .business-headers-row th.row-num-header.cross-date-toggle-active {
-  background: #1e40af !important;
+  background: #18181b !important;
   color: #ffffff !important;
   cursor: pointer !important;
   user-select: none;
   transition: background-color 0.15s;
 }
 .business-headers-row th.row-num-header.cross-date-toggle-active:hover {
-  background: #1d4ed8 !important;
+  background: #27272a !important;
 }
 .cross-date-th-icon {
   display: inline-block;
   margin-left: 2px;
   font-size: 10px;
-  color: #93c5fd !important;
+  color: #d4d4d8 !important;
 }
 
 .history-date-toggle {
   border: 0;
   background: transparent;
-  color: #1e40af;
+  color: #f4f4f5;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -889,7 +889,7 @@ body {
 
 /* 날짜 라벨 행 */
 .cross-date-label {
-  background: linear-gradient(135deg, #475569 0%, #64748b 100%) !important;
+  background: linear-gradient(135deg, #18181b 0%, #27272a 100%) !important;
 }
 .cross-date-label td {
   padding: 4px 14px !important;
@@ -899,17 +899,17 @@ body {
 
 /* 교차 날짜 기록 행 */
 .excel-row.cross-date-row {
-  background-color: #eff6ff !important;
+  background-color: #f4f4f5 !important;
 }
 .excel-row.cross-date-row:hover {
-  background-color: #dbeafe !important;
+  background-color: #e4e4e7 !important;
 }
 .excel-row.cross-date-row .cross-date-cell {
-  color: #1e40af;
+  color: #18181b;
 }
 .excel-row.cross-date-row .cross-date-num {
-  background: #dbeafe !important;
-  color: #2563eb;
+  background: #e4e4e7 !important;
+  color: #18181b;
   font-size: 11px;
   font-weight: 600;
   text-align: center;
@@ -918,14 +918,14 @@ body {
 
 /* 대표 행 & 하위 행 아코디언 */
 .cross-date-row.cross-date-subrow {
-  background-color: #f8fafc !important;
+  background-color: #fafafa !important;
 }
 .cross-date-row.cross-date-subrow:hover {
-  background-color: #e2e8f0 !important;
+  background-color: #f0f0f0 !important;
 }
 .cross-date-row.cross-date-subrow .cross-date-num {
-  background: #f1f5f9 !important;
-  color: #64748b;
+  background: #f4f4f5 !important;
+  color: #52525b;
   font-size: 10px;
 }
 
@@ -943,35 +943,35 @@ body {
   width: 13px;
   height: 13px;
   font-size: 8px;
-  color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.15);
+  color: #18181b;
+  background: rgba(24, 24, 27, 0.12);
   border-radius: 2px;
   cursor: pointer;
   transition: transform 0.15s, background-color 0.15s;
 }
 .cross-date-toggle-arrow:hover {
-  background: #2563eb;
+  background: #27272a;
   color: #ffffff;
 }
 .cross-date-toggle-arrow.expanded {
-  background: #1e40af;
+  background: #18181b;
   color: #ffffff;
 }
 
 /* 기본 이전 내역 선택 테두리는 No.부터 특이사항까지의 실제 선택 셀에만 표시한다. */
 .excel-row.cross-date-row-selected .cross-date-cell.range-selected {
-  background-color: #dbeafe !important;
-  border-top: 2px solid #2563eb !important;
-  border-bottom: 2px solid #2563eb !important;
+  background-color: #e4e4e7 !important;
+  border-top: 2px solid #18181b !important;
+  border-bottom: 2px solid #18181b !important;
 }
 .excel-row.cross-date-row-selected .cross-date-cell.range-border-left {
-  border-left: 2px solid #2563eb !important;
+  border-left: 2px solid #18181b !important;
 }
 .excel-row.cross-date-row-selected .cross-date-cell.range-border-right {
-  border-right: 2px solid #2563eb !important;
+  border-right: 2px solid #18181b !important;
 }
 .excel-row.cross-date-row-selected .cross-date-num {
-  background: #2563eb !important;
+  background: #18181b !important;
   color: #ffffff !important;
   font-weight: 700 !important;
 }
@@ -979,7 +979,7 @@ body {
 
 .cross-date-num.selected,
 .cross-date-num.header-active {
-  background-color: #2563eb !important;
+  background-color: #18181b !important;
   color: #ffffff !important;
   font-weight: 700 !important;
 }
@@ -1969,8 +1969,8 @@ body {
 .excel-row.row-drop-before > * { box-shadow: inset 0 3px 0 #107c41 !important; }
 .excel-row.row-drop-after > * { box-shadow: inset 0 -3px 0 #107c41 !important; }
 
-.history-apply-btn { font: inherit; font-size: 11px; padding: 3px 4px; border: 1px solid #107c41; border-radius: 4px; color: #107c41; background: white; cursor: pointer; white-space: nowrap; }
-.history-apply-btn:hover { background: #dceee4; }
+.history-apply-btn { font: inherit; font-size: 11px; padding: 3px 5px; border: 1px solid #3f3f46; border-radius: 4px; color: #18181b; background: white; cursor: pointer; white-space: nowrap; font-weight: 600; }
+.history-apply-btn:hover { background: #27272a; color: #ffffff; }
 .history-apply-btn:disabled { opacity: .45; cursor: default; }
 
 /* Keep native IME focus ready while displaying the normal cell selection. */
@@ -2093,7 +2093,7 @@ body {
 .font-size-controls button { border: 0; border-radius: 6px; height: 32px; min-width: 28px; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
 .font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }
 .font-size-controls button:hover { background: #e2e7eb; }
-.excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #2563eb; }
+.excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #18181b; }
 .excel-table .cell-writer { color: #000; }
 
 .print-table { width: 100%; table-layout: fixed; }
@@ -2153,9 +2153,10 @@ body {
   z-index: 6;
   height: 28px;
   padding: 4px;
-  background: #e7edf5;
-  border-right: 1px solid var(--excel-grid-line);
-  border-bottom: 1px solid #bdcada;
+  background: #27272a;
+  color: #f4f4f5;
+  border-right: 1px solid #3f3f46;
+  border-bottom: 1px solid #3f3f46;
   text-align: center;
   white-space: nowrap;
 }
@@ -2185,10 +2186,10 @@ body {
   position: sticky;
   right: var(--history-scroll-right, 0px);
   z-index: 5;
-  background: #eff6ff;
-  box-shadow: -1px 0 0 #bdcada;
+  background: #f4f4f5;
+  box-shadow: -1px 0 0 #d4d4d8;
 }
-.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #e7edf5; }
+.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #27272a; color: #f4f4f5; }
 
 .quick-inputs .date-label.is-saturday { color: #1e40af; }
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }
@@ -2220,19 +2221,19 @@ body {
 .history-search-active .excel-cell.history-destination-cell {
   box-shadow: inset 0 0 0 2px var(--excel-green);
 }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-top { border-top-color: #2563eb !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-bottom { border-bottom-color: #2563eb !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-left { border-left-color: #2563eb !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-right { border-right-color: #2563eb !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-top { border-top-color: #18181b !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-bottom { border-bottom-color: #18181b !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-left { border-left-color: #18181b !important; }
+.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-right { border-right-color: #18181b !important; }
 
-/* 이전 내역은 셀·범위·행 선택을 모두 파란 계열로 표시한다. */
+/* 이전 내역은 셀·범위·행 선택을 모두 검은 계열로 표시한다. */
 .excel-row.cross-date-row {
-  --excel-selection-bg: #dbeafe;
-  --excel-green: #2563eb;
-  --excel-cell-selected: #2563eb;
+  --excel-selection-bg: #e4e4e7;
+  --excel-green: #18181b;
+  --excel-cell-selected: #18181b;
 }
 .excel-row.cross-date-row .cross-date-cell.range-selected:hover {
-  background-color: #bfdbfe !important;
+  background-color: #d4d4d8 !important;
 }
 
 /* Period analytics keeps the daily sheet compact and widens only comparative views. */
