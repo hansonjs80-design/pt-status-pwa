@@ -840,7 +840,8 @@ body {
 }
 .cross-date-divider td {
   background: #18181b !important;
-  padding: 6px 14px !important;
+  padding: 3.5px 14px !important;
+  line-height: 1.25;
   color: #fff !important;
   font-size: 12px;
   font-weight: 700;
@@ -855,6 +856,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  line-height: 1.25;
 }
 
 /* 상단 테이블 헤더 # 셀 토글 활성화 스타일 */
