@@ -527,6 +527,24 @@ test('multi-year search keeps identical yearly records and colors older month/da
   assert.equal(JSON.stringify(app.dataStore), original);
 });
 
+test('history year labels follow each source year and update when the selected year changes', () => {
+  const { app, dom } = createCrossDateTestApp();
+  app.setSearchPeriod('1year_plus');
+  for (const year of [2022, 2023, 2024, 2025, 2026, 2027]) {
+    app.dataStore[`${year}-09-09`] = [{ name: '연도확인환자', chartNo: 'YEAR-CHECK' }];
+  }
+  for (const currentYear of [2026, 2027, 2028]) {
+    app.currentDate = `${currentYear}-10-07`;
+    app.dataStore[app.currentDate] ||= [{}];
+    app.searchAllDates('연도확인환자', 0);
+    const expectedYears = [2022, 2023, 2024, 2025, 2026, 2027].filter(year => year <= currentYear);
+    const expectedLabels = expectedYears.map(year => year === currentYear ? '' : `${year}년`);
+    assert.deepEqual(dom.querySelectorAll('.history-year-cell').map(cell => cell.textContent || ''), expectedLabels);
+    app.toggleCrossDateExpanded();
+    assert.deepEqual(dom.querySelectorAll('.history-year-cell').map(cell => cell.textContent || ''), expectedLabels);
+  }
+});
+
 test('pasting into current table while history is visible preserves scroll positions', async () => {
   const { app, dom } = createCrossDateTestApp();
   app.dataStore['2026-09-01'] = [{ name: '이전환자', part: '무릎' }];
