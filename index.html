@@ -66,6 +66,14 @@
             <button type="button" id="btnFontLarger" aria-label="글자 크기 0.5 늘리기" title="글자 크기 0.5 늘리기">+</button>
           </div>
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
+          <div class="search-period-group" title="이전 날짜 기록 검색 기간 설정">
+            <label for="searchPeriodSelect" class="search-period-label">검색 기간</label>
+            <select id="searchPeriodSelect" class="search-period-select" aria-label="검색 기간 설정">
+              <option value="1year_plus">1년이상</option>
+              <option value="6months" selected>6개월</option>
+              <option value="3months">3개월</option>
+            </select>
+          </div>
         </div>
 
 

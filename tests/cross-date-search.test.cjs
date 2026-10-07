@@ -128,6 +128,102 @@ function createDomMock() {
   };
 }
 
+function createCrossDateTestApp() {
+  const dom = createDomMock();
+  const localStore = new Map();
+  const context = vm.createContext({
+    window: {
+      addEventListener() {},
+      getComputedStyle() { return { display: 'block' }; },
+      requestAnimationFrame(cb) { cb(); },
+    },
+    document: {
+      createElement: dom.createElement,
+      getElementById: (id) => dom.querySelectorAll('#' + id)[0] || null,
+      querySelector: (sel) => dom.querySelectorAll(sel)[0] || null,
+      querySelectorAll: (sel) => dom.querySelectorAll(sel),
+      activeElement: null,
+    },
+    localStorage: {
+      getItem(k) { return localStore.has(k) ? localStore.get(k) : null; },
+      setItem(k, v) { localStore.set(k, String(v)); },
+      removeItem(k) { localStore.delete(k); },
+    },
+    requestAnimationFrame(cb) { cb(); },
+    setTimeout(cb) { cb(); },
+    clearTimeout() {},
+    BASE_ROW_NUMBER: 1,
+    DEFAULT_WRITER: '테스트',
+  });
+
+  vm.runInContext(
+    require('./helpers/load-app-source.cjs') +
+    '\nglobalThis.App = PTApp;',
+    context
+  );
+
+  const app = Object.create(context.App.prototype);
+  app.currentDate = '2026-10-04';
+
+  app.elSheetContainer = dom.createElement('div');
+  app.elTableBody = dom.createElement('tbody');
+  app.elSearchInput = { value: '' };
+  app.elBtnClearSearch = { style: {} };
+  app.elCellAddress = { textContent: '' };
+  app.elSelectedCellCoords = { textContent: '' };
+  app.elFormulaInput = { value: '', readOnly: false };
+
+  const bHeadersRow = dom.createElement('tr');
+  bHeadersRow.className = 'business-headers-row';
+  const thRowHeader = dom.createElement('th');
+  thRowHeader.className = 'row-num-header';
+  thRowHeader.textContent = '#';
+  bHeadersRow.appendChild(thRowHeader);
+  dom.docBody.appendChild(bHeadersRow);
+  dom.docBody.appendChild(app.elTableBody);
+
+  app.dataStore = {
+    '2026-10-04': Array.from({ length: 25 }, (_, i) => ({ no: i + 1 })),
+  };
+
+  app.getCurrentRows = () => app.dataStore[app.currentDate] || [];
+  app.getSearchDataStore = () => app.dataStore;
+  app.loadSearchHistory = async () => {};
+  app.renderTable = () => {
+    const existingHistoryWrap = dom.querySelectorAll('#crossDateScrollWrap')[0];
+    if (existingHistoryWrap) {
+      app._preservedHistoryScrollTop = existingHistoryWrap.scrollTop;
+    }
+    app.restoreCurrentTableHeader?.();
+    app.cancelFillDrag?.();
+    if (!app._isPasting) {
+      app.clearCrossDateSelection?.();
+    }
+    app.elTableBody.children = [];
+    const rows = app.getCurrentRows();
+    rows.forEach((r, idx) => {
+      const rowEl = dom.createElement('tr');
+      rowEl.className = 'excel-row';
+      rowEl.dataset.rowIdx = idx;
+      app.elTableBody.appendChild(rowEl);
+    });
+    if (app.elSearchInput?.value?.trim()) {
+      app.searchAllDates(app.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
+    }
+  };
+  app.renderClipboardSelection = () => {};
+  app.saveDataStore = () => {};
+  app.showSaveIndicator = () => {};
+  app.selectCell = (rowIdx, colKey) => {
+    app.activeCell = { rowIdx, colKey };
+  };
+
+  dom.getElementById = (id) => dom.querySelectorAll('#' + id)[0] || null;
+  app.renderTable();
+
+  return { app, dom, context };
+}
+
 test('cross-date search deduplicates identical previous records and toggles with # header', () => {
   const dom = createDomMock();
   const context = vm.createContext({
@@ -325,5 +421,124 @@ test('cross-date search deduplicates identical previous records and toggles with
   assert.equal(app.crossDateSelection.endCol, 9);
   // A search launched from the bottom must keep the first daily row reachable.
   assert.equal(app.elTableBody.children.find(c => c.dataset?.rowIdx === 0).style.display, '');
-
 });
+
+test('search period setting defaults to 6months, persists in localStorage, and filters by cutoff date', () => {
+  const { app, context } = createCrossDateTestApp();
+  assert.equal(app.getSearchPeriod(), '6months');
+
+  // Test localStorage persistence
+  app.setSearchPeriod('3months');
+  assert.equal(app.getSearchPeriod(), '3months');
+  assert.equal(context.localStorage.getItem('PT_SEARCH_PERIOD'), '3months');
+
+  app.setSearchPeriod('1year_plus');
+  assert.equal(app.getSearchPeriod(), '1year_plus');
+  assert.equal(context.localStorage.getItem('PT_SEARCH_PERIOD'), '1year_plus');
+  assert.equal(app.getSearchCutoffDate('1year_plus'), null);
+
+  // Setup data across multiple past periods
+  // currentDate: 2026-10-04
+  app.dataStore['2026-09-01'] = [{ name: '최근환자', part: '목' }]; // ~1 month ago
+  app.dataStore['2026-05-01'] = [{ name: '오개월전환자', part: '허리' }]; // ~5 months ago
+  app.dataStore['2025-09-01'] = [{ name: '일년전환자', part: '어깨' }]; // ~13 months ago (1년 전)
+
+  // 1) 3months: should find '최근환자', but NOT '오개월전환자' or '일년전환자'
+  app.setSearchPeriod('3months');
+  app.searchAllDates('최근환자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '최근환자');
+
+  app.searchAllDates('오개월전환자', 0);
+  assert.equal(app.crossDateResults.length, 0);
+
+  app.searchAllDates('일년전환자', 0);
+  assert.equal(app.crossDateResults.length, 0);
+
+  // 2) 6months: should find '최근환자' and '오개월전환자', but NOT '일년전환자'
+  app.setSearchPeriod('6months');
+  app.searchAllDates('오개월전환자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '오개월전환자');
+
+  app.searchAllDates('일년전환자', 0);
+  assert.equal(app.crossDateResults.length, 0);
+
+  // 3) 1year_plus: should find all, including '일년전환자'!
+  app.setSearchPeriod('1year_plus');
+  app.searchAllDates('일년전환자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+  assert.equal(app.crossDateResults[0].name, '일년전환자');
+});
+
+test('pasting into current table while history is visible preserves scroll positions', async () => {
+  const { app, dom } = createCrossDateTestApp();
+  app.dataStore['2026-09-01'] = [{ name: '이전환자', part: '무릎' }];
+  app.searchAllDates('이전환자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+
+  // Simulate scroll positions
+  app.elSheetContainer.scrollTop = 320;
+  app.elSheetContainer.scrollLeft = 50;
+
+  const wrap = dom.getElementById('crossDateScrollWrap');
+  if (wrap) wrap.scrollTop = 150;
+
+  // Set active cell in current rows and perform paste
+  app.activeCell = { rowIdx: 5, colKey: 'name' };
+  app.selectedRange = null;
+
+  await app.pasteSelection('이전환자\t무릎');
+
+  // Verify scroll positions are preserved
+  assert.equal(app.elSheetContainer.scrollTop, 320);
+  assert.equal(app.elSheetContainer.scrollLeft, 50);
+  const newWrap = dom.getElementById('crossDateScrollWrap');
+  if (newWrap) {
+    assert.equal(newWrap.scrollTop, 150);
+  }
+});
+
+test('pasting preserves previous history cell selection and submitSearchPrompt auto-finds 1year_plus history', async () => {
+  const { app, dom } = createCrossDateTestApp();
+  app.dataStore['2025-05-01'] = [{ name: '고대환자', chartNo: 'OLD-999', part: '어깨' }];
+  
+  // 1) 기본 6개월 상태
+  assert.equal(app.getSearchPeriod(), '6months');
+  
+  // 2) 이전 날짜 기록 선택 상태 시뮬레이션
+  app.searchAllDates('고대환자', 0);
+  // 6months이므로 아직 결과 없음
+  assert.equal(app.crossDateResults.length, 0);
+
+  // 1year_plus로 전환 후 검색
+  app.setSearchPeriod('1year_plus');
+  app.searchAllDates('고대환자', 0);
+  assert.equal(app.crossDateResults.length, 1);
+
+  // 셀 선택
+  app.crossDateSelection = { startRow: 0, startCol: 3, endRow: 0, endCol: 4, minRow: 0, maxRow: 0, minCol: 3, maxCol: 4 };
+  app.isCrossDateRowSelected = false;
+
+  const wrap = dom.getElementById('crossDateScrollWrap');
+  if (wrap) wrap.scrollTop = 220;
+
+  // 복사 버퍼 설정
+  app.clipboardBuffer = '고대환자\t어깨';
+  app.clipboardSelection = { ...app.crossDateSelection, kind: 'history' };
+
+  // 현재 날짜 2행에 붙여넣기
+  app.activeCell = { rowIdx: 2, colKey: 'name' };
+  await app.pasteSelection('고대환자\t어깨');
+
+  // 붙여넣기 후에도 이전 날짜 선택과 스크롤이 유지되는지 검증
+  assert.ok(app.crossDateSelection);
+  assert.equal(app.crossDateSelection.minCol, 3);
+  assert.equal(app.crossDateSelection.maxCol, 4);
+
+  const updatedWrap = dom.getElementById('crossDateScrollWrap');
+  if (updatedWrap) {
+    assert.equal(updatedWrap.scrollTop, 220);
+  }
+});
+

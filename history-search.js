@@ -492,7 +492,8 @@ class PTHistorySearch {
 
     // name, chartNo 두 컬럼에서 후보 수집 (최신 날짜 우선)
     const searchStore = this.getSearchDataStore();
-    const dateKeys = [this.currentDate, ...Object.keys(searchStore).filter(d => d !== this.currentDate).sort().reverse()];
+    const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
+    const dateKeys = [this.currentDate, ...Object.keys(searchStore).filter(d => d !== this.currentDate && (!cutoffDate || d >= cutoffDate)).sort().reverse()];
 
     for (const dateKey of dateKeys) {
       const rows = searchStore[dateKey];
@@ -532,8 +533,9 @@ class PTHistorySearch {
 
   hasRecordedPatientValue(query, targetRowIdx, field) {
     const normalized = String(query).trim().toLowerCase();
+    const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     return Object.entries(this.getSearchDataStore()).some(([date, rows]) =>
-      date <= this.currentDate && Array.isArray(rows) && rows.some((row, index) =>
+      date <= this.currentDate && (!cutoffDate || date >= cutoffDate) && Array.isArray(rows) && rows.some((row, index) =>
         !(date === this.currentDate && index === targetRowIdx) &&
         String(row?.[field] ?? "").trim().toLowerCase() === normalized));
   }
@@ -542,11 +544,13 @@ class PTHistorySearch {
     if (!query || !query.trim()) return false;
     const q = query.trim().toLowerCase();
     const searchStore = this.getSearchDataStore();
+    const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
       rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
 
-    for (const [, rows] of Object.entries(searchStore)) {
+    for (const [date, rows] of Object.entries(searchStore)) {
+      if (cutoffDate && date < cutoffDate) continue;
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         if (!row || (!row.name && !row.chartNo && !row.part && !row.prescription)) continue;
@@ -625,7 +629,14 @@ class PTHistorySearch {
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
       const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
-      const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+      let exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+      if (!exists && this.supabaseClient && this.getSearchPeriod() !== "1year_plus") {
+        await this.loadSearchHistory(true);
+        exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+        if (exists) {
+          this.setSearchPeriod("1year_plus");
+        }
+      }
       if (!exists) {
         this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
         this.closeSearchPromptModal();
@@ -818,12 +829,14 @@ class PTHistorySearch {
     const allMatchedRows = [];
 
     const searchStore = this.getSearchDataStore();
+    const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     // 성함 후보에 해당하는 검색어는 완전 일치로 찾고, 다른 열의 검색은 기존 방식으로 유지한다.
     const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
       rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
     const allDates = Object.keys(searchStore).sort(); // 오름차순: 하단에 최근월일
     allDates.forEach((dateKey) => {
       if (dateKey >= this.currentDate) return; // 이전 날짜만 대상
+      if (cutoffDate && dateKey < cutoffDate) return; // 검색 기간 이전 날짜 제외
       const dateRows = searchStore[dateKey] || [];
       dateRows.forEach((row, sourceRowIdx) => {
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
@@ -877,8 +890,9 @@ class PTHistorySearch {
     const scrollTargetIdx = originIdx >= 0 ? originIdx
       : lastDataIdx >= 0 ? lastDataIdx : (originIdx >= 0 ? originIdx : 0);
     const scrollRowEl = this.elTableBody.querySelector(`tr.excel-row[data-row-idx="${scrollTargetIdx}"]`);
-    if (scrollRowEl && !preserveCurrentSelection) {
+    if (scrollRowEl && !preserveCurrentSelection && !this._isPasting) {
       const revealTarget = () => {
+        if (this._isPasting) return;
         // Do not move back after the user has already navigated to another cell.
         if (focusCurrentTarget && this.activeCell && this.activeCell.rowIdx !== originIdx) return;
         if (scrollToAppliedRow || originIdx >= 0) {
@@ -917,6 +931,8 @@ class PTHistorySearch {
   }
 
   renderCrossDateSection({ preserveCurrentSelection = false } = {}) {
+    const existingWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+    const preservedHistoryScrollTop = this._preservedHistoryScrollTop ?? existingWrap?.scrollTop;
     this.restoreCurrentTableHeader();
     this.historyLayoutObserver?.disconnect();
     this.historyLayoutObserver = null;
@@ -1178,13 +1194,53 @@ class PTHistorySearch {
     });
 
     // 4) 기본적으로 가장 아래(최신 날짜) 마지막 행을 셀 선택 상태로 설정
-    if (renderRows.length > 0 && !preserveCurrentSelection) {
+    const restoreHistoryScroll = () => {
+      const wrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+      if (wrap && preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {
+        wrap.scrollTop = preservedHistoryScrollTop;
+      }
+    };
+
+    if (renderRows.length > 0 && !preserveCurrentSelection && !this._isPasting && (preservedHistoryScrollTop === undefined || preservedHistoryScrollTop === null)) {
       const lastIdx = renderRows.length - 1;
       this.selectCrossDateRow(lastIdx);
       this.isSelectingCrossDate = false;
-      requestAnimationFrame(() => {
-        const scrollWrap = document.getElementById("crossDateScrollWrap");
-        if (scrollWrap) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          const scrollWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+          if (scrollWrap && !this._isPasting) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+        });
+      }
+    } else if (preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {
+      restoreHistoryScroll();
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          restoreHistoryScroll();
+          setTimeout(restoreHistoryScroll, 30);
+        });
+      }
+    }
+
+    if (this.crossDateSelection) {
+      this.renderCrossDateSelectionHighlight();
+    }
+  }
+
+  renderCrossDateSelectionHighlight() {
+    const selection = this.crossDateSelection;
+    if (!selection) return;
+    this.elTableBody?.querySelectorAll(".cross-date-cell").forEach(cell => {
+      const r = Number(cell.dataset.crossIdx), c = Number(cell.dataset.crossColIdx);
+      if (r < selection.minRow || r > selection.maxRow || c < selection.minCol || c > selection.maxCol) return;
+      cell.classList.add("range-selected");
+      if (r === selection.minRow) cell.classList.add("range-border-top");
+      if (r === selection.maxRow) cell.classList.add("range-border-bottom");
+      if (c === selection.minCol) cell.classList.add("range-border-left");
+      if (c === selection.maxCol) cell.classList.add("range-border-right");
+    });
+    if (this.isCrossDateRowSelected) {
+      this.elTableBody?.querySelectorAll(`.cross-date-row[data-cross-idx="${selection.minRow}"]`).forEach(row => {
+        row.classList.add("cross-date-row-selected");
       });
     }
   }

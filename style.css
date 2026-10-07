@@ -425,6 +425,59 @@ body {
   color: #1e293b;
 }
 
+.search-period-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 2px 6px 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  user-select: none;
+  height: 24px;
+  box-sizing: border-box;
+}
+
+.search-period-group:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.search-period-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search-period-select {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 4px;
+  cursor: pointer;
+  outline: none;
+  height: 20px;
+  line-height: 18px;
+  transition: all 0.15s;
+}
+
+.search-period-select:hover {
+  border-color: var(--excel-green);
+}
+
+.search-period-select:focus {
+  border-color: var(--excel-green);
+  box-shadow: 0 0 0 2px rgba(16, 124, 65, 0.2);
+}
+
 /* 프리셋 관리자 모달 스타일 */
 .preset-tab {
   padding: 6px 14px;

@@ -34,6 +34,7 @@ const INITIAL_SAMPLE_DATA = {
 const STORAGE_KEY = "PT_APP_DATA_STORAGE_V1";
 const COL_WIDTHS_STORAGE_KEY = "PT_APP_COL_WIDTHS_STORAGE_V1";
 const SUPABASE_CONFIG_KEY = "PT_SUPABASE_CONFIG_V1";
+const SEARCH_PERIOD_STORAGE_KEY = "PT_SEARCH_PERIOD";
 const DEFAULT_SUPABASE_URL = "https://uqivbmkeuupsaghwshcw.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxaXZibWtldXVwc2FnaHdzaGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0ODM3OTUsImV4cCI6MjA4NTA1OTc5NX0.FY86a0vaN_x-KeErBYAVyCpyXKsxloZiy7eysZGSFjk";
 const DEFAULT_WRITER = "";
@@ -625,6 +626,13 @@ class PTApp {
     this.elQuickChipsContainer = document.getElementById("quickChipsContainer");
     this.elBtnAddPreset = document.getElementById("btnAddPreset");
     this.elBtnManagePresets = document.getElementById("btnManagePresets");
+    this.elSearchPeriodSelect = document.getElementById("searchPeriodSelect");
+    if (this.elSearchPeriodSelect) {
+      this.elSearchPeriodSelect.value = this.getSearchPeriod();
+      this.elSearchPeriodSelect.addEventListener("change", (e) => {
+        this.setSearchPeriod(e.target.value);
+      });
+    }
     this.elPresetModal = document.getElementById("presetModal");
     this.elPresetModalTitle = document.getElementById("presetModalTitle");
     this.elPresetTypeSelect = document.getElementById("presetTypeSelect");
@@ -1113,9 +1121,15 @@ class PTApp {
 
   // Render main Excel table
   renderTable() {
+    const existingHistoryWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+    if (existingHistoryWrap) {
+      this._preservedHistoryScrollTop = existingHistoryWrap.scrollTop;
+    }
     this.restoreCurrentTableHeader();
     this.cancelFillDrag();
-    this.clearCrossDateSelection();
+    if (!this._isPasting) {
+      this.clearCrossDateSelection();
+    }
     const rows = this.getCurrentRows();
     const selectedRows = this.selectedRowRange && { ...this.selectedRowRange };
     const selectedRange = this.selectedRange && { ...this.selectedRange };
@@ -1362,7 +1376,7 @@ class PTApp {
       this.elSheetContainer.focus({ preventScroll: true });
     }
     this.updateHistoryDestinationHighlight();
-    this.ensureCurrentCellVisible(cellElement);
+    if (!this._isPasting) this.ensureCurrentCellVisible(cellElement);
   }
 
   getTopVisibleCurrentRow() {
@@ -1948,6 +1962,45 @@ class PTApp {
     return res;
   }
 
+  getSearchPeriod() {
+    try {
+      const saved = localStorage.getItem(SEARCH_PERIOD_STORAGE_KEY);
+      if (saved && ["1year_plus", "6months", "3months"].includes(saved)) return saved;
+    } catch (e) {}
+    return "6months";
+  }
+
+  setSearchPeriod(period) {
+    if (!["1year_plus", "6months", "3months"].includes(period)) period = "6months";
+    try {
+      localStorage.setItem(SEARCH_PERIOD_STORAGE_KEY, period);
+    } catch (e) {}
+    if (this.elSearchPeriodSelect && this.elSearchPeriodSelect.value !== period) {
+      this.elSearchPeriodSelect.value = period;
+    }
+    if (this.supabaseClient) {
+      void this.loadSearchHistory(true);
+    }
+    if (this.elSearchInput?.value?.trim()) {
+      this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
+    }
+  }
+
+  getSearchCutoffDate(period = this.getSearchPeriod()) {
+    if (period === "1year_plus" || period === "all") return null;
+    const d = new Date();
+    const monthsToSubtract = period === "3months" ? 3 : 6;
+    const targetMonth = d.getMonth() - monthsToSubtract;
+    d.setMonth(targetMonth);
+    if (d.getMonth() !== ((targetMonth % 12) + 12) % 12) {
+      d.setDate(0);
+    }
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   getSearchDataStore() {
     // Cloud history is read-only search data; local edits always take precedence.
     return { ...this.cloudSearchHistory, ...this.dataStore };
@@ -1961,28 +2014,53 @@ class PTApp {
       this.cloudSearchHistory = {};
       this.searchHistoryLoadedAt = 0;
       this.searchHistoryRequest = null;
+      this.searchHistoryLoadedPeriod = null;
     }
-    if (this.searchHistoryRequest) return this.searchHistoryRequest;
-    if (!force && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
+    const currentPeriod = this.getSearchPeriod();
+    const periodWeight = { "3months": 1, "6months": 2, "1year_plus": 3 };
+    const neededForce = force || (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryLoadedPeriod] || 0);
+
+    if (this.searchHistoryRequest) {
+      if (neededForce && (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryRequestPeriod] || 0)) {
+        try { await this.searchHistoryRequest; } catch (e) {}
+        return this.loadSearchHistory(true);
+      }
+      return this.searchHistoryRequest;
+    }
+    if (!neededForce && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
+
+    const requestPeriod = currentPeriod;
+    this.searchHistoryRequestPeriod = requestPeriod;
     const request = (async () => {
+      this.cloudSearchHistory ||= {};
       const history = {};
       const pageSize = 200;
+      const cutoffDate = (this.summaryPeriod === "year" || requestPeriod === "1year_plus") ? null : this.getSearchCutoffDate(requestPeriod);
       try {
         for (let offset = 0; ; offset += pageSize) {
-          const { data, error } = await client.from("pt_daily_records")
-            .select("date, rows_data").order("date", { ascending: false }).range(offset, offset + pageSize - 1);
+          let query = client.from("pt_daily_records")
+            .select("date, rows_data")
+            .order("date", { ascending: false });
+          if (cutoffDate && typeof query.gte === "function") {
+            query = query.gte("date", cutoffDate);
+          }
+          const { data, error } = await query.range(offset, offset + pageSize - 1);
           if (error) throw error;
           if (this.supabaseClient !== client) return false;
           for (const entry of data || []) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) history[entry.date] = entry.rows_data;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) {
+              history[entry.date] = entry.rows_data;
+              this.cloudSearchHistory[entry.date] = entry.rows_data;
+            }
           }
           if (!data || data.length < pageSize) break;
         }
-        this.cloudSearchHistory = history;
+        this.cloudSearchHistory = { ...this.cloudSearchHistory, ...history };
         this.searchHistoryLoadedAt = Date.now();
+        this.searchHistoryLoadedPeriod = requestPeriod;
         if (this.elStatTotalCount) this.updateSidebarStats();
         this.refreshSearchSuggestions();
-        if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
+        if (this.elSearchInput?.value?.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
         return true;
       } catch (error) {
         console.warn("이전 날짜 검색 기록을 불러오지 못했습니다:", error.message || error);
@@ -1991,7 +2069,12 @@ class PTApp {
     })();
     this.searchHistoryRequest = request;
     try { return await request; }
-    finally { if (this.searchHistoryRequest === request) this.searchHistoryRequest = null; }
+    finally {
+      if (this.searchHistoryRequest === request) {
+        this.searchHistoryRequest = null;
+        this.searchHistoryRequestPeriod = null;
+      }
+    }
   }
 
   refreshSearchSuggestions() {
@@ -4909,96 +4992,143 @@ class PTApp {
       return;
     }
 
-    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
-    const rows = this.getCurrentRows();
-
-    const grid = this.parseClipboardGrid(text);
-    const sourceSelection = text === this.clipboardBuffer ? this.clipboardSelection : null;
-
-    // Determine start coordinate
-    let startRow = 0;
-    let startCol = 0;
-
-    if (this.selectedRange) {
-      startRow = this.selectedRange.minRow;
-      startCol = this.selectedRange.minCol;
-    } else if (this.activeCell) {
-      startRow = this.activeCell.rowIdx;
-      startCol = colKeys.indexOf(this.activeCell.colKey);
-      if (startCol < 0) startCol = 0;
-    } else if (this.selectedRowIdx !== null) {
-      startRow = this.selectedRowIdx;
-      startCol = 0;
-    } else if (this.selectedColKey !== null) {
-      startRow = 0;
-      startCol = colKeys.indexOf(this.selectedColKey);
-      if (startCol < 0) startCol = 0;
+    const sheetContainer = this.elSheetContainer;
+    const prevScrollTop = sheetContainer?.scrollTop ?? 0;
+    const prevScrollLeft = sheetContainer?.scrollLeft ?? 0;
+    const prevHistoryWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+    const prevHistoryScrollTop = prevHistoryWrap?.scrollTop ?? this._preservedHistoryScrollTop ?? null;
+    if (prevHistoryScrollTop !== null) {
+      this._preservedHistoryScrollTop = prevHistoryScrollTop;
     }
+    const savedCrossDateSelection = this.crossDateSelection ? { ...this.crossDateSelection } : null;
+    const wasCrossDateRowSelected = Boolean(this.isCrossDateRowSelected);
+    const isHistoryActive = Boolean(this.elSearchInput?.value?.trim());
 
-    // Clear the original only once a matching paste is ready, before writing (overlap-safe).
-    const cut = this.pendingCut;
-    if (cut && cut.text === text && cut.date === this.currentDate) {
-      for (const { row, key, value } of cut.cells) if (rows.includes(row) && (row[key] ?? "") === value) row[key] = "";
-    }
-    this.pendingCut = null;
+    this._isPasting = true;
+    try {
+      const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+      const rows = this.getCurrentRows();
 
-    // One paste transaction uses the same current time for all pasted names.
-    const pastedAt = new Date();
-    // Apply grid data to rows
-    grid.forEach((rowVals, rOffset) => {
-      const r = startRow + rOffset;
-      let includesName = false;
-      while (r >= rows.length) {
-        this.addNewRow(false);
+      const grid = this.parseClipboardGrid(text);
+      const sourceSelection = text === this.clipboardBuffer ? this.clipboardSelection : null;
+      const historySourceSelection = savedCrossDateSelection || (sourceSelection?.kind === "history" ? sourceSelection : null);
+
+      // Determine start coordinate
+      let startRow = 0;
+      let startCol = 0;
+
+      if (this.selectedRange) {
+        startRow = this.selectedRange.minRow;
+        startCol = this.selectedRange.minCol;
+      } else if (this.activeCell) {
+        startRow = this.activeCell.rowIdx;
+        startCol = colKeys.indexOf(this.activeCell.colKey);
+        if (startCol < 0) startCol = 0;
+      } else if (this.selectedRowIdx !== null) {
+        startRow = this.selectedRowIdx;
+        startCol = 0;
+      } else if (this.selectedColKey !== null) {
+        startRow = 0;
+        startCol = colKeys.indexOf(this.selectedColKey);
+        if (startCol < 0) startCol = 0;
       }
-      rowVals.forEach((val, cOffset) => {
-        if (sourceSelection?.cells && !sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+cOffset}`)) return;
-        const c = startCol + cOffset;
-        if (c < colKeys.length) {
-          const k = colKeys[c];
-          if (k) {
-            const trimmed = val.trim();
-            if (k === "name" && trimmed) includesName = true;
-            rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
-              : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
+
+      // Clear the original only once a matching paste is ready, before writing (overlap-safe).
+      const cut = this.pendingCut;
+      if (cut && cut.text === text && cut.date === this.currentDate) {
+        for (const { row, key, value } of cut.cells) if (rows.includes(row) && (row[key] ?? "") === value) row[key] = "";
+      }
+      this.pendingCut = null;
+
+      // One paste transaction uses the same current time for all pasted names.
+      const pastedAt = new Date();
+      // Apply grid data to rows
+      grid.forEach((rowVals, rOffset) => {
+        const r = startRow + rOffset;
+        let includesName = false;
+        while (r >= rows.length) {
+          this.addNewRow(false);
+        }
+        rowVals.forEach((val, cOffset) => {
+          if (sourceSelection?.cells && !sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+cOffset}`)) return;
+          const c = startCol + cOffset;
+          if (c < colKeys.length) {
+            const k = colKeys[c];
+            if (k) {
+              const trimmed = val.trim();
+              if (k === "name" && trimmed) includesName = true;
+              rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
+                : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
+            }
+          }
+        });
+        rowVals.forEach((value, offset) => {
+          if (!sourceSelection?.cells || sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+offset}`)) {
+            if (this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value)) includesName = true;
+          }
+        });
+        // Apply after every pasted field so an old copied visitTime cannot win.
+        if (includesName && String(rows[r].name ?? "").trim()) this.setVisitTimeNow(rows[r], pastedAt);
+      });
+
+      // Pasting a history range is also an application to the current date.
+      // Remember its actual destination so closing search restores No. there.
+      if (sourceSelection?.kind === "history" || this.elSearchInput?.value?.trim()) {
+        this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[startRow], rowIdx: startRow };
+      }
+      this.saveDataStore();
+      this.renderTable();
+      this.showSaveIndicator("붙여넣기 완료됨");
+      this.clipboardSelection = null;
+      this.renderClipboardSelection();
+      if (sourceSelection?.rowSelection && startCol === 0) {
+        this.selectRowRange(startRow, startRow + grid.length - 1, Math.min(sourceSelection.maxCol, colKeys.length - 1));
+        this.elSheetContainer.focus({ preventScroll: true });
+      } else {
+        const cell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
+        if (cell) {
+          this.selectCell(startRow, colKeys[startCol], cell, false);
+          this.rangeStart = { rowIdx: startRow, colIdx: startCol, colKey: colKeys[startCol] };
+          const endCol = Math.min(colKeys.length - 1, startCol + Math.max(...grid.map(row => row.length)) - 1);
+          this.rangeEnd = { rowIdx: startRow + grid.length - 1, colIdx: endCol, colKey: colKeys[endCol] };
+          this.updateRangeSelection();
+          this.elSheetContainer.focus({ preventScroll: true });
+        }
+      }
+
+      if (typeof clearTimeout === "function") clearTimeout(this.historyCurrentScrollTimer);
+      if (isHistoryActive) {
+        if (historySourceSelection && this.crossDateResults?.length) {
+          this.crossDateSelection = historySourceSelection;
+          this.isCrossDateRowSelected = wasCrossDateRowSelected;
+          if (typeof this.renderCrossDateSelectionHighlight === "function") {
+            this.renderCrossDateSelectionHighlight();
           }
         }
-      });
-      rowVals.forEach((value, offset) => {
-        if (!sourceSelection?.cells || sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+offset}`)) {
-          if (this.applyCompoundPatientInput(rows[r], colKeys[startCol + offset], value)) includesName = true;
+        const restoreScrollPositions = () => {
+          if (sheetContainer) {
+            sheetContainer.scrollTop = prevScrollTop;
+            sheetContainer.scrollLeft = prevScrollLeft;
+          }
+          if (prevHistoryScrollTop !== null) {
+            const newWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
+            if (newWrap) newWrap.scrollTop = prevHistoryScrollTop;
+          }
+        };
+        restoreScrollPositions();
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            restoreScrollPositions();
+            setTimeout(restoreScrollPositions, 30);
+          });
         }
-      });
-      // Apply after every pasted field so an old copied visitTime cannot win.
-      if (includesName && String(rows[r].name ?? "").trim()) this.setVisitTimeNow(rows[r], pastedAt);
-    });
-
-    // Pasting a history range is also an application to the current date.
-    // Remember its actual destination so closing search restores No. there.
-    if (sourceSelection?.kind === "history" || this.elSearchInput?.value?.trim()) {
-      this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[startRow], rowIdx: startRow };
-    }
-    this.saveDataStore();
-    this.renderTable();
-    this.showSaveIndicator("붙여넣기 완료됨");
-    this.clipboardSelection = null;
-    this.renderClipboardSelection();
-    if (sourceSelection?.rowSelection && startCol === 0) {
-      this.selectRowRange(startRow, startRow + grid.length - 1, Math.min(sourceSelection.maxCol, colKeys.length - 1));
-      this.elSheetContainer.focus({ preventScroll: true });
-    } else {
-      const cell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
-      if (cell) {
-        this.selectCell(startRow, colKeys[startCol], cell, false);
-        this.rangeStart = { rowIdx: startRow, colIdx: startCol, colKey: colKeys[startCol] };
-        const endCol = Math.min(colKeys.length - 1, startCol + Math.max(...grid.map(row => row.length)) - 1);
-        this.rangeEnd = { rowIdx: startRow + grid.length - 1, colIdx: endCol, colKey: colKeys[endCol] };
-        this.updateRangeSelection();
-        this.elSheetContainer.focus({ preventScroll: true });
+      } else {
+        const pastedCell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
+        pastedCell?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
+    } finally {
+      this._isPasting = false;
     }
-    const pastedCell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
-    pastedCell?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   clearSelection() {
