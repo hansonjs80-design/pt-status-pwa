@@ -573,7 +573,7 @@ test('pasting into current table while history is visible preserves scroll posit
   }
 });
 
-test('pasting preserves previous history cell selection and submitSearchPrompt auto-finds 1year_plus history', async () => {
+test('pasting history keeps source scroll but activates the current destination for keyboard navigation', async () => {
   const { app, dom } = createCrossDateTestApp();
   app.dataStore['2025-05-01'] = [{ name: '고대환자', chartNo: 'OLD-999', part: '어깨' }];
   
@@ -605,10 +605,11 @@ test('pasting preserves previous history cell selection and submitSearchPrompt a
   app.activeCell = { rowIdx: 2, colKey: 'name' };
   await app.pasteSelection('고대환자\t어깨');
 
-  // 붙여넣기 후에도 이전 날짜 선택과 스크롤이 유지되는지 검증
-  assert.ok(app.crossDateSelection);
-  assert.equal(app.crossDateSelection.minCol, 3);
-  assert.equal(app.crossDateSelection.maxCol, 4);
+  // 원본 강조 표시는 남겨도 활성 선택은 붙여넣은 현재 날짜에 있어야 한다.
+  assert.equal(app.crossDateSelection, null);
+  assert.equal(app.isCrossDateRowSelected, false);
+  assert.equal(app.activeCell.rowIdx, 2);
+  assert.equal(app.activeCell.colKey, 'name');
 
   const updatedWrap = dom.getElementById('crossDateScrollWrap');
   if (updatedWrap) {

@@ -5124,6 +5124,10 @@ class PTApp {
           if (typeof this.renderCrossDateSelectionHighlight === "function") {
             this.renderCrossDateSelectionHighlight();
           }
+          // Keep the copied source's visual highlight, but the pasted daily
+          // range now owns keyboard navigation, copying and editing.
+          this.crossDateSelection = null;
+          this.isCrossDateRowSelected = false;
         }
         const restoreScrollPositions = () => {
           if (sheetContainer) {

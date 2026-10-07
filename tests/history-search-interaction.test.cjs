@@ -21,6 +21,43 @@ function createApp(rows = []) {
   return { app, context };
 }
 
+test('history range paste hands all four arrows to the pasted current-date cells', async () => {
+  const rows = Array.from({ length: 10 }, () => ({}));
+  const { app } = createApp(rows);
+  const source = { startRow: 0, endRow: 1, minRow: 0, maxRow: 1, startCol: 3, endCol: 4, minCol: 3, maxCol: 4 };
+  app.crossDateSelection = source;
+  app.crossDateResults = [{ name: '복사환자' }, { name: '다음환자' }];
+  app.elSearchInput.value = '복사환자';
+  app.activeCell = { rowIdx: 4, colKey: 'name' };
+  app.selectedRange = null;
+  app.clipboardBuffer = '복사환자\t목\n다음환자\t허리';
+  app.clipboardSelection = { ...source, kind: 'history' };
+  app.elTableBody = { querySelector: () => ({}), querySelectorAll: () => [] };
+  app.elSheetContainer.scrollTop = 240;
+  app.renderClipboardSelection = () => {};
+  let highlighted;
+  app.renderCrossDateSelectionHighlight = () => { highlighted = app.crossDateSelection; };
+  app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
+  app.updateRangeSelection = () => {
+    app.selectedRange = { minRow: 4, maxRow: 5, minCol: 3, maxCol: 4 };
+  };
+  app.ensureCurrentCellVisible = () => {};
+  await app.pasteSelection(app.clipboardBuffer);
+  assert.equal(rows[4].name, '복사환자');
+  assert.equal(rows[5].part, '허리');
+  assert.deepEqual(JSON.parse(JSON.stringify(highlighted)), source);
+  assert.equal(app.crossDateSelection, null);
+  assert.equal(app.elSheetContainer.scrollTop, 240);
+  for (const [key, rowIdx, colKey] of [
+    ['ArrowDown', 5, 'name'], ['ArrowUp', 4, 'name'],
+    ['ArrowRight', 4, 'part'], ['ArrowLeft', 4, 'name'],
+  ]) {
+    app.handleGlobalKeyDown({ key, target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(app.activeCell, { rowIdx, colKey });
+    assert.equal(app.crossDateSelection, null);
+  }
+});
+
 test('row-header Ctrl/Cmd+Down keeps row selection on the last actual record, independent of copied columns', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) for (const lastCol of [9, 10]) {
     const rows = [{ no: '3', chartNo: '1', name: '첫 환자' }, {}, { name: '마지막 환자' }, {}, {}];
