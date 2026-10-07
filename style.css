@@ -431,7 +431,7 @@ body {
 }
 
 .search-period-group {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 4px;
   background: #f8fafc;
@@ -444,6 +444,10 @@ body {
   user-select: none;
   height: 24px;
   box-sizing: border-box;
+}
+
+.excel-app:has(.sheet-container.history-search-active) .search-period-group {
+  display: inline-flex;
 }
 
 .search-period-group:hover {
