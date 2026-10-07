@@ -96,6 +96,7 @@
         backupIntervalType: 'daily',
         backupTime: '18:00',
         backupIntervalHours: 2,
+        backupMaxCount: 15,
         lastBackup: null,
         lastBackupDay: null,
         lastBackupTimestamp: 0,
@@ -225,23 +226,6 @@
       await this.store(key, text);
       if (await this.store(key) !== text) throw Error('로컬 백업 재확인 실패');
 
-      // 최근 30개 초과 백업 정리
-      try {
-        const db = await this.db();
-        const keys = await new Promise((res, rej) => {
-          const r = db.transaction('files').objectStore('files').getAllKeys();
-          r.onsuccess = () => res(r.result);
-          r.onerror = () => rej(r.error);
-        });
-        const bKeys = keys.filter(k => String(k).startsWith('backup-')).sort();
-        if (bKeys.length > 30) {
-          for (const oldKey of bKeys.slice(0, bKeys.length - 30)) {
-            const tx = db.transaction('files', 'readwrite');
-            tx.objectStore('files').delete(oldKey);
-          }
-        }
-      } catch {}
-
       const file = `PT현황_전체백업_${backup.createdAt.replace(/[:.]/g, '-')}.json`;
       if (this.folder) {
         try {
@@ -253,11 +237,68 @@
         await this.write(file, new Blob([text], { type: 'application/json' }), false);
       }
 
+      // 최신 백업 저장 완료 후 설정된 보관 개수 초과분(이전 오래된 백업) 자동 삭제
+      await this.cleanupOldBackups();
+
       this.settings.lastBackup = backup.createdAt;
       this.settings.lastBackupDay = dateKey(new Date());
       this.settings.lastBackupTimestamp = Date.now();
       this.save();
       return backup;
+    }
+    async cleanupOldBackups(targetMaxCount) {
+      const maxCount = Math.max(1, Number(targetMaxCount ?? this.settings.backupMaxCount) || 15);
+
+      // 1) IndexedDB 내부 보관 백업 초과분 정리
+      try {
+        const db = await this.db();
+        const keys = await new Promise((res, rej) => {
+          const r = db.transaction('files').objectStore('files').getAllKeys();
+          r.onsuccess = () => res(r.result);
+          r.onerror = () => rej(r.error);
+        });
+        const bKeys = keys.filter(k => String(k).startsWith('backup-')).sort();
+        if (bKeys.length > maxCount) {
+          const toDelete = bKeys.slice(0, bKeys.length - maxCount);
+          for (const oldKey of toDelete) {
+            const tx = db.transaction('files', 'readwrite');
+            tx.objectStore('files').delete(oldKey);
+          }
+        }
+      } catch (idbErr) {
+        console.warn('IndexedDB 백업 정리 참고:', idbErr);
+      }
+
+      // 2) 연결된 다운로드 폴더 내의 초과 백업 파일 정리
+      if (this.folder) {
+        try {
+          const backupFiles = [];
+          if (typeof this.folder.values === 'function') {
+            for await (const entry of this.folder.values()) {
+              if (entry.kind === 'file' && entry.name.startsWith('PT현황_전체백업_') && entry.name.endsWith('.json')) {
+                backupFiles.push(entry.name);
+              }
+            }
+          } else if (typeof this.folder.entries === 'function') {
+            for await (const [name, entry] of this.folder.entries()) {
+              if (entry?.kind === 'file' && name.startsWith('PT현황_전체백업_') && name.endsWith('.json')) {
+                backupFiles.push(name);
+              }
+            }
+          }
+          backupFiles.sort();
+          if (backupFiles.length > maxCount) {
+            const filesToDelete = backupFiles.slice(0, backupFiles.length - maxCount);
+            for (const fileName of filesToDelete) {
+              if (typeof this.folder.removeEntry === 'function') {
+                await this.folder.removeEntry(fileName).catch(() => {});
+              }
+            }
+          }
+        } catch (folderErr) {
+          console.warn('폴더 백업 파일 정리 참고:', folderErr);
+        }
+      }
     }
     async tick() {
       if (this.running || (!this.settings.pdf && !this.settings.backup)) return;
@@ -514,6 +555,20 @@
                 </div>
               </div>
             </div>
+            <div class="backup-retention-row" style="margin-top: 10px; padding: 10px 12px; background: #f8faf8; border: 1px solid #d5e5db; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <label style="font-size: 13px; font-weight: 600; color: #234830; display: flex; align-items: center; gap: 8px; margin: 0; width: auto;">
+                <span>📦 <strong>백업 보관 개수:</strong></span>
+                <select data-backup-max-count style="padding: 4px 8px; border: 1px solid #bcd0c1; border-radius: 6px; font-weight: 700; color: #107c41; background: #fff;">
+                  <option value="5">최근 5개 유지</option>
+                  <option value="10">최근 10개 유지</option>
+                  <option value="15">최근 15개 유지 (권장)</option>
+                  <option value="20">최근 20개 유지</option>
+                  <option value="30">최근 30개 유지</option>
+                  <option value="50">최근 50개 유지</option>
+                </select>
+              </label>
+              <span class="hint" style="font-size: 11px; color: #6a7f72;">최신 백업 저장 시 보관 개수를 초과한 오래된 백업은 자동 삭제됩니다.</span>
+            </div>
             <div class="backup-status-badge-box">
               <div class="status-row">
                 <span>📁 저장 위치:</span>
@@ -526,6 +581,10 @@
               <div class="status-row">
                 <span>💾 최근 백업 일시:</span>
                 <strong data-last-backup-badge>${this.settings.lastBackup ? new Date(this.settings.lastBackup).toLocaleString() : '아직 없음'}</strong>
+              </div>
+              <div class="status-row">
+                <span>📦 보관 개수 설정:</span>
+                <strong data-retention-badge>최근 ${this.settings.backupMaxCount || 15}개 유지 (초과분 자동 삭제)</strong>
               </div>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
@@ -579,6 +638,15 @@
 
       const selIntervalHours = dialog.querySelector('[data-backup-interval]');
       selIntervalHours.value = String(this.settings.backupIntervalHours || 2);
+
+      const selBackupMaxCount = dialog.querySelector('[data-backup-max-count]');
+      if (selBackupMaxCount) {
+        selBackupMaxCount.value = String(this.settings.backupMaxCount || 15);
+        selBackupMaxCount.addEventListener('change', () => {
+          const badge = dialog.querySelector('[data-retention-badge]');
+          if (badge) badge.textContent = `최근 ${selBackupMaxCount.value}개 유지 (초과분 자동 삭제)`;
+        });
+      }
 
       const chkPdf = dialog.querySelector('[data-pdf]');
       chkPdf.checked = Boolean(this.settings.pdf);
@@ -676,6 +744,7 @@
         const backupTypeVal = dialog.querySelector('input[name="backupIntervalType"]:checked')?.value || 'daily';
         const backupTimeVal = inpBackupTime.value;
         const backupHoursVal = Number(selIntervalHours.value) || 2;
+        const backupMaxCountVal = Math.max(1, Number(selBackupMaxCount?.value) || 15);
 
         if (pdf && !/^\d{2}:\d{2}$/.test(time)) throw Error('PDF 저장 시간을 선택해 주세요.');
         if (backup && backupTypeVal === 'daily' && !/^\d{2}:\d{2}$/.test(backupTimeVal)) throw Error('일 단위 백업 시간을 선택해 주세요.');
@@ -689,18 +758,22 @@
           time,
           backupIntervalType: backupTypeVal,
           backupTime: backupTimeVal,
-          backupIntervalHours: backupHoursVal
+          backupIntervalHours: backupHoursVal,
+          backupMaxCount: backupMaxCountVal
         };
         this.save();
         this.report('이 컴퓨터에 설정 저장됨');
+
+        // 변경된 보관 개수 설정에 맞추어 기존 초과 백업 파일 즉시 정리
+        await this.cleanupOldBackups(backupMaxCountVal);
 
         if (backup) {
           await this.backup(true);
           this.report('로컬 백업 저장·검증 완료');
           const badge = dialog.querySelector('[data-last-backup-badge]');
           if (badge) badge.textContent = new Date().toLocaleString();
-          await this.renderHistoryList(historyListEl);
         }
+        await this.renderHistoryList(historyListEl);
         void this.tick();
       });
     }

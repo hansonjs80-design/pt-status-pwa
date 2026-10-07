@@ -68,3 +68,64 @@ test('daily backup respects backupTime setting',async()=>{
  assert.equal(backups,1);
 });
 
+test('cleanupOldBackups deletes oldest backups when count exceeds backupMaxCount', async () => {
+ const {LocalTools} = tools();
+ const l = Object.create(LocalTools.prototype);
+ l.settings = { backupMaxCount: 3 };
+
+ // Mock IndexedDB
+ const idbFiles = new Map([
+   ['backup-2026-10-01T10:00:00.000Z', 'data1'],
+   ['backup-2026-10-02T10:00:00.000Z', 'data2'],
+   ['backup-2026-10-03T10:00:00.000Z', 'data3'],
+   ['backup-2026-10-04T10:00:00.000Z', 'data4'],
+   ['backup-2026-10-05T10:00:00.000Z', 'data5']
+ ]);
+ l.db = async () => ({
+   transaction: () => ({
+     objectStore: () => ({
+       getAllKeys: () => ({
+         set onsuccess(fn) { fn({ target: { result: [...idbFiles.keys()] } }); },
+         get result() { return [...idbFiles.keys()]; }
+       }),
+       delete: (key) => { idbFiles.delete(key); }
+     })
+   })
+ });
+
+ // Mock Folder
+ const folderFiles = new Map([
+   ['PT현황_전체백업_2026-10-01T10-00-00.json', true],
+   ['PT현황_전체백업_2026-10-02T10-00-00.json', true],
+   ['PT현황_전체백업_2026-10-03T10-00-00.json', true],
+   ['PT현황_전체백업_2026-10-04T10-00-00.json', true],
+   ['PT현황_전체백업_2026-10-05T10-00-00.json', true]
+ ]);
+ l.folder = {
+   values: async function* () {
+     for (const name of folderFiles.keys()) {
+       yield { kind: 'file', name };
+     }
+   },
+   removeEntry: async (name) => {
+     folderFiles.delete(name);
+   }
+ };
+
+ // 5개 중 최대 보관 개수 3개 설정이므로 가장 오래된 2개 삭제되어야 함
+ await l.cleanupOldBackups();
+
+ assert.equal(idbFiles.size, 3);
+ assert.equal(idbFiles.has('backup-2026-10-01T10:00:00.000Z'), false);
+ assert.equal(idbFiles.has('backup-2026-10-02T10:00:00.000Z'), false);
+ assert.equal(idbFiles.has('backup-2026-10-03T10:00:00.000Z'), true);
+ assert.equal(idbFiles.has('backup-2026-10-04T10:00:00.000Z'), true);
+ assert.equal(idbFiles.has('backup-2026-10-05T10:00:00.000Z'), true);
+
+ assert.equal(folderFiles.size, 3);
+ assert.equal(folderFiles.has('PT현황_전체백업_2026-10-01T10-00-00.json'), false);
+ assert.equal(folderFiles.has('PT현황_전체백업_2026-10-02T10-00-00.json'), false);
+ assert.equal(folderFiles.has('PT현황_전체백업_2026-10-05T10-00-00.json'), true);
+});
+
+
