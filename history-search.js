@@ -781,6 +781,12 @@ class PTHistorySearch {
     this.openSearchPromptModal(targetIdx, query);
   }
 
+  getHistoryDedupeKey(row) {
+    const compareCols = ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+    // Keep older years visible even when the patient and treatment are identical.
+    return JSON.stringify([row._sourceDate.slice(0, 4), ...compareCols.map(k => String(row[k] || "").trim().toLowerCase())]);
+  }
+
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
     clearTimeout(this.historyCurrentScrollTimer);
     if (!this.elSearchInput?.value?.trim() && this.historyOriginSelection === undefined) this.captureHistoryOriginSelection();
@@ -851,15 +857,11 @@ class PTHistorySearch {
     });
 
     // 4) 중복 그룹화 (No., visitTime 제외, 성별~특이사항 내용 동일 여부)
-    // No.가 달라도 나머지 내용이 같으면 합치는 기능 유지, 최신 날짜의 행을 대표 행으로 지정
-    const getDedupeKey = (row) => {
-      const compareCols = ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-      return compareCols.map(k => String(row[k] || "").trim().toLowerCase()).join("||");
-    };
+    // 같은 연도 안에서만 합치고, 연도별 최신 날짜의 행을 대표 행으로 지정
 
     const groupMap = new Map();
     allMatchedRows.forEach((row) => {
-      const dKey = getDedupeKey(row);
+      const dKey = this.getHistoryDedupeKey(row);
       if (!groupMap.has(dKey)) {
         groupMap.set(dKey, {
           representative: row,
@@ -964,10 +966,7 @@ class PTHistorySearch {
     } else {
       // 전체 펼치기 모드: 모든 매칭 행 표시
       renderRows = allMatchedRows.map(row => {
-        const grp = groupMap.get(
-          ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"]
-            .map(k => String(row[k] || "").trim().toLowerCase()).join("||")
-        );
+        const grp = groupMap.get(this.getHistoryDedupeKey(row));
         const isSubRow = grp && grp.items.length > 1 && grp.representative !== row;
         return {
           ...row,
@@ -1049,7 +1048,13 @@ class PTHistorySearch {
       headerContent.className = "cross-date-header-content";
 
       const dateSpan = document.createElement("span");
+      dateSpan.className = "cross-date-day";
+      if (row._sourceDate.slice(0, 4) < this.currentDate.slice(0, 4)) {
+        dateSpan.classList.add("cross-date-day-previous-year");
+      }
       dateSpan.textContent = row._sourceDate.slice(5).replace("-", "/");
+      dateSpan.title = row._sourceDate;
+      dateSpan.setAttribute("aria-label", row._sourceDate);
       headerContent.appendChild(dateSpan);
 
       if (row._dupCount > 1) {

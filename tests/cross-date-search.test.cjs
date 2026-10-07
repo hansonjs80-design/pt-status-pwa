@@ -97,6 +97,7 @@ function createDomMock() {
   }
 
   function matchesSelector(node, selector) {
+    if (selector.includes(',')) return selector.split(',').some(part => matchesSelector(node, part.trim()));
     if (selector.includes(':not(')) {
       const parts = selector.split(':not(');
       const base = parts[0].trim();
@@ -469,6 +470,36 @@ test('search period setting defaults to 6months, persists in localStorage, and f
   app.searchAllDates('일년전환자', 0);
   assert.equal(app.crossDateResults.length, 1);
   assert.equal(app.crossDateResults[0].name, '일년전환자');
+});
+
+test('multi-year search keeps identical yearly records and colors older month/day labels', () => {
+  const { app, dom } = createCrossDateTestApp();
+  const patient = { name: '연도환자', chartNo: 'YEAR-1', part: '무릎', prescription: 'HP' };
+  for (const date of ['2024-09-01', '2025-08-31', '2025-09-01', '2026-08-31', '2026-09-01']) {
+    app.dataStore[date] = [{ ...patient }];
+  }
+  const original = JSON.stringify(app.dataStore);
+  app.setSearchPeriod('1year_plus');
+  app.searchAllDates('연도환자', 0);
+
+  assert.deepEqual(Array.from(app.crossDateResults, row => [row._sourceDate, row._dupCount]), [
+    ['2024-09-01', 1], ['2025-09-01', 2], ['2026-09-01', 2],
+  ]);
+  const labels = dom.querySelectorAll('.cross-date-day');
+  assert.deepEqual(labels.map(label => label.textContent), ['09/01', '09/01', '09/01']);
+  assert.deepEqual(labels.map(label => label.classList.contains('cross-date-day-previous-year')), [true, true, false]);
+  assert.deepEqual(labels.map(label => label.title), ['2024-09-01', '2025-09-01', '2026-09-01']);
+  assert.equal(labels[0].getAttribute('aria-label'), '2024-09-01');
+
+  app.toggleCrossDateExpanded();
+  assert.deepEqual(Array.from(app.crossDateResults, row => [row._sourceDate, row._dupCount, Boolean(row._isSubRow)]), [
+    ['2024-09-01', 1, false], ['2025-08-31', 2, true], ['2025-09-01', 2, false],
+    ['2026-08-31', 2, true], ['2026-09-01', 2, false],
+  ]);
+  assert.equal(dom.querySelectorAll('.cross-date-day-previous-year').length, 3);
+  app.toggleCrossDateExpanded();
+  assert.equal(app.crossDateResults.length, 3);
+  assert.equal(JSON.stringify(app.dataStore), original);
 });
 
 test('pasting into current table while history is visible preserves scroll positions', async () => {

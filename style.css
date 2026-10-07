@@ -995,6 +995,9 @@ body {
   gap: 3px;
   width: 100%;
 }
+.cross-date-day-previous-year {
+  color: #7c3aed;
+}
 .cross-date-toggle-arrow {
   display: inline-flex;
   align-items: center;
