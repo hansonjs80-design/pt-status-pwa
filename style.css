@@ -835,11 +835,11 @@ body {
 
 /* 교차 날짜 검색 결과 구분선 (진한 회색 바 고정) */
 .cross-date-divider {
-  background: #444444 !important;
+  background: #777777 !important;
   border: none !important;
 }
 .cross-date-divider td {
-  background: #444444 !important;
+  background: #777777 !important;
   padding: 3.5px 14px !important;
   line-height: 1.25;
   color: #fff !important;
@@ -2155,7 +2155,7 @@ body {
   z-index: 6;
   height: 28px;
   padding: 4px;
-  background: #444444;
+  background: #777777;
   color: #f4f4f5;
   border-right: 1px solid #000000;
   border-bottom: 1px solid #000000;
@@ -2192,7 +2192,7 @@ body {
   background: #f4f4f5;
   box-shadow: -1px 0 0 #d4d4d8;
 }
-.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #444444; color: #f4f4f5; border-right: 1px solid #000000; border-bottom: 1px solid #000000; border-top: 1px solid #000000; }
+.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #777777; color: #f4f4f5; border-right: 1px solid #000000; border-bottom: 1px solid #000000; border-top: 1px solid #000000; }
 
 .quick-inputs .date-label.is-saturday { color: #1e40af; }
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }
