@@ -1143,7 +1143,11 @@ class PTHistorySearch {
       tr.appendChild(actionCell);
 
       const spacer = document.createElement("td");
-      spacer.className = "cell-spacer";
+      spacer.className = "cell-spacer history-year-cell";
+      const sourceYear = row._sourceDate.slice(0, 4);
+      if (sourceYear !== this.currentDate.slice(0, 4)) {
+        spacer.textContent = `${sourceYear}년`;
+      }
       tr.appendChild(spacer);
 
       innerTbody.appendChild(tr);

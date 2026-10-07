@@ -490,6 +490,12 @@ test('multi-year search keeps identical yearly records and colors older month/da
   assert.deepEqual(labels.map(label => label.classList.contains('cross-date-day-previous-year')), [true, true, false]);
   assert.deepEqual(labels.map(label => label.title), ['2024-09-01', '2025-09-01', '2026-09-01']);
   assert.equal(labels[0].getAttribute('aria-label'), '2024-09-01');
+  const yearCells = dom.querySelectorAll('.history-year-cell');
+  assert.deepEqual(yearCells.map(cell => cell.textContent || ''), ['2024년', '2025년', '']);
+  for (const cell of yearCells) {
+    const siblings = cell.parentNode.children;
+    assert.ok(siblings[siblings.indexOf(cell) - 1].classList.contains('history-apply-cell'));
+  }
 
   app.toggleCrossDateExpanded();
   assert.deepEqual(Array.from(app.crossDateResults, row => [row._sourceDate, row._dupCount, Boolean(row._isSubRow)]), [
@@ -497,6 +503,8 @@ test('multi-year search keeps identical yearly records and colors older month/da
     ['2026-08-31', 2, true], ['2026-09-01', 2, false],
   ]);
   assert.equal(dom.querySelectorAll('.cross-date-day-previous-year').length, 3);
+  assert.deepEqual(dom.querySelectorAll('.history-year-cell').map(cell => cell.textContent || ''),
+    ['2024년', '2025년', '2025년', '', '']);
   app.toggleCrossDateExpanded();
   assert.equal(app.crossDateResults.length, 3);
   assert.equal(JSON.stringify(app.dataStore), original);
