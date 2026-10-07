@@ -3885,8 +3885,23 @@ class PTApp {
     this.elBackupModal.style.display = "none";
   }
 
-  downloadFullBackup() {
-    const dataStr = JSON.stringify(this.dataStore, null, 2);
+  async downloadFullBackup() {
+    if (window.ptLocalTools && typeof window.ptLocalTools.backup === "function") {
+      try {
+        await window.ptLocalTools.backup(false);
+        return;
+      } catch (err) {
+        console.warn("로컬 백업 진행 중 알림:", err);
+      }
+    }
+    const backupObj = {
+      version: 1,
+      createdAt: new Date().toISOString(),
+      scope: "PT app records and presets",
+      dataStore: this.dataStore,
+      presets: typeof COLUMN_PRESETS !== "undefined" ? COLUMN_PRESETS : null
+    };
+    const dataStr = JSON.stringify(backupObj, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -3896,33 +3911,75 @@ class PTApp {
     URL.revokeObjectURL(url);
   }
 
+  async restoreDataPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("올바르지 않은 백업 데이터 형식입니다.");
+    }
+    const rawStore = payload.dataStore || payload;
+    if (typeof rawStore !== "object" || Array.isArray(rawStore)) {
+      throw new Error("백업 데이터에서 일지 기록을 찾을 수 없습니다.");
+    }
+
+    const validEntries = Object.entries(rawStore).filter(([date, rows]) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(rows) && rows.every(row => row && typeof row === "object" && !Array.isArray(row))
+    );
+
+    if (validEntries.length === 0) {
+      throw new Error("백업 데이터에 유효한 날짜별 물리치료 기록(YYYY-MM-DD)이 없습니다.");
+    }
+
+    const count = validEntries.length;
+    const dates = validEntries.map(([d]) => d).sort();
+    const range = count === 1 ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`;
+
+    if (!confirm(`총 ${count}개 날짜(${range})의 물리치료 기록을 복원합니다.\n현재 기록은 복원 전 안전 백업으로 보관됩니다. 계속하시겠습니까?`)) {
+      return false;
+    }
+
+    try {
+      if (window.ptLocalTools && typeof window.ptLocalTools.backup === "function") {
+        await window.ptLocalTools.backup(true);
+      }
+    } catch (safeErr) {
+      console.warn("복원 전 안전 보관 백업 참고:", safeErr);
+    }
+
+    const restored = Object.fromEntries(validEntries);
+    this.dataStore = { ...this.dataStore, ...restored };
+    this.editHistory.clear();
+    this.getCurrentRows();
+    this.saveDataStore();
+
+    for (const date of Object.keys(restored)) {
+      this.pendingSyncDates.add(date);
+    }
+    localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+
+    if (payload.presets && typeof payload.presets === "object" && Object.values(payload.presets).every(values => Array.isArray(values) && values.every(v => typeof v === "string"))) {
+      COLUMN_PRESETS = payload.presets;
+      saveColumnPresets(COLUMN_PRESETS);
+      this.renderQuickChips();
+    }
+
+    this.setDate(this.currentDate);
+    alert(`백업 복원 완료!\n총 ${count}개 날짜의 기록이 성공적으로 복원되었습니다.`);
+    this.closeBackupModal();
+    return true;
+  }
+
   handleRestoreFile(e) {
-    const file = e.target.files[0];
+    const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const payload = JSON.parse(event.target.result);
-        const parsed = payload?.version === 1 ? payload.dataStore : payload;
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
-            !Object.entries(parsed).every(([date, rows]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(rows) && rows.every(row => row && typeof row === "object" && !Array.isArray(row)))) {
-          throw new Error("올바르지 않은 백업 파일 형식입니다.");
-        }
-        if (!confirm("현재 데이터를 먼저 백업한 뒤, 파일의 날짜별 기록을 복원합니다. 클라우드에 연결되어 있으면 복원한 날짜가 동기화됩니다. 진행할까요?")) return;
-        if (!window.ptLocalTools) throw new Error("백업 기능을 준비하지 못했습니다. 새로고침 후 다시 시도하세요.");
-        await window.ptLocalTools.backup(true);
-        this.dataStore = { ...this.dataStore, ...parsed };
-        this.editHistory.clear();
-        this.getCurrentRows(); this.saveDataStore();
-        for (const date of Object.keys(parsed)) this.pendingSyncDates.add(date);
-        localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
-        if (payload.version === 1 && payload.presets && Object.values(payload.presets).every(values => Array.isArray(values) && values.every(value => typeof value === "string"))) {
-          COLUMN_PRESETS = payload.presets; saveColumnPresets(COLUMN_PRESETS); this.renderQuickChips();
-        }
-        this.setDate(this.currentDate);
-        alert("백업 파일 복원 완료. 기존 기록은 복원 전 로컬 백업에 보관했습니다.");
-        this.closeBackupModal();
-      } catch (err) { alert("복원을 진행하지 못했습니다: " + err.message); }
+        await this.restoreDataPayload(payload);
+      } catch (err) {
+        alert("복원을 진행하지 못했습니다: " + err.message);
+      } finally {
+        e.target.value = "";
+      }
     };
     reader.readAsText(file);
   }

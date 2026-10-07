@@ -19,3 +19,52 @@ test('scheduler catches up missed previous days once and never marks failed PDF 
 test('automatic writes refuse silent fallback when no folder is linked',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype);await assert.rejects(l.write('test.pdf',new Blob(['x']),true),/폴더/);
 });
+test('hourly backup executes when interval elapsed and respects on/off toggle',async()=>{
+ const {LocalTools}=tools(),l=Object.create(LocalTools.prototype);
+ let backups=0;
+ l.backup=async()=>{backups++;l.settings.lastBackupTimestamp=Date.now();};
+ l.save=()=>{};l.report=()=>{};
+
+ // 백업 꺼짐 (backup: false)
+ l.settings={backup:false,backupIntervalType:'hourly',backupIntervalHours:1,lastBackupTimestamp:0};
+ await l.tick();
+ assert.equal(backups,0);
+
+ // 백업 켜짐, 간격 경과 (lastBackupTimestamp 없음)
+ l.settings.backup=true;
+ await l.tick();
+ assert.equal(backups,1);
+
+ // 방금 백업했으므로 간격(1시간) 미경과로 실행 안 됨
+ await l.tick();
+ assert.equal(backups,1);
+
+ // 2시간 전 백업으로 변경 시 다시 실행됨
+ l.settings.lastBackupTimestamp=Date.now() - 7200000;
+ await l.tick();
+ assert.equal(backups,2);
+});
+test('daily backup respects backupTime setting',async()=>{
+ const {LocalTools,dateKey}=tools(),l=Object.create(LocalTools.prototype);
+ let backups=0;
+ l.backup=async()=>{backups++;l.settings.lastBackupDay=dateKey(new Date());};
+ l.save=()=>{};l.report=()=>{};
+
+ // 아직 시간이 안 된 경우 (23:59 설정)
+ l.settings={backup:true,backupIntervalType:'daily',backupTime:'23:59',lastBackupDay:null};
+ await l.tick();
+ // 현재 시각이 23:59가 아니면 0이어야 함
+ if (`${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}` < '23:59') {
+   assert.equal(backups,0);
+ }
+
+ // 시간이 도달한 경우 (00:00 설정)
+ l.settings.backupTime='00:00';
+ await l.tick();
+ assert.equal(backups,1);
+
+ // 오늘 이미 실행했으면 다시 실행되지 않음
+ await l.tick();
+ assert.equal(backups,1);
+});
+

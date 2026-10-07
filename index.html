@@ -298,6 +298,7 @@
             백업 파일 복원 (.json)
             <input type="file" id="fileRestore" accept=".json" style="display:none;">
           </label>
+          <button type="button" class="btn-action" id="btnLocalBackupSettings" onclick="if(window.ptLocalTools){window.ptApp?.closeBackupModal?.(); window.ptLocalTools.open('backup');}">⚙️ 이 컴퓨터 자동 백업 설정</button>
         </div>
         <div class="danger-zone">
           <h4>주의 영역</h4>
