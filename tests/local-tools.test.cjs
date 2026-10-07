@@ -128,4 +128,60 @@ test('cleanupOldBackups deletes oldest backups when count exceeds backupMaxCount
  assert.equal(folderFiles.has('PT현황_전체백업_2026-10-05T10-00-00.json'), true);
 });
 
+test('isWithinWorkHours correctly determines work hours', () => {
+ const {LocalTools} = tools();
+ const l = Object.create(LocalTools.prototype);
+
+ // 주간 근무: 09:00 ~ 18:00
+ assert.equal(l.isWithinWorkHours('08:59', '09:00', '18:00'), false);
+ assert.equal(l.isWithinWorkHours('09:00', '09:00', '18:00'), true);
+ assert.equal(l.isWithinWorkHours('14:30', '09:00', '18:00'), true);
+ assert.equal(l.isWithinWorkHours('18:00', '09:00', '18:00'), true);
+ assert.equal(l.isWithinWorkHours('18:01', '09:00', '18:00'), false);
+ assert.equal(l.isWithinWorkHours('23:00', '09:00', '18:00'), false);
+ assert.equal(l.isWithinWorkHours('03:00', '09:00', '18:00'), false);
+});
+
+test('backup pauses outside work hours when workHoursOnly is enabled', async () => {
+ const {LocalTools} = tools();
+ const l = Object.create(LocalTools.prototype);
+ let backups = 0;
+ l.backup = async () => { backups++; };
+ l.save = () => {};
+ l.report = () => {};
+
+ // 현재 시각 가져오기
+ const now = new Date();
+ const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+ // 1) 현재 시각이 비근무 시간인 설정 (현재 시각 1시간 뒤 출근, 2시간 뒤 퇴근)
+ const futureHour = (now.getHours() + 1) % 24;
+ const futureHour2 = (now.getHours() + 2) % 24;
+ const fakeStart = `${String(futureHour).padStart(2, '0')}:00`;
+ const fakeEnd = `${String(futureHour2).padStart(2, '0')}:00`;
+
+ l.settings = {
+   backup: true,
+   backupIntervalType: 'hourly',
+   backupIntervalHours: 1,
+   lastBackupTimestamp: 0, // 백업 대상
+   workHoursOnly: true,
+   workStartTime: fakeStart,
+   workEndTime: fakeEnd
+ };
+
+ await l.tick();
+ // 근무 시간 외이므로 백업되지 않아야 함
+ assert.equal(backups, 0);
+
+ // 2) 현재 시각이 근무 시간에 포함되도록 설정 (00:00 ~ 23:59)
+ l.settings.workStartTime = '00:00';
+ l.settings.workEndTime = '23:59';
+
+ await l.tick();
+ // 근무 시간 내이므로 백업 실행되어야 함
+ assert.equal(backups, 1);
+});
+
+
 

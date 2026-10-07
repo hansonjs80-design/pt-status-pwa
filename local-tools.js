@@ -97,6 +97,9 @@
         backupTime: '18:00',
         backupIntervalHours: 2,
         backupMaxCount: 15,
+        workHoursOnly: false,
+        workStartTime: '09:00',
+        workEndTime: '18:00',
         lastBackup: null,
         lastBackupDay: null,
         lastBackupTimestamp: 0,
@@ -300,6 +303,12 @@
         }
       }
     }
+    isWithinWorkHours(clock, startTime = '09:00', endTime = '18:00') {
+      if (startTime <= endTime) {
+        return clock >= startTime && clock <= endTime;
+      }
+      return clock >= startTime || clock <= endTime;
+    }
     async tick() {
       if (this.running || (!this.settings.pdf && !this.settings.backup)) return;
       this.running = true;
@@ -329,19 +338,29 @@
 
         if (this.settings.backup) {
           const isHourly = this.settings.backupIntervalType === 'hourly';
+          let inWorkHours = true;
+          if (this.settings.workHoursOnly) {
+            const start = this.settings.workStartTime || '09:00';
+            const end = this.settings.workEndTime || '18:00';
+            inWorkHours = this.isWithinWorkHours(clock, start, end);
+          }
+
           let shouldBackup = false;
 
-          if (isHourly) {
-            const intervalHours = Math.max(1, Number(this.settings.backupIntervalHours) || 1);
-            const intervalMs = intervalHours * 3600000;
-            const lastTime = this.settings.lastBackupTimestamp || (this.settings.lastBackup ? new Date(this.settings.lastBackup).getTime() : 0);
-            if (!lastTime || (Date.now() - lastTime >= intervalMs)) {
-              shouldBackup = true;
-            }
-          } else {
-            const targetTime = this.settings.backupTime || this.settings.time || '18:00';
-            if (clock >= targetTime && this.settings.lastBackupDay !== today) {
-              shouldBackup = true;
+          // 퇴근 시간 이후부터 다음 출근 시간 전까지는 자동 백업 실행 안 함
+          if (inWorkHours) {
+            if (isHourly) {
+              const intervalHours = Math.max(1, Number(this.settings.backupIntervalHours) || 1);
+              const intervalMs = intervalHours * 3600000;
+              const lastTime = this.settings.lastBackupTimestamp || (this.settings.lastBackup ? new Date(this.settings.lastBackup).getTime() : 0);
+              if (!lastTime || (Date.now() - lastTime >= intervalMs)) {
+                shouldBackup = true;
+              }
+            } else {
+              const targetTime = this.settings.backupTime || this.settings.time || '18:00';
+              if (clock >= targetTime && this.settings.lastBackupDay !== today) {
+                shouldBackup = true;
+              }
             }
           }
 
@@ -434,6 +453,15 @@
     }
     getNextBackupDescription() {
       if (!this.settings.backup) return '자동 백업 꺼짐';
+      const now = new Date();
+      const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      if (this.settings.workHoursOnly) {
+        const start = this.settings.workStartTime || '09:00';
+        const end = this.settings.workEndTime || '18:00';
+        if (!this.isWithinWorkHours(clock, start, end)) {
+          return `출근 시간(${start})에 재개 (퇴근 시간 이후 일시중지됨)`;
+        }
+      }
       if (this.settings.backupIntervalType === 'hourly') {
         const intervalHours = Math.max(1, Number(this.settings.backupIntervalHours) || 1);
         const intervalMs = intervalHours * 3600000;
@@ -569,6 +597,21 @@
               </label>
               <span class="hint" style="font-size: 11px; color: #6a7f72;">최신 백업 저장 시 보관 개수를 초과한 오래된 백업은 자동 삭제됩니다.</span>
             </div>
+            <div class="backup-workhours-control" style="margin-top: 10px; padding: 10px 12px; background: #fbfdfb; border: 1px solid #d5e5db; border-radius: 8px;">
+              <label style="font-size: 13px; font-weight: 600; color: #234830; display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+                <input type="checkbox" data-workhours-only>
+                <span>🕒 <strong>출·퇴근 시간 중에만 백업</strong> (퇴근 후 ~ 출근 전 백업 일시중지)</span>
+              </label>
+              <div class="workhours-inputs" data-workhours-inputs style="margin-top: 8px; padding-left: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                <label style="font-size: 12.5px; color: #333; display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0;">
+                  출근 시각: <input type="time" data-work-start-time value="09:00" style="padding: 4px 6px; border: 1px solid #cad8cf; border-radius: 6px;">
+                </label>
+                <label style="font-size: 12.5px; color: #333; display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0;">
+                  퇴근 시각: <input type="time" data-work-end-time value="18:00" style="padding: 4px 6px; border: 1px solid #cad8cf; border-radius: 6px;">
+                </label>
+                <span class="hint" style="font-size: 11px; color: #6a7f72; width: 100%;">퇴근 시간 이후부터 다음 날 출근 시간 전까지는 자동 백업이 실행되지 않습니다.</span>
+              </div>
+            </div>
             <div class="backup-status-badge-box">
               <div class="status-row">
                 <span>📁 저장 위치:</span>
@@ -585,6 +628,10 @@
               <div class="status-row">
                 <span>📦 보관 개수 설정:</span>
                 <strong data-retention-badge>최근 ${this.settings.backupMaxCount || 15}개 유지 (초과분 자동 삭제)</strong>
+              </div>
+              <div class="status-row">
+                <span>🕒 근무 시간 제한:</span>
+                <strong data-workhours-badge>${this.settings.workHoursOnly ? `${this.settings.workStartTime || '09:00'} ~ ${this.settings.workEndTime || '18:00'} (퇴근 후 일시중지)` : '제한 없음 (24시간)'}</strong>
               </div>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
@@ -646,6 +693,40 @@
           const badge = dialog.querySelector('[data-retention-badge]');
           if (badge) badge.textContent = `최근 ${selBackupMaxCount.value}개 유지 (초과분 자동 삭제)`;
         });
+      }
+
+      // 출·퇴근 시간 바인딩
+      const chkWorkHoursOnly = dialog.querySelector('[data-workhours-only]');
+      const inpWorkStartTime = dialog.querySelector('[data-work-start-time]');
+      const inpWorkEndTime = dialog.querySelector('[data-work-end-time]');
+      const workHoursInputsBox = dialog.querySelector('[data-workhours-inputs]');
+
+      if (chkWorkHoursOnly && inpWorkStartTime && inpWorkEndTime) {
+        chkWorkHoursOnly.checked = Boolean(this.settings.workHoursOnly);
+        inpWorkStartTime.value = this.settings.workStartTime || '09:00';
+        inpWorkEndTime.value = this.settings.workEndTime || '18:00';
+
+        const updateWorkHoursUI = () => {
+          if (workHoursInputsBox) {
+            workHoursInputsBox.style.opacity = chkWorkHoursOnly.checked ? '1' : '0.5';
+            workHoursInputsBox.style.pointerEvents = chkWorkHoursOnly.checked ? 'auto' : 'none';
+          }
+          const badge = dialog.querySelector('[data-workhours-badge]');
+          if (badge) {
+            badge.textContent = chkWorkHoursOnly.checked
+              ? `${inpWorkStartTime.value} ~ ${inpWorkEndTime.value} (퇴근 후 일시중지)`
+              : '제한 없음 (24시간)';
+          }
+          const badgeNext = dialog.querySelector('[data-next-backup]');
+          if (badgeNext && chkBackup.checked) {
+            badgeNext.textContent = this.getNextBackupDescription();
+          }
+        };
+
+        chkWorkHoursOnly.addEventListener('change', updateWorkHoursUI);
+        inpWorkStartTime.addEventListener('change', updateWorkHoursUI);
+        inpWorkEndTime.addEventListener('change', updateWorkHoursUI);
+        updateWorkHoursUI();
       }
 
       const chkPdf = dialog.querySelector('[data-pdf]');
@@ -745,9 +826,16 @@
         const backupTimeVal = inpBackupTime.value;
         const backupHoursVal = Number(selIntervalHours.value) || 2;
         const backupMaxCountVal = Math.max(1, Number(selBackupMaxCount?.value) || 15);
+        const workHoursOnlyVal = Boolean(chkWorkHoursOnly?.checked);
+        const workStartTimeVal = inpWorkStartTime?.value || '09:00';
+        const workEndTimeVal = inpWorkEndTime?.value || '18:00';
 
         if (pdf && !/^\d{2}:\d{2}$/.test(time)) throw Error('PDF 저장 시간을 선택해 주세요.');
         if (backup && backupTypeVal === 'daily' && !/^\d{2}:\d{2}$/.test(backupTimeVal)) throw Error('일 단위 백업 시간을 선택해 주세요.');
+        if (backup && workHoursOnlyVal) {
+          if (!/^\d{2}:\d{2}$/.test(workStartTimeVal)) throw Error('출근 시각을 올바르게 선택해 주세요.');
+          if (!/^\d{2}:\d{2}$/.test(workEndTimeVal)) throw Error('퇴근 시각을 올바르게 선택해 주세요.');
+        }
         if (pdf && !this.folder) throw Error('자동 PDF 저장을 위해 폴더를 먼저 연결해 주세요.');
         if (pdf && !this.settings.pdf) { this.settings.pdfFrom = previousDay(new Date()); this.settings.lastPDF = null; }
 
@@ -759,7 +847,10 @@
           backupIntervalType: backupTypeVal,
           backupTime: backupTimeVal,
           backupIntervalHours: backupHoursVal,
-          backupMaxCount: backupMaxCountVal
+          backupMaxCount: backupMaxCountVal,
+          workHoursOnly: workHoursOnlyVal,
+          workStartTime: workStartTimeVal,
+          workEndTime: workEndTimeVal
         };
         this.save();
         this.report('이 컴퓨터에 설정 저장됨');
