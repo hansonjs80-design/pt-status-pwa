@@ -190,18 +190,23 @@
       const cloud = {};
       let shared = null;
       if (this.app.supabaseClient) {
-        for (let offset = 0; ; offset += 200) {
-          const { data, error } = await this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199);
-          if (error) throw Error('전체 백업 조회 실패: ' + error.message);
-          for (const record of data || []) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;
-            else if (record.date === '__pt_shared_presets_v1__') shared = record;
+        try {
+          for (let offset = 0; ; offset += 200) {
+            const { data, error } = await this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199);
+            if (error) throw Error('전체 백업 조회 실패: ' + error.message);
+            for (const record of data || []) {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;
+              else if (record.date === '__pt_shared_presets_v1__') shared = record;
+            }
+            if (!data || data.length < 200) break;
           }
-          if (!data || data.length < 200) break;
+        } catch (cloudErr) {
+          console.warn('Supabase 백업 조회 중 알림 (로컬 데이터로 백업 진행):', cloudErr);
+          if (!automatic && !Object.keys(this.app.dataStore || {}).length) throw cloudErr;
         }
       }
       const merged = { ...cloud };
-      for (const [date, rows] of Object.entries(this.app.dataStore)) {
+      for (const [date, rows] of Object.entries(this.app.dataStore || {})) {
         if (!merged[date] || this.app.pendingSyncDates?.has(date) || !this.app.supabaseClient) merged[date] = rows;
       }
       const backup = {

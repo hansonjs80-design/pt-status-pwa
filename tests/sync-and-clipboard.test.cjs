@@ -6,7 +6,8 @@ const clone = value => JSON.parse(JSON.stringify(value));
 function createApp(db = new Map()) {
   const storage = new Map();
   const context = vm.createContext({ window: { addEventListener() {} }, document: { activeElement: null },
-    localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout });
+    localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout,
+    confirm: () => true, alert: () => {} });
   vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
   Object.assign(app, { currentDate: '2026-09-30', dataStore: {}, syncBaselines: new Map(), pendingSyncDates: new Set(), activePushes: new Map(), syncTimers: new Map(), editHistory: new Map() });
@@ -75,3 +76,42 @@ test('older cloud rows with a null timestamp can be updated',async()=>{
   app.dataStore[date]=[{name:'변경'}];app.syncBaselines.set(date,[{name:'이전'}]);app.pendingSyncDates.add(date);await app.pushToCloud(date);
   assert.equal(db.get(date).rows_data[0].name,'변경');assert.equal(app.pendingSyncDates.has(date),false);
 });
+
+test('restoring backup resets baselines, registers pending sync, and uploads to cloud', async () => {
+  const db = new Map();
+  const a = createApp(db).app, b = createApp(db).app;
+  a.confirm = () => true; a.alert = () => {}; a.closeBackupModal = () => {}; a.setDate = () => {}; a.getCurrentRows = () => (a.dataStore[a.currentDate] || []);
+  globalThis.confirm = () => true; globalThis.alert = () => {};
+
+  const payload = {
+    version: 1,
+    dataStore: {
+      '2026-10-01': [{ name: '복원환자1', chartNo: '1001' }],
+      '2026-10-02': [{ name: '복원환자2', chartNo: '1002' }]
+    },
+    presets: { prescription: ['복원처방'], extra: ['복원추가'] }
+  };
+
+  // 기존 baseline이 남아있던 상태를 시뮬레이션
+  a.syncBaselines.set('2026-10-01', [{ name: '예전환자', chartNo: '9999' }]);
+
+  await a.restoreDataPayload(payload);
+
+  // 복원된 날짜의 이전 baseline이 삭제되었는지 확인 (잘못된 3-way 병합 방지)
+  assert.equal(a.syncBaselines.has('2026-10-01'), false);
+  assert.equal(a.pendingSyncDates.has('2026-10-01'), true);
+  assert.equal(a.pendingSyncDates.has('2026-10-02'), true);
+
+  // 클라우드로 push 수행
+  await a.pushToCloud('2026-10-01');
+  await a.pushToCloud('2026-10-02');
+
+  // 다른 기기(b)에서 pull했을 때 복원된 데이터가 온전히 도착하는지 확인
+  await b.pullFromCloud('2026-10-01');
+  assert.equal(b.dataStore['2026-10-01'][0].name, '복원환자1');
+  assert.equal(b.dataStore['2026-10-01'][0].chartNo, '1001');
+
+  await b.pullFromCloud('2026-10-02');
+  assert.equal(b.dataStore['2026-10-02'][0].name, '복원환자2');
+});
+

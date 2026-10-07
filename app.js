@@ -3932,7 +3932,7 @@ class PTApp {
     const dates = validEntries.map(([d]) => d).sort();
     const range = count === 1 ? dates[0] : `${dates[0]} ~ ${dates[dates.length - 1]}`;
 
-    if (!confirm(`총 ${count}개 날짜(${range})의 물리치료 기록을 복원합니다.\n현재 기록은 복원 전 안전 백업으로 보관됩니다. 계속하시겠습니까?`)) {
+    if (typeof confirm === "function" && !confirm(`총 ${count}개 날짜(${range})의 물리치료 기록을 복원합니다.\n현재 기록은 복원 전 안전 백업으로 보관됩니다. 계속하시겠습니까?`)) {
       return false;
     }
 
@@ -3948,21 +3948,39 @@ class PTApp {
     this.dataStore = { ...this.dataStore, ...restored };
     this.editHistory.clear();
     this.getCurrentRows();
-    this.saveDataStore();
 
+    // 복원된 각 날짜의 기존 동기화 기준선(syncBaselines)을 리셋하여
+    // 클라우드 업로드 시 이전 데이터와의 잘못된 3-way 병합을 방지하고 복원 데이터가 온전히 반영되도록 함
     for (const date of Object.keys(restored)) {
+      this.syncBaselines.delete(date);
       this.pendingSyncDates.add(date);
     }
+    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
 
-    if (payload.presets && typeof payload.presets === "object" && Object.values(payload.presets).every(values => Array.isArray(values) && values.every(v => typeof v === "string"))) {
-      COLUMN_PRESETS = payload.presets;
+    this.saveDataStore();
+
+    // 복원된 프리셋 처리 (payload.presets 또는 payload.sharedPresets 지원)
+    const rawPresets = payload.presets || payload.sharedPresets?.rows_data?.[0]?.presets;
+    if (rawPresets && typeof rawPresets === "object" && Object.values(rawPresets).every(values => Array.isArray(values) && values.every(v => typeof v === "string"))) {
+      COLUMN_PRESETS = rawPresets;
       saveColumnPresets(COLUMN_PRESETS);
       this.renderQuickChips();
+      this.schedulePresetSync();
+    }
+
+    // Supabase 연결 상태인 경우 복원된 모든 날짜를 즉시 클라우드로 동기화 예약 및 다른 기기에 브로드캐스트
+    if (this.supabaseClient) {
+      for (const date of Object.keys(restored)) {
+        this.scheduleSupabaseSync(date);
+      }
+      this.notifyCloudChange(this.currentDate);
     }
 
     this.setDate(this.currentDate);
-    alert(`백업 복원 완료!\n총 ${count}개 날짜의 기록이 성공적으로 복원되었습니다.`);
+    if (typeof alert === "function") {
+      alert(`백업 복원 완료!\n총 ${count}개 날짜의 기록이 성공적으로 복원되었습니다.${this.supabaseClient ? "\n(슈파베이스 클라우드 및 다른 기기 실시간 동기화 진행 중)" : ""}`);
+    }
     this.closeBackupModal();
     return true;
   }
@@ -4121,17 +4139,45 @@ class PTApp {
     this.syncTimers?.clear();
   }
 
+  setupNetworkSyncListeners() {
+    if (this._networkSyncListenersBound) return;
+    this._networkSyncListenersBound = true;
+    window.addEventListener("online", () => {
+      if (this.supabaseClient) {
+        this.startLiveSync();
+        void this.pullFromCloud(this.currentDate);
+      }
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && this.supabaseClient) {
+        if (!this.liveChannel) this.startLiveSync();
+        else void this.pullFromCloud(this.currentDate);
+      }
+    });
+  }
+
   startLiveSync() {
     this.stopLiveSync();
     const client = this.supabaseClient;
     if (!client) return;
+    this.setupNetworkSyncListeners();
     this.liveClient = client;
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
         else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
         this.searchHistoryLoadedAt = 0;
-      }).subscribe();
+      });
+    this.liveChannel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.warn("Supabase 실시간 채널 연결 이상 감지, 재시도:", status);
+        setTimeout(() => {
+          if (this.supabaseClient === client && (!this.liveChannel || status === "CHANNEL_ERROR")) {
+            this.startLiveSync();
+          }
+        }, 3000);
+      }
+    });
     const refresh = async () => {
       if (this.liveRefreshBusy || this.supabaseClient !== client) return;
       this.liveRefreshBusy = true;
