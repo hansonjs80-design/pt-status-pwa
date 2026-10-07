@@ -58,6 +58,25 @@ test('history range paste hands all four arrows to the pasted current-date cells
   }
 });
 
+test('holding Left moves the current cell through every column to No. and Right repeats still work', () => {
+  const { app, context } = createApp([{}, {}, {}]);
+  context.document.querySelector = () => null;
+  const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+  app.activeCell = { rowIdx: 1, colKey: 'specialNote' };
+  app.elTableBody = { querySelector: () => ({}) };
+  app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
+  app.ensureCurrentCellVisible = () => {};
+  const target = { tagName: 'DIV', closest: () => null };
+  for (let i = 0; i < 12; i++) {
+    app.handleGlobalKeyDown({ key: 'ArrowLeft', code: 'ArrowLeft', repeat: i > 0, target, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: keys[Math.max(0, 8 - i)] });
+  }
+  for (let i = 0; i < 9; i++) {
+    app.handleGlobalKeyDown({ key: 'ArrowRight', code: 'ArrowRight', repeat: i > 0, target, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: keys[i + 1] });
+  }
+});
+
 test('row-header Ctrl/Cmd+Down keeps row selection on the last actual record, independent of copied columns', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) for (const lastCol of [9, 10]) {
     const rows = [{ no: '3', chartNo: '1', name: '첫 환자' }, {}, { name: '마지막 환자' }, {}, {}];

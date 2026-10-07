@@ -5900,10 +5900,6 @@ class PTApp {
       if (targetCell) {
         if (e.shiftKey) this.extendCellSelection(targetRow, targetColIdx);
         else {
-          if (e.key === "ArrowLeft" && !isCtrlOrMeta && !e.altKey) {
-            this.presetLeftKeyHeld = true;
-            this.guardNextCellInput = targetColKey !== "gender";
-          }
           this.selectCell(targetRow, targetColKey, targetCell, false);
         }
         this.ensureCurrentCellVisible(targetCell);
