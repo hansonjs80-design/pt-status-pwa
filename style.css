@@ -1,4 +1,9 @@
 /* Excel Theme Variables */
+/* Keep Vercel's injected feedback overlay out of the clinic web app. */
+vercel-live-feedback {
+  display: none !important;
+}
+
 :root {
   --excel-green: #107C41;
   --excel-green-dark: #0c5b30;
