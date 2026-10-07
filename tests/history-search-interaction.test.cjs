@@ -671,6 +671,27 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(closed,2);
 });
 
+test('one-year-plus missing name refreshes cached history before reporting not found', async () => {
+  const { app, context } = createApp([{}]);
+  app.dataStore = {};
+  app.supabaseClient = {};
+  app.getSearchPeriod = () => '1year_plus';
+  app.searchPromptTargetRowIdx = 0;
+  app.elSearchPromptInput = { value: '양명자' };
+  const loads = [];
+  app.loadSearchHistory = async force => {
+    loads.push(Boolean(force));
+    if (force) app.cloudSearchHistory = { '2025-09-09': [{ name: '양명자' }] };
+  };
+  app.closeSearchPromptModal = () => {};
+  let searched;
+  app.searchAllDates = query => { searched = query; };
+  context.alert = () => assert.fail('refreshed previous-year name must be found');
+  await app.submitSearchPrompt();
+  assert.deepEqual(loads, [false, true]);
+  assert.equal(searched, '양명자');
+});
+
 test('cloud-only exact names and chart search remain usable', async () => {
   const {app,context} = createApp([{}]);
   app.searchPromptTargetRowIdx = 0;

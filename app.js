@@ -2002,8 +2002,26 @@ class PTApp {
   }
 
   getSearchDataStore() {
-    // Cloud history is read-only search data; local edits always take precedence.
-    return { ...this.cloudSearchHistory, ...this.dataStore };
+    const history = { ...this.cloudSearchHistory };
+    for (const [date, local] of Object.entries(this.dataStore || {})) {
+      const remote = history[date];
+      if (!Array.isArray(remote) || date === this.currentDate ||
+          this.pendingSyncDates?.has(date) || this.activePushes?.has(date)) {
+        history[date] = local;
+        continue;
+      }
+      const base = this.syncBaselines?.get(date);
+      if (base?.length) {
+        // Search the latest server snapshot with any local edits layered on top.
+        history[date] = this.mergeCloudRows(base, local, remote);
+      } else if (local.some(row => ["name", "chartNo", "part", "prescription", "extra", "memo", "specialNote"]
+        .some(key => String(row?.[key] ?? "").trim()))) {
+        // Unsynced records without a baseline still belong to this device.
+        history[date] = local;
+      }
+      // Merely opening an empty date must not hide server patient records.
+    }
+    return history;
   }
 
   async loadSearchHistory(force = false) {
@@ -2037,7 +2055,7 @@ class PTApp {
       const pageSize = 200;
       const cutoffDate = (this.summaryPeriod === "year" || requestPeriod === "1year_plus") ? null : this.getSearchCutoffDate(requestPeriod);
       try {
-        for (let offset = 0; ; offset += pageSize) {
+        for (let offset = 0; ;) {
           let query = client.from("pt_daily_records")
             .select("date, rows_data")
             .order("date", { ascending: false });
@@ -2053,7 +2071,9 @@ class PTApp {
               this.cloudSearchHistory[entry.date] = entry.rows_data;
             }
           }
-          if (!data || data.length < pageSize) break;
+          // The server may cap responses below our requested page size.
+          if (!data?.length) break;
+          offset += data.length;
         }
         this.cloudSearchHistory = { ...this.cloudSearchHistory, ...history };
         this.searchHistoryLoadedAt = Date.now();

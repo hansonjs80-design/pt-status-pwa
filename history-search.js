@@ -630,6 +630,10 @@ class PTHistorySearch {
       const normalized = q.toLowerCase();
       const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
       let exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+      if (!exists && this.supabaseClient && this.getSearchPeriod() === "1year_plus") {
+        await this.loadSearchHistory(true);
+        exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
+      }
       if (!exists && this.supabaseClient && this.getSearchPeriod() !== "1year_plus") {
         await this.loadSearchHistory(true);
         exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");

@@ -472,6 +472,23 @@ test('search period setting defaults to 6months, persists in localStorage, and f
   assert.equal(app.crossDateResults[0].name, '일년전환자');
 });
 
+test('one-year-plus search renders September 9 server history despite empty local cached dates', () => {
+  const { app } = createCrossDateTestApp();
+  delete app.getSearchDataStore;
+  app.dataStore['2025-09-09'] = [{ name: '', writer: 'S' }];
+  app.dataStore['2024-09-09'] = [{ name: '다른가상환자' }];
+  app.syncBaselines = new Map([['2024-09-09', structuredClone(app.dataStore['2024-09-09'])]]);
+  app.cloudSearchHistory = {
+    '2025-09-09': [{ name: '양명자', chartNo: '12500', prescription: 'HP' }],
+    '2024-09-09': [{ name: '양명자', chartNo: '12500', prescription: 'HP' }],
+  };
+  app.setSearchPeriod('1year_plus');
+  app.searchAllDates('양명자', 0);
+  assert.deepEqual(Array.from(app.crossDateResults, row => row._sourceDate), ['2024-09-09', '2025-09-09']);
+  assert.equal(app.dataStore['2025-09-09'][0].name, '');
+  assert.equal(app.dataStore['2024-09-09'][0].name, '다른가상환자');
+});
+
 test('multi-year search keeps identical yearly records and colors older month/day labels', () => {
   const { app, dom } = createCrossDateTestApp();
   const patient = { name: '연도환자', chartNo: 'YEAR-1', part: '무릎', prescription: 'HP' };

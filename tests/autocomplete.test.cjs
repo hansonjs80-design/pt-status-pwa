@@ -80,19 +80,63 @@ test('cloud history loads every page without modifying local records and reuses 
       return {
         select(columns) { assert.equal(columns, 'date, rows_data'); return this; },
         order() { return this; },
-        async range(start, end) { calls.push([start, end]); return { data: start === 0 ? page : [{ date: '2024-01-01', rows_data: [{ chartNo: '9876' }] }] }; },
+        async range(start, end) { calls.push([start, end]); return { data: start === 0 ? page : start === 200 ? [{ date: '2024-01-01', rows_data: [{ chartNo: '9876' }] }] : [] }; },
       };
     },
   };
   app.refreshSearchSuggestions = () => {};
   const before = JSON.stringify(app.dataStore);
   await Promise.all([app.loadSearchHistory(), app.loadSearchHistory()]);
-  assert.deepEqual(calls, [[0, 199], [200, 399]]);
+  assert.deepEqual(calls, [[0, 199], [200, 399], [201, 400]]);
   assert.equal(Object.keys(app.cloudSearchHistory).length, 201);
   assert.equal(JSON.stringify(app.dataStore), before);
   assert.deepEqual(suggestions(app, 'chartNo', '987'), ['987', '9876']);
   await app.loadSearchHistory();
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
+});
+
+test('old server patients remain searchable through blank dates and synced local caches', () => {
+  const blank = [{ name: '', writer: 'S', date: '2025.09.09' }];
+  const stale = [{ name: '가상환자', chartNo: '100' }];
+  const app = createApp({ '2025-09-09': blank, '2025-09-10': stale });
+  app.cloudSearchHistory = {
+    '2025-09-09': [{ name: '양명자', chartNo: '12500' }],
+    '2025-09-10': [...stale, { name: '양명자', chartNo: '12500' }],
+  };
+  app.syncBaselines = new Map([['2025-09-10', structuredClone(stale)]]);
+  app.syncBaselines.set('2025-09-09', []);
+  app.pendingSyncDates = new Set();
+  const before = JSON.stringify([app.dataStore, app.cloudSearchHistory]);
+  assert.deepEqual(suggestions(app, 'name', '양명'), ['양명자']);
+  assert.equal(app.getSearchDataStore()['2025-09-09'][0].name, '양명자');
+  assert.equal(app.getSearchDataStore()['2025-09-10'][1].name, '양명자');
+  assert.equal(JSON.stringify([app.dataStore, app.cloudSearchHistory]), before);
+  app.pendingSyncDates.add('2025-09-09');
+  assert.equal(app.getSearchDataStore()['2025-09-09'], blank);
+  stale[0].memo = '로컬 수정';
+  assert.equal(app.getSearchDataStore()['2025-09-10'][0].memo, '로컬 수정');
+  assert.equal(app.getSearchDataStore()['2025-09-10'][1].name, '양명자');
+});
+
+test('one-year-plus history continues through server-capped pages into older years', async () => {
+  const app = createApp({});
+  app.getSearchPeriod = () => '1year_plus';
+  const entries = [
+    { date: '2026-09-09', rows_data: [{ name: '가상환자' }] },
+    { date: '2025-09-09', rows_data: [{ name: '양명자', chartNo: '12500' }] },
+    { date: '2024-09-09', rows_data: [{ name: '양명자', chartNo: '12500' }] },
+  ];
+  const offsets = [];
+  app.supabaseClient = { from() { return {
+    select() { return this; }, order() { return this; },
+    gte() { assert.fail('one-year-plus must not have a cutoff'); },
+    async range(start) { offsets.push(start); return { data: entries.slice(start, start + 1) }; },
+  }; } };
+  app.refreshSearchSuggestions = () => {};
+  assert.equal(await app.loadSearchHistory(), true);
+  assert.deepEqual(offsets, [0, 1, 2, 3]);
+  assert.equal(app.cloudSearchHistory['2025-09-09'][0].name, '양명자');
+  assert.equal(app.cloudSearchHistory['2024-09-09'][0].name, '양명자');
 });
 
 
