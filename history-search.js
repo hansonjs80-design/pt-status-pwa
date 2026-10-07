@@ -536,11 +536,72 @@ class PTHistorySearch {
         String(row?.[field] ?? "").trim().toLowerCase() === normalized));
   }
 
+  hasAnySearchMatches(query) {
+    if (!query || !query.trim()) return false;
+    const q = query.trim().toLowerCase();
+    const searchStore = this.getSearchDataStore();
+    const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
+      rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
+
+    for (const [, rows] of Object.entries(searchStore)) {
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        if (!row || (!row.name && !row.chartNo && !row.part && !row.prescription)) continue;
+        const matches = isNameQuery
+          ? String(row.name ?? "").trim().toLowerCase() === q
+          : colKeys.some(k => String(row[k] || "").toLowerCase().includes(q));
+        if (matches) return true;
+      }
+    }
+    return false;
+  }
+
+  showSearchNotFoundModal(message = "해당 챠트번호/성함이 내역에 없습니다.") {
+    const modal = document.getElementById?.("searchNotFoundModal");
+    const msgEl = document.getElementById?.("searchNotFoundMessage");
+    const btnClose = document.getElementById?.("btnCloseSearchNotFound");
+
+    if (msgEl) msgEl.textContent = message;
+
+    if (modal) {
+      modal.style.display = "flex";
+      btnClose?.focus();
+
+      const handleKey = (e) => {
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          cleanup();
+          this.closeSearchNotFoundModal();
+        }
+      };
+
+      const cleanup = () => {
+        document.removeEventListener?.("keydown", handleKey, true);
+        this._searchNotFoundCleanup = null;
+      };
+
+      this._searchNotFoundCleanup = cleanup;
+      document.addEventListener?.("keydown", handleKey, true);
+    } else if (typeof alert === "function") {
+      alert(message);
+    }
+  }
+
+  closeSearchNotFoundModal() {
+    this._searchNotFoundCleanup?.();
+    this._searchNotFoundCleanup = null;
+    const modal = document.getElementById?.("searchNotFoundModal");
+    if (modal) modal.style.display = "none";
+    if (this.elSearchInput) this.elSearchInput.focus();
+  }
+
   async searchPatientHistory(query, targetRowIdx) {
     if (this.supabaseClient) await this.loadSearchHistory();
     const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
-      alert("해당 이름을 검색할 수 없습니다.");
+      this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
       return false;
     }
     this.searchAllDates(query, targetRowIdx);
@@ -564,7 +625,7 @@ class PTHistorySearch {
       const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
       const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists) {
-        alert("해당 이름을 검색할 수 없습니다.");
+        this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
         this.closeSearchPromptModal();
         return;
       }

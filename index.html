@@ -225,6 +225,18 @@
     </div>
   </div>
 
+  <!-- Search Not Found Modal (검색 결과 없음 알림 모달) -->
+  <div class="modal-overlay" id="searchNotFoundModal" style="display:none; z-index: 10000;">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="searchNotFoundTitle" style="max-width: 360px; text-align: center; padding: 24px 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
+      <div style="font-size: 32px; margin-bottom: 12px;" aria-hidden="true">🔍</div>
+      <h3 id="searchNotFoundTitle" style="font-size: 16px; font-weight: 700; color: #1e3a29; margin-bottom: 8px;">검색 결과 없음</h3>
+      <p id="searchNotFoundMessage" style="font-size: 14px; color: #495057; line-height: 1.5; margin-bottom: 20px; word-break: keep-all;">해당 챠트번호/성함이 내역에 없습니다.</p>
+      <div style="display: flex; justify-content: center;">
+        <button type="button" class="btn-action primary" id="btnCloseSearchNotFound" style="min-width: 110px; padding: 8px 20px; font-size: 14px; font-weight: 600; border-radius: 6px; background: #107c41; color: white; border: none; cursor: pointer;">닫기 (Enter / Esc)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Preview & Print Modal (미리보기 모달) -->
   <div class="modal-overlay" id="previewModal" style="display:none;">
     <div class="modal-card print-preview-card">

@@ -661,7 +661,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   app.searchAllDates = (...args) => { searched = args; };
   context.alert = text => { message = text; };
   await app.submitSearchPrompt();
-  assert.equal(message,'해당 이름을 검색할 수 없습니다.');
+  assert.equal(message,'해당 챠트번호/성함이 내역에 없습니다.');
   assert.equal(app.elSearchPromptInput.value,'이연');
   assert.equal(searched,undefined);
   assert.equal(closed,1);
@@ -702,7 +702,7 @@ test('direct cell name search also rejects a nonexistent exact name without chan
   app.searchAllDates = () => {searched=true;};
   const before=JSON.stringify(rows);
   assert.equal(await app.searchPatientHistory('이연',0),false);
-  assert.equal(message,'해당 이름을 검색할 수 없습니다.');
+  assert.equal(message,'해당 챠트번호/성함이 내역에 없습니다.');
   assert.equal(searched,false);
   assert.equal(JSON.stringify(rows),before);
 });
@@ -719,10 +719,59 @@ test('missing typed names and chart numbers close the search popup after the ale
     app.searchAllDates=()=>assert.fail('missing identity must not open results');
     context.alert=message=>events.push(message);
     await app.submitSearchPrompt();
-    assert.deepEqual(events,['해당 이름을 검색할 수 없습니다.','closed']);
+    assert.deepEqual(events,['해당 챠트번호/성함이 내역에 없습니다.','closed']);
     assert.equal(JSON.stringify(app.dataStore),before);
     assert.equal(app.searchPromptSubmitting,false);
   }
+});
+
+test('searchNotFoundModal opens with message and closes on Enter or Escape key', () => {
+  const {app,context} = createApp([]);
+  const modal = { style: { display: 'none' } };
+  const msgEl = { textContent: '' };
+  let focusedBtn = false;
+  const btnClose = { focus() { focusedBtn = true; } };
+  let searchInputFocused = false;
+  app.elSearchInput = { focus() { searchInputFocused = true; } };
+
+  const listeners = [];
+  context.document.addEventListener = (type, fn) => { listeners.push({ type, fn }); };
+  context.document.removeEventListener = (type, fn) => {
+    const idx = listeners.findIndex(l => l.type === type && l.fn === fn);
+    if (idx >= 0) listeners.splice(idx, 1);
+  };
+  context.document.dispatchEvent = (event) => {
+    [...listeners].filter(l => l.type === 'keydown').forEach(l => l.fn(event));
+  };
+
+  context.document.getElementById = (id) => {
+    if (id === 'searchNotFoundModal') return modal;
+    if (id === 'searchNotFoundMessage') return msgEl;
+    if (id === 'btnCloseSearchNotFound') return btnClose;
+    return null;
+  };
+
+  // 1. Enter key closes modal
+  app.showSearchNotFoundModal('해당 챠트번호/성함이 내역에 없습니다.');
+  assert.equal(modal.style.display, 'flex');
+  assert.equal(msgEl.textContent, '해당 챠트번호/성함이 내역에 없습니다.');
+  assert.equal(focusedBtn, true);
+
+  const enterEvent = { key: 'Enter', preventDefault() {}, stopPropagation() {} };
+  context.document.dispatchEvent(enterEvent);
+  assert.equal(modal.style.display, 'none');
+  assert.equal(searchInputFocused, true);
+
+  // 2. Escape key closes modal
+  modal.style.display = 'none';
+  searchInputFocused = false;
+  app.showSearchNotFoundModal();
+  assert.equal(modal.style.display, 'flex');
+
+  const escEvent = { key: 'Escape', preventDefault() {}, stopPropagation() {} };
+  context.document.dispatchEvent(escEvent);
+  assert.equal(modal.style.display, 'none');
+  assert.equal(searchInputFocused, true);
 });
 
 

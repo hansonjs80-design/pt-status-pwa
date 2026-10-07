@@ -464,6 +464,11 @@ class PTApp {
     this.elBtnCloseSearchPrompt = document.getElementById("btnCloseSearchPrompt");
     this.elBtnSearchPromptCancel = document.getElementById("btnSearchPromptCancel");
     this.elBtnSearchPromptSubmit = document.getElementById("btnSearchPromptSubmit");
+
+    // Search Not Found Modal
+    this.elSearchNotFoundModal = document.getElementById("searchNotFoundModal");
+    this.elSearchNotFoundMessage = document.getElementById("searchNotFoundMessage");
+    this.elBtnCloseSearchNotFound = document.getElementById("btnCloseSearchNotFound");
   }
 
   bindEvents() {
@@ -714,10 +719,28 @@ class PTApp {
 
     // Search
     this.elSearchInput.addEventListener("input", () => this.handleSearch());
+    this.elSearchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const q = this.elSearchInput.value.trim();
+        if (q && typeof this.hasAnySearchMatches === "function" && !this.hasAnySearchMatches(q)) {
+          this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
+        }
+      }
+    });
     this.elBtnClearSearch.addEventListener("click", () => {
       this.elSearchInput.value = "";
       this.handleSearch();
     });
+
+    // Search Not Found Modal
+    if (this.elBtnCloseSearchNotFound) {
+      this.elBtnCloseSearchNotFound.addEventListener("click", () => this.closeSearchNotFoundModal());
+    }
+    if (this.elSearchNotFoundModal) {
+      this.elSearchNotFoundModal.addEventListener("click", (e) => {
+        if (e.target === this.elSearchNotFoundModal) this.closeSearchNotFoundModal();
+      });
+    }
 
     // Search Prompt Modal
     if (this.elBtnCloseSearchPrompt) {
