@@ -111,3 +111,38 @@ test('explicit visit refresh records seconds and supports undo without changing 
   assert.equal(rows[1].visitTime,'08시 00분 00초');
   app.restoreEditHistory();assert.equal(app.getCurrentRows()[0].visitTime,'09시 01분 02초');
 });
+
+test('handleHistoryShortcut triggers undo and redo during Korean IME with KeyZ and KeyY', () => {
+  const { app } = createApp();
+  const row = app.getCurrentRows()[0];
+  row.name = '원래이름';
+  app.saveDataStore();
+  row.name = '새이름';
+  app.saveDataStore();
+
+  let prevented = false;
+  // Mac Korean IME: Cmd + ㅋ (code: KeyZ, keyCode: 229)
+  const koreanUndoEvent = {
+    metaKey: true, ctrlKey: false, altKey: false, shiftKey: false,
+    key: 'ㅋ', code: 'KeyZ', keyCode: 229,
+    target: { matches: () => false },
+    preventDefault() { prevented = true; },
+    stopPropagation() {}
+  };
+  const handled = app.handleHistoryShortcut(koreanUndoEvent);
+  assert.ok(handled);
+  assert.ok(prevented);
+  assert.equal(app.getCurrentRows()[0].name, '원래이름');
+
+  // Redo with Shift + Cmd + ㅋ (code: KeyZ)
+  const koreanRedoEvent = {
+    metaKey: true, ctrlKey: false, altKey: false, shiftKey: true,
+    key: 'ㅋ', code: 'KeyZ', keyCode: 229,
+    target: { matches: () => false },
+    preventDefault() {},
+    stopPropagation() {}
+  };
+  assert.ok(app.handleHistoryShortcut(koreanRedoEvent));
+  assert.equal(app.getCurrentRows()[0].name, '새이름');
+});
+

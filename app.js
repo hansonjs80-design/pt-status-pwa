@@ -242,14 +242,18 @@ class PTApp {
   }
 
   getEditHistory(date = this.currentDate) {
+    this.editHistory ||= new Map();
     if (!this.editHistory.has(date)) {
-      this.editHistory.set(date, { undo: [], redo: [], current: JSON.stringify(this.dataStore[date] || []) });
+      this.editHistory.set(date, { undo: [], redo: [], current: JSON.stringify(this.dataStore?.[date] || []) });
     }
     return this.editHistory.get(date);
   }
 
   captureHistory() {
+    if (!this.dataStore || !this.currentDate) return;
+    this.editHistory ||= new Map();
     const history = this.getEditHistory();
+    if (!history) return;
     const next = JSON.stringify(this.dataStore[this.currentDate] || []);
     if (next === history.current) return;
     history.undo.push(history.current);
@@ -340,15 +344,16 @@ class PTApp {
   }
 
   handleHistoryShortcut(e) {
-    if (e.isComposing || e.keyCode === 229 || !(e.ctrlKey || e.metaKey) || e.altKey) return false;
-    const key = e.key.toLowerCase();
-    if (key !== "z" && key !== "y") return false;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return false;
+    const isZ = e.key?.toLowerCase() === "z" || e.code === "KeyZ";
+    const isY = e.key?.toLowerCase() === "y" || e.code === "KeyY";
+    if (!isZ && !isY) return false;
     const target = e.target;
     if (target?.matches("input, textarea, [contenteditable='true']") &&
         !target.matches(".cell-input-element") && target !== this.elFormulaInput) return false;
     e.preventDefault();
     e.stopPropagation();
-    this.restoreEditHistory(key === "y" || e.shiftKey);
+    this.restoreEditHistory(isY || e.shiftKey);
     return true;
   }
 
@@ -3601,6 +3606,7 @@ class PTApp {
     const table = document.getElementById("excelTable");
     if (!table) return;
     const headers = Array.from(document.querySelectorAll(".col-headers-row th"));
+    const bHeaders = Array.from(document.querySelectorAll(".business-headers-row th"));
     const saved = this.getSavedColumnWidths();
     // A colgroup controls the actual table tracks, including the trailing blank
     // column. Header widths alone can be redistributed by the table algorithm.
@@ -3612,7 +3618,8 @@ class PTApp {
     }
     const cols = [];
     let width = 0;
-    for (const th of headers) {
+    for (let i = 0; i < headers.length; i++) {
+      const th = headers[i];
       const key = th.dataset.col;
       const columnWidth = key
         ? (Number.isFinite(saved[key]) && saved[key] > 0 ? saved[key] : parseFloat(th.style.width))
@@ -3621,7 +3628,15 @@ class PTApp {
       th.style.width = `${columnWidth}px`;
       th.style.minWidth = `${columnWidth}px`;
       th.style.maxWidth = `${columnWidth}px`;
-      if (window.getComputedStyle(th).display === "none") continue;
+      if (bHeaders[i]) {
+        bHeaders[i].style.width = `${columnWidth}px`;
+        bHeaders[i].style.minWidth = `${columnWidth}px`;
+        bHeaders[i].style.maxWidth = `${columnWidth}px`;
+      }
+      if (window.getComputedStyle(th).display === "none") {
+        if (bHeaders[i]) bHeaders[i].style.display = "none";
+        continue;
+      }
       const col = document.createElement("col");
       col.dataset.col = key || "rowHeader";
       col.style.width = `${columnWidth}px`;
@@ -4874,6 +4889,10 @@ class PTApp {
   }
 
   async pasteSelection(suppliedText) {
+    if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) {
+      document.activeElement?.blur?.();
+    }
+    if (typeof this.captureHistory === "function") this.captureHistory();
     let text = suppliedText ?? "";
     if (suppliedText === undefined && navigator.clipboard && navigator.clipboard.readText) {
       try {
@@ -4979,7 +4998,7 @@ class PTApp {
       }
     }
     const pastedCell = this.elTableBody?.querySelector(`[data-row="${startRow}"][data-col="${colKeys[startCol]}"]`);
-    pastedCell?.scrollIntoView({ block: "center", inline: "nearest" });
+    pastedCell?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   clearSelection() {

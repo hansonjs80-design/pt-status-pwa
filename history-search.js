@@ -75,7 +75,8 @@ class PTHistorySearch {
     const target = this.historyApplyTarget;
     if (!target || target.date !== this.currentDate) return;
     // Finish a live editor before assigning; a later blur cannot restore old text.
-    if (document.activeElement?.matches(".cell-input-element") || document.activeElement === this.elFormulaInput) document.activeElement.blur();
+    if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) document.activeElement?.blur?.();
+    if (typeof this.captureHistory === "function") this.captureHistory();
     const rows = this.getCurrentRows();
     const referenceIndex = rows.indexOf(target.row);
     if (referenceIndex < 0 && target.rows === rows) return;
@@ -105,6 +106,7 @@ class PTHistorySearch {
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
     this.saveDataStore();
+    if (typeof this.captureHistory === "function") this.captureHistory();
     this.renderTable();
     if (searchQuery) {
       this.searchAllDates(searchQuery, rowIdx, { scrollToAppliedRow: focusAppliedRow });
