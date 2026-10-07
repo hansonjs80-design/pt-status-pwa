@@ -889,7 +889,10 @@ class PTHistorySearch {
     if (focusCurrentTarget && originIdx >= 0) this.historyApplyTarget.colKey = "no";
     // Keep keyboard selection in the last history row, and show the daily
     // destination independently through its preview tint and border.
-    this.renderCrossDateSection({ preserveCurrentSelection: keepCurrentSelection });
+    this.renderCrossDateSection({
+      preserveCurrentSelection: keepCurrentSelection,
+      selectLatestHistory: !preserveCurrentSelection && !this._isPasting
+    });
     this.updateHistoryDestinationHighlight();
 
     // Searches started from a current row keep that row visible; otherwise show latest entries.
@@ -936,7 +939,7 @@ class PTHistorySearch {
     currentHeader?.querySelectorAll("th").forEach(cell => { cell.style.top = `${currentTop}px`; });
   }
 
-  renderCrossDateSection({ preserveCurrentSelection = false } = {}) {
+  renderCrossDateSection({ preserveCurrentSelection = false, selectLatestHistory = false } = {}) {
     const existingWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
     const preservedHistoryScrollTop = this._preservedHistoryScrollTop ?? existingWrap?.scrollTop;
     this.restoreCurrentTableHeader();
@@ -1214,7 +1217,8 @@ class PTHistorySearch {
       }
     };
 
-    if (renderRows.length > 0 && !preserveCurrentSelection && !this._isPasting && (preservedHistoryScrollTop === undefined || preservedHistoryScrollTop === null)) {
+    if (renderRows.length > 0 && !preserveCurrentSelection && !this._isPasting &&
+        (selectLatestHistory || preservedHistoryScrollTop === undefined || preservedHistoryScrollTop === null)) {
       const lastIdx = renderRows.length - 1;
       this.selectCrossDateRow(lastIdx);
       this.isSelectingCrossDate = false;

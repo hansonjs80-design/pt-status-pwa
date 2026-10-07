@@ -545,6 +545,29 @@ test('history year labels follow each source year and update when the selected y
   }
 });
 
+test('new history searches select the latest row despite a scroll position left by an earlier paste', () => {
+  const { app, dom } = createCrossDateTestApp();
+  app.dataStore['2026-09-09'] = [{ name: '재검색환자', part: '목' }];
+  app.dataStore['2026-10-03'] = [{ name: '재검색환자', part: '허리' }];
+  app._preservedHistoryScrollTop = 220;
+  app.searchAllDates('재검색환자', 0, { focusCurrentTarget: true });
+  assert.equal(app.isCrossDateRowSelected, true);
+  assert.equal(app.crossDateSelection.minRow, app.crossDateResults.length - 1);
+  assert.equal(app.crossDateSelection.minCol, 0);
+  assert.equal(app.crossDateSelection.maxCol, 9);
+  const wrap = dom.getElementById('crossDateScrollWrap');
+  assert.equal(wrap.scrollTop, wrap.scrollHeight);
+
+  app.clearCrossDateSelection();
+  app.activeCell = { rowIdx: 3, colKey: 'name' };
+  app.searchAllDates('재검색환자', undefined, { preserveCurrentSelection: true });
+  assert.equal(app.crossDateSelection, null);
+  assert.equal(app.activeCell.rowIdx, 3);
+  app.searchAllDates('재검색환자', 3);
+  assert.equal(app.isCrossDateRowSelected, true);
+  assert.equal(app.crossDateSelection.minRow, app.crossDateResults.length - 1);
+});
+
 test('pasting into current table while history is visible preserves scroll positions', async () => {
   const { app, dom } = createCrossDateTestApp();
   app.dataStore['2026-09-01'] = [{ name: '이전환자', part: '무릎' }];
