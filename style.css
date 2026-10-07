@@ -2157,15 +2157,15 @@ body {
   padding: 4px;
   background: #000000;
   color: #f4f4f5;
-  border-right: 1px solid #ff8000;
-  border-bottom: 1px solid #ff8000;
-  border-top: 1px solid #ff8000;
+  border-right: 1px solid var(--excel-cell-grid-line);
+  border-bottom: 1px solid var(--excel-cell-grid-line);
+  border-top: 1px solid var(--excel-cell-grid-line);
   text-align: center;
   white-space: nowrap;
 }
 .cross-date-headers-row .col-resizer { cursor: col-resize; }
 
-.cross-date-headers-row th:first-child { left: var(--history-scroll-left, 0px); z-index: 7; border-left: 1px solid #ff8000; }
+.cross-date-headers-row th:first-child { left: var(--history-scroll-left, 0px); z-index: 7; border-left: 1px solid var(--excel-cell-grid-line); }
 .excel-table .cross-date-row .cross-date-num { left: var(--history-scroll-left, 0px); }
 
 .autocomplete-edit-button {
@@ -2192,7 +2192,7 @@ body {
   background: #f4f4f5;
   box-shadow: -1px 0 0 #d4d4d8;
 }
-.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #000000; color: #f4f4f5; border-right: 1px solid #ff8000; border-bottom: 1px solid #ff8000; border-top: 1px solid #ff8000; }
+.cross-date-headers-row .history-apply-header { top: 0; z-index: 8; background: #000000; color: #f4f4f5; border-right: 1px solid var(--excel-cell-grid-line); border-bottom: 1px solid var(--excel-cell-grid-line); border-top: 1px solid var(--excel-cell-grid-line); }
 
 .quick-inputs .date-label.is-saturday { color: #1e40af; }
 .quick-inputs .date-label.is-sunday { color: #b91c1c; }
