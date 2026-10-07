@@ -698,7 +698,9 @@ body {
 /* Excel Table Styling */
 .excel-table {
   width: 100%;
-  border-collapse: collapse;
+  /* Sticky cells must own their borders so they scroll with the header. */
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   font-size: 12px;
 }
@@ -881,7 +883,8 @@ body {
 }
 .cross-date-inner-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   box-sizing: border-box;
 }
