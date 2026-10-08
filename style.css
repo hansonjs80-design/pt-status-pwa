@@ -699,7 +699,7 @@ body {
   outline: none;
 }
 
-.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 272px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
+.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 344px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
 #searchPromptModal { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .search-prompt-card .modal-header { cursor: grab; user-select: none; touch-action: none; }
 .search-prompt-card .modal-header.is-dragging { cursor: grabbing; }
@@ -708,7 +708,7 @@ body {
 .search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #fff; font-size: 16px; }
 .search-prompt-card .modal-body { padding: 14px; }
 .search-prompt-label { display: block; margin-bottom: 6px; color: #64748b; font-size: 12px; }
-.search-prompt-field { position: relative; display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+.search-prompt-field { position: relative; display: flex; align-items: center; gap: 8px; }
 #searchPromptInput { flex: 1; min-width: 0; width: 100%; height: 40px; box-sizing: border-box; padding: 9px 10px; font: inherit; font-size: 14px; border: 1px solid #cbd5e1; border-radius: 6px; outline: none; }
 #searchPromptInput:focus { border-color: #2563eb; box-shadow: 0 0 0 2px #2563eb1a; }
 .cell-autocomplete-menu.search-prompt-autocomplete { padding: 4px; background: #f8fbff; border-color: #93b4f5; border-radius: 8px; box-shadow: 0 6px 18px #1e40af26; }
@@ -718,10 +718,11 @@ body {
 .search-prompt-autocomplete .autocomplete-item.is-selected { background: #dbeafe; color: #1d4ed8; box-shadow: inset 0 0 0 1.5px #2563eb; }
 .search-prompt-option-hint { color: #607da9; font-size: 10px; white-space: nowrap; }
 .search-prompt-autocomplete .autocomplete-item.is-selected .search-prompt-option-hint { color: #1d4ed8; background: #bfdbfe; padding: 2px 4px; border-radius: 3px; }
-.search-prompt-actions { display: flex; justify-content: flex-end; gap: 6px; }
-.search-prompt-actions button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #dce2e8; border-radius: 6px; background: #fff; color: #475569; font: inherit; font-size: 12px; cursor: pointer; }
-.search-prompt-actions button span { font-size: 10px; opacity: .8; }
-#btnSearchPromptSubmit { flex-shrink: 0; height: 40px; padding: 0 12px; border: 1px solid #2563eb; border-radius: 6px; background: #2563eb; color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.search-prompt-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.search-prompt-actions button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 50px; height: 40px; padding: 5px 10px; border: 1px solid #dce2e8; border-radius: 6px; background: #f8fafc; color: #475569; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background .15s, border-color .15s; }
+.search-prompt-actions button span { font-size: 9px; font-weight: 500; line-height: 1; opacity: .8; }
+#btnSearchPromptCancel:hover { background: #eef2f6; border-color: #b8c5d5; }
+#btnSearchPromptSubmit { background: #2563eb; border-color: #2563eb; color: #fff; }
 #btnSearchPromptSubmit:hover { background: #1d4ed8; border-color: #1d4ed8; }
 #btnSearchPromptSubmit:focus-visible, .search-prompt-actions button:focus-visible, .search-prompt-card .btn-close-modal:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
 
