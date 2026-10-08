@@ -28,14 +28,22 @@
         <span class="save-status" id="saveStatus">저장 완료됨</span>
       </div>
       <div class="title-right">
-        <button type="button" class="btn-action cloud-btn" id="btnSupabase" title="Supabase 클라우드 동기화 설정">
-          <span class="btn-icon">☁️</span> <span id="supabaseStatusLabel">슈파베이스 연동</span>
+        <button type="button" class="btn-action cloud-btn" id="btnSupabase" title="클라우드 미연결 · 연결 설정" aria-label="클라우드 미연결 · 연결 설정">
+          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 18a5 5 0 0 1-.7-9.95 6 6 0 0 1 11.5-.8A5.5 5.5 0 0 1 18.5 18"/>
+            <path class="cloud-connected-icon" d="m9 17 3 3 5-6"/>
+            <path class="cloud-disconnected-icon" d="m10 15 5 5m0-5-5 5"/>
+          </svg>
         </button>
-        <button type="button" class="btn-action preview-btn" id="btnPreview" title="인쇄 및 보고서 미리보기">
-          <span class="btn-icon">👁️</span> 미리보기 / 인쇄
+        <button type="button" class="btn-action preview-btn" id="btnPreview" title="미리보기 / 인쇄" aria-label="미리보기 / 인쇄">
+          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9V3h12v6M6 17H3V9h18v8h-3"/><path d="M6 14h12v7H6z"/><path d="M17 11h1"/>
+          </svg>
         </button>
-        <button type="button" class="btn-action export-btn" id="btnExportCsv" title="엑셀 CSV 파일 다운로드">
-          <span class="btn-icon">📥</span> 엑셀 저장
+        <button type="button" class="btn-action export-btn" id="btnExportCsv" title="엑셀 저장" aria-label="엑셀 저장">
+          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 3h13l4 4v14H3V3z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>
+          </svg>
         </button>
       </div>
     </header>

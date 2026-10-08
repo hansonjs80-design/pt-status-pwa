@@ -450,7 +450,6 @@ class PTApp {
 
     // Supabase Modal & Cloud Elements
     this.elBtnSupabase = document.getElementById("btnSupabase");
-    this.elSupabaseStatusLabel = document.getElementById("supabaseStatusLabel");
     this.elSupabaseModal = document.getElementById("supabaseModal");
     this.elSupabaseModalStatus = document.getElementById("supabaseModalStatus");
     this.elBtnCloseSupabase = document.getElementById("btnCloseSupabase");
@@ -4354,11 +4353,11 @@ class PTApp {
   }
 
   updateSupabaseUI(connected) {
-    if (this.elSupabaseStatusLabel) {
-      this.elSupabaseStatusLabel.textContent = connected ? "☁️ 클라우드 연결됨" : "슈파베이스 연동";
-    }
     if (this.elBtnSupabase) {
       this.elBtnSupabase.classList.toggle("connected", connected);
+      const label = connected ? "클라우드 연결됨 · 연결 설정" : "클라우드 미연결 · 연결 설정";
+      this.elBtnSupabase.title = label;
+      this.elBtnSupabase.setAttribute("aria-label", label);
     }
     if (this.elSupabaseModalStatus) {
       this.elSupabaseModalStatus.textContent = connected ? "연결됨 (실시간 동기화 중)" : "미연결";
