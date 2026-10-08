@@ -2152,6 +2152,7 @@ body {
 /* Grid selection uses cell highlighting, never the browser's text selection. */
 .excel-table tbody { -webkit-user-select: none; user-select: none; }
 .excel-table .cell-input-element { -webkit-user-select: text; user-select: text; }
+.excel-table .cell-input-element::selection { background-color: #a6a6a6; }
 
 .quick-inputs .date-navigator { background: #e8eeeb; color: #171717; flex-shrink: 0; margin-right: 8px; padding: 2px 5px; gap: 2px; }
 .quick-inputs .date-label { color: #171717; font-size: 18px; font-weight: 700; letter-spacing: -0.2px; line-height: 24px; }
