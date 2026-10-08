@@ -2456,6 +2456,7 @@ body {
 
 /* Keep the native IME editor in the same box before and during composition. */
 .excel-table .cell-input-element { position:absolute; inset:0; box-sizing:border-box; padding:0 6px; }
+.excel-table .cell-prescription .cell-input-element { padding-left:16px; }
 
 /* Table horizontal grid line continuation to fill available sheet width */
 .excel-table {
