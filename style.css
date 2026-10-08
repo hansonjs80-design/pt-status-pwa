@@ -2225,7 +2225,7 @@ body {
 .excel-table .col-del .col-resizer { right: 2px; width: 4px; }
 .excel-table .cell-spacer { border-right: 1px solid var(--excel-grid-line); border-bottom: 1px solid var(--excel-grid-line); }
 
-.font-color-button .format-icon { position: relative; display: inline-block; width: 19.55px; text-align: center; transform: scaleY(.9); }
+.font-color-button .format-icon { position: relative; display: inline-block; width: 19.55px; text-align: center; transform: translateY(-2px) scaleY(.9); }
 .font-color-button .format-icon::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; border-bottom: inherit; transform: scaleY(1.15); pointer-events: none; }
 .font-color-button .font-color-letter { display: inline-block; transform: translateY(3.28px); }
 .font-size-controls { display: inline-flex; align-items: center; gap: 4px; }
