@@ -165,6 +165,37 @@ class PTHistorySearch {
     });
   }
 
+  captureHistorySearchSelection() {
+    if (!this.crossDateSelection || this._isPasting) return null;
+    const selection = { ...this.crossDateSelection };
+    const identify = index => {
+      const row = this.crossDateResults?.[index];
+      return row && JSON.stringify([row._sourceDate, row._sourceRowIdx]);
+    };
+    return { selection, rowSelected: this.isCrossDateRowSelected,
+      wasLastRow: selection.endRow === this.crossDateResults?.length - 1,
+      start: identify(selection.startRow), end: identify(selection.endRow) };
+  }
+
+  restoreHistorySearchSelection(snapshot) {
+    if (!snapshot) return;
+    const find = identity => this.crossDateResults?.findIndex(row =>
+      JSON.stringify([row._sourceDate, row._sourceRowIdx]) === identity) ?? -1;
+    const startRow = find(snapshot.start), endRow = find(snapshot.end);
+    if (startRow < 0 || endRow < 0) {
+      if (snapshot.rowSelected && snapshot.wasLastRow && this.crossDateResults?.length) {
+        this.selectCrossDateRow(this.crossDateResults.length - 1);
+      }
+      return;
+    }
+    if (snapshot.rowSelected) this.selectCrossDateRow(endRow);
+    else {
+      this.selectCrossDateCell(startRow, snapshot.selection.startCol);
+      this.selectCrossDateCell(endRow, snapshot.selection.endCol, true);
+      this.isSelectingCrossDate = false;
+    }
+  }
+
   selectCrossDateCell(row, col, extend = false) {
     if (this.genderPickerState) this.closeGenderDropdown();
     const previous = this.crossDateSelection;
@@ -862,6 +893,9 @@ class PTHistorySearch {
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
     clearTimeout(this.historyCurrentScrollTimer);
+    const historySelection = preserveCurrentSelection
+      ? this.captureHistorySearchSelection() || this.pendingHistorySearchSelection : null;
+    this.pendingHistorySearchSelection = null;
     if (!this.elSearchInput?.value?.trim() && this.historyOriginSelection === undefined) this.captureHistoryOriginSelection();
     // Refreshing search results must not steal focus from a current-date edit.
     const keepCurrentSelection = preserveCurrentSelection && !this.crossDateSelection &&
@@ -963,6 +997,7 @@ class PTHistorySearch {
       preserveCurrentSelection: keepCurrentSelection,
       selectLatestHistory: !preserveCurrentSelection && !this._isPasting
     });
+    if (historySelection) this.restoreHistorySearchSelection(historySelection);
     this.updateHistoryDestinationHighlight();
 
     // Searches started from a current row keep that row visible; otherwise show latest entries.

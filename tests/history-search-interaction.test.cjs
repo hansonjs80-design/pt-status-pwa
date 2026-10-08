@@ -1363,3 +1363,43 @@ test('chart searches match the complete chart number and ignore prefixes, suffix
   app.searchAllDates('t411',0);
   assert.deepEqual(Array.from(app.allCrossDateMatchedRows,row=>row.chartNo),['T411']);
 });
+
+
+test('asynchronous history refresh restores the selected row header after rebuilding cached-scroll results', () => {
+  const {app}=createApp([{}]);
+  const older={name:'검색 환자',part:'허리',_sourceDate:'2026-09-01',_sourceRowIdx:0};
+  const latest={name:'검색 환자',part:'손목',_sourceDate:'2026-10-01',_sourceRowIdx:0};
+  app.crossDateResults=[older,latest];app.isCrossDateRowSelected=true;
+  app.crossDateSelection={startRow:1,endRow:1,minRow:1,maxRow:1,startCol:0,endCol:9,minCol:0,maxCol:9};
+  app.activeCell=null;app.dataStore={'2026-09-01':[older],'2026-10-01':[latest]};
+  app.elSearchInput.value='검색 환자';app.elBtnClearSearch={style:{}};
+  app.elSheetContainer.classList={add(){}};
+  app.elTableBody={querySelectorAll:()=>[],querySelector:()=>null};
+  app.loadSearchHistory=app.syncMainColumnWidths=app.updateHistoryDestinationHighlight=()=>{};
+  app.clearCrossDateRows=()=>{app.crossDateSelection=null;app.isCrossDateRowSelected=false;};
+  app.renderCrossDateSection=()=>{app.crossDateResults=app.allCrossDateMatchedRows;};
+  let selected;
+  app.selectCrossDateRow=index=>{selected=index;app.isCrossDateRowSelected=true;app.crossDateSelection={startRow:index,endRow:index,minRow:index,maxRow:index,startCol:0,endCol:9,minCol:0,maxCol:9};};
+  app.searchAllDates('검색 환자',undefined,{preserveCurrentSelection:true});
+  assert.equal(selected,1);assert.equal(app.isCrossDateRowSelected,true);
+  assert.equal(app.crossDateSelection.minCol,0);assert.equal(app.crossDateSelection.maxCol,9);
+  // Main table repaint clears its nodes first but forwards the same history snapshot.
+  app.pendingHistorySearchSelection=app.captureHistorySearchSelection();
+  app.clearCrossDateRows();selected=null;
+  app.searchAllDates('검색 환자',undefined,{preserveCurrentSelection:true});
+  assert.equal(selected,1);assert.equal(app.pendingHistorySearchSelection,null);
+});
+
+test('history selection restores by source identity after indices shift, while current cells are left alone', () => {
+  const {app}=createApp();
+  const a={_sourceDate:'2026-09-01',_sourceRowIdx:0},b={_sourceDate:'2026-10-01',_sourceRowIdx:2};
+  app.crossDateResults=[a,b];app.isCrossDateRowSelected=true;
+  app.crossDateSelection={startRow:1,endRow:1,startCol:0,endCol:9};
+  const snapshot=app.captureHistorySearchSelection();
+  app.crossDateResults=[{_sourceDate:'2025-01-01',_sourceRowIdx:0},a,b];
+  let selected;app.selectCrossDateRow=index=>{selected=index;};
+  app.restoreHistorySearchSelection(snapshot);assert.equal(selected,2);
+  app.crossDateResults=[a];app.restoreHistorySearchSelection(snapshot);assert.equal(selected,0);
+  app.crossDateSelection=null;app.activeCell={rowIdx:0,colKey:'name'};
+  assert.equal(app.captureHistorySearchSelection(),null);
+});

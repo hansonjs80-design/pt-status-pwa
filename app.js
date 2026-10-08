@@ -1138,6 +1138,7 @@ class PTApp {
 
   // Render main Excel table
   renderTable() {
+    this.pendingHistorySearchSelection = this.captureHistorySearchSelection();
     const existingHistoryWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
     if (existingHistoryWrap) {
       this._preservedHistoryScrollTop = existingHistoryWrap.scrollTop;
