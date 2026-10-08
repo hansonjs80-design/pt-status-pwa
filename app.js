@@ -1027,12 +1027,14 @@ class PTApp {
     const render = () => {
       popup.replaceChildren();
       const header = document.createElement("div"); header.className = "calendar-heading";
-      const nav = (text, label, delta) => {
-        const button = document.createElement("button"); button.textContent = text; button.setAttribute("aria-label", label);
+      const nav = (label, delta) => {
+        const button = document.createElement("button"); button.type = "button"; button.setAttribute("aria-label", label);
+        const path = delta < 0 ? "M16 5 8 12 16 19" : "M8 5 16 12 8 19";
+        button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}" /></svg>`;
         button.onclick = () => { const next = new Date(year, month - 1 + delta, 1); year = next.getFullYear(); month = next.getMonth() + 1; render(); popup.querySelector(`[aria-label="${label}"]`).focus(); };
         return button;
       };
-      header.append(nav("‹", "이전 달", -1));
+      header.append(nav("이전 달", -1));
       const yearSelect = document.createElement("select"); yearSelect.className = "calendar-year-select"; yearSelect.setAttribute("aria-label", "연도");
       for (let y = Math.max(2100, year); y >= Math.min(1900, year); y--) {
         yearSelect.add(new Option(`${y}년`, y, false, y === year));
@@ -1041,7 +1043,7 @@ class PTApp {
       const monthSelect = document.createElement("select"); monthSelect.setAttribute("aria-label", "월");
       for (let m = 1; m <= 12; m++) { const option = new Option(`${m}월`, m, false, m === month); monthSelect.add(option); }
       monthSelect.onchange = () => { month = Number(monthSelect.value); render(); };
-      header.append(yearSelect, monthSelect, nav("›", "다음 달", 1)); popup.append(header);
+      header.append(yearSelect, monthSelect, nav("다음 달", 1)); popup.append(header);
       const grid = document.createElement("div"); grid.className = "calendar-grid";
       ["일", "월", "화", "수", "목", "금", "토"].forEach(label => { const day = document.createElement("span"); day.className = "calendar-weekday"; day.textContent = label; grid.append(day); });
       const offset = new Date(year, month - 1, 1).getDay();
