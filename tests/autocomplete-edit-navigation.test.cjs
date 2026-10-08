@@ -18,7 +18,7 @@ function createApp(dataStore = {}, presets = {}) {
   return { app, storage, context, queued };
 }
 
-test('Enter activates editing only for a populated selected special-note cell', () => {
+test('Enter activates editing for populated and empty selected special-note cells', () => {
   const {app}=createApp({'2026-10-04':[{specialNote:'기존 메모',memo:'다른 메모'}]});
   app.activeCell={rowIdx:0,colKey:'specialNote'};
   const cell={};let edits=0,prevented=0,stopped=0;
@@ -29,9 +29,9 @@ test('Enter activates editing only for a populated selected special-note cell', 
   assert.equal(edits,1);assert.equal(prevented,1);assert.equal(stopped,1);
   assert.equal(app.getCurrentRows()[0].specialNote,'기존 메모');
   for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])assert.equal(app.handleSpecialNoteEditEnter({...event,[modifier]:true}),false);
-  app.getCurrentRows()[0].specialNote='';assert.equal(app.handleSpecialNoteEditEnter(event),false);
+  app.getCurrentRows()[0].specialNote='';assert.equal(app.handleSpecialNoteEditEnter(event),true);
   app.activeCell.colKey='memo';assert.equal(app.handleSpecialNoteEditEnter(event),false);
-  assert.equal(edits,1);
+  assert.equal(edits,2);
 });
 
 test('renaming backs up local and cloud-only dates before updating exact same-column cells and presets', async () => {
@@ -545,16 +545,16 @@ test('plain Enter skips empty text cells but leaves all picker columns to their 
   app.selectAutocompleteRightCell=(row,key)=>{assert.equal(row,0);assert.equal(key,app.activeCell.colKey);moved++;};
   app.elSheetContainer={focus(){}};
   const event={key:'Enter',preventDefault(){},stopPropagation(){}};
-  for(const key of ['memo','chartNo','specialNote']) {
+  for(const key of ['memo','chartNo']) {
     app.activeCell={rowIdx:0,colKey:key};
     assert.equal(app.handleEmptyCellEnter(event,{remove(){removed++;}}),true);
   }
-  assert.equal(moved,3);assert.equal(removed,3);
-  for(const key of ['gender','writer','prescription','extra']) {
+  assert.equal(moved,2);assert.equal(removed,2);
+  for(const key of ['gender','writer','prescription','extra','specialNote']) {
     app.activeCell={rowIdx:0,colKey:key};
     assert.equal(app.handleEmptyCellEnter(event,{remove(){assert.fail('picker editor must remain attached');}}),false);
   }
-  assert.equal(moved,3);
+  assert.equal(moved,2);
   for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey']) assert.equal(app.handleEmptyCellEnter({...event,[modifier]:true}),false);
   app.activeCell={rowIdx:0,colKey:'name'};
   assert.equal(app.handleEmptyCellEnter(event),false);

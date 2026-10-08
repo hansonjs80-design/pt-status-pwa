@@ -4,7 +4,6 @@ class PTCellInputTools {
     if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
         this.activeCell?.colKey !== 'specialNote') return false;
     const {rowIdx,colKey} = this.activeCell;
-    if (!String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
     if (!cell) return false;
     event.preventDefault(); event.stopPropagation();
@@ -15,8 +14,8 @@ class PTCellInputTools {
   handleEmptyCellEnter(event, armedInput = null) {
     if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !this.activeCell) return false;
     const { rowIdx, colKey } = this.activeCell;
-    // Picker cells open their options on the first Enter, even when empty.
-    if (['gender', 'writer', 'prescription', 'extra'].includes(colKey)) return false;
+    // Dedicated Enter handlers open picker options or activate special-note editing.
+    if (['gender', 'writer', 'prescription', 'extra', 'specialNote'].includes(colKey)) return false;
     if (String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
     event.preventDefault(); event.stopPropagation();
     // blur may remove an armed editor itself; do not remove it twice.
