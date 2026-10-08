@@ -2170,7 +2170,7 @@ body {
 .date-calendar button { border: 0; cursor: pointer; background: transparent; color: inherit; border-radius: 9px; font-family: inherit; }
 .calendar-heading button { display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; color: #171717; width: 30px; height: 32px; flex-shrink: 0; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
-.calendar-weekday { font-size: 12px; color: #171717; padding-bottom: 7px; }
+.calendar-weekday { font-size: 13px; color: #171717; padding-bottom: 7px; }
 .calendar-weekday:first-child { color: #c35a56; }
 .calendar-weekday:nth-child(7) { color: #497bb0; }
 .calendar-grid button { --calendar-day-color: #171717; --calendar-day-hover: #f1f1f1; height: 34px; font-size: 13px; font-weight: 500; color: #171717; }
@@ -2185,7 +2185,11 @@ body {
 .date-calendar .calendar-grid button.is-selected:nth-child(7n), .date-calendar .calendar-grid button.is-selected:nth-child(7n):hover { background: #1e40af !important; color: #fff !important; }
 .date-calendar .calendar-grid button.is-selected:nth-child(7n + 1), .date-calendar .calendar-grid button.is-selected:nth-child(7n + 1):hover { background: #b91c1c !important; color: #fff !important; }
 .calendar-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e6ece8; font-size: 11px; color: #7b887f; }
-.calendar-footer button { color: #107c41; font-weight: 700; padding: 6px 12px; background: #edf6ef; }
+.calendar-footer button { --calendar-today-color: #171717; color: var(--calendar-today-color); border: 1px solid var(--calendar-today-color); font-weight: 700; padding: 6px 12px; background: #fff; }
+.calendar-footer button.is-saturday { --calendar-today-color: #1e40af; }
+.calendar-footer button.is-sunday { --calendar-today-color: #b91c1c; }
+.date-calendar .calendar-footer button:hover, .date-calendar .calendar-footer button:focus-visible { background: var(--calendar-today-color); color: #fff; }
+.date-calendar .calendar-footer button:focus-visible { outline: 2px solid var(--calendar-today-color); outline-offset: 2px; }
 .column-typography-menu { width: 188px; max-height: min(420px, calc(100vh - 16px)); overflow: auto; padding: 10px; }
 .column-typography-menu strong { display: block; font-size: 12px; padding: 8px 10px; color: #6c7d72; }
 .column-typography-menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: #263d31; border-radius: 7px; padding: 8px 10px; cursor: pointer; }

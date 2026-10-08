@@ -1062,6 +1062,9 @@ class PTApp {
       const footer = document.createElement("div"); footer.className = "calendar-footer";
       const hint = document.createElement("span"); hint.textContent = "원하는 날짜를 선택하세요";
       const todayButton = document.createElement("button"); todayButton.textContent = "오늘"; todayButton.onclick = () => choose(today);
+      const selectedDay = new Date(`${selected}T00:00:00`).getDay();
+      todayButton.classList.toggle("is-saturday", selectedDay === 6);
+      todayButton.classList.toggle("is-sunday", selectedDay === 0);
       footer.append(hint, todayButton); popup.append(footer);
     };
     render(); document.body.append(popup); this.elDateLabel.setAttribute("aria-expanded", "true");
