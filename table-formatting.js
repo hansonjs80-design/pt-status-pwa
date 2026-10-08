@@ -23,10 +23,8 @@ class PTTableFormatting {
     for (const date of Object.keys(store).sort().reverse()) {
       const row = store[date]?.find(row => row !== excludedRow && String(row?.[colKey] ?? '').trim() === String(value).trim());
       if (!row) continue;
-      const setting = this.columnFormatting?.[colKey]?.color;
       const rich = row._richText?.[colKey];
-      const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors) &&
-        (!setting || row._formatRevisions?.[colKey]?.color === setting.revision);
+      const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors);
       const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;
       // The latest matching record determines the candidate color, including
       // a record that inherits the column default instead of an older color.
@@ -243,7 +241,7 @@ class PTTableFormatting {
     overlay.className = "modal-overlay column-font-settings";
     overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle">
       <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 고정 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="닫기">✕</button></div>
-      <div class="modal-body"><p>저장한 열 기본값은 모든 날짜와 검색 내역에 적용됩니다. 이후 셀별 수정은 해당 셀에만 적용됩니다.</p>
+      <div class="modal-body"><p>저장한 열 기본값은 모든 날짜와 검색 내역에 적용됩니다. 셀에 지정한 글자색은 기본값보다 우선하며, 셀별 수정은 해당 셀에만 적용됩니다.</p>
       <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th></tr></thead><tbody></tbody></table></div>
       <p class="column-font-error" role="alert"></p>
       <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">저장</button></div></div></form>`;
@@ -294,6 +292,9 @@ class PTTableFormatting {
   getCellFormatting(row, key, property) {
     const setting = this.columnFormatting?.[key]?.[property];
     const local = property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property];
+    // Explicit cell colors always win, including legacy records without a
+    // revision stamp. Column colors only fill cells without their own color.
+    if (property === "color") return local ?? setting?.value;
     return setting && row._formatRevisions?.[key]?.[property] !== setting.revision ? setting.value : local ?? setting?.value;
   }
 
@@ -311,9 +312,9 @@ class PTTableFormatting {
       const value = this.getCellFormatting(row, key, property) ?? computed?.[property];
       if (value != null && value !== "") formatting[property] = property === "fontSize" ? parseFloat(value) : value;
     }
-    const setting = this.columnFormatting?.[key]?.color;
-    if (row._richText?.[key] && (!setting || row._formatRevisions?.[key]?.color === setting.revision)) {
-      formatting.richText = JSON.parse(JSON.stringify(row._richText[key]));
+    const rich = row._richText?.[key];
+    if (rich?.text === String(row[key] ?? "") && Array.isArray(rich.colors)) {
+      formatting.richText = JSON.parse(JSON.stringify(rich));
     }
     return formatting;
   }
@@ -416,8 +417,7 @@ class PTTableFormatting {
 
   renderColoredText(element, row, key) {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
-    const setting = this.columnFormatting?.[key]?.color;
-    const rich = !setting || row._formatRevisions?.[key]?.color === setting.revision ? row._richText?.[key] : null;
+    const rich = row._richText?.[key];
     element.textContent = "";
     if (rich?.text !== text || !Array.isArray(rich.colors)) {
       element.textContent = text;
@@ -455,13 +455,6 @@ class PTTableFormatting {
       const row = this.getCurrentRows()[textSelection.rowIdx];
       if (String(row[textSelection.colKey] ?? "") === textSelection.text) {
         const key = textSelection.colKey;
-        const setting = this.columnFormatting?.[key]?.color;
-        if (setting && row._formatRevisions?.[key]?.color !== setting.revision) {
-          row._textColors ||= {};
-          if (setting.value) row._textColors[key] = setting.value;
-          else delete row._textColors[key];
-          if (row._richText) delete row._richText[key];
-        }
         this.markCellFormatting(row, key, "color");
         this.setPartialTextColor(row, textSelection.colKey, textSelection.start, textSelection.end, color);
         this.saveDataStore(); this.renderTable(); this.closeFontColorMenu(); return;

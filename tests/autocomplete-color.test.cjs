@@ -71,7 +71,7 @@ test('character colors survive preset persistence and both managed and historica
   assert.equal(target._textColors.memo, '#00ff00');
 });
 
-test('latest matching history and current column revisions determine inferred candidate color', () => {
+test('latest matching history and column defaults determine inferred candidate color', () => {
   const { app } = createApp({
     '2026-10-07': [{ memo: '기록' }],
     '2026-10-06': [{ memo: '기록', _textColors: { memo: '#ff0000' } }],
@@ -81,6 +81,16 @@ test('latest matching history and current column revisions determine inferred ca
   assert.equal(app.getAutocompleteValueColor('memo', '기록'), '#00ff00');
   app.cloudSearchHistory = { '2026-10-08': [{ part: '목', _richText: { part: { text: '목', colors: ['#ff0000'] } } }] };
   assert.equal(app.getAutocompleteValueColor('part', '목'), '#ff0000');
+});
+
+test('historical autocomplete preserves cell and character colors after a column default change', () => {
+  const source={memo:'색상',_textColors:{memo:'#0000ff'},_richText:{memo:{text:'색상',colors:['#ff0000',null]}},_formatRevisions:{memo:{color:'old'}}};
+  const {app}=createApp({'2025-09-09':[source]});
+  app.columnFormatting={memo:{color:{value:'#000000',revision:'new'}}};
+  const target={memo:'색상'};
+  app.applyAutocompleteColor(target,'memo','색상','색');
+  assert.equal(app.getCellFormatting(target,'memo','color'),'#0000ff');
+  assert.deepEqual(Array.from(target._richText.memo.colors),['#ff0000',null]);
 });
 
 test('new detail items save their color and editing changes only that candidate, with cancel leaving it intact', async () => {

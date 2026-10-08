@@ -17,7 +17,7 @@ test('manager saves durable defaults for every column across current and history
   for (const row of [{name:'현재'}, {name:'이전',_textStyles:{name:{fontSize:11,fontWeight:400}},_textColors:{name:'#ff0000'}}, {}]) {
     assert.equal(reloaded.getCellFormatting(row, 'name', 'fontSize'), 22);
     assert.equal(reloaded.getCellFormatting(row, 'name', 'fontWeight'), '700');
-    assert.equal(reloaded.getCellFormatting(row, 'name', 'color'), '#123abc');
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'color'), row._textColors?.name ?? '#123abc');
   }
   assert.deepEqual(plain(reloaded.getColumnFontSettings()), plain(settings));
 });
@@ -302,7 +302,7 @@ test('whole column formatting covers historical and new rows while later cell ov
   const before = JSON.stringify(oldRow);
   for (const [property,value] of [['fontSize',20],['fontWeight',400],['color','#123456']]) {
     instance.setColumnFormatting({minCol:3,maxCol:3},property,value);
-    assert.equal(instance.getCellFormatting(oldRow,'name',property),value);
+    assert.equal(instance.getCellFormatting(oldRow,'name',property),property === 'color' ? '#ff0000' : value);
     assert.equal(instance.getCellFormatting(newRow,'name',property),value);
     assert.equal(instance.getCellFormatting(newRow,'memo',property),undefined);
   }
@@ -316,7 +316,7 @@ test('whole column formatting covers historical and new rows while later cell ov
   instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
   assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),16);
   instance.setColumnFormatting({minCol:3,maxCol:3},'color',null);
-  assert.equal(instance.getCellFormatting(oldRow,'name','color'),null);
+  assert.equal(instance.getCellFormatting(oldRow,'name','color'),'#ff0000');
 });
 
 
@@ -336,7 +336,7 @@ test('column defaults persist across past, future, empty and search rows with in
     for (const key of ['chartNo','name','part','prescription','extra','writer','memo','specialNote']) {
       const element = {style:{}};
       instance.applyCellFormatting(element,row,key);
-      assert.deepEqual(element.style,{color:'#123456',fontSize:'18px',fontWeight:600});
+      assert.deepEqual(element.style,{color:row._textColors?.[key] ?? '#123456',fontSize:'18px',fontWeight:600});
     }
     assert.equal(instance.getCellFormatting(row,'no','fontSize'),undefined);
   }
@@ -365,7 +365,7 @@ test('header formatting updates every date without copying defaults into individ
   for(const row of [...rows,history,{name:'미래'}]) {
     assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
     assert.equal(instance.getCellFormatting(row,'name','fontWeight'),500);
-    assert.equal(instance.getCellFormatting(row,'name','color'),'#123456');
+    assert.equal(instance.getCellFormatting(row,'name','color'),row._textColors?.name ?? '#123456');
   }
   assert.equal(JSON.stringify(rows),before);
 });
@@ -400,6 +400,7 @@ test('history range clipboard preserves cell color and partial text colors witho
   const rows=[{name:'기존'},{}],instance=createPasteApp(rows,'name');
   instance.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
   const source={memo:'메모',_textColors:{memo:'#0000ff'},_richText:{memo:{text:'메모',colors:['#ff0000',null]}}};
+  instance.setColumnFormatting({minCol:8,maxCol:8},'color','#000000');
   instance.crossDateResults=[source];instance.crossDateSelection={minRow:0,maxRow:0,minCol:8,maxCol:8};
   const defaults=JSON.stringify(instance.columnFormatting);
   instance.copySelection();
@@ -414,11 +415,10 @@ test('history range clipboard preserves cell color and partial text colors witho
   assert.equal(JSON.stringify(instance.columnFormatting),defaults);
 });
 
-test('history Apply captures the displayed override and inherits updated defaults without copying obsolete colors', () => {
+test('history Apply keeps explicit cell colors after column defaults change', () => {
   const instance=Object.create(context.App.prototype);
   instance.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
   const source={name:'색상 환자',_textColors:{name:'#ff0000'}};
-  instance.markCellFormatting(source,'name','color');
   const destination={memo:'보존'};
   const defaults=JSON.stringify(instance.columnFormatting);
   instance.copyHistoryFields(destination,source,['name']);
@@ -427,5 +427,21 @@ test('history Apply captures the displayed override and inherits updated default
   assert.equal(JSON.stringify(instance.columnFormatting),defaults);
   instance.setColumnFormatting({minCol:3,maxCol:3},'color','#123456');
   instance.copyHistoryFields(destination,source,['name']);
-  assert.equal(instance.getCellFormatting(destination,'name','color'),'#123456');
+  assert.equal(instance.getCellFormatting(destination,'name','color'),'#ff0000');
+});
+
+test('editing a character color preserves earlier colors despite stale column revisions', () => {
+  const instance=Object.create(context.App.prototype);
+  const row={name:'가나다',_textColors:{name:'#0000ff'},_richText:{name:{text:'가나다',colors:['#ff0000',null,'#00ff00']}},_formatRevisions:{name:{color:'old'}}};
+  instance.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
+  instance.activeCell={rowIdx:0,colKey:'name'};
+  instance.textColorSelection={rowIdx:0,colKey:'name',text:'가나다',start:1,end:2};
+  instance.getCurrentRows=()=>[row];instance.isEditingCell=()=>false;
+  instance.saveDataStore=instance.renderTable=instance.closeFontColorMenu=()=>{};
+  instance.applyTextColor('#9900ff');
+  assert.equal(row._textColors.name,'#0000ff');
+  assert.deepEqual(plain(row._richText.name.colors),['#ff0000','#9900ff','#00ff00']);
+  const captured=instance.captureCellFormatting(row,'name');
+  assert.equal(captured.color,'#0000ff');
+  assert.deepEqual(plain(captured.richText),plain(row._richText.name));
 });
