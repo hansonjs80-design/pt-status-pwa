@@ -823,7 +823,7 @@ class PTApp {
       if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
     });
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
-    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; });
+    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; });
 
     document.addEventListener("paste", event => {
       const target = event.target;
@@ -5467,6 +5467,7 @@ class PTApp {
   }
 
   releaseHistorySearchKey(e) {
+    if (e.key.toLowerCase() === "f" || e.code === "KeyF") this.directHistorySearchKeyHeld = false;
     if (e.key.toLowerCase() === this.historyApplyBlockedKey ||
         (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
   }

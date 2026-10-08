@@ -351,6 +351,7 @@ class PTHistorySearch {
   }
 
   openSearchPromptModal(targetRowIdx, initialQuery) {
+    clearTimeout(this.searchPromptFocusTimer);
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
@@ -360,7 +361,8 @@ class PTHistorySearch {
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
-    setTimeout(() => {
+    this.searchPromptFocusTimer = setTimeout(() => {
+      if (this.elSearchPromptModal.style.display !== "flex") return;
       this.elSearchPromptInput.focus();
       this.elSearchPromptInput.select();
       this.updateSearchPromptAutocomplete();
@@ -368,6 +370,7 @@ class PTHistorySearch {
   }
 
   closeSearchPromptModal() {
+    clearTimeout(this.searchPromptFocusTimer);
     if (!this.elSearchPromptModal) return;
     this.closeSearchPromptAutocomplete();
     this.elSearchPromptModal.style.display = "none";
@@ -625,7 +628,10 @@ class PTHistorySearch {
   }
 
   async searchPatientHistory(query, targetRowIdx) {
+    this.closeSearchPromptModal();
     if (this.supabaseClient) await this.loadSearchHistory();
+    // A repeated IME shortcut can open a prompt while cloud history is loading.
+    if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
     const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
       this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx });
@@ -781,6 +787,10 @@ class PTHistorySearch {
 
   handlePatientEditorSearchShortcut(event) {
     if (!this.isSearchShortcut(event)) return false;
+    if (event.repeat && this.directHistorySearchKeyHeld) {
+      event.preventDefault(); event.stopPropagation();
+      return true;
+    }
     let input = event.target;
     // During native composition the physical shortcut can target the sheet
     // instead of the input. Read the live draft before falling back to selection.
@@ -813,6 +823,7 @@ class PTHistorySearch {
     event.stopPropagation();
     this.captureHistoryOriginSelection();
     this.historyApplyBlockedKey = "f";
+    this.directHistorySearchKeyHeld = true;
     const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
     const rawValue = input.value;
     input.blur();
@@ -820,6 +831,7 @@ class PTHistorySearch {
     this.elSheetContainer.focus({ preventScroll: true });
     const query = this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
     this.patientSearchDraft = null;
+    this.closeSearchPromptModal();
     void this.searchPatientHistory(query, rowIdx);
     return true;
   }

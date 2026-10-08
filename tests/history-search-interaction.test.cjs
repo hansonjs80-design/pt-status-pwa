@@ -1275,3 +1275,47 @@ test('draft search cannot reuse another date or a different cell, or replace mod
     assert.equal(app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target}),false);
   }
 });
+
+
+test('direct chart/name search closes a lingering prompt, cancels its focus callback and ignores held F repeats', () => {
+  for (const colKey of ['name','chartNo']) for (const modifier of ['ctrlKey','metaKey']) {
+    const {app,context}=createApp([{name:'검색 이름',chartNo:'4455'}]);
+    app.activeCell={rowIdx:0,colKey};
+    const timers=new Map();let timerId=0,focused=0;
+    context.setTimeout=fn=>{timers.set(++timerId,fn);return timerId;};
+    context.clearTimeout=id=>timers.delete(id);
+    app.elSearchPromptModal={style:{display:'none'},querySelector:()=>null};
+    app.elSearchPromptInput={value:'',focus(){focused++;},select(){}};
+    app.openSearchPromptModal(0,'이전 검색');
+    app.updateSearchPromptAutocomplete=()=>assert.fail('closed prompt must not recreate suggestions');
+    const input={tagName:'INPUT',value:colKey==='name'?'검색 이름':'4455',
+      closest:()=>({dataset:{row:'0',col:colKey}}),blur(){}};
+    let searches=0;
+    app.searchPatientHistory=()=>{searches++;};
+    const event={key:'f',code:'KeyF',[modifier]:true,target:input,preventDefault(){},stopPropagation(){}};
+    app.handleGlobalKeyDown(event);
+    assert.equal(app.elSearchPromptModal.style.display,'none');
+    for(const fn of timers.values()) fn();
+    assert.equal(focused,0);
+    app.openSearchPromptModal=()=>assert.fail('held shortcut must not reopen the prompt');
+    app.handleGlobalKeyDown({...event,repeat:true,target:{tagName:'DIV',closest:()=>null}});
+    assert.equal(searches,1);
+    app.releaseHistorySearchKey({key:'f',code:'KeyF'});
+    assert.equal(app.directHistorySearchKeyHeld,false);
+  }
+});
+
+test('a direct cloud history search removes any prompt opened during its await before rendering results', async () => {
+  const {app}=createApp([{name:'검색 이름'}]);
+  app.elSearchPromptModal={style:{display:'flex'}};
+  app.supabaseClient={};
+  app.loadSearchHistory=async()=>{
+    assert.equal(app.elSearchPromptModal.style.display,'none');
+    app.elSearchPromptModal.style.display='flex';
+  };
+  app.hasRecordedPatientName=()=>true;
+  let rendered=false;
+  app.searchAllDates=()=>{assert.equal(app.elSearchPromptModal.style.display,'none');rendered=true;};
+  assert.equal(await app.searchPatientHistory('검색 이름',0),true);
+  assert.equal(rendered,true);
+});
