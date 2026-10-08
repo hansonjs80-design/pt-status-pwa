@@ -30,9 +30,9 @@ test('multiple column font settings preserve other properties and columns', () =
   instance.selectedColumnRange={minCol:3,maxCol:4}; instance.selectedRange={minCol:3,maxCol:4,minRow:0,maxRow:1}; instance.isEditingCell=()=>false; instance.getCurrentRows=()=>rows;
   instance.saveDataStore=instance.renderTable=instance.selectEntireColumn=()=>{};
   instance.applyColumnTypography('fontSize',20);
-  assert.deepEqual(plain(rows[0]._textStyles.name),{fontWeight:700,fontSize:20});
-  assert.equal(rows[1]._textStyles.part.fontSize,20); assert.equal(rows[0]._textStyles.memo.fontSize,11);
-  instance.applyColumnTypography('fontSize',null); assert.equal(rows[0]._textStyles.name.fontWeight,700); assert.equal(rows[0]._textStyles.name.fontSize,undefined);
+  assert.deepEqual(plain(rows[0]._textStyles.name),{fontWeight:700});
+  assert.equal(instance.getCellFormatting(rows[1],'part','fontSize'),20); assert.equal(rows[0]._textStyles.memo.fontSize,11);
+  instance.applyColumnTypography('fontSize',null); assert.equal(rows[0]._textStyles.name.fontWeight,700); assert.equal(instance.getCellFormatting(rows[0],'name','fontSize'),null);
 });
 
 test('sorting confirms, cycles ascending descending original and cancellation changes nothing', () => {
@@ -294,4 +294,49 @@ test('column defaults persist across past, future, empty and search rows with in
   assert.equal(instance.getCellFormatting(dates['2026-09-01'][0],'name','fontSize'),18);
   instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
   assert.equal(instance.getCellFormatting(local,'name','fontSize'),16);
+});
+
+
+test('header formatting updates every date without copying defaults into individual records', () => {
+  const instance=Object.create(context.App.prototype);
+  const rows=[{name:'현재',_textStyles:{name:{fontSize:11,fontWeight:700}},_textColors:{name:'#ff0000'}},{}];
+  const history={name:'이전',_textStyles:{name:{fontSize:10,fontWeight:400}},_textColors:{name:'#00ff00'}};
+  const before=JSON.stringify(rows);
+  Object.assign(instance,{selectedColumnRange:{minCol:3,maxCol:3},selectedRange:{minRow:0,maxRow:1,minCol:3,maxCol:3}});
+  instance.getCurrentRows=()=>rows;instance.isEditingCell=()=>false;
+  instance.renderTable=instance.selectEntireColumn=instance.closeFontColorMenu=()=>{};
+  instance.saveDataStore=()=>assert.fail('column defaults must not rewrite patient records');
+  instance.applyColumnTypography('fontSize',20);
+  instance.applyColumnTypography('fontWeight',500);
+  instance.applyTextColor('#123456');
+  for(const row of [...rows,history,{name:'미래'}]) {
+    assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
+    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),500);
+    assert.equal(instance.getCellFormatting(row,'name','color'),'#123456');
+  }
+  assert.equal(JSON.stringify(rows),before);
+});
+
+test('single cell typography/color do not change defaults even with a stale column marker; reset inherits defaults', () => {
+  const instance=Object.create(context.App.prototype),rows=[{name:'한 셀'},{name:'다른 셀'}];
+  for(const [property,value] of [['fontSize',20],['fontWeight',500],['color','#123456']]) instance.setColumnFormatting({minCol:3,maxCol:3},property,value);
+  const defaults=JSON.stringify(instance.columnFormatting);
+  Object.assign(instance,{activeCell:{rowIdx:0,colKey:'name'},selectedColumnRange:{minCol:3,maxCol:3},selectedRange:{minRow:0,maxRow:0,minCol:3,maxCol:3}});
+  instance.getCurrentRows=()=>rows;instance.isEditingCell=()=>false;
+  instance.saveDataStore=instance.renderTable=instance.closeFontColorMenu=()=>{};
+  instance.selectEntireColumn=()=>assert.fail('cell formatting must not select a column');
+  instance.applyColumnTypography('fontSize',24);instance.applyColumnTypography('fontWeight',700);instance.applyTextColor('#ff0000');
+  assert.equal(JSON.stringify(instance.columnFormatting),defaults);
+  for(const [property,local,base] of [['fontSize',24,20],['fontWeight',700,500],['color','#ff0000','#123456']]) {
+    assert.equal(instance.getCellFormatting(rows[0],'name',property),local);
+    assert.equal(instance.getCellFormatting(rows[1],'name',property),base);
+  }
+  instance.applyColumnTypography('fontSize',null);instance.applyColumnTypography('fontWeight',null);instance.applyTextColor(null);
+  const element={style:{color:'old',fontSize:'old',fontWeight:'old'}};
+  instance.applyCellFormatting(element,rows[0],'name');
+  assert.deepEqual(element.style,{color:'#123456',fontSize:'20px',fontWeight:500});
+  assert.equal(JSON.stringify(instance.columnFormatting),defaults);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',null);
+  instance.applyCellFormatting(element,rows[0],'name');
+  assert.equal(element.style.fontSize,'');
 });

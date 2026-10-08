@@ -741,3 +741,11 @@ test('empty memo Enter blurs before removal, so blur removing its editor cannot 
   assert.equal(app.handleEmptyCellEnter({key:'Enter',preventDefault(){},stopPropagation(){}},input),true);
   assert.equal(moved,1);
 });
+
+
+test('typed autocomplete glyph components keep the cell color while untyped components remain gray', () => {
+  const {app}=createApp();
+  const data=new Uint8ClampedArray([146,151,158,255,146,151,158,255]);
+  app.colorCompletionGlyphComponents(data,2,1,x=>x,1,[255,0,0]);
+  assert.deepEqual(Array.from(data),[255,0,0,255,146,151,158,255]);
+});

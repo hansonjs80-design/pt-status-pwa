@@ -2340,10 +2340,10 @@ body {
 @media (max-width: 1050px) and (min-width: 901px) { .excel-sidebar.summary-expanded { width: 300px; } }
 
 /* Native input contains only typed text; the completion is never saved until confirmed. */
-.excel-table .cell-input-element:not(.is-armed) { color: #111; caret-color: #111; }
+.excel-table .cell-input-element:not(.is-armed) { color: inherit; caret-color: currentColor; }
 .excel-table .cell-input-element.has-inline-completion { color: transparent; -webkit-text-fill-color: transparent; caret-color: #111; }
 .inline-autocomplete-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
-.inline-completion-prefix { color: #111; }
+.inline-completion-prefix { color: inherit; }
 .inline-completion-suffix { color: #92979e; }
 .inline-completion-glyph { display: inline-flex; position: relative; align-items: center; }
 .inline-completion-glyph canvas { display: block; }

@@ -183,7 +183,7 @@ class PTCellInputTools {
     return { height, baseline: (height - ascent - descent) / 2 + ascent };
   }
 
-  colorCompletionGlyphComponents(data, width, height, componentAt, typed) {
+  colorCompletionGlyphComponents(data, width, height, componentAt, typed, typedColor = [17, 17, 17]) {
     // Classify whole connected strokes, not individual pixels. A rounded or
     // slanted final consonant can cross the geometric split by a few pixels.
     const visited = new Uint8Array(width * height);
@@ -210,7 +210,7 @@ class PTCellInputTools {
       const shared = votes.filter(vote => vote >= total * .2).length > 1;
       for (const index of stroke) {
         const part = shared ? componentAt(index % width, Math.floor(index / width)) : component;
-        const color = part < typed ? [17, 17, 17] : [146, 151, 158];
+        const color = part < typed ? typedColor : [146, 151, 158];
         data[index * 4] = color[0]; data[index * 4 + 1] = color[1]; data[index * 4 + 2] = color[2];
       }
     }
@@ -221,7 +221,7 @@ class PTCellInputTools {
     // and gray syllables. Never center individual ink bounds across fonts.
     const scale = 6;
     this.completionGlyphCache ||= new Map();
-    const key = `${font.font}|${block.char}|${block.typed}`;
+    const key = `${font.font}|${font.color}|${block.char}|${block.typed}`;
     let cached = this.completionGlyphCache.get(key);
     if (!cached) {
       const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
@@ -229,7 +229,7 @@ class PTCellInputTools {
       const width = ctx.measureText(block.char).width;
       const { height, baseline } = this.getCompletionTextLayout(font, ctx.measureText('한Ag'));
       canvas.width = Math.ceil(width * scale); canvas.height = Math.ceil(height * scale);
-      ctx.scale(scale, scale); ctx.font = font.font; ctx.fillStyle = block.typed === block.jamo.length ? '#111' : '#92979e';
+      ctx.scale(scale, scale); ctx.font = font.font; ctx.fillStyle = block.typed === block.jamo.length ? (font.color || '#111') : '#92979e';
       ctx.fillText(block.char, 0, baseline);
       if (block.typed > 0 && block.typed < block.jamo.length && /[가-힣]/.test(block.char)) {
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height), data = pixels.data;
@@ -266,12 +266,13 @@ class PTCellInputTools {
       const finalX=gap('x',.5,(finalY-y0)/(y1-y0),1,.35,.65);
       const vowelUnits=mixed?2:1;
       const finalUnits=block.jamo.length-1-vowelUnits;
+      const typedColor = font.color?.match(/[\d.]+/g)?.slice(0, 3).map(Number) || [17, 17, 17];
       this.colorCompletionGlyphComponents(data, canvas.width, canvas.height, (x, y) => {
         if(y>=finalY) return 1+vowelUnits+(finalUnits>1&&x>=finalX?1:0);
         if(vertical) return x<divideX?0:1;
         if(mixed) return x<divideX&&y<vowelY?0:x>=divideX?2:1;
         return y<vowelY?0:1;
-      }, block.typed);
+      }, block.typed, typedColor);
       ctx.putImageData(pixels,0,0);
       }
       cached={canvas,width,height};

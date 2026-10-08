@@ -4661,7 +4661,7 @@ class PTApp {
         rowIdx >= this.selectedRange.minRow && rowIdx <= this.selectedRange.maxRow &&
         colIdx >= this.selectedRange.minCol && colIdx <= this.selectedRange.maxCol;
 
-      if (!inRange) {
+      if (!inRange || this.selectedColumnRange) {
         this.selectCell(rowIdx, colKey, tdCell, false);
       }
 

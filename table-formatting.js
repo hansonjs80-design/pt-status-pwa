@@ -59,23 +59,35 @@ class PTTableFormatting {
   getCellFormatting(row, key, property) {
     const setting = this.columnFormatting?.[key]?.[property];
     const local = property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property];
-    return setting && row._formatRevisions?.[key]?.[property] !== setting.revision ? setting.value : local;
+    return setting && row._formatRevisions?.[key]?.[property] !== setting.revision ? setting.value : local ?? setting?.value;
   }
 
   applyCellFormatting(element, row, key) {
     for (const property of ["color", "fontSize", "fontWeight"]) {
       const value = this.getCellFormatting(row, key, property);
-      if (value != null) element.style[property] = property === "fontSize" ? value + "px" : value;
+      element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
     }
+  }
+
+  getSelectedFormattingColumns() {
+    // Only header selection changes defaults. A cell selection remains local
+    // even if an older column-selection marker survived an event handoff.
+    return !this.activeCell && !this.selectedRowRange && !this.selectedCellSet && this.selectedColumnRange
+      ? { ...this.selectedColumnRange } : null;
   }
 
   applyColumnTypography(property, value) {
     const range = this.getFormattingRange();
     if (!range || !["fontSize", "fontWeight"].includes(property)) return;
+    const columns = this.getSelectedFormattingColumns();
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
-    const columns = this.selectedColumnRange && { ...this.selectedColumnRange };
-    if (columns) this.setColumnFormatting(columns, property, value);
+    if (columns) {
+      this.setColumnFormatting(columns, property, value);
+      this.renderTable();
+      this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
+      return;
+    }
     const rows = this.getCurrentRows();
     for (let r = range.minRow; r <= range.maxRow; r++) for (let col = range.minCol; col <= range.maxCol; col++) {
       if (!this.isSelectedCoordinate(r, col)) continue;
@@ -85,7 +97,6 @@ class PTTableFormatting {
       else row._textStyles[keys[col]][property] = value;
     }
     this.saveDataStore(); this.renderTable();
-    if (columns) this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
   }
 
   openColumnTypographyMenu(property, anchor = null) {
@@ -161,6 +172,16 @@ class PTTableFormatting {
 
   applyTextColor(color) {
     if (this.crossDateSelection) return;
+    const columns = this.getSelectedFormattingColumns();
+    if (columns) {
+      this.textColorSelection = null;
+      this.setColumnFormatting(columns, "color", color);
+      this.renderTable();
+      const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+      this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
+      this.closeFontColorMenu();
+      return;
+    }
     const textSelection = this.textColorSelection;
     this.textColorSelection = null;
     if (textSelection && this.activeCell?.rowIdx === textSelection.rowIdx && this.activeCell?.colKey === textSelection.colKey) {
@@ -186,8 +207,6 @@ class PTTableFormatting {
     const range = this.selectedRange || (this.selectedRowRange ? { ...this.selectedRowRange, minCol: 0, maxCol: keys.length - 1 } : null) || (this.selectedColKey ? { minRow: 0, maxRow: rows.length - 1, minCol: keys.indexOf(this.selectedColKey), maxCol: keys.indexOf(this.selectedColKey) }
       : this.activeCell ? { minRow: this.activeCell.rowIdx, maxRow: this.activeCell.rowIdx, minCol: keys.indexOf(this.activeCell.colKey), maxCol: keys.indexOf(this.activeCell.colKey) } : null);
     if (!range) return;
-    const columns = this.selectedColumnRange && { ...this.selectedColumnRange };
-    if (columns) this.setColumnFormatting(columns, "color", color);
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
       this.markCellFormatting(rows[r], keys[c], "color");
@@ -196,7 +215,6 @@ class PTTableFormatting {
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
     }
     this.saveDataStore(); this.renderTable();
-    if (columns) this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
     this.closeFontColorMenu();
   }
 
