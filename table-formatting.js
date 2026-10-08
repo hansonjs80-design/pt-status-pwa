@@ -201,9 +201,86 @@ class PTTableFormatting {
     const revision = `${Date.now()}-${Math.random()}`;
     for (let col = columns.minCol; col <= columns.maxCol; col++) {
       this.columnFormatting[keys[col]] ||= {};
+      const existing = this.columnFormatting[keys[col]][property];
+      if (existing && (existing.value === value || (property === "fontWeight" && String(existing.value) === String(value)))) continue;
       this.columnFormatting[keys[col]][property] = { value, revision };
     }
     localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
+  }
+
+  getColumnFontSettings() {
+    const labels = ["No.", "성별", "차트번호", "성함", "부위", "처방", "추가 사항", "작성", "메모", "특이 사항"];
+    return ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"].map((key, index) => ({
+      key, label: `${String.fromCharCode(65 + index)}열 · ${labels[index]}`,
+      fontSize: this.columnFormatting?.[key]?.fontSize?.value ?? (index === 0 ? 16 : 14),
+      fontWeight: String(this.columnFormatting?.[key]?.fontWeight?.value ?? (index < 2 ? 600 : 500)),
+      color: this.columnFormatting?.[key]?.color?.value ?? "#000000",
+    }));
+  }
+
+  saveColumnFontSettings(settings) {
+    const columns = this.getColumnFontSettings();
+    if (settings.length !== columns.length || settings.some((setting, index) =>
+      setting.key !== columns[index].key || !Number.isInteger(setting.fontSize) ||
+      setting.fontSize < 8 || setting.fontSize > 72 ||
+      ![400, 500, 600, 700, 800, 900].includes(Number(setting.fontWeight)) ||
+      !/^#[0-9a-f]{6}$/i.test(setting.color))) return false;
+    // Only changed properties receive a new revision. Saving the same defaults
+    // must not invalidate later cell-specific formatting on any date.
+    settings.forEach((setting, index) => {
+      for (const property of ["fontSize", "fontWeight", "color"]) {
+        const value = property === "fontWeight" ? String(setting[property]) : setting[property];
+        this.setColumnFormatting({ minCol: index, maxCol: index }, property, value);
+      }
+    });
+    return true;
+  }
+
+  openColumnFontSettings() {
+    document.getElementById("columnFontSettingsModal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "columnFontSettingsModal";
+    overlay.className = "modal-overlay column-font-settings";
+    overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle">
+      <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 고정 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="닫기">✕</button></div>
+      <div class="modal-body"><p>저장한 열 기본값은 모든 날짜와 검색 내역에 적용됩니다. 이후 셀별 수정은 해당 셀에만 적용됩니다.</p>
+      <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th></tr></thead><tbody></tbody></table></div>
+      <p class="column-font-error" role="alert"></p>
+      <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">저장</button></div></div></form>`;
+    const tbody = overlay.querySelector("tbody");
+    for (const setting of this.getColumnFontSettings()) {
+      const row = document.createElement("tr");
+      row.dataset.key = setting.key;
+      row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="1" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
+        <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
+        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td>`;
+      for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = setting[property];
+      tbody.appendChild(row);
+    }
+    const close = () => { overlay.remove(); document.getElementById("btnColumnFontSettings")?.focus(); };
+    overlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", close));
+    overlay.addEventListener("keydown", event => {
+      event.stopPropagation();
+      if (event.key === "Escape") { event.preventDefault(); close(); }
+    });
+    overlay.querySelector("form").addEventListener("submit", event => {
+      event.preventDefault();
+      const settings = Array.from(tbody.children, row => ({
+        key: row.dataset.key,
+        fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
+        fontWeight: row.querySelector('[data-property="fontWeight"]').value,
+        color: row.querySelector('[data-property="color"]').value,
+      }));
+      if (!this.saveColumnFontSettings(settings)) {
+        overlay.querySelector(".column-font-error").textContent = "글자 크기는 8~72 사이의 정수로 입력해 주세요.";
+        return;
+      }
+      this.renderTable();
+      close();
+    });
+    document.body.appendChild(overlay);
+    overlay.style.display = "flex";
+    overlay.querySelector("input").focus();
   }
 
   markCellFormatting(row, key, property) {

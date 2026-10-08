@@ -2373,6 +2373,23 @@ body {
 
 .preset-list-item.preset-management-target { background: #e8f4ec; box-shadow: inset 3px 0 0 #107c41; }
 
+.column-font-open { width:100%; padding:10px; margin-bottom:14px; color:#107c41; font-weight:600; }
+.column-font-settings { z-index:10000; }
+.column-font-settings .modal-card { width:640px; max-width:94vw; max-height:90vh; overflow-y:auto; }
+.column-font-settings .modal-body { padding:16px 20px; }
+.column-font-settings p { font-size:12px; color:#64748b; line-height:1.5; }
+.column-font-list { overflow-x:auto; }
+.column-font-list table { width:100%; border-collapse:collapse; }
+.column-font-list th, .column-font-list td { padding:8px 6px; text-align:left; border-bottom:1px solid #e2e8f0; white-space:nowrap; }
+.column-font-list thead { background:#e2efda; }
+.column-font-list input, .column-font-list select { padding:6px; border:1px solid #cbd5e1; border-radius:4px; background:#fff; }
+.column-font-list input[type=number] { width:64px; }
+.column-font-list input[type=color] { width:48px; height:32px; padding:2px; }
+.column-font-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.column-font-actions button { padding:8px 20px; border:1px solid #cbd5e1; border-radius:5px; cursor:pointer; }
+.column-font-actions button[type=submit] { background:#107c41; color:#fff; }
+.column-font-settings .column-font-error { color:#b91c1c; }
+
 /* Whole-column presets and input-specific rules have separate management views. */
 .preset-detail-controls { display:flex; gap:8px; padding:10px; margin-bottom:12px; border:1px solid #cbded3; border-radius:6px; background:#f1f8f4; }
 .preset-detail-controls input { flex:1; min-width:0; padding:7px 9px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; }

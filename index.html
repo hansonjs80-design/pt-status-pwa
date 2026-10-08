@@ -450,6 +450,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
         <button type="button" class="btn-close-modal" id="btnClosePresetManagerModal" onclick="if(window.ptApp) window.ptApp.closePresetManager();">✕</button>
       </div>
       <div class="modal-body" style="padding:16px 20px;">
+        <button type="button" id="btnColumnFontSettings" class="preset-action-btn column-font-open" onclick="if(window.ptApp) window.ptApp.openColumnFontSettings();">열 글자 고정 설정 · 크기 / 굵기 / 색</button>
         <p style="font-size:12px; color:#64748b; margin:0 0 14px 0; line-height:1.4;">
           성함(D열), 부위(E열), 처방(F열), 추가 사항(G열), 작성(H열), 메모(I열), 특이 사항(J열)의 자동완성 문구를 관리합니다. 등록된 문구가 목록 순서대로 먼저 표시됩니다. 작성 셀을 더블클릭하면 등록한 이니셜을 선택할 수 있습니다.
         </p>

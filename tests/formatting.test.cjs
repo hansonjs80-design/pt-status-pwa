@@ -6,6 +6,47 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+test('manager saves durable defaults for every column across current and history dates', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.columnFormatting = {};
+  const settings = instance.getColumnFontSettings();
+  Object.assign(settings[3], { fontSize: 22, fontWeight: '700', color: '#123abc' });
+  assert.equal(instance.saveColumnFontSettings(settings), true);
+  const reloaded = Object.create(context.App.prototype);
+  reloaded.columnFormatting = reloaded.loadColumnFormatting();
+  for (const row of [{name:'현재'}, {name:'이전',_textStyles:{name:{fontSize:11,fontWeight:400}},_textColors:{name:'#ff0000'}}, {}]) {
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontSize'), 22);
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontWeight'), '700');
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'color'), '#123abc');
+  }
+  assert.deepEqual(plain(reloaded.getColumnFontSettings()), plain(settings));
+});
+test('unchanged manager saves preserve cell exceptions and changed properties update all dates', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.columnFormatting = {};
+  instance.saveColumnFontSettings(instance.getColumnFontSettings());
+  const row = {_textStyles:{name:{fontSize:24,fontWeight:700}},_textColors:{name:'#ff0000'}};
+  for (const property of ['fontSize','fontWeight','color']) instance.markCellFormatting(row,'name',property);
+  const before = plain(instance.columnFormatting);
+  assert.equal(instance.saveColumnFontSettings(instance.getColumnFontSettings()), true);
+  assert.deepEqual(plain(instance.columnFormatting), before);
+  assert.equal(instance.getCellFormatting(row,'name','fontSize'),24);
+  assert.equal(instance.getCellFormatting(row,'name','color'),'#ff0000');
+  const settings = instance.getColumnFontSettings(); settings[3].fontSize = 20;
+  instance.saveColumnFontSettings(settings);
+  assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
+  assert.equal(instance.getCellFormatting(row,'name','color'),'#ff0000');
+  assert.equal(instance.getCellFormatting(row,'name','fontWeight'),700);
+  assert.deepEqual(plain(instance.columnFormatting.memo),before.memo);
+});
+test('invalid manager values cannot partially change saved defaults', () => {
+  const instance = Object.create(context.App.prototype); instance.columnFormatting = {};
+  instance.saveColumnFontSettings(instance.getColumnFontSettings());
+  const before = plain(instance.columnFormatting), settings=instance.getColumnFontSettings();
+  settings[0].color='#abcdef'; settings[9].fontSize=73;
+  assert.equal(instance.saveColumnFontSettings(settings),false);
+  assert.deepEqual(plain(instance.columnFormatting),before);
+});
 test('partial colors preserve unselected characters and replace only overlapping ranges', () => {
   const row = { name: '가나다라' };
   app.setPartialTextColor(row, 'name', 1, 3, '#ff0000');
