@@ -207,7 +207,7 @@ body {
 .toolbar-formatting-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 
@@ -2231,8 +2231,8 @@ body {
 .fill-color-icon { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .history-button .fill-color-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
 .fill-color-bar { display: block; width: 23px; height: 4px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
-.font-size-controls { display: inline-flex; align-items: center; gap: 4px; }
-.font-size-controls button { border: 0; border-radius: 6px; height: 32px; min-width: 28px; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
+.font-size-controls { display: inline-flex; align-items: center; gap: 0; }
+.font-size-controls button { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; height: 32px; min-width: 24px; padding: 0; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
 .font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }
 .font-size-controls button:hover { background: #e2e7eb; }
 .excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #18181b; }
@@ -2280,7 +2280,7 @@ body {
 .quick-chips .chip { border-width: 1.5px; font-size: 12px; font-weight: 600; padding: 4px 9px; }
 .excel-sidebar > .search-group { width: 100%; margin: 0; flex: none; }
 .excel-sidebar .search-box { width: 100%; min-width: 0; box-sizing: border-box; }
-.font-size-controls #btnFontSize { min-width: 36px; width: 36px; padding: 2px; font-weight: 600; }
+.font-size-controls #btnFontSize { min-width: 30.6px; width: 30.6px; height: 27.2px; padding: 1px; font-weight: 600; }
 .visit-time-refresh { opacity: 0; pointer-events: none; }
 .cell-visitTime:hover .visit-time-refresh,
 .cell-visitTime.cell-focused .visit-time-refresh,
