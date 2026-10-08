@@ -27,25 +27,6 @@
         <span class="file-name" id="docTitle">물리치료 - Excel</span>
         <span class="save-status" id="saveStatus">저장 완료됨</span>
       </div>
-      <div class="title-right">
-        <button type="button" class="btn-action cloud-btn" id="btnSupabase" title="클라우드 미연결 · 연결 설정" aria-label="클라우드 미연결 · 연결 설정">
-          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M7 18a5 5 0 0 1-.7-9.95 6 6 0 0 1 11.5-.8A5.5 5.5 0 0 1 18.5 18"/>
-            <path class="cloud-connected-icon" d="m9 17 3 3 5-6"/>
-            <path class="cloud-disconnected-icon" d="m10 15 5 5m0-5-5 5"/>
-          </svg>
-        </button>
-        <button type="button" class="btn-action preview-btn" id="btnPreview" title="미리보기 / 인쇄" aria-label="미리보기 / 인쇄">
-          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 9V3h12v6M6 17H3V9h18v8h-3"/><path d="M6 14h12v7H6z"/><path d="M17 11h1"/>
-          </svg>
-        </button>
-        <button type="button" class="btn-action export-btn" id="btnExportCsv" title="엑셀 저장" aria-label="엑셀 저장">
-          <svg class="title-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 3h13l4 4v14H3V3z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/>
-          </svg>
-        </button>
-      </div>
     </header>
 
     <!-- Excel Ribbon Menu / Tools -->
@@ -84,8 +65,26 @@
           </div>
         </div>
 
-
-
+        <div class="toolbar-actions" role="group" aria-label="클라우드, 인쇄 및 엑셀 저장">
+          <button type="button" class="btn-action cloud-btn" id="btnSupabase" title="클라우드 미연결 · 연결 설정" aria-label="클라우드 미연결 · 연결 설정">
+            <svg class="toolbar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 18a5 5 0 0 1-.7-9.95 6 6 0 0 1 11.5-.8A5.5 5.5 0 0 1 18.5 18"/>
+              <path class="cloud-connected-icon" d="m9 17 3 3 5-6"/>
+              <path class="cloud-disconnected-icon" d="m10 15 5 5m0-5-5 5"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-action preview-btn" id="btnPreview" title="미리보기 / 인쇄" aria-label="미리보기 / 인쇄">
+            <svg class="toolbar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 9V3h12v6M6 17H3V9h18v8h-3"/><path d="M6 14h12v7H6z"/><path d="M17 11h1"/>
+            </svg>
+          </button>
+          <button type="button" class="btn-action export-btn" id="btnExportCsv" title="엑셀 저장" aria-label="엑셀 저장">
+            <svg class="toolbar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 3h12l4 4v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a2 2 0 0 1 2-2Z"/>
+              <path d="M7 3v6h10V3M7 21v-8h10v8M14 5v2"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </nav>
 

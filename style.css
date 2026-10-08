@@ -196,10 +196,12 @@ body {
   transform: scale(0.97);
 }
 
-.title-right {
+.toolbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .btn-action {
@@ -222,19 +224,20 @@ body {
   border-color: #ffffff;
 }
 
-.btn-action.preview-btn {
+.toolbar-actions .btn-action:hover {
+  background: #eef8f1;
+  border-color: var(--excel-green);
+}
+
+.toolbar-actions .btn-action:focus-visible {
+  outline: 2px solid var(--excel-green);
+  outline-offset: 2px;
+}
+
+.toolbar-actions .btn-action {
   background: #ffffff;
   color: var(--excel-green-dark);
-  border: none;
-  font-weight: 700;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-}
-
-.btn-action.preview-btn:hover {
-  background: #eef8f1;
-}
-
-.title-right .btn-action {
+  border: 1px solid var(--border-subtle);
   width: 38px;
   height: 34px;
   padding: 6px;
@@ -242,7 +245,7 @@ body {
   flex-shrink: 0;
 }
 
-.title-action-icon {
+.toolbar-action-icon {
   width: 22px;
   height: 22px;
   flex-shrink: 0;
@@ -1979,14 +1982,11 @@ body {
 }
 
 .btn-action.cloud-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
 }
 
 .btn-action.cloud-btn.connected {
-  background: #ffffff;
-  color: #0c5b30;
-  border-color: #ffffff;
+  color: var(--excel-green-dark);
   font-weight: bold;
 }
 
