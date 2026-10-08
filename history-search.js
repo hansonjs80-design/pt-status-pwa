@@ -781,7 +781,9 @@ class PTHistorySearch {
     const formulaEditor = Boolean(input && input === this.elFormulaInput);
     const colKey = cell?.dataset?.col || this.activeCell?.colKey;
     if (!cell && !formulaEditor) return false;
-    if (!["name", "chartNo"].includes(colKey) || input.classList?.contains("is-armed")) return false;
+    if (!["name", "chartNo"].includes(colKey)) return false;
+    // A focused name input searches its value even after a render re-arms it.
+    if (colKey !== "name" && input.classList?.contains("is-armed")) return false;
     if (!String(input.value ?? "").trim()) return false;
     event.preventDefault();
     event.stopPropagation();

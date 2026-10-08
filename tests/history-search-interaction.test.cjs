@@ -372,8 +372,8 @@ test('history nonidentity cells also open an empty search prompt with the origin
   }
 });
 
-test('a transparent armed chart/name input is a selected cell, not an active editor', () => {
-  for (const colKey of ['name', 'chartNo']) {
+test('a transparent armed chart input retains its prefilled search prompt', () => {
+  for (const colKey of ['chartNo']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell.colKey = colKey;
     let prompt;
@@ -1179,4 +1179,36 @@ test('failed history search from an active name editor returns its border withou
   assert.equal(await app.searchPatientHistory('편집중 이름',0),false);
   app.closeSearchNotFoundModal();
   assert.deepEqual(selected,{rowIdx:0,colKey:'name',editing:false});
+});
+
+
+test('focused populated name input searches directly even when table rendering has re-armed it', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const armed of [false, true]) {
+    const { app, context } = createApp([{ name: '입력한 이름' }]);
+    const cell = {dataset:{row:'0',col:'name'}};
+    const input = {tagName:'INPUT',value:'입력한 이름',classList:{contains:()=>armed},
+      closest:()=>cell,blur(){ this.value = '확정한 이름'; }};
+    context.document.activeElement = input;
+    app.openSearchPromptModal = () => assert.fail('populated name input must skip the prompt');
+    let searched;
+    app.searchPatientHistory = (...args) => { searched = args; };
+    const event = {key:'ㄹ',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,
+      target:input,preventDefault(){},stopPropagation(){}};
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(searched,['확정한 이름',0]);
+    assert.equal(app.historyApplyBlockedKey,'f');
+  }
+});
+
+test('empty focused name inputs and selected chart inputs still open the search prompt', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const [colKey,value] of [['name',''],['chartNo','1234']]) {
+    const {app}=createApp([{[colKey]:value}]);
+    app.activeCell = {rowIdx:0,colKey};
+    const input = {tagName:'INPUT',value,classList:{contains:()=>true},closest:()=>({dataset:{row:'0',col:colKey}})};
+    let prompt;
+    app.openSearchPromptModal = (...args) => { prompt=args; };
+    app.searchPatientHistory = () => assert.fail('empty names and selected chart cells must open the prompt');
+    app.handleGlobalKeyDown({key:'f',code:'KeyF',[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(prompt,[0,value]);
+  }
 });
