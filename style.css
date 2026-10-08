@@ -721,7 +721,6 @@ body {
 .search-prompt-actions { display: flex; flex-shrink: 0; gap: 6px; }
 .search-prompt-actions button { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 50px; height: 40px; padding: 5px 10px; border: 1px solid #dce2e8; border-radius: 6px; background: #f8fafc; color: #475569; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background .15s, border-color .15s; }
 .search-prompt-actions button span { font-size: 9px; font-weight: 500; line-height: 1; opacity: .8; }
-#btnSearchPromptCancel:hover { background: #eef2f6; border-color: #b8c5d5; }
 #btnSearchPromptSubmit { background: #2563eb; border-color: #2563eb; color: #fff; }
 #btnSearchPromptSubmit:hover { background: #1d4ed8; border-color: #1d4ed8; }
 #btnSearchPromptSubmit:focus-visible, .search-prompt-actions button:focus-visible, .search-prompt-card .btn-close-modal:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
@@ -2733,5 +2732,26 @@ body {
 
 .btn-restore-item:hover {
   background: #0b6132 !important;
+}
+
+/* Installed desktop PWAs share the app header with the native window controls. */
+@media (display-mode: window-controls-overlay) {
+  .excel-titlebar {
+    min-height: max(36px, calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 36px)));
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    padding-top: calc(env(titlebar-area-y, 0px) + 4px);
+    padding-bottom: 4px;
+    padding-left: calc(env(titlebar-area-x, 0px) + 12px);
+    padding-right: max(14px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px));
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  .excel-titlebar .title-left { flex: 1; min-width: 0; gap: 8px; }
+  .excel-titlebar .excel-badge,
+  .excel-titlebar .save-status { flex-shrink: 0; }
+  .excel-titlebar .file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .excel-titlebar :is(button, input, select, a) { app-region: no-drag; -webkit-app-region: no-drag; }
 }
 

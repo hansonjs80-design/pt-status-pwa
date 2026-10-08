@@ -1,9 +1,10 @@
 {
-  "name": "물리치료 현황 일지",
-  "short_name": "PT현황",
+  "name": "PT 일일현황",
+  "short_name": "PT 일일현황",
   "description": "엑셀 스타일의 물리치료실 일별 환자 관리 및 현황 PWA",
   "start_url": "./index.html",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#F3F5F4",
   "theme_color": "#107C41",
   "orientation": "any",
