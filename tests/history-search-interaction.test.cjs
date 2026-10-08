@@ -727,7 +727,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(closed,2);
 });
 
-test('one-year-plus missing name refreshes cached history before reporting not found', async () => {
+test('one-year-plus initial refresh finds older history without a duplicate forced download', async () => {
   const { app, context } = createApp([{}]);
   app.dataStore = {};
   app.supabaseClient = {};
@@ -737,14 +737,14 @@ test('one-year-plus missing name refreshes cached history before reporting not f
   const loads = [];
   app.loadSearchHistory = async force => {
     loads.push(Boolean(force));
-    if (force) app.cloudSearchHistory = { '2025-09-09': [{ name: '양명자' }] };
+    app.cloudSearchHistory = { '2025-09-09': [{ name: '양명자' }] };
   };
   app.closeSearchPromptModal = () => {};
   let searched;
   app.searchAllDates = query => { searched = query; };
   context.alert = () => assert.fail('refreshed previous-year name must be found');
   await app.submitSearchPrompt();
-  assert.deepEqual(loads, [false, true]);
+  assert.deepEqual(loads, [false]);
   assert.equal(searched, '양명자');
 });
 
@@ -1454,5 +1454,15 @@ test('name search falls back to live input when no own autocomplete candidate is
     let searched;app.searchPatientHistory=(...args)=>{searched=args;};
     app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:input,preventDefault(){},stopPropagation(){}});
     assert.deepEqual(searched,[input.value,0]);
+  }
+});
+
+test('missing prompt searches report immediately after one history load without forced redownload', async () => {
+  for(const period of ['3months','6months','1year_plus']) {
+    const {app}=createApp([{}]);app.dataStore={};app.supabaseClient={};
+    app.getSearchPeriod=()=>period;app.elSearchPromptInput={value:'없는가상이름'};app.searchPromptTargetRowIdx=0;
+    let loads=0,shown=false;app.loadSearchHistory=async force=>{assert.equal(force,undefined);loads++;};
+    app.closeSearchPromptModal=()=>{};app.showSearchNotFoundModal=()=>{shown=true;};
+    await app.submitSearchPrompt();assert.equal(loads,1);assert.equal(shown,true);assert.equal(app.searchPromptSubmitting,false);
   }
 });

@@ -688,18 +688,9 @@ class PTHistorySearch {
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
       const searchByChart = this.isChartNumberQuery(q);
-      let exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
-      if (!exists && this.supabaseClient && this.getSearchPeriod() === "1year_plus") {
-        await this.loadSearchHistory(true);
-        exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
-      }
-      if (!exists && this.supabaseClient && this.getSearchPeriod() !== "1year_plus") {
-        await this.loadSearchHistory(true);
-        exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
-        if (exists) {
-          this.setSearchPeriod("1year_plus");
-        }
-      }
+      // loadSearchHistory already refreshes expired or incomplete history.
+      // A miss must not force a second full download of the same date range.
+      const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists) {
         this.closeSearchPromptModal();
         this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query: q, targetRowIdx: targetIdx });

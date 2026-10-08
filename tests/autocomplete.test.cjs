@@ -441,3 +441,21 @@ test('one-pass patient flags preserve historical identities and update after del
   app.cloudSearchHistory={'2026-09-28':[{name:'신규'}]};
   assert.equal(app.getNewPatientRowFlags(rows)[0],false);
 });
+
+test('valid cached search history does not wait for an unrelated background refresh', async () => {
+  const app=createApp({});const client={from(){assert.fail('a fresh cached search must not download history again');}};
+  Object.assign(app,{supabaseClient:client,searchHistoryClient:client,searchHistoryLoadedAt:Date.now(),searchHistoryLoadedPeriod:'1year_plus',searchHistoryRequestPeriod:'1year_plus'});
+  app.getSearchPeriod=()=> '1year_plus';
+  let finish;app.searchHistoryRequest=new Promise(resolve=>{finish=resolve;});
+  assert.equal(await app.loadSearchHistory(),false);
+  const forced=app.loadSearchHistory(true);finish(true);assert.equal(await forced,true);
+});
+
+test('expired cached history still waits for the in-flight refresh before deciding a miss', async () => {
+  const app=createApp({});const client={};
+  Object.assign(app,{supabaseClient:client,searchHistoryClient:client,searchHistoryLoadedAt:Date.now()-300001,searchHistoryLoadedPeriod:'1year_plus',searchHistoryRequestPeriod:'1year_plus'});
+  app.getSearchPeriod=()=> '1year_plus';let finish,completed=false;
+  app.searchHistoryRequest=new Promise(resolve=>{finish=resolve;});
+  const loaded=app.loadSearchHistory().then(value=>{completed=true;return value;});
+  await Promise.resolve();assert.equal(completed,false);finish(true);assert.equal(await loaded,true);
+});

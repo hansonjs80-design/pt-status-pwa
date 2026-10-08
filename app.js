@@ -2063,6 +2063,9 @@ class PTApp {
     const currentPeriod = this.getSearchPeriod();
     const periodWeight = { "3months": 1, "6months": 2, "1year_plus": 3 };
     const neededForce = force || (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryLoadedPeriod] || 0);
+    // A valid cached range can answer immediately during a background refresh.
+    // Initial loads, expanded ranges and explicit refreshes still await data.
+    if (!neededForce && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
 
     if (this.searchHistoryRequest) {
       if (neededForce && (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryRequestPeriod] || 0)) {
@@ -2071,8 +2074,6 @@ class PTApp {
       }
       return this.searchHistoryRequest;
     }
-    if (!neededForce && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
-
     const requestPeriod = currentPeriod;
     this.searchHistoryRequestPeriod = requestPeriod;
     const request = (async () => {
