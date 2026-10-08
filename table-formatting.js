@@ -284,11 +284,57 @@ class PTTableFormatting {
   loadColumnFormatting() {
     try { this.columnFormattingPending = JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING_PENDING") || "{}"); }
     catch { this.columnFormattingPending = {}; }
-    try { return JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING") || "{}"); }
-    catch { return {}; }
+    this.columnFormattingPending = this.normalizeSharedColumnFormatting(this.columnFormattingPending) || {};
+    let saved;
+    try { saved = this.normalizeSharedColumnFormatting(JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING") || "{}")) || {}; }
+    catch { saved = {}; }
+    for (const [key, properties] of Object.entries(this.columnFormattingPending)) saved[key] = {...saved[key], ...properties};
+    return saved;
+  }
+
+  normalizeColumnColor(color) {
+    if (color === null) return null;
+    if (typeof color !== 'string') return undefined;
+    const value = color.trim().toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(value)) return value;
+    if (/^#[0-9a-f]{3}$/.test(value)) return '#' + value.slice(1).split('').map(char => char + char).join('');
+    const match = /^(rgb|hsl)\(\s*([+-]?[\d.]+)(%?)\s*[, ]\s*([+-]?[\d.]+)(%?)\s*[, ]\s*([+-]?[\d.]+)(%?)\s*\)$/.exec(value);
+    if (!match) return undefined;
+    let channels;
+    if (match[1] === 'rgb') channels = [2,4,6].map(i => Number(match[i]) * (match[i+1] ? 2.55 : 1));
+    else {
+      if (match[3] || match[5] !== '%' || match[7] !== '%') return undefined;
+      const hue = ((Number(match[2]) % 360) + 360) % 360;
+      const saturation = Number(match[4]) / 100, light = Number(match[6]) / 100;
+      if (saturation < 0 || saturation > 1 || light < 0 || light > 1) return undefined;
+      const a = saturation * Math.min(light, 1 - light);
+      channels = [0,8,4].map(n => {
+        const k = (n + hue / 30) % 12;
+        return 255 * (light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)));
+      });
+    }
+    if (channels.some(n => !Number.isFinite(n) || n < 0 || n > 255)) return undefined;
+    return '#' + channels.map(n => Math.round(n).toString(16).padStart(2,'0')).join('');
+  }
+
+  normalizeSharedColumnFormatting(formatting) {
+    if (!formatting || typeof formatting !== 'object' || Array.isArray(formatting)) return null;
+    const normalized = JSON.parse(JSON.stringify(formatting));
+    for (const properties of Object.values(normalized)) {
+      if (properties?.color) {
+        const color = this.normalizeColumnColor(properties.color.value);
+        if (color === undefined) return null;
+        properties.color.value = color;
+      }
+    }
+    return this.validateSharedColumnFormatting(normalized) ? normalized : null;
   }
 
   setColumnFormatting(columns, property, value, resetCells = false) {
+    if (property === 'color') {
+      value = this.normalizeColumnColor(value);
+      if (value === undefined) return;
+    }
     this.columnFormatting ||= {};
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const revision = `${Date.now()}-${Math.random()}`;
@@ -303,8 +349,8 @@ class PTTableFormatting {
       this.columnFormattingPending[keys[col]] ||= {};
       this.columnFormattingPending[keys[col]][property] = setting;
     }
-    localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
     localStorage.setItem("PT_COLUMN_FORMATTING_PENDING", JSON.stringify(this.columnFormattingPending || {}));
+    localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
     if (this.supabaseClient) {
       clearTimeout(this.columnFormattingSyncTimer);
       this.columnFormattingSyncTimer = setTimeout(() => { void this.syncSharedColumnFormatting(); }, 250);
@@ -323,7 +369,8 @@ class PTTableFormatting {
   }
 
   acceptSharedColumnFormatting(formatting) {
-    if (!this.validateSharedColumnFormatting(formatting)) return;
+    formatting = this.normalizeSharedColumnFormatting(formatting);
+    if (!formatting) return;
     const merged = JSON.parse(JSON.stringify(formatting));
     for (const [key, properties] of Object.entries(this.columnFormattingPending || {})) {
       merged[key] = { ...merged[key], ...properties };
@@ -340,8 +387,15 @@ class PTTableFormatting {
   }
 
   async syncSharedColumnFormatting() {
-    if (Object.keys(this.columnFormattingPending || {}).length) await this.pushSharedColumnFormatting();
-    else await this.pullSharedColumnFormatting();
+    if (this.columnFormattingSyncTask) {
+      await this.columnFormattingSyncTask;
+      return !Object.keys(this.columnFormattingPending || {}).length;
+    }
+    const task = Object.keys(this.columnFormattingPending || {}).length ? this.pushSharedColumnFormatting() : this.pullSharedColumnFormatting();
+    this.columnFormattingSyncTask = task;
+    try { await task; }
+    finally { if (this.columnFormattingSyncTask === task) this.columnFormattingSyncTask = null; }
+    return !Object.keys(this.columnFormattingPending || {}).length;
   }
 
   async pullSharedColumnFormatting() {
@@ -361,8 +415,11 @@ class PTTableFormatting {
         this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
         return;
       }
-      this.acceptSharedColumnFormatting(data.rows_data?.[0]?.columnFormatting);
-    } catch { this.showSaveIndicator("열 글자 설정 동기화 재시도 중", true); }
+      const formatting = this.normalizeSharedColumnFormatting(data.rows_data?.[0]?.columnFormatting);
+      if (!formatting) throw new Error('invalid shared settings');
+      this.acceptSharedColumnFormatting(formatting);
+      this.columnFormattingSyncFailed = false;
+    } catch { this.reportColumnFormattingSyncFailure(); }
     finally { this.columnFormattingSyncBusy = false; }
   }
 
@@ -376,8 +433,8 @@ class PTTableFormatting {
         const { data, error } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle();
         if (error) throw error;
         if (client !== this.supabaseClient) return;
-        const remote = data?.rows_data?.[0]?.columnFormatting;
-        if (data && !this.validateSharedColumnFormatting(remote)) throw new Error("invalid shared settings");
+        const remote = data && this.normalizeSharedColumnFormatting(data.rows_data?.[0]?.columnFormatting);
+        if (data && !remote) throw new Error("invalid shared settings");
         const merged = JSON.parse(JSON.stringify(data ? remote : this.columnFormatting || {}));
         for (const [key, properties] of Object.entries(pending)) merged[key] = { ...merged[key], ...properties };
         const record = { date: SHARED_COLUMN_FORMATTING_RECORD, rows_data: [{ columnFormatting: merged }], total_count: 0,
@@ -398,11 +455,18 @@ class PTTableFormatting {
         localStorage.setItem("PT_COLUMN_FORMATTING_PENDING", JSON.stringify(this.columnFormattingPending));
         this.acceptSharedColumnFormatting(merged);
         this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
+        this.columnFormattingSyncFailed = false;
+        if (!Object.keys(this.columnFormattingPending).length) this.showSaveIndicator("열 글자 설정 저장 및 동기화 완료");
         return;
       }
       throw new Error("shared settings changed concurrently");
-    } catch { this.showSaveIndicator("열 글자 설정 동기화 재시도 중", true); }
+    } catch { this.reportColumnFormattingSyncFailure(); }
     finally { this.columnFormattingSyncBusy = false; }
+  }
+
+  reportColumnFormattingSyncFailure() {
+    if (!this.columnFormattingSyncFailed) this.showSaveIndicator("열 글자 설정 동기화 대기 · 연결되면 다시 저장합니다", true);
+    this.columnFormattingSyncFailed = true;
   }
 
   getColumnFontSettings() {
@@ -452,11 +516,17 @@ class PTTableFormatting {
       row.dataset.key = setting.key;
       row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
         <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
-        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><button type="button" data-apply-column aria-label="${setting.label} 적용 및 저장">적용</button></td>`;
+        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><button type="button" data-apply-column aria-label="${setting.label} 적용 및 저장">적용 및 저장</button></td>`;
       for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = setting[property];
       tbody.appendChild(row);
-      row.querySelector('[data-apply-column]').addEventListener('click', () => {
-        apply([readSetting(row)]);
+      row.querySelector('[data-apply-column]').addEventListener('click', async event => {
+        if (!apply([readSetting(row)])) return;
+        const button = event.currentTarget;
+        button.disabled = true; button.textContent = '저장 중…';
+        try {
+          const synced = this.supabaseClient ? await this.syncSharedColumnFormatting() : false;
+          overlay.querySelector('.column-font-error').textContent = synced ? '' : '이 기기에 저장되었습니다. 클라우드 연결 후 다른 기기에 동기화합니다.';
+        } finally { button.disabled = false; button.textContent = '적용 및 저장'; }
       });
     }
     const readSetting = row => ({
@@ -476,9 +546,10 @@ class PTTableFormatting {
       event.stopPropagation();
       if (event.key === "Escape") { event.preventDefault(); close(); }
     });
-    overlay.querySelector("form").addEventListener("submit", event => {
+    overlay.querySelector("form").addEventListener("submit", async event => {
       event.preventDefault();
       if (!apply(Array.from(tbody.children, readSetting))) return;
+      if (this.supabaseClient) await this.syncSharedColumnFormatting();
       close();
     });
     document.body.appendChild(overlay);
@@ -500,7 +571,7 @@ class PTTableFormatting {
       }
     }
     this.renderTable();
-    this.showSaveIndicator(settings.length === 1 ? '해당 열 적용 및 저장 완료' : '모든 열 적용 및 저장 완료');
+    this.showSaveIndicator(this.supabaseClient ? '열 설정 적용됨 · 동기화 중' : '열 설정 적용 및 기기 저장 완료');
     return true;
   }
 

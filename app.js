@@ -4381,6 +4381,7 @@ class PTApp {
 
   stopLiveSync() {
     clearInterval(this.liveSyncTimer);
+    clearInterval(this.columnFormattingLiveTimer);
     clearTimeout(this.presetsSyncTimer);
     clearTimeout(this.columnFormattingSyncTimer);
     if (this.liveChannel && this.liveClient) void this.liveClient.removeChannel(this.liveChannel);
@@ -4402,6 +4403,7 @@ class PTApp {
       if (document.visibilityState === "visible" && this.supabaseClient) {
         if (!this.liveChannel) this.startLiveSync();
         else void this.pullFromCloud(this.currentDate);
+        void this.syncSharedColumnFormatting();
       }
     });
   }
@@ -4414,7 +4416,7 @@ class PTApp {
     this.liveClient = client;
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
-        if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.pullSharedColumnFormatting(); return; }
+        if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
         if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
         else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
         this.searchHistoryLoadedAt = 0;
@@ -4441,7 +4443,6 @@ class PTApp {
         }
         if (this.presetsDirty) await this.pushSharedPresets();
         else await this.pullSharedPresets();
-        await this.syncSharedColumnFormatting();
         // push가 모두 완료된 후 pull 실행
         if (!this.pendingSyncDates.has(this.currentDate)) {
           await this.pullFromCloud(this.currentDate);
@@ -4449,6 +4450,8 @@ class PTApp {
       } finally { this.liveRefreshBusy = false; }
     };
     this.liveSyncTimer = setInterval(refresh, 2000);
+    this.columnFormattingLiveTimer = setInterval(() => { void this.syncSharedColumnFormatting(); }, 2000);
+    void this.syncSharedColumnFormatting();
     void refresh();
   }
 

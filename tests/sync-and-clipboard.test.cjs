@@ -122,6 +122,75 @@ function setSharedColumn(app, column, property, value) {
   app.supabaseClient=client;
 }
 
+test('legacy HSL and RGB column colors load, save and synchronize without rejecting the entire configuration', async () => {
+  const db=new Map([['__pt_shared_column_formatting_v1__',{date:'__pt_shared_column_formatting_v1__',updated_at:'2026-10-08T07:15:12.677+00:00',rows_data:[{columnFormatting:{
+    extra:{color:{value:'hsl(215 55% 48%)',revision:'old-extra'}},
+    memo:{color:{value:'rgb(255, 0, 0)',revision:'old-memo'}}
+  }}]}]]);
+  const a=createApp(db),b=createApp(db);const notices=[];a.app.showSaveIndicator=value=>notices.push(value);
+  await a.app.pullSharedColumnFormatting();
+  assert.equal(a.app.getColumnFontSettings()[6].color,'#376fbe');
+  assert.equal(a.app.getCellFormatting({},'memo','color'),'#ff0000');
+  const beforeMemo=clone(a.app.columnFormatting.memo);
+  setSharedColumn(a.app,3,'fontSize',18.5);setSharedColumn(a.app,3,'color','hsl(120 100% 25%)');
+  assert.equal(await a.app.syncSharedColumnFormatting(),true);
+  assert.equal(a.app.getCellFormatting({},'name','color'),'#008000');
+  assert.deepEqual(clone(a.app.columnFormatting.memo),beforeMemo);
+  assert.equal(notices.some(value=>value.includes('대기')||value.includes('재시도')),false);
+  a.app.columnFormatting=a.app.loadColumnFormatting();await b.app.pullSharedColumnFormatting();
+  assert.deepEqual(clone(a.app.columnFormatting),clone(b.app.columnFormatting));
+  assert.equal(b.app.getCellFormatting({},'name','fontSize'),18.5);
+});
+
+test('reload restores queued column settings even if the cache snapshot is missing or stale', () => {
+  const {app,storage}=createApp();
+  storage.set('PT_COLUMN_FORMATTING',JSON.stringify({name:{fontSize:{value:14,revision:'cache'}}}));
+  storage.set('PT_COLUMN_FORMATTING_PENDING',JSON.stringify({name:{fontSize:{value:20.5,revision:'queued'},color:{value:'hsl(215 55% 48%)',revision:'queued-color'}}}));
+  app.columnFormatting=app.loadColumnFormatting();assert.equal(app.getColumnFontSettings()[3].fontSize,20.5);
+  assert.match(app.getColumnFontSettings()[3].color,/^#[0-9a-f]{6}$/);
+  storage.delete('PT_COLUMN_FORMATTING');app.columnFormatting=app.loadColumnFormatting();
+  assert.equal(app.getColumnFontSettings()[3].fontSize,20.5);
+});
+
+test('overlapping column save requests share one operation instead of losing or duplicating writes', async () => {
+  const {app}=createApp();app.columnFormatting={};setSharedColumn(app,3,'fontSize',20.5);
+  const original=app.supabaseClient.from;let release,reads=0,writes=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  app.supabaseClient.from=()=>{
+    const query=original();const update=query.insert;
+    query.insert=record=>{writes++;return update(record);};
+    query.maybeSingle=()=>{reads++;return gate.then(()=>query);};return query;
+  };
+  const one=app.syncSharedColumnFormatting(),two=app.syncSharedColumnFormatting();assert.equal(reads,1);
+  release();assert.equal(await one,true);assert.equal(await two,true);assert.equal(writes,1);
+});
+
+test('connection failure keeps queued settings across restart and reports one waiting notice until recovery', async () => {
+  const {app}=createApp();app.columnFormatting={};setSharedColumn(app,3,'fontSize',21.5);
+  const notices=[];app.showSaveIndicator=value=>notices.push(value);const client=app.supabaseClient;
+  app.supabaseClient={from(){throw Error('offline');}};
+  assert.equal(await app.syncSharedColumnFormatting(),false);assert.equal(await app.syncSharedColumnFormatting(),false);
+  assert.equal(notices.filter(value=>value.includes('대기')).length,1);
+  app.columnFormatting=app.loadColumnFormatting();assert.equal(app.getColumnFontSettings()[3].fontSize,21.5);
+  app.supabaseClient=client;assert.equal(await app.syncSharedColumnFormatting(),true);
+  assert.equal(app.columnFormattingSyncFailed,false);assert.equal(Object.keys(app.columnFormattingPending).length,0);
+});
+
+test('column settings save independently while the daily-record synchronization is blocked', async () => {
+  const {app,context}=createApp();app.columnFormatting={};setSharedColumn(app,3,'fontSize',22.5);
+  context.setInterval=setInterval;context.clearInterval=clearInterval;
+  context.document.addEventListener=()=>{};
+  app.supabaseClient.channel=()=>{const channel={on(){return channel;},subscribe(){},send(){}};return channel;};
+  app.supabaseClient.removeChannel=()=>{};
+  app.pendingSyncDates.add('2026-09-30');app.pushToCloud=()=>new Promise(()=>{});
+  app.startLiveSync();
+  try {
+    await app.columnFormattingSyncTask;
+    assert.equal(Object.keys(app.columnFormattingPending).length,0);
+    assert.equal(app.liveRefreshBusy,true);
+  } finally {app.stopLiveSync();}
+});
+
 test('explicit column apply propagates resets to other devices and retains subsequent cell edits after reload', async () => {
   const db=new Map(),a=createApp(db).app,b=createApp(db).app;a.columnFormatting={};b.columnFormatting={};
   const client=a.supabaseClient;a.supabaseClient=null;
