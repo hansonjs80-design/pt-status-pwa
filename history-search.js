@@ -861,11 +861,30 @@ class PTHistorySearch {
       autocomplete.selectedIndex >= 0 && this.isAutocompleteOpen()
       ? autocomplete.candidates[autocomplete.selectedIndex] : undefined;
     const rawValue = input.value;
-    input.blur();
+    const chosenName = typeof selectedName === "string" ? selectedName.trim() : "";
+    const committedCandidate = chosenName && input.commitAutocompleteValue?.(chosenName);
+    if (!committedCandidate) {
+      input.blur();
+      // Windows may have already committed and removed the original editor
+      // during the Control-key handoff. Complete that row's captured draft too.
+      if (chosenName) {
+        const row = this.getCurrentRows()[rowIdx];
+        if (row) {
+          row.name = chosenName;
+          this.applyAutocompleteColor(row, "name", chosenName, autocomplete.query);
+          const currentCell = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="name"]`);
+          if (currentCell) {
+            this.applyCellFormatting(currentCell, row, "name");
+            this.renderColoredText(currentCell, row, "name");
+          }
+          this.saveDataStore();
+          this.refreshNewPatientRows();
+        }
+      }
+    }
     this.closeAutocompleteMenu();
     this.elSheetContainer.focus({ preventScroll: true });
-    const query = typeof selectedName === "string" && selectedName.trim()
-      ? selectedName.trim() : this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
+    const query = chosenName || this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
     this.patientSearchDraft = null;
     this.closeSearchPromptModal();
     void this.searchPatientHistory(query, rowIdx);

@@ -2909,6 +2909,14 @@ class PTApp {
       }, 60);
     };
 
+    // Search shortcuts can confirm the highlighted candidate through the same
+    // commit path as Enter, before native IME blur commits the partial draft.
+    input.commitAutocompleteValue = value => {
+      if (isCommitted) return false;
+      commitAndBlur(value);
+      return true;
+    };
+
     input.addEventListener("blur", () => {
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);

@@ -1429,17 +1429,20 @@ test('closing history and no-results keeps the native name editor focused for th
   }
 });
 
-test('native name search uses its highlighted autocomplete name before blur closes the menu', () => {
+test('native name search commits its highlighted autocomplete name before searching the same row', () => {
   for (const modifier of ['ctrlKey','metaKey']) for (const selectedIndex of [0,1,2]) {
     const {app}=createApp([{name:'이추'}]);
     const cell={dataset:{row:'0',col:'name'}};
     const input={tagName:'INPUT',value:'이추',classList:{contains:()=>false},closest:()=>cell,blur(){app.autocompleteState=null;this.value='이추';}};
+    input.commitAutocompleteValue=value=>{app.getCurrentRows()[0].name=value;app.autocompleteState=null;return true;};
     app.autocompleteState={rowIdx:0,colKey:'name',input,candidates:['이추','이춘식','이춘화'],selectedIndex};
     app.isAutocompleteOpen=()=>true;
     app.closeAutocompleteMenu=()=>{app.autocompleteState=null;};
     let searched;app.searchPatientHistory=(...args)=>{searched=args;};
     app.handlePatientEditorSearchShortcut({key:'Process',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
     assert.deepEqual(searched,[['이추','이춘식','이춘화'][selectedIndex],0]);
+    assert.equal(app.getCurrentRows()[0].name,searched[0]);
+    assert.equal(app.getHistoryDestinationIndex({name:searched[0],chartNo:'123'},0),0);
   }
 });
 
@@ -1465,4 +1468,20 @@ test('missing prompt searches report immediately after one history load without 
     app.closeSearchPromptModal=()=>{};app.showSearchNotFoundModal=()=>{shown=true;};
     await app.submitSearchPrompt();assert.equal(loads,1);assert.equal(shown,true);assert.equal(app.searchPromptSubmitting,false);
   }
+});
+
+test('Windows removed-editor handoff completes the captured autocomplete name and colors in the original row', () => {
+  const rows=[{name:'가상추'},{}],{app}=createApp(rows);
+  app.dataStore={'2026-09-29':[{name:'가상춘식',chartNo:'999',_textColors:{name:'#ff0000'}}]};
+  const input={tagName:'INPUT',value:'가상추',classList:{contains:()=>false},closest:()=>null,blur(){},commitAutocompleteValue(){return false;}};
+  app.rememberPatientSearchDraft(0,'name',input);
+  app.autocompleteState={rowIdx:0,colKey:'name',input,candidates:['가상추','가상춘식'],selectedIndex:1,query:'가상추'};
+  app.isAutocompleteOpen=()=>true;app.closeAutocompleteMenu=()=>{};app.refreshNewPatientRows=()=>{};
+  app.elTableBody.querySelector=()=>null;
+  let searched;app.searchPatientHistory=(...args)=>{searched=args;};
+  app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:{tagName:'DIV',closest:()=>null},preventDefault(){},stopPropagation(){}});
+  assert.equal(rows[0].name,'가상춘식');assert.equal(rows[0]._textColors.name,'#ff0000');
+  assert.deepEqual(searched,['가상춘식',0]);
+  assert.equal(app.getHistoryDestinationIndex({name:'가상춘식',chartNo:'999'},0),0);
+  assert.equal(rows[1].name,undefined);
 });
