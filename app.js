@@ -4853,7 +4853,7 @@ class PTApp {
       }
 
       // Hide row/col exclusive items
-      rowOnlyItems.forEach((el) => el.classList.add("hidden"));
+      rowOnlyItems.forEach((el) => el.classList.toggle("hidden", el.dataset.action !== "delete-row"));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
       this.showContextMenu(e.clientX, e.clientY);
     }
@@ -4911,6 +4911,9 @@ class PTApp {
         break;
       case "font-color":
         this.openFontColorMenu(document.getElementById("btnFontColor"));
+        break;
+      case "background-color":
+        this.openFontColorMenu(document.getElementById("btnBackgroundColor"), "backgroundColor");
         break;
       case "lunch-line":
         this.getCurrentRows()[targetRow]._lunchBefore = !this.getCurrentRows()[targetRow]._lunchBefore;
