@@ -1029,8 +1029,8 @@ class PTApp {
       const header = document.createElement("div"); header.className = "calendar-heading";
       const nav = (label, delta) => {
         const button = document.createElement("button"); button.type = "button"; button.setAttribute("aria-label", label);
-        const path = delta < 0 ? "M16 5 8 12 16 19" : "M8 5 16 12 8 19";
-        button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}" /></svg>`;
+        const points = delta < 0 ? "16 5 8 12 16 19" : "8 5 16 12 8 19";
+        button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
         button.onclick = () => { const next = new Date(year, month - 1 + delta, 1); year = next.getFullYear(); month = next.getMonth() + 1; render(); popup.querySelector(`[aria-label="${label}"]`).focus(); };
         return button;
       };
