@@ -107,9 +107,20 @@
       };
       this.status = '자동 저장 꺼짐';
       const footer = document.createElement('div'); footer.className = 'device-settings-footer';
-      this.button = document.createElement('button'); this.button.type = 'button'; this.button.textContent = '⚙ 설정'; this.button.onclick = () => this.open('backup');
+      this.button = document.createElement('button');
+      this.button.type = 'button';
+      this.button.id = 'btnDeviceSettings';
+      this.button.className = 'btn-action device-settings-btn';
+      this.button.title = '이 컴퓨터 설정';
+      this.button.setAttribute('aria-label', '이 컴퓨터 설정');
+      this.button.innerHTML = `<svg class="toolbar-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.5 3h5l.5 2.5 2 1.2 2.4-.8 2.5 4.3-1.9 1.7v2.3l1.9 1.7-2.5 4.3-2.4-.8-2 1.2-.5 2.5h-5L9 20.6l-2-1.2-2.4.8-2.5-4.3L4 14.2v-2.3l-1.9-1.7 2.5-4.3 2.4.8 2-1.2L9.5 3Z" transform="translate(0 -1)"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>`;
+      this.button.onclick = () => this.open('backup');
+      document.querySelector('.toolbar-actions')?.append(this.button);
       this.statusElement = document.createElement('small'); this.statusElement.textContent = '이 컴퓨터의 저장 설정';
-      footer.append(this.statusElement, this.button);
+      footer.append(this.statusElement);
       document.querySelector('.excel-sidebar')?.append(footer);
       this.init().catch(error => this.report(error.message));
     }

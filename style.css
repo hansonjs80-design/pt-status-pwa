@@ -699,7 +699,7 @@ body {
   outline: none;
 }
 
-.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 344px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
+.modal-card.search-prompt-card { width: calc(100% - 32px); max-width: 240px; border-radius: 10px; box-shadow: 0 12px 32px #0f172a26; }
 #searchPromptModal { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .search-prompt-card .modal-header { cursor: grab; user-select: none; touch-action: none; }
 .search-prompt-card .modal-header.is-dragging { cursor: grabbing; }
@@ -2204,7 +2204,7 @@ body {
 
 .device-settings-footer { margin-top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 16px; }
 .device-settings-footer small { color: #66796d; font-size: 11px; overflow-wrap: anywhere; }
-.device-settings-footer button, .device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
+.device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
 .device-settings-dialog { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; margin: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; color: #263d30; box-shadow: 0 16px 70px #0003; }
 .device-settings-dialog::backdrop { background: #13251d66; }
 .device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; }
