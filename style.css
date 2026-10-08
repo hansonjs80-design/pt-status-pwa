@@ -2230,7 +2230,7 @@ body {
 .font-color-button .font-color-letter { display: inline-block; transform: translateY(3.28px); }
 .fill-color-icon { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .history-button .fill-color-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
-.fill-color-bar { display: block; width: 23px; height: 3px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
+.fill-color-bar { display: block; width: 23px; height: 4px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
 .font-size-controls { display: inline-flex; align-items: center; gap: 4px; }
 .font-size-controls button { border: 0; border-radius: 6px; height: 32px; min-width: 28px; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
 .font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }

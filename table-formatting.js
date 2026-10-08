@@ -757,6 +757,8 @@ class PTTableFormatting {
       return;
     }
     const rows = this.getCurrentRows();
+    // Record both sides of formatting even when an editor still owns focus.
+    this.captureHistory?.();
     for (let r = range.minRow; r <= range.maxRow; r++) for (let col = range.minCol; col <= range.maxCol; col++) {
       if (!this.isSelectedCoordinate(r, col)) continue;
       const row = rows[r]; row._textStyles ||= {}; row._textStyles[keys[col]] ||= {};
@@ -764,6 +766,7 @@ class PTTableFormatting {
       if (value === null) delete row._textStyles[keys[col]][property];
       else row._textStyles[keys[col]][property] = value;
     }
+    this.captureHistory?.();
     this.saveDataStore(); this.renderTable();
   }
 
@@ -903,6 +906,7 @@ class PTTableFormatting {
     if (!bar) return;
     const status = this.getFormattingStatus("backgroundColor");
     bar.style.backgroundColor = status.value || "#999999";
+    button.querySelectorAll?.(".fill-color-paint").forEach(part => { part.style.fill = status.value || "#999999"; });
     button.title = `셀 배경색: ${status.label}`;
     button.setAttribute("aria-label", button.title);
   }

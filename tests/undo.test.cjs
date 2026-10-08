@@ -21,7 +21,7 @@ function createApp() {
   for (const element of ['elSearchInput', 'elFormulaInput', 'elCellAddress', 'elSelectedCellCoords']) app[element] = { value: "" };
   app.elBtnClearSearch = { style: {} };
   app.elSheetContainer = { focus() {} };
-  return { app, storage };
+  return { app, storage, context };
 }
 
 test('multi-cell changes restore as one transaction and persist undo/redo', () => {
@@ -146,3 +146,27 @@ test('handleHistoryShortcut triggers undo and redo during Korean IME with KeyZ a
   assert.equal(app.getCurrentRows()[0].name, '새이름');
 });
 
+
+
+test('background formatting records undo even while editor focus suppresses normal save history', () => {
+  const { app, context } = createApp();
+  context.document.activeElement = { blur() {}, matches() { return false; } };
+  app.dataStore[app.currentDate] = [{memo:'가상 메모',_textColors:{memo:'#0000ff'},_textStyles:{memo:{backgroundColor:'#ffff00'}}}];
+  app.editHistory.clear(); // Also cover the first formatting change for a date.
+  app.getFormattingRange = () => ({minRow:0,maxRow:0,minCol:8,maxCol:8});
+  app.getSelectedFormattingColumns = () => null;
+  app.isSelectedCoordinate = () => true;
+  app.isEditingCell = () => true;
+  app.updateBackgroundColorIndicator = app.closeFontColorMenu = () => {};
+  app.applyBackgroundColor('#ff0000');
+  assert.equal(app.getEditHistory().undo.length,1);
+  assert.equal(app.getCurrentRows()[0]._textStyles.memo.backgroundColor,'#ff0000');
+  app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0]._textStyles.memo.backgroundColor,'#ffff00');
+  assert.equal(app.getCurrentRows()[0]._textColors.memo,'#0000ff');
+  app.restoreEditHistory(true);
+  assert.equal(app.getCurrentRows()[0]._textStyles.memo.backgroundColor,'#ff0000');
+  app.applyBackgroundColor(null);
+  app.restoreEditHistory();
+  assert.equal(app.getCurrentRows()[0]._textStyles.memo.backgroundColor,'#ff0000');
+});
