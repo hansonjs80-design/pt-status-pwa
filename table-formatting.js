@@ -281,6 +281,19 @@ class PTTableFormatting {
     return { value, label };
   }
 
+  updateFontColorIndicator(appliedColor) {
+    if (typeof document === "undefined") return;
+    const button = document.getElementById?.("btnFontColor");
+    const icon = button?.querySelector?.(".format-icon");
+    if (!icon) return;
+    const status = appliedColor ? { value: appliedColor, label: appliedColor } : this.getFormattingStatus("color");
+    icon.style.borderBottomColor = status.value || "#000000";
+    icon.style.borderBottomStyle = status.label === "여러 값" ? "dashed" : "solid";
+    const label = `글자색: ${status.label}`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+  }
+
   loadColumnFormatting() {
     try { this.columnFormattingPending = JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING_PENDING") || "{}"); }
     catch { this.columnFormattingPending = {}; }
@@ -830,6 +843,7 @@ class PTTableFormatting {
       this.renderTable();
       const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
       this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
+      this.updateFontColorIndicator(color);
       this.closeFontColorMenu();
       return;
     }
@@ -842,7 +856,7 @@ class PTTableFormatting {
         const key = textSelection.colKey;
         this.setPartialTextColor(row, textSelection.colKey, textSelection.start, textSelection.end, color);
         this.markCellFormatting(row, key, "color");
-        this.saveDataStore(); this.renderTable(); this.closeFontColorMenu(); return;
+        this.saveDataStore(); this.renderTable(); this.updateFontColorIndicator(color); this.closeFontColorMenu(); return;
       }
     }
     if (this.isEditingCell()) document.activeElement.blur();
@@ -859,6 +873,7 @@ class PTTableFormatting {
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
     }
     this.saveDataStore(); this.renderTable();
+    this.updateFontColorIndicator(color);
     this.closeFontColorMenu();
   }
 

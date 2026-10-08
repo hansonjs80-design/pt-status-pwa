@@ -6,6 +6,31 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+test('font color indicator follows selection, applied colors and reset without coloring the A label', () => {
+  const instance = Object.create(context.App.prototype);
+  const icon = { style: { color: '#495057' } }, attributes = {};
+  const button = { querySelector: () => icon, setAttribute: (name, value) => { attributes[name] = value; } };
+  context.document = { getElementById: () => button };
+  try {
+    instance.getFormattingStatus = () => ({ value: 'rgb(0, 0, 255)', label: '#0000ff' });
+    instance.updateFontColorIndicator();
+    assert.equal(icon.style.borderBottomColor, 'rgb(0, 0, 255)');
+    assert.equal(icon.style.borderBottomStyle, 'solid');
+    instance.updateFontColorIndicator('#ff0000');
+    assert.equal(icon.style.borderBottomColor, '#ff0000');
+    instance.updateFontColorIndicator(null);
+    assert.equal(icon.style.borderBottomColor, 'rgb(0, 0, 255)', 'reset reflects the effective column color');
+    instance.getFormattingStatus = () => ({ value: null, label: '여러 값' });
+    instance.updateFontColorIndicator();
+    assert.equal(icon.style.borderBottomStyle, 'dashed');
+    assert.equal(attributes['aria-label'], '글자색: 여러 값');
+    instance.getFormattingStatus = () => ({ value: null, label: '선택 없음' });
+    instance.updateFontColorIndicator();
+    assert.equal(icon.style.borderBottomColor, '#000000');
+    assert.equal(icon.style.borderBottomStyle, 'solid');
+    assert.equal(icon.style.color, '#495057');
+  } finally { delete context.document; }
+});
 test('font-size Enter applies only its own column instead of submitting every column', () => {
   let applied = 0, prevented = 0;
   const row = { querySelector(selector) { assert.equal(selector, '[data-apply-column]'); return { click() { applied++; } }; } };

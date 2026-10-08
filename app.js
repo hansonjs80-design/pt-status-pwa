@@ -536,6 +536,7 @@ class PTApp {
     const updateFontSize = () => {
       const status = this.getFormattingStatus("fontSize");
       document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
+      this.updateFontColorIndicator();
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
       const button = document.getElementById(id);
@@ -1365,6 +1366,7 @@ class PTApp {
       if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
     }
     if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
+    this.updateFontColorIndicator();
   }
 
   // Select and focus cell like Excel
@@ -1417,6 +1419,7 @@ class PTApp {
     }
     this.updateHistoryDestinationHighlight();
     if (!this._isPasting) this.ensureCurrentCellVisible(cellElement);
+    this.updateFontColorIndicator();
   }
 
   getTopVisibleCurrentRow() {
@@ -3399,6 +3402,7 @@ class PTApp {
       }
       this.elSelectedCellCoords.textContent = statText;
     }
+    this.updateFontColorIndicator();
   }
 
   selectEntireColumn(colKey, colLetter, endKey = colKey) {
@@ -3430,6 +3434,7 @@ class PTApp {
     this.elSelectedCellCoords.textContent = `${label}열 선택`;
     this.elFormulaInput.value = "";
     this.elSheetContainer.focus({ preventScroll: true });
+    this.updateFontColorIndicator();
   }
 
   selectEntireRow(rowIdx) {
@@ -3499,6 +3504,7 @@ class PTApp {
     this.elFormulaInput.value = "";
     this.updateHistoryDestinationHighlight();
     this.elSheetContainer.focus({ preventScroll: true });
+    this.updateFontColorIndicator();
   }
 
   selectAllCells() {

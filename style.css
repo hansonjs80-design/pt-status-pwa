@@ -1335,20 +1335,20 @@ body {
 
 .autocomplete-hint-badge {
   font-size: 10px;
-  color: #888888;
+  color: #ffffff;
   margin-left: 10px;
   font-weight: normal;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: rgba(16, 124, 65, 0.08);
+  background: #666666;
   padding: 1px 5px;
   border-radius: 3px;
 }
 
 .autocomplete-item.is-selected .autocomplete-hint-badge {
-  color: #107C41;
-  background: rgba(16, 124, 65, 0.16);
+  color: #ffffff;
+  background: #666666;
   font-weight: 600;
 }
 
@@ -2302,14 +2302,14 @@ body {
   padding: 1px 5px;
   border: 0;
   background: transparent;
-  color: #107c41;
+  color: #666666;
   cursor: pointer;
   font-size: 16px;
   line-height: 18px;
 }
 .autocomplete-item.is-selected .autocomplete-edit-button,
 .autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
-.autocomplete-edit-button:hover { background: transparent; color: #0c5b30; }
+.autocomplete-edit-button:hover { background: transparent; color: #666666; }
 
 /* Keep Apply reachable while all history data columns share the sheet scroll. */
 .cross-date-inner-table .history-apply-cell,
