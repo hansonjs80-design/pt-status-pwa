@@ -785,7 +785,7 @@ test('direct cell name search also rejects a nonexistent exact name without chan
 });
 
 
-test('missing typed names and chart numbers close the search popup after the alert without changing records', async () => {
+test('missing typed names and chart numbers close the search popup before showing the alert without changing records', async () => {
   for (const query of ['이연', '99999']) {
     const {app,context}=createApp([{name:'다른환자'}]);
     app.dataStore={'2026-09-28':[{name:'이연진',chartNo:'15889'}]};
@@ -796,14 +796,19 @@ test('missing typed names and chart numbers close the search popup after the ale
     app.searchAllDates=()=>assert.fail('missing identity must not open results');
     context.alert=message=>events.push(message);
     await app.submitSearchPrompt();
-    assert.deepEqual(events,['해당 챠트번호/성함이 내역에 없습니다.','closed']);
+    assert.deepEqual(events,['closed','해당 챠트번호/성함이 내역에 없습니다.']);
     assert.equal(JSON.stringify(app.dataStore),before);
     assert.equal(app.searchPromptSubmitting,false);
   }
 });
 
 test('searchNotFoundModal opens with message and closes on Enter or Escape key', () => {
-  const {app,context} = createApp([]);
+  const {app,context} = createApp([{}]);
+  app.ensureCurrentCellVisible = () => {};
+  let resumedNameEditor = false;
+  app.selectCell = (rowIdx, colKey, cell, editing) => {
+    resumedNameEditor = rowIdx === 0 && colKey === 'name' && editing;
+  };
   const modal = { style: { display: 'none' } };
   const msgEl = { textContent: '' };
   let focusedBtn = false;
@@ -837,7 +842,8 @@ test('searchNotFoundModal opens with message and closes on Enter or Escape key',
   const enterEvent = { key: 'Enter', preventDefault() {}, stopPropagation() {} };
   context.document.dispatchEvent(enterEvent);
   assert.equal(modal.style.display, 'none');
-  assert.equal(searchInputFocused, true);
+  assert.equal(searchInputFocused, false);
+  assert.equal(resumedNameEditor, true);
 
   // 2. Escape key closes modal
   modal.style.display = 'none';
@@ -848,7 +854,8 @@ test('searchNotFoundModal opens with message and closes on Enter or Escape key',
   const escEvent = { key: 'Escape', preventDefault() {}, stopPropagation() {} };
   context.document.dispatchEvent(escEvent);
   assert.equal(modal.style.display, 'none');
-  assert.equal(searchInputFocused, true);
+  assert.equal(searchInputFocused, false);
+  assert.equal(resumedNameEditor, true);
 });
 
 
@@ -1114,4 +1121,62 @@ test('date navigation starts at row one and cancels delayed empty-row focus', ()
     assert.equal(app.rangeEnd, null);
     assert.equal(app.elDatePicker.value, '2026-10-05');
   }
+});
+
+
+test('closing a failed general search edits the name cell after the last named row, never an earlier gap', () => {
+  for (const names of [[], ['', '', ''], ['첫 이름', '', '끝 이름', '', '']]) {
+    const rows = names.map(name => ({ name }));
+    if (rows.length) rows.at(-1).memo = '준비된 메모';
+    const { app } = createApp(rows);
+    app.activeCell = { rowIdx: 0, colKey: 'memo' };
+    app.addNewRow = () => rows.push({});
+    app.ensureCurrentCellVisible = () => {};
+    let selection;
+    app.selectCell = (rowIdx, colKey, cell, editing) => { selection = { rowIdx, colKey, editing }; };
+    app.showSearchNotFoundModal(undefined, { query: '내역없는 이름', targetRowIdx: 0 });
+    app.closeSearchNotFoundModal();
+    assert.deepEqual(selection, { rowIdx: names.includes('끝 이름') ? 3 : 0, colKey: 'name', editing: true });
+    assert.equal(app.searchNotFoundReturnTarget, null);
+  }
+});
+
+test('failed prompt search restores the original name border; changed queries resume a new name editor', async () => {
+  for (const query of ['검색할 이름', '다른 이름']) {
+    const rows = [{name:'검색할 이름'}, {name:'마지막 이름'}, {}];
+    const { app, context } = createApp(rows);
+    const modal = {style:{display:'none'}};
+    const prompt = {style:{display:'flex'}};
+    context.document.getElementById = id => id === 'searchNotFoundModal' ? modal : null;
+    app.elSearchPromptModal = prompt;
+    app.elSearchPromptInput = {value:query};
+    app.searchPromptTargetRowIdx = 0;
+    app.hasRecordedPatientValue = () => false;
+    app.closeSearchPromptAutocomplete = () => {};
+    app.ensureCurrentCellVisible = () => {};
+    let selected, sheetFocus = 0;
+    app.elSheetContainer.focus = () => { sheetFocus++; };
+    app.selectCell = (rowIdx, colKey, cell, editing) => { selected = {rowIdx,colKey,editing}; };
+    await app.submitSearchPrompt();
+    assert.equal(prompt.style.display,'none');
+    assert.equal(modal.style.display,'flex');
+    assert.equal(selected,undefined);
+    sheetFocus = 0;
+    app.closeSearchNotFoundModal();
+    const sameName = query === rows[0].name;
+    assert.deepEqual(selected,{rowIdx:sameName ? 0 : 2,colKey:'name',editing:!sameName});
+    assert.equal(sheetFocus,sameName ? 1 : 0);
+  }
+});
+
+test('failed history search from an active name editor returns its border without editing', async () => {
+  const rows = [{name:'편집중 이름'}, {}];
+  const {app} = createApp(rows);
+  app.hasRecordedPatientName = () => false;
+  app.ensureCurrentCellVisible = () => {};
+  let selected;
+  app.selectCell = (rowIdx,colKey,cell,editing) => { selected = {rowIdx,colKey,editing}; };
+  assert.equal(await app.searchPatientHistory('편집중 이름',0),false);
+  app.closeSearchNotFoundModal();
+  assert.deepEqual(selected,{rowIdx:0,colKey:'name',editing:false});
 });

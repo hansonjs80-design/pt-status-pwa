@@ -563,7 +563,14 @@ class PTHistorySearch {
     return false;
   }
 
-  showSearchNotFoundModal(message = "해당 챠트번호/성함이 내역에 없습니다.") {
+  showSearchNotFoundModal(message = "해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx } = {}) {
+    const row = this.getCurrentRows()[targetRowIdx];
+    const fromNameCell = this.activeCell?.colKey === "name" && this.activeCell.rowIdx === targetRowIdx &&
+      Boolean(String(query ?? "").trim()) &&
+      String(row?.name ?? "").trim().toLowerCase() === String(query).trim().toLowerCase();
+    this.searchNotFoundReturnTarget = {
+      date: this.currentDate, row: fromNameCell ? row : null, rowIdx: targetRowIdx
+    };
     const modal = document.getElementById?.("searchNotFoundModal");
     const msgEl = document.getElementById?.("searchNotFoundMessage");
     const btnClose = document.getElementById?.("btnCloseSearchNotFound");
@@ -600,14 +607,28 @@ class PTHistorySearch {
     this._searchNotFoundCleanup = null;
     const modal = document.getElementById?.("searchNotFoundModal");
     if (modal) modal.style.display = "none";
-    if (this.elSearchInput) this.elSearchInput.focus();
+    const target = this.searchNotFoundReturnTarget;
+    this.searchNotFoundReturnTarget = null;
+    if (target?.date !== this.currentDate) return;
+    const rows = this.getCurrentRows();
+    const originIdx = target.row ? rows.indexOf(target.row) : -1;
+    // General searches resume immediately after the last named row, including gaps.
+    const rowIdx = originIdx >= 0 ? originIdx : rows.findLastIndex(row => String(row?.name ?? "").trim()) + 1;
+    if (rowIdx >= rows.length) this.addNewRow(false);
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="name"]`);
+    if (cell) {
+      this.selectCell(rowIdx, "name", cell, originIdx < 0);
+      this.ensureCurrentCellVisible(cell);
+      if (originIdx >= 0) this.elSheetContainer.focus({ preventScroll: true });
+    }
+    this.historyOriginSelection = undefined;
   }
 
   async searchPatientHistory(query, targetRowIdx) {
     if (this.supabaseClient) await this.loadSearchHistory();
     const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
-      this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
+      this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx });
       return false;
     }
     this.searchAllDates(query, targetRowIdx);
@@ -642,8 +663,8 @@ class PTHistorySearch {
         }
       }
       if (!exists) {
-        this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
         this.closeSearchPromptModal();
+        this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query: q, targetRowIdx: targetIdx });
         return;
       }
       this.closeSearchPromptModal();
