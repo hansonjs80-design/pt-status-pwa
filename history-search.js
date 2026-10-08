@@ -2,14 +2,11 @@
 // Methods run with the PTApp instance as `this`; no separate state is created.
 class PTHistorySearch {
   copyHistoryFields(destination, source, keys) {
+    const sourceIndex = this.crossDateResults?.indexOf(source) ?? -1;
     for (const key of keys) {
       destination[key] = source[key] ?? "";
-      for (const metadata of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
-        if (source[metadata]?.[key] !== undefined) {
-          destination[metadata] ||= {};
-          destination[metadata][key] = JSON.parse(JSON.stringify(source[metadata][key]));
-        } else if (destination[metadata]) delete destination[metadata][key];
-      }
+      const cell = sourceIndex >= 0 ? this.elTableBody?.querySelector(`[data-cross-idx="${sourceIndex}"][data-cross-col="${key}"]`) : null;
+      this.applyCopiedCellFormatting(destination, key, this.captureCellFormatting(source, key, cell));
     }
   }
 

@@ -4986,8 +4986,19 @@ class PTApp {
     }
 
     if (copyRange) {
+      const sourceRows = copyRange.kind === "history" ? this.crossDateResults : rows;
+      const formatting = [];
+      for (let r = copyRange.minRow; r <= copyRange.maxRow; r++) {
+        const line = [];
+        for (let c = copyRange.minCol; c <= copyRange.maxCol; c++) {
+          const key = colKeys[c];
+          const selector = copyRange.kind === "history" ? `[data-cross-idx="${r}"][data-cross-col="${key}"]` : `[data-row="${r}"][data-col="${key}"]`;
+          line.push(this.isSelectedCoordinate(r, c) ? this.captureCellFormatting(sourceRows[r] || {}, key, this.elTableBody?.querySelector(selector)) : null);
+        }
+        formatting.push(line);
+      }
       this.clipboardBuffer = tsvData;
-      this.clipboardSelection = { ...copyRange, rowSelection: this.crossDateSelection ? Boolean(this.isCrossDateRowSelected) : Boolean(this.selectedRowRange), date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
+      this.clipboardSelection = { ...copyRange, formatting, rowSelection: this.crossDateSelection ? Boolean(this.isCrossDateRowSelected) : Boolean(this.selectedRowRange), date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
@@ -5101,6 +5112,8 @@ class PTApp {
               if (k === "name" && trimmed) includesName = true;
               rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
                 : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
+              const formatting = sourceSelection?.formatting?.[rOffset]?.[cOffset];
+              if (formatting) this.applyCopiedCellFormatting(rows[r], k, formatting);
             }
           }
         });

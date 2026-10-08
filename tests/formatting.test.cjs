@@ -340,3 +340,39 @@ test('single cell typography/color do not change defaults even with a stale colu
   instance.applyCellFormatting(element,rows[0],'name');
   assert.equal(element.style.fontSize,'');
 });
+
+
+test('history range clipboard preserves cell color and partial text colors without changing column defaults', async () => {
+  context.navigator={clipboard:{writeText:async()=>{}}};
+  const rows=[{name:'기존'},{}],instance=createPasteApp(rows,'name');
+  instance.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
+  const source={memo:'메모',_textColors:{memo:'#0000ff'},_richText:{memo:{text:'메모',colors:['#ff0000',null]}}};
+  instance.crossDateResults=[source];instance.crossDateSelection={minRow:0,maxRow:0,minCol:8,maxCol:8};
+  const defaults=JSON.stringify(instance.columnFormatting);
+  instance.copySelection();
+  // The copied style is a snapshot, not a reference to the source record.
+  source._textColors.memo='#00ff00';source._richText.memo.colors[0]='#00ff00';
+  instance.crossDateSelection=null;instance.activeCell={rowIdx:1,colKey:'name'};
+  await instance.pasteSelection(instance.clipboardBuffer);
+  assert.equal(rows[1].name,'메모');
+  assert.equal(instance.getCellFormatting(rows[1],'name','color'),'#0000ff');
+  assert.equal(rows[1]._richText.name.colors[0],'#ff0000');
+  assert.equal(instance.getCellFormatting(rows[0],'name','color'),'#000000');
+  assert.equal(JSON.stringify(instance.columnFormatting),defaults);
+});
+
+test('history Apply captures the displayed override and inherits updated defaults without copying obsolete colors', () => {
+  const instance=Object.create(context.App.prototype);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
+  const source={name:'색상 환자',_textColors:{name:'#ff0000'}};
+  instance.markCellFormatting(source,'name','color');
+  const destination={memo:'보존'};
+  const defaults=JSON.stringify(instance.columnFormatting);
+  instance.copyHistoryFields(destination,source,['name']);
+  assert.equal(instance.getCellFormatting(destination,'name','color'),'#ff0000');
+  assert.equal(destination.memo,'보존');
+  assert.equal(JSON.stringify(instance.columnFormatting),defaults);
+  instance.setColumnFormatting({minCol:3,maxCol:3},'color','#123456');
+  instance.copyHistoryFields(destination,source,['name']);
+  assert.equal(instance.getCellFormatting(destination,'name','color'),'#123456');
+});

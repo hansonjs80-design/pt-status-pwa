@@ -69,6 +69,37 @@ class PTTableFormatting {
     }
   }
 
+  captureCellFormatting(row, key, element = null) {
+    const computed = element && typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
+    const formatting = {};
+    for (const property of ["color", "fontSize", "fontWeight"]) {
+      const value = this.getCellFormatting(row, key, property) ?? computed?.[property];
+      if (value != null && value !== "") formatting[property] = property === "fontSize" ? parseFloat(value) : value;
+    }
+    const setting = this.columnFormatting?.[key]?.color;
+    if (row._richText?.[key] && (!setting || row._formatRevisions?.[key]?.color === setting.revision)) {
+      formatting.richText = JSON.parse(JSON.stringify(row._richText[key]));
+    }
+    return formatting;
+  }
+
+  applyCopiedCellFormatting(row, key, formatting) {
+    for (const metadata of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
+      if (row[metadata]) delete row[metadata][key];
+    }
+    for (const property of ["color", "fontSize", "fontWeight"]) {
+      if (formatting[property] !== undefined) {
+        if (property === "color") { row._textColors ||= {}; row._textColors[key] = formatting[property]; }
+        else { row._textStyles ||= {}; row._textStyles[key] ||= {}; row._textStyles[key][property] = formatting[property]; }
+      }
+      this.markCellFormatting(row, key, property);
+    }
+    if (formatting.richText) {
+      row._richText ||= {};
+      row._richText[key] = JSON.parse(JSON.stringify(formatting.richText));
+    }
+  }
+
   getSelectedFormattingColumns() {
     // Only header selection changes defaults. A cell selection remains local
     // even if an older column-selection marker survived an event handoff.
