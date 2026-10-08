@@ -1331,7 +1331,7 @@ body {
 .cell-chartNo { text-align: center; font-size: 12px; }
 .cell-name { text-align: center; font-weight: 600; }
 .cell-part { text-align: center; }
-.cell-prescription { text-align: left; padding-left: 10px; }
+.cell-prescription { text-align: left; padding-left: 20px; }
 .cell-extra { text-align: center; font-weight: 600; color: #1b5e20; }
 .cell-writer { text-align: center; color: #2e7d32; font-weight: bold; }
 .cell-memo { text-align: center; color: #555; }
@@ -2456,7 +2456,7 @@ body {
 
 /* Keep the native IME editor in the same box before and during composition. */
 .excel-table .cell-input-element { position:absolute; inset:0; box-sizing:border-box; padding:0 6px; }
-.excel-table .cell-prescription .cell-input-element { padding-left:16px; }
+.excel-table .cell-prescription .cell-input-element { padding-left:26px; }
 
 /* Table horizontal grid line continuation to fill available sheet width */
 .excel-table {
