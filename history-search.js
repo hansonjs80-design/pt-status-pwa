@@ -598,7 +598,7 @@ class PTHistorySearch {
     return false;
   }
 
-  showSearchNotFoundModal(message = "해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx } = {}) {
+  showSearchNotFoundModal(message = "일치하는 환자 내역이 없습니다.", { query, targetRowIdx } = {}) {
     const row = this.getCurrentRows()[targetRowIdx];
     const fromNameCell = this.activeCell?.colKey === "name" && this.activeCell.rowIdx === targetRowIdx &&
       Boolean(String(query ?? "").trim()) &&
@@ -666,7 +666,7 @@ class PTHistorySearch {
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
     const searchByChart = this.isChartNumberQuery(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
-      this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx });
+      this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query, targetRowIdx });
       return false;
     }
     this.searchAllDates(query, targetRowIdx);
@@ -693,7 +693,7 @@ class PTHistorySearch {
       const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists) {
         this.closeSearchPromptModal();
-        this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query: q, targetRowIdx: targetIdx });
+        this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query: q, targetRowIdx: targetIdx });
         return;
       }
       this.closeSearchPromptModal();

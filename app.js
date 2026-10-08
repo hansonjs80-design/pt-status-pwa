@@ -696,6 +696,14 @@ class PTApp {
       this.elPresetManagerModal.addEventListener("click", (e) => {
         if (e.target === this.elPresetManagerModal) this.closePresetManager();
       });
+      this.elPresetManagerModal.addEventListener("keydown", (e) => {
+        if (e.key !== "Tab") return;
+        const controls = Array.from(this.elPresetManagerModal.querySelectorAll('button:not(:disabled), input:not(:disabled), summary'))
+          .filter(element => element.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      });
     }
     if (this.elTabPresetPrescription) {
       this.elTabPresetPrescription.addEventListener("click", () => this.switchPresetTab("prescription"));
@@ -710,9 +718,7 @@ class PTApp {
       this.elBtnManagerAddPreset.addEventListener("click", () => this.addPresetFromManager());
     }
     if (this.elManagerNewPresetInput) {
-      this.elManagerNewPresetInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") this.addPresetFromManager();
-      });
+      this.elManagerNewPresetInput.addEventListener("keydown", (e) => this.handlePresetManagerAddKeyDown(e));
     }
     if (this.elBtnManagerResetPresets) {
       this.elBtnManagerResetPresets.addEventListener("click", () => this.resetPresetsFromManager());
@@ -736,7 +742,7 @@ class PTApp {
       if (e.key === "Enter") {
         const q = this.elSearchInput.value.trim();
         if (q && typeof this.hasAnySearchMatches === "function" && !this.hasAnySearchMatches(q)) {
-          this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.");
+          this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.");
         }
       }
     });
@@ -1106,8 +1112,10 @@ class PTApp {
     const dateFormatted = `${y}.${String(m).padStart(2, "0")}.${String(d).padStart(2, "0")}`;
 
     this.elDateLabel.textContent = `${dateFormatted} (${dayLabel})`;
-    this.elDateLabel.classList.toggle("is-saturday", dateObj.getDay() === 6);
-    this.elDateLabel.classList.toggle("is-sunday", dateObj.getDay() === 0);
+    for (const element of [this.elDateLabel, this.elBtnPrevDay, this.elBtnNextDay]) {
+      element?.classList?.toggle("is-saturday", dateObj.getDay() === 6);
+      element?.classList?.toggle("is-sunday", dateObj.getDay() === 0);
+    }
     this.elSidebarDateTag.textContent = dateFormatted;
     this.elSheetTabTitle.textContent = dateFormatted;
 
@@ -6346,21 +6354,30 @@ class PTApp {
   // --- 통합 빠른 도구 관리 모달 (추가 / 삭제 / 수정 / 순서변경) ---
   openPresetManager(tab = "prescription", context = null) {
     if (!this.elPresetManagerModal) return;
+    if (this.elPresetManagerModal.style.display !== "flex") this.presetManagerReturnFocus = document.activeElement;
+    clearTimeout(this.presetManagerFocusTimer);
     this.autocompleteManagerContext = context;
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
     this.renderPresetManagerList();
     this.elPresetManagerModal.style.display = "flex";
+    this.setPresetManagerFeedback("변경사항은 바로 저장됩니다.");
     if (this.elManagerNewPresetInput) {
       this.elManagerNewPresetInput.value = "";
-      setTimeout(() => this.elManagerNewPresetInput.focus(), 100);
+      this.presetManagerFocusTimer = setTimeout(() => {
+        if (this.elPresetManagerModal.style.display === "flex") this.elManagerNewPresetInput.focus();
+      }, 100);
     }
   }
 
   closePresetManager() {
+    clearTimeout(this.presetManagerFocusTimer);
     this.clearPresetDrag();
-    if (this.elPresetManagerModal) {
+    if (this.elPresetManagerModal?.style.display === "flex") {
       this.elPresetManagerModal.style.display = "none";
+      const focus = this.presetManagerReturnFocus?.isConnected ? this.presetManagerReturnFocus : this.elBtnManagePresets;
+      focus?.focus({ preventScroll: true });
+      this.presetManagerReturnFocus = null;
     }
   }
 
@@ -6370,6 +6387,7 @@ class PTApp {
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
     this.renderPresetManagerList();
+    this.setPresetManagerFeedback("변경사항은 바로 저장됩니다.");
     if (this.elManagerNewPresetInput) {
       this.elManagerNewPresetInput.focus();
     }
@@ -6379,9 +6397,10 @@ class PTApp {
     const context = this.autocompleteManagerContext;
     const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성", memo: "메모", specialNote: "특이 사항" };
     const title = this.elPresetManagerModal?.querySelector(".modal-title");
-    if (title) title.textContent = context ? `${labels[this.activePresetTab]} 자동완성 세부 관리` : "⚙️ 빠른 입력 도구 관리";
-    const card = this.elPresetManagerModal?.querySelector(".modal-card");
-    if (card) card.style.maxWidth = context ? "680px" : "520px";
+    if (title) title.textContent = context ? `${labels[this.activePresetTab]} 입력값별 자동완성` : "빠른 입력 도구 관리";
+    this.elPresetManagerModal?.classList.toggle("preset-detail-mode", Boolean(context));
+    const detailPanel = document.getElementById("presetDetailPanel");
+    if (detailPanel) detailPanel.hidden = Boolean(context);
     const detailControls = document.getElementById("presetDetailControls");
     if (detailControls) {
       detailControls.style.display = "flex";
@@ -6400,6 +6419,11 @@ class PTApp {
         const query = queryInput.value.trim();
         if (!query) { queryInput.focus(); return; }
         this.openAutocompletePresetManager(this.activePresetTab, null, { value: query });
+      };
+      queryInput.onkeydown = event => {
+        if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229 && !event.repeat) {
+          event.preventDefault(); event.stopPropagation(); document.getElementById("btnPresetDetail").click();
+        }
       };
     }
     const hiddenPanel = document.getElementById("columnHiddenPanel");
@@ -6425,19 +6449,20 @@ class PTApp {
     if (description) {
       description.dataset.defaultText ||= description.textContent;
       description.textContent = context
-        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 수정 창에서 글자를 선택해 각각 색을 지정할 수 있습니다. 지정한 색상은 자동완성으로 가져올 때 셀에 적용됩니다. 이전 기록 수정은 모든 날짜의 같은 열에서 해당 문구와 글자색을 변경합니다.`
+        ? `“${context.query}” 입력 시 표시할 후보입니다. ‘이전 기록 수정’은 모든 날짜의 같은 열에 적용됩니다.`
         : description.dataset.defaultText;
     }
     const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
     if (tabs) tabs.style.display = context ? "none" : "flex";
-    if (this.elBtnManagerResetPresets) this.elBtnManagerResetPresets.textContent = context ? "기본 후보 복원" : "기본값 복원";
+    if (this.elBtnManagerResetPresets) this.elBtnManagerResetPresets.textContent = context ? "기본 후보 복원" : "전체 기본값 복원";
     for (const [tab, element] of [["name", this.elTabPresetName], ["part", this.elTabPresetPart], ["prescription", this.elTabPresetPrescription], ["extra", this.elTabPresetExtra],
       ["writer", this.elTabPresetWriter], ["memo", this.elTabPresetMemo], ["specialNote", this.elTabPresetSpecialNote]]) {
       element?.classList.toggle("active", this.activePresetTab === tab);
+      element?.setAttribute("aria-pressed", String(this.activePresetTab === tab));
     }
     if (this.elManagerNewPresetInput) {
       const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성 이니셜", memo: "메모", specialNote: "특이 사항" };
-      this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 문구 입력 (비우면 빈칸 추가)`;
+      this.elManagerNewPresetInput.placeholder = `새 ${labels[this.activePresetTab]} 문구 입력`;
     }
   }
 
@@ -6460,6 +6485,8 @@ class PTApp {
     container.replaceChildren();
     const key = `__columnHidden:${this.activePresetTab}`;
     const items = COLUMN_PRESETS[key] || [];
+    const count = document.getElementById("columnHiddenCount");
+    if (count) count.textContent = items.length;
     if (!items.length) {
       container.textContent = "숨김 문구가 없습니다.";
       return;
@@ -6535,22 +6562,49 @@ class PTApp {
     });
   }
 
+  createPresetManagerAction(action, label, handler) {
+    const paths = {
+      up: '<path d="m6 14 6-6 6 6"/>',
+      down: '<path d="m6 10 6 6 6-6"/>',
+      reset: '<path d="M4 10a8 8 0 1 1 2 8M4 4v6h6"/>',
+      edit: '<path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-2 2 5 5"/>',
+      delete: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>'
+    };
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `preset-action-btn preset-icon-btn${action === "delete" ? " btn-del" : ""}`;
+    button.dataset.presetAction = action;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[action]}</svg>`;
+    button.onclick = handler;
+    return button;
+  }
+
   renderPresetManagerList() {
     const container = this.elPresetListContainer;
     if (!container) return;
+    const scrollTop = container.scrollTop;
+    const focusedRow = document.activeElement?.closest?.('#presetListContainer [data-preset-index]');
+    const focusedAction = focusedRow ? document.activeElement.dataset.presetAction : null;
+    const focusedIndex = Number(focusedRow?.dataset.presetIndex);
     container.innerHTML = "";
 
     const tab = this.activePresetTab;
     const items = this.getPresetManagerItems(tab);
+    const count = document.getElementById("presetManagerCount");
+    if (count) count.textContent = items.length;
 
     if (items.length === 0) {
-      container.innerHTML = `<div style="padding:28px 16px; text-align:center; color:#94a3b8; font-size:13px;">등록된 프리셋이 없습니다.<br>위 입력창에서 새 프리셋을 추가해보세요.</div>`;
+      container.innerHTML = '<div class="preset-list-empty">등록된 문구가 없습니다.<br>위 입력칸에서 첫 문구를 추가해보세요.</div>';
+      if (focusedAction) this.elManagerNewPresetInput?.focus();
       return;
     }
 
     items.forEach((val, idx) => {
       const itemEl = document.createElement("div");
       itemEl.className = "preset-list-item";
+      itemEl.dataset.presetIndex = idx;
       const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
       itemEl.classList.toggle("preset-candidate-hidden", hidden);
       this.bindPresetDragRow(itemEl, tab, idx);
@@ -6565,7 +6619,7 @@ class PTApp {
       this.renderAutocompleteText(textEl, tab, val, this.autocompleteManagerContext?.query);
       if (hidden) textEl.append(document.createTextNode(' · 숨김'));
       const itemColor = this.getAutocompleteValueColor(tab, val, this.autocompleteManagerContext?.query);
-      textEl.title = `${val} (더블클릭하여 바로 수정)`;
+      textEl.title = `${label} (더블클릭하여 수정)`;
       textEl.style.cursor = "pointer";
       textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
 
@@ -6573,45 +6627,24 @@ class PTApp {
       actionsEl.className = "preset-item-actions";
       const colorPicker = document.createElement("input"); colorPicker.type = "color";
       colorPicker.className = "preset-item-color"; colorPicker.value = this.toColorPickerValue(itemColor);
+      colorPicker.dataset.presetAction = "color";
       colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
       colorPicker.onchange = () => {
         this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
         this.renderPresetManagerList();
       };
       actionsEl.appendChild(colorPicker);
-      const resetColor = document.createElement("button"); resetColor.type = "button"; resetColor.className = "preset-action-btn"; resetColor.textContent = "기본색";
-      resetColor.onclick = () => { this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.renderPresetManagerList(); };
+      const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
+        this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.renderPresetManagerList();
+      });
       actionsEl.appendChild(resetColor);
 
-      // 위로 이동 버튼
-      if (idx > 0) {
-        const btnUp = document.createElement("button");
-        btnUp.type = "button";
-        btnUp.className = "preset-action-btn";
-        btnUp.textContent = "▲";
-        btnUp.title = "위로 이동";
-        btnUp.addEventListener("click", () => this.movePresetAt(tab, idx, -1));
-        actionsEl.appendChild(btnUp);
-      }
-
-      // 아래로 이동 버튼
-      if (idx < items.length - 1) {
-        const btnDown = document.createElement("button");
-        btnDown.type = "button";
-        btnDown.className = "preset-action-btn";
-        btnDown.textContent = "▼";
-        btnDown.title = "아래로 이동";
-        btnDown.addEventListener("click", () => this.movePresetAt(tab, idx, 1));
-        actionsEl.appendChild(btnDown);
-      }
-
-      // 수정 버튼
-      const btnEdit = document.createElement("button");
-      btnEdit.type = "button";
-      btnEdit.className = "preset-action-btn";
-      btnEdit.textContent = "✏️ 수정";
-      btnEdit.title = "문구·전체 또는 선택 글자 색상 수정";
-      btnEdit.addEventListener("click", () => this.editPresetAt(tab, idx));
+      const btnUp = this.createPresetManagerAction("up", `${label} 위로 이동`, () => this.movePresetAt(tab, idx, -1));
+      btnUp.disabled = idx === 0;
+      const btnDown = this.createPresetManagerAction("down", `${label} 아래로 이동`, () => this.movePresetAt(tab, idx, 1));
+      btnDown.disabled = idx === items.length - 1;
+      actionsEl.append(btnUp, btnDown);
+      const btnEdit = this.createPresetManagerAction("edit", `${label} 문구·글자색 수정`, () => this.editPresetAt(tab, idx));
       actionsEl.appendChild(btnEdit);
       if (this.autocompleteManagerContext) {
         const visibility = document.createElement("button");
@@ -6629,12 +6662,7 @@ class PTApp {
       }
 
       // 삭제 버튼
-      const btnDel = document.createElement("button");
-      btnDel.type = "button";
-      btnDel.className = "preset-action-btn btn-del";
-      btnDel.textContent = "🗑️ 삭제";
-      btnDel.title = "프리셋 삭제";
-      btnDel.addEventListener("click", () => this.deletePresetAt(tab, idx));
+      const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.deletePresetAt(tab, idx));
       actionsEl.appendChild(btnDel);
 
       itemEl.appendChild(numEl);
@@ -6642,6 +6670,22 @@ class PTApp {
       itemEl.appendChild(actionsEl);
       container.appendChild(itemEl);
     });
+    container.scrollTop = scrollTop;
+    if (focusedAction) {
+      const row = container.querySelector(`[data-preset-index="${Math.min(focusedIndex, items.length - 1)}"]`);
+      const control = row?.querySelector(`[data-preset-action="${focusedAction}"]`);
+      (control?.disabled ? row.querySelector('[data-preset-action="edit"]') : control)?.focus({ preventScroll: true });
+    }
+  }
+
+  setPresetManagerFeedback(message) {
+    const feedback = typeof document !== "undefined" && document.getElementById("presetManagerFeedback");
+    if (feedback) feedback.textContent = message;
+  }
+
+  handlePresetManagerAddKeyDown(event) {
+    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229 || event.repeat) return;
+    event.preventDefault(); event.stopPropagation(); this.addPresetFromManager();
   }
 
   addPresetFromManager() {
@@ -6650,7 +6694,10 @@ class PTApp {
     const val = this.activePresetTab === "writer" ? this.normalizeWriterInput(rawValue) : rawValue;
     const tab = this.activePresetTab;
     const items = this.getPresetManagerItems(tab);
-    if (val === "" && items.includes("")) { this.elManagerNewPresetInput.focus(); return; }
+    if (items.includes(val)) {
+      this.setPresetManagerFeedback("이미 등록된 문구입니다. 목록에서 수정할 수 있습니다.");
+      this.elManagerNewPresetInput.focus(); return;
+    }
     items.push(val);
     if (typeof document !== "undefined" && document.getElementById("managerNewPresetColorEnabled")?.checked) {
       this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, document.getElementById("managerNewPresetColor").value);
@@ -6659,6 +6706,7 @@ class PTApp {
     this.renderPresetManagerList();
     this.renderQuickChips();
     this.showSaveIndicator("프리셋 추가됨");
+    this.setPresetManagerFeedback(val ? "문구를 추가했습니다." : "빈칸 항목을 추가했습니다.");
 
     this.elManagerNewPresetInput.value = "";
     this.elManagerNewPresetInput.focus();
@@ -6718,6 +6766,10 @@ class PTApp {
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
+    const row = this.elPresetListContainer?.querySelector(`[data-preset-index="${targetIdx}"]`);
+    const button = row?.querySelector(`[data-preset-action="${dir < 0 ? "up" : "down"}"]`);
+    (button?.disabled ? row.querySelector('[data-preset-action="edit"]') : button)?.focus({ preventScroll: true });
+    this.setPresetManagerFeedback("문구 순서를 변경했습니다.");
   }
 
   resetPresetsFromManager() {

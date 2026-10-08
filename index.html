@@ -37,13 +37,13 @@
         <!-- Quick Presets (동적 렌더링) -->
         <div class="tool-group quick-inputs">
           <div class="date-navigator">
-          <button type="button" class="btn-nav" id="btnPrevDay" title="이전 날짜 (Alt+Left)">◀</button>
+          <button type="button" class="btn-nav" id="btnPrevDay" title="이전 날짜 (Alt+Left)" aria-label="이전 날짜">◀</button>
           <div class="date-display-wrap">
 
             <input type="date" id="datePicker" hidden>
             <button type="button" class="date-label date-trigger" id="dateDisplayLabel" aria-haspopup="dialog" aria-expanded="false" title="날짜 선택">2026.09.29 (화)</button>
           </div>
-          <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)">▶</button>
+          <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)" aria-label="다음 날짜">▶</button>
           <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
         </div>
           <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
@@ -54,7 +54,7 @@
             <button type="button" id="btnFontSize" title="글자 크기 선택" aria-label="글자 크기 선택" aria-haspopup="dialog">14</button>
             <button type="button" id="btnFontLarger" aria-label="글자 크기 0.5 늘리기" title="글자 크기 0.5 늘리기">+</button>
           </div>
-          <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 관리" aria-label="빠른 도구 관리" aria-haspopup="dialog" onclick="if(window.ptApp) window.ptApp.openPresetManager();">
+          <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 관리" aria-label="빠른 도구 관리" aria-haspopup="dialog">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 6h4m4 0h8M4 12h8m4 0h4M4 18h2m4 0h10"/>
               <circle cx="10" cy="6" r="2"/><circle cx="14" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>
@@ -227,7 +227,7 @@
     <div class="modal-card search-prompt-card" role="dialog" aria-modal="true" aria-labelledby="searchPromptTitle">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <h2 id="searchPromptTitle">환자검색( Ctrl+F )</h2>
+          <h2 id="searchPromptTitle">환자 검색 <span>Ctrl+F</span></h2>
         </div>
         <button type="button" class="btn-close-modal" id="btnCloseSearchPrompt" aria-label="검색창 닫기">✕</button>
       </div>
@@ -246,12 +246,14 @@
 
   <!-- Search Not Found Modal (검색 결과 없음 알림 모달) -->
   <div class="modal-overlay" id="searchNotFoundModal" style="display:none; z-index: 10000;">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="searchNotFoundTitle" style="max-width: 360px; text-align: center; padding: 24px 20px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);">
-      <div style="font-size: 32px; margin-bottom: 12px;" aria-hidden="true">🔍</div>
-      <h3 id="searchNotFoundTitle" style="font-size: 16px; font-weight: 700; color: #1e3a29; margin-bottom: 8px;">검색 결과 없음</h3>
-      <p id="searchNotFoundMessage" style="font-size: 14px; color: #495057; line-height: 1.5; margin-bottom: 20px; word-break: keep-all;">해당 챠트번호/성함이 내역에 없습니다.</p>
-      <div style="display: flex; justify-content: center;">
-        <button type="button" class="btn-action primary" id="btnCloseSearchNotFound" style="min-width: 110px; padding: 8px 20px; font-size: 14px; font-weight: 600; border-radius: 6px; background: #107c41; color: white; border: none; cursor: pointer;">닫기 (Enter / Esc)</button>
+    <div class="modal-card search-not-found-card" role="dialog" aria-modal="true" aria-labelledby="searchNotFoundTitle" aria-describedby="searchNotFoundMessage">
+      <div class="search-not-found-header">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+        <h3 id="searchNotFoundTitle">검색 결과 없음</h3>
+      </div>
+      <div class="search-not-found-body">
+        <p id="searchNotFoundMessage">일치하는 환자 내역이 없습니다.</p>
+        <button type="button" id="btnCloseSearchNotFound">닫기 <span>Enter / Esc</span></button>
       </div>
     </div>
   </div>
@@ -455,63 +457,64 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
 
   <!-- 빠른 입력 도구 전체 관리 모달 -->
   <div class="modal-overlay" id="presetManagerModal" style="display:none;">
-    <div class="modal-card" style="max-width:520px; width:92%;">
+    <div class="modal-card preset-manager-card" role="dialog" aria-modal="true" aria-labelledby="presetManagerTitle">
       <div class="modal-header">
-        <h2 class="modal-title">⚙️ 빠른 입력 도구 관리</h2>
-        <button type="button" class="btn-close-modal" id="btnClosePresetManagerModal" onclick="if(window.ptApp) window.ptApp.closePresetManager();">✕</button>
+        <h2 class="modal-title" id="presetManagerTitle">빠른 입력 도구 관리</h2>
+        <div class="preset-manager-header-actions">
+          <button type="button" id="btnColumnFontSettings" class="preset-action-btn column-font-open" title="열 글자 크기·굵기·색 설정" onclick="if(window.ptApp) window.ptApp.openColumnFontSettings();">열 서식</button>
+          <button type="button" class="btn-close-modal" id="btnClosePresetManagerModal" aria-label="관리창 닫기">✕</button>
+        </div>
       </div>
-      <div class="modal-body" style="padding:16px 20px;">
-        <button type="button" id="btnColumnFontSettings" class="preset-action-btn column-font-open" onclick="if(window.ptApp) window.ptApp.openColumnFontSettings();">열 글자 고정 설정 · 크기 / 굵기 / 색</button>
-        <p style="font-size:12px; color:#64748b; margin:0 0 14px 0; line-height:1.4;">
-          성함(D열), 부위(E열), 처방(F열), 추가 사항(G열), 작성(H열), 메모(I열), 특이 사항(J열)의 자동완성 문구를 관리합니다. 등록된 문구가 목록 순서대로 먼저 표시됩니다. 작성 셀을 더블클릭하면 등록한 이니셜을 선택할 수 있습니다.
-        </p>
-
-        <!-- 탭 전환 -->
-        <div class="preset-tabs" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
-          <button type="button" class="preset-tab" data-tab="name" id="tabPresetName">성함 (D열)</button>
-          <button type="button" class="preset-tab" data-tab="part" id="tabPresetPart">부위 (E열)</button>
-          <button type="button" class="preset-tab active" data-tab="prescription" id="tabPresetPrescription" style="padding:6px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;">📋 처방 (F열)</button>
-          <button type="button" class="preset-tab" data-tab="extra" id="tabPresetExtra" style="padding:6px 14px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;">⚡ 추가 사항 (G열)</button>
-          <button type="button" class="preset-tab" data-tab="writer" id="tabPresetWriter">작성 (H열)</button>
-          <button type="button" class="preset-tab" data-tab="memo" id="tabPresetMemo">메모 (I열)</button>
-          <button type="button" class="preset-tab" data-tab="specialNote" id="tabPresetSpecialNote">특이 사항 (J열)</button>
+      <div class="modal-body">
+        <p class="preset-manager-note">등록한 문구가 목록 순서대로 자동완성에 표시됩니다.</p>
+        <div class="preset-tabs" role="group" aria-label="관리할 열">
+          <button type="button" class="preset-tab" data-tab="name" id="tabPresetName" title="성함 (D열)">성함 <small>D</small></button>
+          <button type="button" class="preset-tab" data-tab="part" id="tabPresetPart" title="부위 (E열)">부위 <small>E</small></button>
+          <button type="button" class="preset-tab active" data-tab="prescription" id="tabPresetPrescription" title="처방 (F열)">처방 <small>F</small></button>
+          <button type="button" class="preset-tab" data-tab="extra" id="tabPresetExtra" title="추가 사항 (G열)">추가 사항 <small>G</small></button>
+          <button type="button" class="preset-tab" data-tab="writer" id="tabPresetWriter" title="작성 (H열)">작성 <small>H</small></button>
+          <button type="button" class="preset-tab" data-tab="memo" id="tabPresetMemo" title="메모 (I열)">메모 <small>I</small></button>
+          <button type="button" class="preset-tab" data-tab="specialNote" id="tabPresetSpecialNote" title="특이 사항 (J열)">특이 사항 <small>J</small></button>
         </div>
-
-        <div id="presetDetailControls" class="preset-detail-controls">
-          <input id="presetDetailQuery" type="text" list="presetDetailQueries" aria-label="세부 관리할 입력값" placeholder="세부 관리할 입력값">
-          <datalist id="presetDetailQueries"></datalist>
-          <button id="btnPresetDetail" type="button" class="preset-action-btn">세부 관리</button>
+        <button id="btnPresetGeneral" type="button" class="preset-action-btn" style="display:none;">← 열 전체 문구로 돌아가기</button>
+        <div class="preset-add-form">
+          <input type="text" id="managerNewPresetInput" aria-label="새 자동완성 문구" placeholder="새 문구 입력">
+          <button type="button" id="btnManagerAddPreset">추가 <small>Enter</small></button>
         </div>
-        <button id="btnPresetGeneral" type="button" class="preset-action-btn" style="display:none; margin-bottom:12px;">열 전체 관리로 돌아가기</button>
-
-        <!-- 새 항목 추가 폼 -->
-        <div style="display:flex; gap:6px; margin-bottom:12px;">
-          <input type="text" id="managerNewPresetInput" placeholder="새 프리셋 내용 입력 (예: 사지 ( HP / Laser ))" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
-          <button type="button" id="btnManagerAddPreset" style="padding:8px 16px; background:var(--excel-green); color:#fff; border:none; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap;">➕ 추가</button>
+        <div class="preset-add-options">
+          <span>입력을 비우면 ‘빈칸’ 항목을 추가합니다.</span>
+          <label class="preset-new-color"><input id="managerNewPresetColorEnabled" type="checkbox"> 글자색
+            <input id="managerNewPresetColor" type="color" value="#000000" aria-label="새 항목 글자색" oninput="document.getElementById('managerNewPresetColorEnabled').checked=true">
+          </label>
         </div>
-        <label class="preset-new-color"><input id="managerNewPresetColorEnabled" type="checkbox"> 새 항목 글자색
-          <input id="managerNewPresetColor" type="color" value="#000000" aria-label="새 항목 글자색" oninput="document.getElementById('managerNewPresetColorEnabled').checked=true">
-        </label>
-
-        <!-- 항목 리스트 -->
-        <div id="presetListContainer" style="max-height:280px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; background:#fafbfc;">
-          <!-- JS에서 동적으로 목록 렌더링 -->
+        <div class="preset-list-heading">
+          <strong id="presetManagerListTitle">등록 문구 <span id="presetManagerCount">0</span></strong>
+          <span>드래그하여 순서 변경 · 더블클릭하여 수정</span>
         </div>
-
-        <section id="columnHiddenPanel" class="column-hidden-panel" aria-label="열 전체 숨김 문구">
-          <strong>숨김 문구</strong>
-          <p>등록한 문구는 이 열의 모든 자동완성 후보에서 제외됩니다. 기존 셀 내용은 유지됩니다.</p>
+        <div id="presetListContainer"></div>
+        <details id="presetDetailPanel" class="preset-advanced">
+          <summary>입력값별 자동완성</summary>
+          <p>특정 글자를 입력할 때 나오는 후보를 따로 관리합니다.</p>
+          <div id="presetDetailControls" class="preset-detail-controls">
+            <input id="presetDetailQuery" type="text" list="presetDetailQueries" aria-label="세부 관리할 입력값" placeholder="세부 관리할 입력값">
+            <datalist id="presetDetailQueries"></datalist>
+            <button id="btnPresetDetail" type="button" class="preset-action-btn">관리하기</button>
+          </div>
+        </details>
+        <details id="columnHiddenPanel" class="preset-advanced column-hidden-panel" aria-label="열 전체 숨김 문구">
+          <summary>숨긴 문구 <span id="columnHiddenCount">0</span></summary>
+          <p>자동완성에서만 제외됩니다. 기존 셀 내용은 유지됩니다.</p>
           <div class="column-hidden-form">
             <input id="managerHiddenPresetInput" type="text" aria-label="숨김 문구 입력" placeholder="숨김 문구 입력">
-            <button id="btnManagerAddHiddenPreset" type="button" class="preset-action-btn">숨김 등록</button>
+            <button id="btnManagerAddHiddenPreset" type="button" class="preset-action-btn">숨기기</button>
           </div>
           <div id="columnHiddenPresetList" class="column-hidden-list"></div>
-        </section>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid #e2e8f0;">
-          <button type="button" id="btnManagerResetPresets" style="padding:7px 12px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; color:#ef4444; cursor:pointer; font-size:12px; font-weight:600;">🔄 기본값 복원</button>
-          <button type="button" id="btnManagerDone" onclick="if(window.ptApp) window.ptApp.closePresetManager();" style="padding:8px 20px; border:none; border-radius:6px; background:#107c41; color:#fff; cursor:pointer; font-weight:600; font-size:13px;">완료</button>
-        </div>
+        </details>
+      </div>
+      <div class="preset-manager-footer">
+        <button type="button" id="btnManagerResetPresets">전체 기본값 복원</button>
+        <span id="presetManagerFeedback" role="status" aria-live="polite">변경사항은 바로 저장됩니다.</span>
+        <button type="button" id="btnManagerDone">완료</button>
       </div>
     </div>
   </div>

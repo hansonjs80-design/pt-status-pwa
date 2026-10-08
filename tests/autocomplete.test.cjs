@@ -459,3 +459,54 @@ test('expired cached history still waits for the in-flight refresh before decidi
   const loaded=app.loadSearchHistory().then(value=>{completed=true;return value;});
   await Promise.resolve();assert.equal(completed,false);finish(true);assert.equal(await loaded,true);
 });
+
+test('preset manager rejects duplicate normalized writer initials and keeps input for correction', () => {
+  const app = createApp({}, { writer: ['J'] }, { localStorage: { getItem() { return null; }, setItem() {} } });
+  let message = '', focused = 0, saves = 0;
+  app.activePresetTab = 'writer';
+  app.elManagerNewPresetInput = { value: ' j ', focus() { focused++; } };
+  app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
+  app.setPresetManagerFeedback = value => { message = value; };
+  app.savePresetManagerItems = () => { saves++; };
+  app.addPresetFromManager();
+  assert.deepEqual(Array.from(app.getPresetManagerItems('writer')), ['J']);
+  assert.equal(saves, 0);
+  assert.equal(app.elManagerNewPresetInput.value, ' j ');
+  assert.equal(focused, 1);
+  assert.match(message, /이미 등록/);
+});
+
+test('preset manager add shortcut waits for completed IME and ignores held Enter', () => {
+  const app = createApp({});
+  let added = 0, prevented = 0, stopped = 0;
+  app.addPresetFromManager = () => { added++; };
+  const event = { key: 'Enter', preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
+  for (const extra of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { key: 'a' }]) {
+    app.handlePresetManagerAddKeyDown({ ...event, ...extra });
+  }
+  assert.equal(added, 0);
+  app.handlePresetManagerAddKeyDown(event);
+  assert.equal(added, 1);
+  assert.equal(prevented, 1);
+  assert.equal(stopped, 1);
+});
+
+test('closing preset manager restores focus and prevents delayed input focus from reopening the editing target', () => {
+  let callback, returned = 0, inputFocused = 0;
+  const trigger = { isConnected: true, focus() { returned++; } };
+  const app = createApp({}, {}, {
+    document: { activeElement: trigger, getElementById() { return null; } },
+    setTimeout(fn) { callback = fn; return 1; }, clearTimeout() {},
+  });
+  app.elPresetManagerModal = { style: { display: 'none' } };
+  app.elManagerNewPresetInput = { value: '', focus() { inputFocused++; } };
+  app.updatePresetManagerTabs = app.renderPresetManagerList = app.clearPresetDrag = () => {};
+  app.openPresetManager();
+  app.closePresetManager();
+  callback();
+  assert.equal(app.elPresetManagerModal.style.display, 'none');
+  assert.equal(returned, 1);
+  assert.equal(inputFocused, 0);
+  app.closePresetManager();
+  assert.equal(returned, 1);
+});

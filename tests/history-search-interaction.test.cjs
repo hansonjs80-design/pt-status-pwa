@@ -764,7 +764,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   app.searchAllDates = (...args) => { searched = args; };
   context.alert = text => { message = text; };
   await app.submitSearchPrompt();
-  assert.equal(message,'해당 챠트번호/성함이 내역에 없습니다.');
+  assert.equal(message,'일치하는 환자 내역이 없습니다.');
   assert.equal(app.elSearchPromptInput.value,'이연');
   assert.equal(searched,undefined);
   assert.equal(closed,1);
@@ -826,7 +826,7 @@ test('direct cell name search also rejects a nonexistent exact name without chan
   app.searchAllDates = () => {searched=true;};
   const before=JSON.stringify(rows);
   assert.equal(await app.searchPatientHistory('이연',0),false);
-  assert.equal(message,'해당 챠트번호/성함이 내역에 없습니다.');
+  assert.equal(message,'일치하는 환자 내역이 없습니다.');
   assert.equal(searched,false);
   assert.equal(JSON.stringify(rows),before);
 });
@@ -843,7 +843,7 @@ test('missing typed names and chart numbers close the search popup before showin
     app.searchAllDates=()=>assert.fail('missing identity must not open results');
     context.alert=message=>events.push(message);
     await app.submitSearchPrompt();
-    assert.deepEqual(events,['closed','해당 챠트번호/성함이 내역에 없습니다.']);
+    assert.deepEqual(events,['closed','일치하는 환자 내역이 없습니다.']);
     assert.equal(JSON.stringify(app.dataStore),before);
     assert.equal(app.searchPromptSubmitting,false);
   }
@@ -881,9 +881,9 @@ test('searchNotFoundModal opens with message and closes on Enter or Escape key',
   };
 
   // 1. Enter key closes modal
-  app.showSearchNotFoundModal('해당 챠트번호/성함이 내역에 없습니다.');
+  app.showSearchNotFoundModal('일치하는 환자 내역이 없습니다.');
   assert.equal(modal.style.display, 'flex');
-  assert.equal(msgEl.textContent, '해당 챠트번호/성함이 내역에 없습니다.');
+  assert.equal(msgEl.textContent, '일치하는 환자 내역이 없습니다.');
   assert.equal(focusedBtn, true);
 
   const enterEvent = { key: 'Enter', preventDefault() {}, stopPropagation() {} };
