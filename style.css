@@ -1347,15 +1347,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: #107c41;
+  background: #0c5b30;
   padding: 1px 5px;
   border-radius: 3px;
 }
 
 .autocomplete-item.is-selected .autocomplete-hint-badge {
   color: #ffffff;
-  background: #107c41;
-  font-weight: 800;
+  background: #0c5b30;
+  font-weight: 600;
 }
 
 .cell-chartNo { text-align: center; font-size: 12px; }
@@ -2311,7 +2311,7 @@ body {
   padding: 1px 5px;
   border: 0;
   background: transparent;
-  color: #107c41;
+  color: #084423;
   cursor: pointer;
   font-size: 16px;
   line-height: 18px;
@@ -2321,13 +2321,13 @@ body {
   height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.4;
+  stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .autocomplete-item.is-selected .autocomplete-edit-button,
 .autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
-.autocomplete-edit-button:hover { background: transparent; color: #0c5b30; }
+.autocomplete-edit-button:hover { background: transparent; color: #06351b; }
 
 /* Keep Apply reachable while all history data columns share the sheet scroll. */
 .cross-date-inner-table .history-apply-cell,
@@ -2357,7 +2357,7 @@ body {
 
 .writer-picker-menu .autocomplete-item { padding: 6px 8px; gap: 4px; }
 .gender-picker-hint { display: none; margin-left: auto; }
-.gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #107c41; color: #ffffff; padding: 2px 5px; border-radius: 3px; font-weight: 800; font-size: 10px; }
+.gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #0c5b30; color: #ffffff; padding: 2px 5px; border-radius: 3px; font-weight: 600; font-size: 10px; }
 
 /* Search apply/paste destination: tint the full data row, including empty cells. */
 .history-search-active .excel-row.history-destination-row > .excel-cell,
