@@ -2956,14 +2956,14 @@ class PTApp {
       }
       if (this.consumePresetLeftRepeat(e)) return;
       this.releaseNavigationInputGuard(input, e);
-      if (colKey === "memo" && input.value === "" && !this.isAutocompleteOpen() && this.handleEmptyCellEnter(e, input)) return;
       if (input.classList.contains("is-armed")) {
-        if (this.handleSpecialNoteEditEnter(e)) return;
+        if (this.handleSelectedTextCellEnter(e)) return;
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
         if (colKey === "writer" && this.handleWriterPickerShortcut(e, rowIdx, cellElement)) return;
       }
+      if (colKey === "memo" && input.value === "" && !this.isAutocompleteOpen() && this.handleEmptyCellEnter(e, input)) return;
       // Every editable column commits and moves left through this single path.
       if (this.isPresetLeftExit(e, colKey) || this.isManualCellLeftExit(e, input)) {
         e.preventDefault(); e.stopPropagation();
@@ -5909,14 +5909,7 @@ class PTApp {
       }
     }
 
-    if (this.handleSpecialNoteEditEnter(e)) return;
-    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
-        ["chartNo", "name", "part", "memo"].includes(this.activeCell?.colKey)) {
-      e.preventDefault();
-      this.selectAutocompleteRightCell(this.activeCell.rowIdx, this.activeCell.colKey);
-      this.focusSelectedCellEditor();
-      return;
-    }
+    if (this.handleSelectedTextCellEnter(e)) return;
     if (this.handleEmptyCellEnter(e)) return;
 
     // G열 성별 키보드 직접 입력 ('ㄹ' -> 'F', 'ㅡ' -> 'M', 'f'/'F' -> 'F', 'm'/'M' -> 'M')

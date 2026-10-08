@@ -1,8 +1,8 @@
 // In-cell completion is a visual overlay; candidate text never enters the native input.
 class PTCellInputTools {
-  handleSpecialNoteEditEnter(event) {
+  handleSelectedTextCellEnter(event) {
     if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
-        this.activeCell?.colKey !== 'specialNote') return false;
+        !['no','chartNo','name','part','memo','specialNote'].includes(this.activeCell?.colKey)) return false;
     const {rowIdx,colKey} = this.activeCell;
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
     if (!cell) return false;

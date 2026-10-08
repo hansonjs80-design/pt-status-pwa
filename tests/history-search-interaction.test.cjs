@@ -1116,28 +1116,20 @@ test('current rows keep at least 150 rows and fifteen blank rows after the last 
 });
 
 
-test('selected chart, name, part and memo cells move right on Enter with or without contents', () => {
-  for (const value of ['', '기존 값']) for (const [colKey, nextKey] of [
-    ['chartNo', 'name'], ['name', 'part'], ['part', 'prescription'], ['memo', 'specialNote'],
-  ]) {
-    const { app, context } = createApp([{}, { [colKey]: value }, {}]);
-    context.document.querySelector = () => ({});
-    app.activeCell = { rowIdx: 1, colKey };
-    app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
-    app.focusSelectedCellEditor = () => {};
-    const event = { key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} };
+test('selected text cells enter editing on Enter while Shift+Enter still moves up', () => {
+  for (const value of ['', '기존 값']) for (const colKey of ['no','chartNo','name','part','memo','specialNote']) {
+    const {app,context}=createApp([{}, {[colKey]:value}, {}]);
+    context.document.querySelector=()=>({});
+    app.activeCell={rowIdx:1,colKey};
+    let edits=0;
+    app.startInlineEdit=(row,key)=>{assert.equal(row,1);assert.equal(key,colKey);edits++;};
+    app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};};
+    const event={key:'Enter',target:{tagName:'DIV',closest:()=>null},preventDefault(){},stopPropagation(){}};
     app.handleGlobalKeyDown(event);
-    assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: nextKey });
-    app.activeCell = { rowIdx: 1, colKey };
-    app.handleGlobalKeyDown({ ...event, shiftKey: true });
-    assert.deepEqual(app.activeCell, { rowIdx: 0, colKey });
+    assert.deepEqual(app.activeCell,{rowIdx:1,colKey});assert.equal(edits,1);
+    app.handleGlobalKeyDown({...event,shiftKey:true});
+    assert.deepEqual(app.activeCell,{rowIdx:0,colKey});assert.equal(edits,1);
   }
-  const { app, context } = createApp([{ no: '1' }, { no: '2' }, {}]);
-  context.document.querySelector = () => ({});
-  app.activeCell = { rowIdx: 0, colKey: 'no' };
-  app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
-  app.handleGlobalKeyDown({ key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} });
-  assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: 'no' });
 });
 
 test('date navigation applies its destination selection and cancels stale delayed focus', () => {

@@ -18,20 +18,23 @@ function createApp(dataStore = {}, presets = {}) {
   return { app, storage, context, queued };
 }
 
-test('Enter activates editing for populated and empty selected special-note cells', () => {
-  const {app}=createApp({'2026-10-04':[{specialNote:'기존 메모',memo:'다른 메모'}]});
-  app.activeCell={rowIdx:0,colKey:'specialNote'};
-  const cell={};let edits=0,prevented=0,stopped=0;
-  app.elTableBody={querySelector(selector){assert.equal(selector,'[data-row="0"][data-col="specialNote"]');return cell;}};
-  app.startInlineEdit=(row,key,target)=>{assert.equal(row,0);assert.equal(key,'specialNote');assert.equal(target,cell);edits++;};
-  const event={key:'Enter',preventDefault(){prevented++;},stopPropagation(){stopped++;}};
-  assert.equal(app.handleSpecialNoteEditEnter(event),true);
-  assert.equal(edits,1);assert.equal(prevented,1);assert.equal(stopped,1);
-  assert.equal(app.getCurrentRows()[0].specialNote,'기존 메모');
-  for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])assert.equal(app.handleSpecialNoteEditEnter({...event,[modifier]:true}),false);
-  app.getCurrentRows()[0].specialNote='';assert.equal(app.handleSpecialNoteEditEnter(event),true);
-  app.activeCell.colKey='memo';assert.equal(app.handleSpecialNoteEditEnter(event),false);
-  assert.equal(edits,2);
+test('Enter activates editing in all six selected text columns with or without content', () => {
+  for(const colKey of ['no','chartNo','name','part','memo','specialNote']) for(const value of ['', '기존 내용']) {
+    const {app}=createApp({'2026-10-04':[{[colKey]:value}]});
+    app.activeCell={rowIdx:0,colKey};
+    const cell={};let edits=0,prevented=0,stopped=0;
+    app.elTableBody={querySelector(selector){assert.equal(selector,`[data-row="0"][data-col="${colKey}"]`);return cell;}};
+    app.startInlineEdit=(row,key,target)=>{assert.equal(row,0);assert.equal(key,colKey);assert.equal(target,cell);edits++;};
+    const event={key:'Enter',preventDefault(){prevented++;},stopPropagation(){stopped++;}};
+    assert.equal(app.handleSelectedTextCellEnter(event),true);
+    assert.equal(edits,1);assert.equal(prevented,1);assert.equal(stopped,1);
+    assert.equal(app.getCurrentRows()[0][colKey],value);
+    for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])assert.equal(app.handleSelectedTextCellEnter({...event,[modifier]:true}),false);
+    for(const picker of ['gender','prescription','extra','writer']) {
+      app.activeCell.colKey=picker;assert.equal(app.handleSelectedTextCellEnter(event),false);
+    }
+    assert.equal(edits,1);
+  }
 });
 
 test('renaming backs up local and cloud-only dates before updating exact same-column cells and presets', async () => {
