@@ -76,7 +76,7 @@
               <path d="M6 9V3h12v6M6 17H3V9h18v8h-3"/><path d="M6 14h12v7H6z"/><path d="M17 11h1"/>
             </svg>
           </button>
-          <button type="button" id="btnToggleToolbarActions" class="toolbar-actions-toggle" title="빠른 도구 및 설정 접기" aria-label="빠른 도구 및 설정 접기" aria-expanded="true" aria-controls="collapsibleToolbarActions"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10"/></svg></button>
+          <button type="button" id="btnToggleToolbarActions" class="toolbar-actions-toggle" title="빠른 도구 및 설정 접기" aria-label="빠른 도구 및 설정 접기" aria-expanded="true" aria-controls="collapsibleToolbarActions"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg></button>
           <div id="collapsibleToolbarActions" class="toolbar-actions-panel"><div class="toolbar-actions-panel-inner" role="group" aria-label="빠른 도구, 클라우드, 저장 및 설정">
           <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 관리" aria-label="빠른 도구 관리" aria-haspopup="dialog">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -172,6 +172,7 @@
       </button>
 
       <!-- Right Summary Panel (사진의 L, M 열 역할) -->
+      <div class="summary-panel-shell">
       <aside class="excel-sidebar" id="summarySidebar">
         <div hidden style="display:none;">
           <input type="hidden" id="searchInput">
@@ -213,6 +214,7 @@
         </div>
 
       </aside>
+      </div>
     </main>
 
     <!-- Bottom Status Bar (엑셀 시트 탭 + 상태 바) -->

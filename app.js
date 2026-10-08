@@ -3614,7 +3614,12 @@ class PTApp {
   setSummaryClosed(closed, save = true) {
     const sidebar = document.getElementById("summarySidebar");
     const button = document.getElementById("btnToggleSummary");
-    if (sidebar) sidebar.classList.toggle("summary-closed", closed);
+    if (sidebar) {
+      if (closed && sidebar.contains?.(document.activeElement)) button?.focus({ preventScroll: true });
+      sidebar.classList.toggle("summary-closed", closed);
+      sidebar.inert = closed;
+      sidebar.setAttribute?.("aria-hidden", String(closed));
+    }
     if (button) {
       button.setAttribute("aria-expanded", String(!closed));
       button.title = closed ? "현황 열기" : "현황 닫기";
