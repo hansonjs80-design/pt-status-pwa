@@ -478,6 +478,7 @@ class PTApp {
   }
 
   bindEvents() {
+    this.initToolbarActionsToggle();
     this.elSummaryPeriodTabs.forEach(button => {
       button.addEventListener("click", () => this.setSummaryPeriod(button.dataset.summaryPeriod));
     });
@@ -3628,6 +3629,34 @@ class PTApp {
       this.queueDeviceSummaryState(snapshot);
     }
     if (typeof this.syncMainColumnWidths === "function") this.syncMainColumnWidths();
+  }
+
+  setToolbarActionsClosed(closed, save = true) {
+    const panel = document.getElementById("collapsibleToolbarActions");
+    const button = document.getElementById("btnToggleToolbarActions");
+    if (!panel || !button) return;
+    if (closed && panel.contains(document.activeElement)) button.focus({ preventScroll: true });
+    panel.classList.toggle("is-collapsed", closed);
+    panel.inert = closed;
+    panel.setAttribute("aria-hidden", String(closed));
+    button.setAttribute("aria-expanded", String(!closed));
+    button.title = closed ? "빠른 도구 및 설정 펼치기" : "빠른 도구 및 설정 접기";
+    button.setAttribute("aria-label", button.title);
+    if (save) {
+      try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1", String(closed)); }
+      catch (error) { console.error("Failed to persist device toolbar state:", error); }
+    }
+  }
+
+  initToolbarActionsToggle() {
+    let closed = false;
+    try { closed = localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1") === "true"; }
+    catch { /* Keep the toolbar open when device storage is unavailable. */ }
+    this.setToolbarActionsClosed(closed, false);
+    document.getElementById("btnToggleToolbarActions")?.addEventListener("click", () => {
+      const panel = document.getElementById("collapsibleToolbarActions");
+      this.setToolbarActionsClosed(!panel?.classList.contains("is-collapsed"));
+    });
   }
 
   initSummaryToggle() {

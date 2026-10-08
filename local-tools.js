@@ -118,7 +118,7 @@
         <circle cx="12" cy="12" r="3"/>
       </svg>`;
       this.button.onclick = () => this.open('backup');
-      document.querySelector('.toolbar-actions')?.append(this.button);
+      document.querySelector('.toolbar-actions-panel-inner')?.append(this.button);
       this.statusElement = document.createElement('small'); this.statusElement.textContent = '이 컴퓨터의 저장 설정';
       footer.append(this.statusElement);
       document.querySelector('.excel-sidebar')?.append(footer);
