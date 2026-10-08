@@ -573,3 +573,50 @@ test('context-menu paste reads HTML clipboard colors and falls back to plain tex
     assert.equal(rows[0]._textColors?.memo,allowed?'#ff0000':undefined);
   }
 });
+
+test('cell backgrounds apply to sparse selections, survive cloud row transfer and reset independently of text', () => {
+  const instance = Object.create(context.App.prototype);
+  const rows = [{name:'가상',_textColors:{name:'#0000ff'}},{name:'다른 셀'}];
+  instance.columnFormatting={};instance.getCurrentRows=()=>rows;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:1,minCol:3,maxCol:3});
+  instance.getSelectedFormattingColumns=()=>null;instance.isEditingCell=()=>false;
+  instance.isSelectedCoordinate=r=>r===0;instance.renderTable=()=>{};
+  instance.saveDataStore=()=>{};instance.closeFontColorMenu=()=>{};
+  instance.applyBackgroundColor('#ffff00');
+  assert.equal(rows[0]._textStyles.name.backgroundColor,'#ffff00');
+  assert.equal(rows[1]._textStyles,undefined);
+  const remote = instance.mergeCloudRows([{name:'가상'},{name:'다른 셀'}],rows,[{name:'가상',memo:'다른 기기 메모'},{name:'다른 셀'}]);
+  assert.equal(remote[0].memo,'다른 기기 메모');
+  const otherDevice=Object.create(context.App.prototype);
+  assert.equal(otherDevice.getCellFormatting(plain(remote)[0],'name','backgroundColor'),'#ffff00');
+  instance.applyBackgroundColor(null);
+  assert.equal(instance.getCellFormatting(rows[0],'name','backgroundColor'),undefined);
+  assert.equal(rows[0]._textColors.name,'#0000ff');
+});
+
+test('column backgrounds persist and transfer between devices while preserving cell exceptions', () => {
+  const first=Object.create(context.App.prototype);first.columnFormatting={};first.columnFormattingPending={};
+  first.setColumnFormatting({minCol:3,maxCol:3},'backgroundColor','#e2efda');
+  const restored=first.loadColumnFormatting();
+  assert.equal(first.validateSharedColumnFormatting(restored),true);
+  const second=Object.create(context.App.prototype);second.columnFormatting={};second.columnFormattingPending={};
+  second.isEditingCell=()=>false;second.renderTable=()=>{};
+  second.acceptSharedColumnFormatting(plain(restored));
+  assert.equal(second.getCellFormatting({},'name','backgroundColor'),'#e2efda');
+  const exception={_textStyles:{name:{backgroundColor:'#ffff00'}}};
+  assert.equal(second.getCellFormatting(exception,'name','backgroundColor'),'#ffff00');
+  first.setColumnFormatting({minCol:3,maxCol:3},'backgroundColor',null);
+  second.acceptSharedColumnFormatting(plain(first.columnFormatting));
+  assert.equal(second.getCellFormatting({},'name','backgroundColor'),null);
+  assert.equal(second.getCellFormatting(exception,'name','backgroundColor'),'#ffff00');
+});
+
+test('copy preserves assigned backgrounds without copying transient selection tint', () => {
+  const instance=Object.create(context.App.prototype);
+  const source={name:'가상',_textStyles:{name:{backgroundColor:'#ffff00'}}};
+  const target={};instance.applyCopiedCellFormatting(target,'memo',instance.captureCellFormatting(source,'name'));
+  assert.equal(target._textStyles.memo.backgroundColor,'#ffff00');
+  context.getComputedStyle=()=>({backgroundColor:'#c6e6d0',color:'#000000'});
+  try { assert.equal(instance.captureCellFormatting({},'name',{}).backgroundColor,undefined); }
+  finally { delete context.getComputedStyle; }
+});

@@ -537,6 +537,7 @@ class PTApp {
       const status = this.getFormattingStatus("fontSize");
       document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
       this.updateFontColorIndicator();
+      this.updateBackgroundColorIndicator();
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
       const button = document.getElementById(id);
@@ -563,6 +564,12 @@ class PTApp {
 
     document.getElementById("btnFontColor").addEventListener("mousedown", event => { this.captureTextColorSelection(); event.preventDefault(); });
     document.getElementById("btnFontColor").addEventListener("click", event => this.openFontColorMenu(event.currentTarget));
+    const backgroundButton = document.getElementById("btnBackgroundColor");
+    backgroundButton.addEventListener("mousedown", event => event.preventDefault());
+    backgroundButton.addEventListener("click", event => this.openFontColorMenu(event.currentTarget, "backgroundColor"));
+    const patientSearchButton = document.getElementById("btnPatientSearch");
+    patientSearchButton.addEventListener("mousedown", event => event.preventDefault());
+    patientSearchButton.addEventListener("click", () => this.openSearchPromptModal(this.activeCell?.rowIdx ?? this.selectedRowIdx));
 
     for (const [id, property] of [["btnFontSize", "fontSize"], ["btnFontWeight", "fontWeight"]]) {
       const button = document.getElementById(id);
@@ -1367,6 +1374,7 @@ class PTApp {
     }
     if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
     this.updateFontColorIndicator();
+    this.updateBackgroundColorIndicator();
   }
 
   // Select and focus cell like Excel
@@ -1420,6 +1428,7 @@ class PTApp {
     this.updateHistoryDestinationHighlight();
     if (!this._isPasting) this.ensureCurrentCellVisible(cellElement);
     this.updateFontColorIndicator();
+    this.updateBackgroundColorIndicator();
   }
 
   getTopVisibleCurrentRow() {
@@ -3403,6 +3412,7 @@ class PTApp {
       this.elSelectedCellCoords.textContent = statText;
     }
     this.updateFontColorIndicator();
+    this.updateBackgroundColorIndicator();
   }
 
   selectEntireColumn(colKey, colLetter, endKey = colKey) {
@@ -3435,6 +3445,7 @@ class PTApp {
     this.elFormulaInput.value = "";
     this.elSheetContainer.focus({ preventScroll: true });
     this.updateFontColorIndicator();
+    this.updateBackgroundColorIndicator();
   }
 
   selectEntireRow(rowIdx) {
@@ -3505,6 +3516,7 @@ class PTApp {
     this.updateHistoryDestinationHighlight();
     this.elSheetContainer.focus({ preventScroll: true });
     this.updateFontColorIndicator();
+    this.updateBackgroundColorIndicator();
   }
 
   selectAllCells() {

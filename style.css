@@ -199,7 +199,7 @@ body {
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -242,10 +242,10 @@ body {
 }
 
 .toolbar-actions .btn-action {
-  background: #ffffff;
+  background: transparent;
   color: var(--excel-green-dark);
-  border: 1px solid var(--border-subtle);
-  width: 38px;
+  border: 0;
+  width: 34px;
   height: 34px;
   padding: 6px;
   justify-content: center;
@@ -443,8 +443,8 @@ body {
 }
 
 .chip-manage {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: transparent;
+  border: 0;
   color: #475569;
   width: 34px;
   height: 32px;
@@ -2228,6 +2228,9 @@ body {
 .font-color-button .format-icon { position: relative; display: inline-block; width: 19.55px; text-align: center; transform: translateY(-2px) scaleY(.9); }
 .font-color-button .format-icon::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; border-bottom: inherit; transform: scaleY(1.15); pointer-events: none; }
 .font-color-button .font-color-letter { display: inline-block; transform: translateY(3.28px); }
+.fill-color-icon { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.history-button .fill-color-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
+.fill-color-bar { display: block; width: 23px; height: 3px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
 .font-size-controls { display: inline-flex; align-items: center; gap: 4px; }
 .font-size-controls button { border: 0; border-radius: 6px; height: 32px; min-width: 28px; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
 .font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }

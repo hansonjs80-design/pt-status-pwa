@@ -267,15 +267,16 @@ class PTTableFormatting {
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
       const cell = this.elTableBody.querySelector(`[data-row="${r}"][data-col="${keys[c]}"]`);
-      if (cell) values.add(getComputedStyle(cell)[property]);
+      if (cell) values.add(property === "backgroundColor"
+        ? this.getCellFormatting(this.getCurrentRows()[r] || {}, keys[c], property) || "#ffffff"
+        : getComputedStyle(cell)[property]);
     }
     if (values.size !== 1) return { label: "여러 값", value: null };
     const value = [...values][0];
     const weights = { 400: "보통", 500: "중간", 600: "약간 굵게", 700: "굵게", 800: "매우 굵게" };
     let label = property === "fontWeight" ? (weights[value] || value) : value;
-    if (property === "color") {
-      const channels = value.match(/\d+/g);
-      if (channels?.length >= 3) label = "#" + channels.slice(0, 3).map(n => Number(n).toString(16).padStart(2, "0")).join("");
+    if (property === "color" || property === "backgroundColor") {
+      label = this.normalizeColumnColor(value) || value;
       if (label === "#000000") label = "검정 (#000000)";
     }
     return { value, label };
@@ -334,17 +335,18 @@ class PTTableFormatting {
     if (!formatting || typeof formatting !== 'object' || Array.isArray(formatting)) return null;
     const normalized = JSON.parse(JSON.stringify(formatting));
     for (const properties of Object.values(normalized)) {
-      if (properties?.color) {
-        const color = this.normalizeColumnColor(properties.color.value);
+      for (const property of ['color', 'backgroundColor']) {
+        if (!properties?.[property]) continue;
+        const color = this.normalizeColumnColor(properties[property].value);
         if (color === undefined) return null;
-        properties.color.value = color;
+        properties[property].value = color;
       }
     }
     return this.validateSharedColumnFormatting(normalized) ? normalized : null;
   }
 
   setColumnFormatting(columns, property, value, resetCells = false) {
-    if (property === 'color') {
+    if (property === 'color' || property === 'backgroundColor') {
       value = this.normalizeColumnColor(value);
       if (value === undefined) return;
     }
@@ -378,7 +380,7 @@ class PTTableFormatting {
         (setting.resetRevision === undefined || typeof setting.resetRevision === "string") &&
         (property === "fontSize" ? setting.value === null || (Number.isInteger(setting.value * 2) && setting.value >= 8 && setting.value <= 72)
           : property === "fontWeight" ? setting.value === null || [400,500,600,700,800,900].includes(Number(setting.value))
-            : property === "color" && (setting.value === null || /^#[0-9a-f]{6}$/i.test(setting.value)))));
+            : ["color", "backgroundColor"].includes(property) && (setting.value === null || /^#[0-9a-f]{6}$/i.test(setting.value)))));
   }
 
   acceptSharedColumnFormatting(formatting) {
@@ -693,17 +695,22 @@ class PTTableFormatting {
   }
 
   applyCellFormatting(element, row, key) {
-    for (const property of ["color", "fontSize", "fontWeight"]) {
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
       const value = this.getCellFormatting(row, key, property);
-      element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
+      if (property === "backgroundColor") {
+        if (value != null || element.style.backgroundColor) {
+          if (element.style.setProperty) element.style.setProperty("background-color", value || "", value ? "important" : "");
+          else element.style.backgroundColor = value || "";
+        }
+      } else element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
     }
   }
 
   captureCellFormatting(row, key, element = null) {
     const computed = element && typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
     const formatting = {};
-    for (const property of ["color", "fontSize", "fontWeight"]) {
-      const value = this.getCellFormatting(row, key, property) ?? computed?.[property];
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
+      const value = this.getCellFormatting(row, key, property) ?? (property === "backgroundColor" ? undefined : computed?.[property]);
       if (value != null && value !== "") formatting[property] = property === "fontSize" ? parseFloat(value) : value;
     }
     const rich = this.getEffectiveCellRichText(row, key);
@@ -717,7 +724,7 @@ class PTTableFormatting {
     for (const metadata of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
       if (row[metadata]) delete row[metadata][key];
     }
-    for (const property of ["color", "fontSize", "fontWeight"]) {
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
       if (formatting[property] !== undefined) {
         if (property === "color") { row._textColors ||= {}; row._textColors[key] = formatting[property]; }
         else { row._textStyles ||= {}; row._textStyles[key] ||= {}; row._textStyles[key][property] = formatting[property]; }
@@ -739,7 +746,7 @@ class PTTableFormatting {
 
   applyColumnTypography(property, value) {
     const range = this.getFormattingRange();
-    if (!range || !["fontSize", "fontWeight"].includes(property)) return;
+    if (!range || !["fontSize", "fontWeight", "backgroundColor"].includes(property)) return;
     const columns = this.getSelectedFormattingColumns();
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -883,16 +890,35 @@ class PTTableFormatting {
     document.getElementById("fontColorMenu")?.remove();
   }
 
-  openFontColorMenu(anchor) {
+  applyBackgroundColor(color) {
+    this.applyColumnTypography("backgroundColor", color);
+    this.updateBackgroundColorIndicator();
+    this.closeFontColorMenu();
+  }
+
+  updateBackgroundColorIndicator() {
+    if (typeof document === "undefined") return;
+    const button = document.getElementById?.("btnBackgroundColor");
+    const bar = button?.querySelector?.(".fill-color-bar");
+    if (!bar) return;
+    const status = this.getFormattingStatus("backgroundColor");
+    bar.style.backgroundColor = status.value || "#999999";
+    button.title = `셀 배경색: ${status.label}`;
+    button.setAttribute("aria-label", button.title);
+  }
+
+  openFontColorMenu(anchor, property = "color") {
     this.closeFontColorMenu();
     const menu = document.createElement("div"); menu.id = "fontColorMenu"; menu.className = "font-color-menu";
-    menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", "글자색 선택");
+    const isBackground = property === "backgroundColor";
+    const apply = color => isBackground ? this.applyBackgroundColor(color) : this.applyTextColor(color);
+    menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isBackground ? "셀 배경색 선택" : "글자색 선택");
     const current = document.createElement("div"); current.className = "format-current";
-    const status = this.getFormattingStatus("color");
+    const status = this.getFormattingStatus(property);
     const swatch = document.createElement("span"); swatch.className = "current-color-chip"; swatch.style.backgroundColor = status.value || "transparent";
     current.append(swatch, document.createTextNode(`현재: ${status.label}`)); menu.append(current);
     const reset = document.createElement("button"); reset.type = "button"; reset.textContent = "↺ 재설정";
-    reset.className = "color-reset"; reset.onclick = () => this.applyTextColor(null); menu.appendChild(reset);
+    reset.className = "color-reset"; reset.onclick = () => apply(null); menu.appendChild(reset);
     const palette = document.createElement("div"); palette.className = "color-palette";
     const colors = ["#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#eeeeee", "#f3f3f3", "#ffffff",
       "#980000", "#ff0000", "#ff9900", "#ffff00", "#00ff00", "#00ffff", "#4285f4", "#0000ff", "#9900ff", "#ff00ff"];
@@ -901,12 +927,12 @@ class PTTableFormatting {
     colors.forEach(color => { const button = document.createElement("button"); button.type = "button"; button.className = "color-swatch";
       button.style.backgroundColor = color; button.title = color;
       const probe = document.createElement("span"); probe.style.color = color; document.body.append(probe);
-      const active = getComputedStyle(probe).color === status.value; probe.remove();
+      const active = getComputedStyle(probe).color === status.value || (isBackground && this.normalizeColumnColor(color) === this.normalizeColumnColor(status.value)); probe.remove();
       if (active) { button.classList.add("is-current"); button.textContent = "✓"; button.setAttribute("aria-pressed", "true"); } button.setAttribute("aria-label", color);
-      button.onclick = () => this.applyTextColor(color); palette.appendChild(button); });
+      button.onclick = () => apply(color); palette.appendChild(button); });
     menu.appendChild(palette);
     const custom = document.createElement("label"); custom.className = "custom-color"; custom.textContent = "맞춤 색상 ";
-    const picker = document.createElement("input"); picker.type = "color"; picker.setAttribute("aria-label", "맞춤 글자색"); picker.oninput = () => this.applyTextColor(picker.value); custom.appendChild(picker); menu.appendChild(custom);
+    const picker = document.createElement("input"); picker.type = "color"; picker.value = this.normalizeColumnColor(status.value) || "#000000"; picker.setAttribute("aria-label", isBackground ? "맞춤 셀 배경색" : "맞춤 글자색"); picker.oninput = () => apply(picker.value); custom.appendChild(picker); menu.appendChild(custom);
     menu.onmousedown = event => { if (event.target !== picker) event.preventDefault(); };
     document.body.appendChild(menu);
     const rect = anchor.getBoundingClientRect(); menu.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - menu.offsetWidth - 6))}px`;
