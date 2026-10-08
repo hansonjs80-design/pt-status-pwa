@@ -496,13 +496,16 @@ class PTHistorySearch {
       const label = document.createElement("span");
       label.className = "autocomplete-item-text";
       label.textContent = item.value;
+      if (!item.typed) {
+        const patientInfo = document.createElement("span");
+        patientInfo.className = "search-prompt-patient-info";
+        if (item.value !== item.name) patientInfo.classList.add("search-prompt-patient-name");
+        patientInfo.textContent = item.value === item.name ? item.chartNo : item.name;
+        label.appendChild(patientInfo);
+      }
       const hint = document.createElement("span");
       hint.className = "search-prompt-option-hint";
-      if (!item.typed) {
-        hint.classList.add("search-prompt-patient-hint");
-        if (item.value !== item.name) hint.classList.add("search-prompt-patient-name");
-      }
-      hint.textContent = item.typed ? "Enter" : item.value === item.name ? item.chartNo : item.name;
+      hint.textContent = "Enter";
       option.append(label, hint);
       option.addEventListener("mousedown", event => {
         event.preventDefault();
