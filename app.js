@@ -2956,9 +2956,10 @@ class PTApp {
 
     input.addEventListener("keydown", (e) => {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
-      if (["chartNo", "name", "part", "memo", "specialNote"].includes(colKey) && input.value !== "" && !input.classList.contains("is-armed") &&
-          !this.isAutocompleteOpen() && (e.key === "ArrowLeft" || e.code === "ArrowLeft")) {
-        e.stopPropagation(); // Keep native caret movement, including at the start of the text.
+      if (["chartNo", "name", "part", "memo", "specialNote"].includes(colKey) && !input.classList.contains("is-armed") &&
+          !this.isAutocompleteOpen() && (e.key === "ArrowLeft" || e.code === "ArrowLeft") &&
+          (input.selectionStart !== 0 || input.selectionEnd !== 0)) {
+        e.stopPropagation(); // Keep native caret movement until the collapsed caret reaches the start.
         return;
       }
       if (this.consumePresetLeftRepeat(e)) return;

@@ -6,6 +6,25 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+test('font-size Enter applies only its own column instead of submitting every column', () => {
+  let applied = 0, prevented = 0;
+  const row = { querySelector(selector) { assert.equal(selector, '[data-apply-column]'); return { click() { applied++; } }; } };
+  const target = { matches(selector) { assert.equal(selector, 'input[type="number"]'); return true; }, closest(selector) { assert.equal(selector, 'tr'); return row; } };
+  const event = { key: 'Enter', target, preventDefault() { prevented++; } };
+  assert.equal(app.handleColumnFontSettingsEnter(event), true);
+  assert.equal(applied, 1);
+  assert.equal(prevented, 1);
+  for (const extra of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }]) {
+    assert.equal(app.handleColumnFontSettingsEnter({ ...event, ...extra }), true);
+  }
+  assert.equal(applied, 1, 'IME confirmation and held Enter must not apply again');
+  assert.equal(prevented, 4, 'prevent implicit whole-form submission while waiting');
+});
+test('column font Enter leaves selects, buttons and other keys to their normal controls', () => {
+  const preventDefault = () => assert.fail('unrelated controls must keep their native behavior');
+  assert.equal(app.handleColumnFontSettingsEnter({key: 'Enter', target: { matches: () => false }, preventDefault}), false);
+  assert.equal(app.handleColumnFontSettingsEnter({key: 'ArrowUp', target: { matches: () => true }, preventDefault}), false);
+});
 test('explicit column apply replaces all existing cell styles and rich colors, preserving later exceptions', () => {
   const instance=Object.create(context.App.prototype);
   instance.columnFormatting={};instance.renderTable=()=>{};instance.showSaveIndicator=()=>{};

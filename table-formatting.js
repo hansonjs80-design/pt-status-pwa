@@ -498,63 +498,142 @@ class PTTableFormatting {
     return true;
   }
 
+  handleColumnFontSettingsEnter(event) {
+    if (event.key !== 'Enter' || !event.target?.matches?.('input[type="number"]')) return false;
+    event.preventDefault();
+    if (!event.isComposing && event.keyCode !== 229 && !event.repeat) {
+      event.target.closest('tr')?.querySelector('[data-apply-column]')?.click();
+    }
+    return true;
+  }
+
   openColumnFontSettings() {
     document.getElementById("columnFontSettingsModal")?.remove();
+    const previousFocus = document.activeElement;
     const overlay = document.createElement("div");
     overlay.id = "columnFontSettingsModal";
     overlay.className = "modal-overlay column-font-settings";
-    overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle">
-      <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 고정 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="닫기">✕</button></div>
-      <div class="modal-body"><p>적용하면 해당 열의 기존 모든 셀을 변경하고 모든 기기, 날짜와 검색 내역에 저장합니다. 적용 이후 개별 셀에 지정한 크기·굵기·색은 유지됩니다.</p>
-      <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th><th>적용</th></tr></thead><tbody></tbody></table></div>
-      <p class="column-font-error" role="alert"></p>
-      <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">적용 및 저장</button></div></div></form>`;
+    overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle" aria-describedby="columnFontSettingsNote" novalidate>
+      <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="설정창 닫기">✕</button></div>
+      <div class="modal-body">
+        <p id="columnFontSettingsNote" class="column-font-note">적용한 열의 기존 셀 서식은 모든 날짜·검색 내역에서 바뀝니다. 적용 후 지정한 개별 셀 서식은 유지됩니다.</p>
+        <div class="column-font-guide"><strong>10개 열</strong><span>크기 8~72px · 0.5px 단위 · 입력칸 Enter로 해당 열 적용</span></div>
+        <div class="column-font-list"><table><thead><tr><th scope="col">열</th><th scope="col">크기</th><th scope="col">굵기</th><th scope="col">색</th><th scope="col">미리보기</th><th scope="col">열별 적용</th></tr></thead><tbody></tbody></table></div>
+        <p id="columnFontSettingsError" class="column-font-error" role="alert" hidden></p>
+      </div>
+      <div class="column-font-footer">
+        <p class="column-font-status" role="status" aria-live="polite">입력값을 바꾼 뒤 적용하세요.</p>
+        <div class="column-font-actions"><span>적용한 열은 즉시 저장됩니다.</span><button type="button" data-close>닫기</button><button type="submit">전체 열 적용</button></div>
+      </div></form>`;
     const tbody = overlay.querySelector("tbody");
+    const error = overlay.querySelector('.column-font-error');
+    const status = overlay.querySelector('.column-font-status');
+    const applyAll = overlay.querySelector('button[type="submit"]');
     const baseline = this.getColumnFontSettings();
-    for (const setting of baseline) {
-      const row = document.createElement("tr");
-      row.dataset.key = setting.key;
-      row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
-        <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
-        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><button type="button" data-apply-column aria-label="${setting.label} 적용 및 저장">적용 및 저장</button></td>`;
-      for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = setting[property];
-      tbody.appendChild(row);
-      row.querySelector('[data-apply-column]').addEventListener('click', async event => {
-        if (!apply([readSetting(row)])) return;
-        const button = event.currentTarget;
-        button.disabled = true; button.textContent = '저장 중…';
-        try {
-          const synced = this.supabaseClient ? await this.syncSharedColumnFormatting() : false;
-          overlay.querySelector('.column-font-error').textContent = synced ? '' : '이 기기에 저장되었습니다. 클라우드 연결 후 다른 기기에 동기화합니다.';
-        } finally { button.disabled = false; button.textContent = '적용 및 저장'; }
-      });
-    }
+    let busy = false;
+    const rows = [];
     const readSetting = row => ({
       key: row.dataset.key,
       fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
       fontWeight: row.querySelector('[data-property="fontWeight"]').value,
       color: row.querySelector('[data-property="color"]').value,
     });
-    const apply = settings => {
-      const valid = this.applyColumnFontSettings(settings);
-      overlay.querySelector('.column-font-error').textContent = valid ? '' : '글자 크기는 8~72 사이에서 0.5 단위로 입력해 주세요.';
-      return valid;
+    const updateButtons = () => {
+      for (const row of rows) {
+        row.querySelector('[data-apply-column]').disabled = busy || row.dataset.applied === 'true';
+        row.querySelectorAll('input, select').forEach(control => { control.disabled = busy; });
+      }
+      applyAll.disabled = busy || rows.every(row => row.dataset.applied === 'true');
+      applyAll.textContent = busy ? '저장 중…' : '전체 열 적용';
     };
-    const close = () => { overlay.remove(); document.getElementById("btnColumnFontSettings")?.focus(); };
-    overlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", close));
-    overlay.addEventListener("keydown", event => {
+    const showStatus = (message, tone = 'info') => { status.textContent = message; status.dataset.tone = tone; };
+    const validate = selectedRows => {
+      error.hidden = true;
+      for (const row of selectedRows) {
+        const size = row.querySelector('[data-property="fontSize"]');
+        size.removeAttribute('aria-invalid');
+        if (!size.checkValidity()) {
+          const label = baseline.find(setting => setting.key === row.dataset.key).label;
+          error.textContent = `${label}: 글자 크기를 8~72 사이의 0.5 단위로 입력해 주세요.`;
+          error.hidden = false; size.setAttribute('aria-invalid', 'true'); size.focus(); size.select();
+          return false;
+        }
+      }
+      return true;
+    };
+    const apply = async selectedRows => {
+      if (busy || !validate(selectedRows)) return;
+      const settings = selectedRows.map(readSetting);
+      busy = true; updateButtons();
+      let applied = false;
+      try {
+        if (!this.applyColumnFontSettings(settings)) {
+          error.textContent = '입력값을 확인해 주세요. 크기·굵기·색을 올바르게 설정해야 합니다.';
+          error.hidden = false;
+          return;
+        }
+        applied = true;
+        for (const row of selectedRows) {
+          row.dataset.applied = 'true'; row.classList.remove('is-modified');
+          row.querySelector('[data-apply-column]').textContent = '적용됨';
+        }
+        showStatus('이 기기에 저장했습니다. 동기화 상태를 확인 중입니다.');
+        const synced = this.supabaseClient ? await this.syncSharedColumnFormatting() : false;
+        const scope = selectedRows.length === rows.length ? '전체 열' : baseline.find(setting => setting.key === settings[0].key).label;
+        showStatus(synced ? `${scope} 적용 · 모든 기기에 동기화 완료` : `${scope} 적용 · 이 기기에 저장됨. 연결되면 다른 기기에 동기화됩니다.`, synced ? 'success' : 'info');
+      } catch {
+        if (applied) showStatus('이 기기에 저장되었습니다. 클라우드 연결 후 동기화됩니다.');
+        else { error.textContent = '적용하지 못했습니다. 입력값을 확인하고 다시 시도해 주세요.'; error.hidden = false; }
+      } finally {
+        busy = false; updateButtons();
+      }
+    };
+    for (const setting of baseline) {
+      const row = document.createElement("tr");
+      row.dataset.key = setting.key;
+      const [letter, label] = setting.label.split('열 · ');
+      row.innerHTML = `<th scope="row"><span class="column-font-letter">${letter}</span>${label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기" aria-describedby="columnFontSettingsError"></td>
+        <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
+        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><span class="column-font-preview" aria-hidden="true">가Aa</span></td><td><button type="button" data-apply-column aria-label="${setting.label}만 적용 및 저장">적용</button></td>`;
+      for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = property === 'color' ? this.toColorPickerValue(setting.color) : setting[property];
+      const preview = () => {
+        const value = readSetting(row), sample = row.querySelector('.column-font-preview');
+        sample.style.fontSize = `${value.fontSize >= 8 && value.fontSize <= 72 ? value.fontSize : setting.fontSize}px`;
+        sample.style.fontWeight = value.fontWeight; sample.style.color = value.color;
+        sample.title = `${value.fontSize}px · ${value.fontWeight} · ${value.color}`;
+      };
+      const changed = event => {
+        if (!event.target.matches('input, select')) return;
+        row.dataset.applied = 'false'; row.classList.add('is-modified');
+        row.querySelector('[data-apply-column]').textContent = '적용';
+        event.target.removeAttribute('aria-invalid'); error.hidden = true;
+        preview(); updateButtons(); showStatus('수정 중 · 적용 버튼을 누르면 저장됩니다.');
+      };
+      row.addEventListener('input', changed); row.addEventListener('change', changed);
+      row.querySelector('[data-apply-column]').addEventListener('click', () => { void apply([row]); });
+      preview(); rows.push(row); tbody.appendChild(row);
+    }
+    const close = () => {
+      overlay.remove();
+      const target = previousFocus?.isConnected && previousFocus.getClientRects().length ? previousFocus : document.getElementById('btnColumnFontSettings');
+      if (target?.getClientRects().length) target.focus({ preventScroll: true });
+      else this.elSheetContainer?.focus({ preventScroll: true });
+    };
+    overlay.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
+    overlay.addEventListener('keydown', event => {
       event.stopPropagation();
-      if (event.key === "Escape") { event.preventDefault(); close(); }
+      if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+      if (this.handleColumnFontSettingsEnter(event)) return;
+      if (event.key === 'Tab') {
+        const controls = [...overlay.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')].filter(control => control.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
     });
-    overlay.querySelector("form").addEventListener("submit", async event => {
-      event.preventDefault();
-      if (!apply(Array.from(tbody.children, readSetting))) return;
-      if (this.supabaseClient) await this.syncSharedColumnFormatting();
-      close();
-    });
-    document.body.appendChild(overlay);
-    overlay.style.display = "flex";
-    overlay.querySelector("input").focus();
+    overlay.querySelector('form').addEventListener('submit', event => { event.preventDefault(); void apply(rows); });
+    document.body.appendChild(overlay); overlay.style.display = 'flex';
+    const first = overlay.querySelector('input'); first.focus(); first.select();
   }
 
   applyColumnFontSettings(settings) {
