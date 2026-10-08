@@ -502,7 +502,7 @@ class PTHistorySearch {
         hint.classList.add("search-prompt-patient-hint");
         if (item.value !== item.name) hint.classList.add("search-prompt-patient-name");
       }
-      hint.textContent = item.typed ? "입력값 · Enter" : item.value === item.name ? item.chartNo : item.name;
+      hint.textContent = item.typed ? "Enter" : item.value === item.name ? item.chartNo : item.name;
       option.append(label, hint);
       option.addEventListener("mousedown", event => {
         event.preventDefault();
