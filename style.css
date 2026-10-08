@@ -2134,7 +2134,8 @@ body {
 
 .quick-inputs .date-navigator { background: #e8eeeb; color: #171717; flex-shrink: 0; margin-right: 8px; padding: 2px 5px; gap: 2px; }
 .quick-inputs .date-label { color: #171717; font-size: 18px; font-weight: 700; letter-spacing: -0.2px; line-height: 24px; }
-.quick-inputs .btn-nav { color: #171717; width: 30px; height: 30px; font-size: 15px; flex-shrink: 0; }
+.quick-inputs .btn-nav { color: #171717; width: 30px; height: 30px; font-size: 15px; flex-shrink: 0; padding: 0; line-height: 1; }
+.quick-inputs .btn-nav svg { display: block; width: 15px; height: 15px; flex-shrink: 0; fill: currentColor; }
 .quick-inputs .btn-today-pill { --date-day-color: #171717; color: var(--date-day-color); font-size: 13px; font-weight: 700; padding: 3px 11px; height: 26px; line-height: 20px; border-radius: 13px; margin-left: 3px; }
 .quick-inputs .btn-today-pill:hover, .quick-inputs .btn-today-pill:focus-visible { background: var(--date-day-color); color: #fff; }
 .quick-inputs .btn-today-pill:focus-visible { outline: 2px solid var(--date-day-color); outline-offset: 2px; }
