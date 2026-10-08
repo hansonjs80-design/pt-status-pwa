@@ -116,7 +116,7 @@ class PTTableFormatting {
     for (const date of Object.keys(store).sort().reverse()) {
       const row = store[date]?.find(row => row !== excludedRow && String(row?.[colKey] ?? '').trim() === String(value).trim());
       if (!row) continue;
-      const rich = row._richText?.[colKey];
+      const rich = this.getEffectiveCellRichText(row, colKey);
       const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors);
       const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;
       // The latest matching record determines the candidate color, including
@@ -288,18 +288,20 @@ class PTTableFormatting {
     catch { return {}; }
   }
 
-  setColumnFormatting(columns, property, value) {
+  setColumnFormatting(columns, property, value, resetCells = false) {
     this.columnFormatting ||= {};
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const revision = `${Date.now()}-${Math.random()}`;
     for (let col = columns.minCol; col <= columns.maxCol; col++) {
       this.columnFormatting[keys[col]] ||= {};
       const existing = this.columnFormatting[keys[col]][property];
-      if (existing && (existing.value === value || (property === "fontWeight" && String(existing.value) === String(value)))) continue;
-      this.columnFormatting[keys[col]][property] = { value, revision };
+      if (!resetCells && existing && (existing.value === value || (property === "fontWeight" && String(existing.value) === String(value)))) continue;
+      const setting = { value, revision };
+      if (resetCells || existing?.resetRevision) setting.resetRevision = resetCells ? revision : existing.resetRevision;
+      this.columnFormatting[keys[col]][property] = setting;
       this.columnFormattingPending ||= {};
       this.columnFormattingPending[keys[col]] ||= {};
-      this.columnFormattingPending[keys[col]][property] = { value, revision };
+      this.columnFormattingPending[keys[col]][property] = setting;
     }
     localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
     localStorage.setItem("PT_COLUMN_FORMATTING_PENDING", JSON.stringify(this.columnFormattingPending || {}));
@@ -314,6 +316,7 @@ class PTTableFormatting {
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     return Object.entries(formatting).every(([key, properties]) => keys.includes(key) && properties &&
       Object.entries(properties).every(([property, setting]) => setting && typeof setting.revision === "string" &&
+        (setting.resetRevision === undefined || typeof setting.resetRevision === "string") &&
         (property === "fontSize" ? setting.value === null || (Number.isInteger(setting.value * 2) && setting.value >= 8 && setting.value <= 72)
           : property === "fontWeight" ? setting.value === null || [400,500,600,700,800,900].includes(Number(setting.value))
             : property === "color" && (setting.value === null || /^#[0-9a-f]{6}$/i.test(setting.value)))));
@@ -438,10 +441,10 @@ class PTTableFormatting {
     overlay.className = "modal-overlay column-font-settings";
     overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle">
       <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 고정 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="닫기">✕</button></div>
-      <div class="modal-body"><p>저장한 열 기본값은 모든 기기, 날짜와 검색 내역에 적용됩니다. 개별 셀에 지정한 크기·굵기·색은 그대로 유지됩니다.</p>
-      <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th></tr></thead><tbody></tbody></table></div>
+      <div class="modal-body"><p>적용하면 해당 열의 기존 모든 셀을 변경하고 모든 기기, 날짜와 검색 내역에 저장합니다. 적용 이후 개별 셀에 지정한 크기·굵기·색은 유지됩니다.</p>
+      <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th><th>적용</th></tr></thead><tbody></tbody></table></div>
       <p class="column-font-error" role="alert"></p>
-      <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">저장</button></div></div></form>`;
+      <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">적용 및 저장</button></div></div></form>`;
     const tbody = overlay.querySelector("tbody");
     const baseline = this.getColumnFontSettings();
     for (const setting of baseline) {
@@ -449,10 +452,24 @@ class PTTableFormatting {
       row.dataset.key = setting.key;
       row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
         <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
-        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td>`;
+        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><button type="button" data-apply-column aria-label="${setting.label} 적용 및 저장">적용</button></td>`;
       for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = setting[property];
       tbody.appendChild(row);
+      row.querySelector('[data-apply-column]').addEventListener('click', () => {
+        apply([readSetting(row)]);
+      });
     }
+    const readSetting = row => ({
+      key: row.dataset.key,
+      fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
+      fontWeight: row.querySelector('[data-property="fontWeight"]').value,
+      color: row.querySelector('[data-property="color"]').value,
+    });
+    const apply = settings => {
+      const valid = this.applyColumnFontSettings(settings);
+      overlay.querySelector('.column-font-error').textContent = valid ? '' : '글자 크기는 8~72 사이에서 0.5 단위로 입력해 주세요.';
+      return valid;
+    };
     const close = () => { overlay.remove(); document.getElementById("btnColumnFontSettings")?.focus(); };
     overlay.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", close));
     overlay.addEventListener("keydown", event => {
@@ -461,17 +478,7 @@ class PTTableFormatting {
     });
     overlay.querySelector("form").addEventListener("submit", event => {
       event.preventDefault();
-      const settings = Array.from(tbody.children, row => ({
-        key: row.dataset.key,
-        fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
-        fontWeight: row.querySelector('[data-property="fontWeight"]').value,
-        color: row.querySelector('[data-property="color"]').value,
-      }));
-      if (!this.saveColumnFontSettings(settings, baseline)) {
-        overlay.querySelector(".column-font-error").textContent = "글자 크기는 8~72 사이에서 0.5 단위로 입력해 주세요.";
-        return;
-      }
-      this.renderTable();
+      if (!apply(Array.from(tbody.children, readSetting))) return;
       close();
     });
     document.body.appendChild(overlay);
@@ -479,20 +486,47 @@ class PTTableFormatting {
     overlay.querySelector("input").focus();
   }
 
+  applyColumnFontSettings(settings) {
+    const columns = this.getColumnFontSettings();
+    if (!settings.length || new Set(settings.map(setting => setting.key)).size !== settings.length ||
+        settings.some(setting => !columns.some(column => column.key === setting.key) ||
+          !Number.isInteger(setting.fontSize * 2) || setting.fontSize < 8 || setting.fontSize > 72 ||
+          ![400,500,600,700,800,900].includes(Number(setting.fontWeight)) || !/^#[0-9a-f]{6}$/i.test(setting.color))) return false;
+    for (const setting of settings) {
+      const index = columns.findIndex(column => column.key === setting.key);
+      for (const property of ['fontSize','fontWeight','color']) {
+        this.setColumnFormatting({minCol:index,maxCol:index}, property,
+          property === 'fontWeight' ? String(setting[property]) : setting[property], true);
+      }
+    }
+    this.renderTable();
+    this.showSaveIndicator(settings.length === 1 ? '해당 열 적용 및 저장 완료' : '모든 열 적용 및 저장 완료');
+    return true;
+  }
+
+  isCellFormattingCurrent(row, key, property) {
+    // An explicit Apply resets existing overrides on every date/device without
+    // rewriting patient records. Later cell edits stamp this reset revision.
+    const reset = this.columnFormatting?.[key]?.[property]?.resetRevision;
+    return !reset || row._formatRevisions?.[key]?.[property] === reset;
+  }
+
+  getEffectiveCellRichText(row, key) {
+    return this.isCellFormattingCurrent(row, key, 'color') ? row._richText?.[key] : undefined;
+  }
+
   markCellFormatting(row, key, property) {
     const setting = this.columnFormatting?.[key]?.[property];
     if (!setting) return;
     row._formatRevisions ||= {};
     row._formatRevisions[key] ||= {};
-    row._formatRevisions[key][property] = setting.revision;
+    row._formatRevisions[key][property] = setting.resetRevision || setting.revision;
   }
 
   getCellFormatting(row, key, property) {
     const setting = this.columnFormatting?.[key]?.[property];
     const local = property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property];
-    // Explicit cell formatting always wins, including legacy records without
-    // revision stamps. Shared column defaults only fill unspecified properties.
-    return local ?? setting?.value;
+    return (this.isCellFormattingCurrent(row, key, property) ? local : undefined) ?? setting?.value;
   }
 
   applyCellFormatting(element, row, key) {
@@ -509,7 +543,7 @@ class PTTableFormatting {
       const value = this.getCellFormatting(row, key, property) ?? computed?.[property];
       if (value != null && value !== "") formatting[property] = property === "fontSize" ? parseFloat(value) : value;
     }
-    const rich = row._richText?.[key];
+    const rich = this.getEffectiveCellRichText(row, key);
     if (rich?.text === String(row[key] ?? "") && Array.isArray(rich.colors)) {
       formatting.richText = JSON.parse(JSON.stringify(rich));
     }
@@ -605,7 +639,11 @@ class PTTableFormatting {
 
   setPartialTextColor(row, key, start, end, color) {
     const text = String(row[key] ?? "");
-    const previous = row._richText?.[key];
+    if (!this.isCellFormattingCurrent(row, key, 'color')) {
+      row._textColors ||= {};
+      row._textColors[key] = this.getCellFormatting(row, key, 'color');
+    }
+    const previous = this.getEffectiveCellRichText(row, key);
     const colors = previous?.text === text ? [...previous.colors] : Array(text.length).fill(null);
     for (let i = Math.max(0, start); i < Math.min(text.length, end); i++) colors[i] = color;
     row._richText ||= {};
@@ -614,7 +652,7 @@ class PTTableFormatting {
 
   renderColoredText(element, row, key) {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
-    const rich = row._richText?.[key];
+    const rich = this.getEffectiveCellRichText(row, key);
     element.textContent = "";
     if (rich?.text !== text || !Array.isArray(rich.colors)) {
       element.textContent = text;
@@ -652,8 +690,8 @@ class PTTableFormatting {
       const row = this.getCurrentRows()[textSelection.rowIdx];
       if (String(row[textSelection.colKey] ?? "") === textSelection.text) {
         const key = textSelection.colKey;
-        this.markCellFormatting(row, key, "color");
         this.setPartialTextColor(row, textSelection.colKey, textSelection.start, textSelection.end, color);
+        this.markCellFormatting(row, key, "color");
         this.saveDataStore(); this.renderTable(); this.closeFontColorMenu(); return;
       }
     }

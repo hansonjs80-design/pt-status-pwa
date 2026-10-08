@@ -6,6 +6,43 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+test('explicit column apply replaces all existing cell styles and rich colors, preserving later exceptions', () => {
+  const instance=Object.create(context.App.prototype);
+  instance.columnFormatting={};instance.renderTable=()=>{};instance.showSaveIndicator=()=>{};
+  const rows=[{name:'과거',_textStyles:{name:{fontSize:25,fontWeight:900}},_textColors:{name:'#ff0000'},_richText:{name:{text:'과거',colors:['#ff0000','#0000ff']}}},{name:'현재'},{name:'미래'}];
+  const snapshot=JSON.stringify(rows);
+  const name={...instance.getColumnFontSettings()[3],fontSize:18.5,fontWeight:'700',color:'#123456'};
+  assert.equal(instance.applyColumnFontSettings([name]),true);
+  for(const row of rows) {
+    assert.equal(instance.getCellFormatting(row,'name','fontSize'),18.5);
+    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),'700');
+    assert.equal(instance.getCellFormatting(row,'name','color'),'#123456');
+    assert.equal(instance.getEffectiveCellRichText(row,'name'),undefined);
+  }
+  assert.equal(JSON.stringify(rows),snapshot);
+  assert.equal(instance.getCellFormatting(rows[0],'memo','color'),undefined);
+  rows[0]._textStyles.name={fontSize:12,fontWeight:400};rows[0]._textColors.name='#00ff00';
+  for(const property of ['fontSize','fontWeight','color'])instance.markCellFormatting(rows[0],'name',property);
+  assert.equal(instance.getCellFormatting(rows[0],'name','fontSize'),12);
+  assert.equal(instance.getCellFormatting(rows[0],'name','fontWeight'),400);
+  assert.equal(instance.getCellFormatting(rows[0],'name','color'),'#00ff00');
+  instance.applyColumnFontSettings([name]);
+  assert.equal(instance.getCellFormatting(rows[0],'name','fontSize'),18.5);
+  assert.equal(instance.getCellFormatting(rows[0],'name','color'),'#123456');
+});
+test('partial color edits after column apply start from the applied color and do not revive old character colors', () => {
+  const instance=Object.create(context.App.prototype);instance.columnFormatting={};instance.renderTable=()=>{};instance.showSaveIndicator=()=>{};
+  const row={name:'가나다',_textColors:{name:'#ff0000'},_richText:{name:{text:'가나다',colors:['#ff0000','#ff0000','#ff0000']}}};
+  instance.applyColumnFontSettings([{...instance.getColumnFontSettings()[3],color:'#0000ff'}]);
+  instance.setPartialTextColor(row,'name',1,2,'#00ff00');instance.markCellFormatting(row,'name','color');
+  assert.equal(instance.getCellFormatting(row,'name','color'),'#0000ff');
+  assert.deepEqual(plain(instance.getEffectiveCellRichText(row,'name').colors),[null,'#00ff00',null]);
+});
+test('invalid column apply cannot reset any existing defaults or cell formatting', () => {
+  const instance=Object.create(context.App.prototype);instance.columnFormatting={};instance.renderTable=()=>assert.fail('invalid input must not repaint');
+  const settings=instance.getColumnFontSettings();settings[3].fontSize=14.3;
+  assert.equal(instance.applyColumnFontSettings(settings),false);assert.deepEqual(plain(instance.columnFormatting),{});
+});
 test('editing colored text retains prefix and suffix colors and inherits inserted text color', () => {
   const row = {name:'가나다',_richText:{name:{text:'가나다',colors:['#ff0000','#0000ff','#00ff00']}}};
   app.updateEditorTextColors(row,'name','가새나다');

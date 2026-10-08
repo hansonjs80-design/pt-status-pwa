@@ -2387,6 +2387,7 @@ body {
 .column-font-list input, .column-font-list select { padding:6px; border:1px solid #cbd5e1; border-radius:4px; background:#fff; }
 .column-font-list input[type=number] { width:64px; }
 .column-font-list input[type=color] { width:48px; height:32px; padding:2px; }
+.column-font-list [data-apply-column] { padding:6px 10px; border:1px solid #107c41; border-radius:4px; background:#107c41; color:#fff; cursor:pointer; }
 .column-font-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
 .column-font-actions button { padding:8px 20px; border:1px solid #cbd5e1; border-radius:5px; cursor:pointer; }
 .column-font-actions button[type=submit] { background:#107c41; color:#fff; }

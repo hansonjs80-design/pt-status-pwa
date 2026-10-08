@@ -129,7 +129,7 @@ class PTCellInputTools {
   }
 
   updateEditorTextColors(row, key, value) {
-    const rich = row._richText?.[key];
+    const rich = this.getEffectiveCellRichText(row, key);
     if (!rich || rich.text === value || !Array.isArray(rich.colors)) return;
     const old = rich.text;
     let start = 0, suffix = 0;
@@ -147,7 +147,7 @@ class PTCellInputTools {
     input.editorColorPreview?.remove();
     input.classList.remove?.('has-editor-colors');
     if (!input.isConnected || input.classList.contains('is-armed') || input.classList.contains('has-inline-completion')) return;
-    const rich = row._richText?.[key];
+    const rich = this.getEffectiveCellRichText(row, key);
     if (rich?.text !== input.value || !rich.colors?.some(Boolean)) return;
     const font = getComputedStyle(input);
     const preview = document.createElement('span');
@@ -353,7 +353,8 @@ class PTCellInputTools {
     const font = getComputedStyle(input);
     preview.style.font = font.font;
     preview.style.letterSpacing = font.letterSpacing;
-    const rich = this.getCurrentRows?.()[state.rowIdx]?._richText?.[state.colKey];
+    const row = this.getCurrentRows?.()[state.rowIdx];
+    const rich = row && this.getEffectiveCellRichText(row, state.colKey);
     const baseColor = getComputedStyle(cellElement).color;
     let offset = 0;
     for (const block of blocks) {

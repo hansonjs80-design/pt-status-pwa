@@ -122,6 +122,20 @@ function setSharedColumn(app, column, property, value) {
   app.supabaseClient=client;
 }
 
+test('explicit column apply propagates resets to other devices and retains subsequent cell edits after reload', async () => {
+  const db=new Map(),a=createApp(db).app,b=createApp(db).app;a.columnFormatting={};b.columnFormatting={};
+  const client=a.supabaseClient;a.supabaseClient=null;
+  a.applyColumnFontSettings([{...a.getColumnFontSettings()[3],fontSize:20.5,fontWeight:'800',color:'#123456'}]);
+  a.supabaseClient=client;await a.pushSharedColumnFormatting();await b.pullSharedColumnFormatting();
+  const row={name:'이전색',_textColors:{name:'#ff0000'},_textStyles:{name:{fontSize:10,fontWeight:400}},_richText:{name:{text:'이전색',colors:['#ff0000',null,null]}}};
+  assert.equal(b.getCellFormatting(row,'name','color'),'#123456');assert.equal(b.getEffectiveCellRichText(row,'name'),undefined);
+  assert.equal(b.getCellFormatting(row,'name','fontSize'),20.5);assert.equal(b.getCellFormatting(row,'name','fontWeight'),'800');
+  b.applyPastedCellColors(row,'name',{color:'#0000ff'});
+  b.columnFormatting=b.loadColumnFormatting();
+  assert.equal(b.getCellFormatting(row,'name','color'),'#0000ff');
+  assert.equal(b.getCellFormatting(row,'name','fontSize'),20.5);
+});
+
 test('column defaults synchronize between devices, replacing old device caches and preserving cell exceptions', async () => {
   const db=new Map(),a=createApp(db),b=createApp(db);
   a.app.columnFormatting={};b.app.columnFormatting={name:{fontSize:{value:9,revision:'old-device'}}};
