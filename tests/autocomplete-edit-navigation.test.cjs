@@ -18,6 +18,22 @@ function createApp(dataStore = {}, presets = {}) {
   return { app, storage, context, queued };
 }
 
+test('Enter activates editing only for a populated selected special-note cell', () => {
+  const {app}=createApp({'2026-10-04':[{specialNote:'기존 메모',memo:'다른 메모'}]});
+  app.activeCell={rowIdx:0,colKey:'specialNote'};
+  const cell={};let edits=0,prevented=0,stopped=0;
+  app.elTableBody={querySelector(selector){assert.equal(selector,'[data-row="0"][data-col="specialNote"]');return cell;}};
+  app.startInlineEdit=(row,key,target)=>{assert.equal(row,0);assert.equal(key,'specialNote');assert.equal(target,cell);edits++;};
+  const event={key:'Enter',preventDefault(){prevented++;},stopPropagation(){stopped++;}};
+  assert.equal(app.handleSpecialNoteEditEnter(event),true);
+  assert.equal(edits,1);assert.equal(prevented,1);assert.equal(stopped,1);
+  assert.equal(app.getCurrentRows()[0].specialNote,'기존 메모');
+  for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])assert.equal(app.handleSpecialNoteEditEnter({...event,[modifier]:true}),false);
+  app.getCurrentRows()[0].specialNote='';assert.equal(app.handleSpecialNoteEditEnter(event),false);
+  app.activeCell.colKey='memo';assert.equal(app.handleSpecialNoteEditEnter(event),false);
+  assert.equal(edits,1);
+});
+
 test('renaming backs up local and cloud-only dates before updating exact same-column cells and presets', async () => {
   const { app, storage, context, queued } = createApp({
     '2026-10-04': [{ memo: '충 완', specialNote: '충 완', _richText: { memo: [{ text: '충 완' }] } }, { memo: '충 완 대기' }],

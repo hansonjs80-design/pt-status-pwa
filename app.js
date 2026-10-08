@@ -2958,6 +2958,7 @@ class PTApp {
       this.releaseNavigationInputGuard(input, e);
       if (colKey === "memo" && input.value === "" && !this.isAutocompleteOpen() && this.handleEmptyCellEnter(e, input)) return;
       if (input.classList.contains("is-armed")) {
+        if (this.handleSpecialNoteEditEnter(e)) return;
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
         if (colKey === "extra" && this.handlePresetPickerShortcut(e, rowIdx, colKey, cellElement)) return;
@@ -5908,6 +5909,7 @@ class PTApp {
       }
     }
 
+    if (this.handleSpecialNoteEditEnter(e)) return;
     if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
         ["chartNo", "name", "part", "memo"].includes(this.activeCell?.colKey)) {
       e.preventDefault();

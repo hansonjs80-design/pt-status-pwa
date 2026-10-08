@@ -1,5 +1,17 @@
 // In-cell completion is a visual overlay; candidate text never enters the native input.
 class PTCellInputTools {
+  handleSpecialNoteEditEnter(event) {
+    if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+        this.activeCell?.colKey !== 'specialNote') return false;
+    const {rowIdx,colKey} = this.activeCell;
+    if (!String(this.getCurrentRows()[rowIdx]?.[colKey] ?? '').trim()) return false;
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+    if (!cell) return false;
+    event.preventDefault(); event.stopPropagation();
+    this.startInlineEdit(rowIdx, colKey, cell);
+    return true;
+  }
+
   handleEmptyCellEnter(event, armedInput = null) {
     if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !this.activeCell) return false;
     const { rowIdx, colKey } = this.activeCell;
