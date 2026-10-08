@@ -89,6 +89,19 @@ test('failed color-edit backup leaves records and preset colors untouched', asyn
   assert.equal(queued.length, 0);
 });
 
+test('history edits carry per-character colors and leave other columns and backups intact', async () => {
+  const { app, storage } = createApp({ '2026-10-04': [{memo:'충 완',specialNote:'충 완',_textColors:{memo:'#000000'}}] }, {memo:['충 완']});
+  app.cloudSearchHistory = { '2025-09-09': [{memo:'충 완'}] };
+  const richText = {text:'충 완료',colors:['#ff0000',null,'#0000ff','#00ff00']};
+  assert.equal(await app.renameAutocompleteValue('memo','충 완','충 완료','#000000',richText),2);
+  for (const date of ['2026-10-04','2025-09-09']) assert.deepEqual(Array.from(app.dataStore[date][0]._richText.memo.colors), richText.colors);
+  assert.equal(app.dataStore['2026-10-04'][0]._richText.specialNote,undefined);
+  const key=[...storage.keys()].find(key=>key.startsWith('PT_TEXT_EDIT_BACKUP_'));
+  assert.equal(JSON.parse(storage.get(key)).dataStore['2026-10-04'][0].memo,'충 완');
+  const formatting=app.getAutocompleteValueFormatting('memo','충 완료');
+  assert.deepEqual(Array.from(formatting.richText.colors),richText.colors);
+});
+
 test('bulk rename refreshes cloud history and preserves all pending merge baselines', async () => {
   const { app } = createApp();
   app.supabaseClient = {};

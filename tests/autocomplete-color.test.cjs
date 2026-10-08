@@ -50,6 +50,27 @@ test('detail color overrides the general candidate and explicit default uses the
   assert.equal(reloaded.getAutocompleteValueColor('memo', '충 완료', '충'), null);
 });
 
+test('character colors survive preset persistence and both managed and historical autocomplete application', () => {
+  const { app, storage } = createApp({ '2025-09-09': [{ memo: '충 완료', _textColors: { memo: '#000000' },
+    _richText: { memo: { text: '충 완료', colors: ['#ff0000', null, '#0000ff', '#00ff00'] } } }] });
+  const historical = {};
+  app.applyAutocompleteColor(historical, 'memo', '충 완료', '충');
+  assert.deepEqual(Array.from(historical._richText.memo.colors), ['#ff0000', null, '#0000ff', '#00ff00']);
+  const key = app.getAutocompleteRuleKey('memo', '충');
+  app.setAutocompleteValueColor(key, '충 완료', '#000000', { text: '충 완료', colors: ['#9900ff', null, null, '#ff8800'] });
+  const saved = JSON.parse(storage.get('PT_APP_CUSTOM_PRESETS_V1'));
+  assert.ok(Object.values(saved).every(items => Array.isArray(items) && items.every(value => typeof value === 'string')));
+  const reloaded = createApp({}, saved).app, target = {};
+  reloaded.applyAutocompleteColor(target, 'memo', '충 완료', '충');
+  assert.deepEqual(Array.from(target._richText.memo.colors), ['#9900ff', null, null, '#ff8800']);
+  target._richText.memo.colors[0] = '#000000';
+  assert.equal(reloaded.getAutocompleteValueFormatting('memo', '충 완료', '충').richText.colors[0], '#9900ff');
+  reloaded.setAutocompleteValueColor(key, '충 완료', '#00ff00');
+  reloaded.applyAutocompleteColor(target, 'memo', '충 완료', '충');
+  assert.equal(target._richText.memo, undefined);
+  assert.equal(target._textColors.memo, '#00ff00');
+});
+
 test('latest matching history and current column revisions determine inferred candidate color', () => {
   const { app } = createApp({
     '2026-10-07': [{ memo: '기록' }],

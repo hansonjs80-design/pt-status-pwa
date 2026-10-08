@@ -7,11 +7,17 @@ class PTTableFormatting {
     return `__color:${JSON.stringify(scope)}:${JSON.stringify(value)}`;
   }
 
-  getAutocompleteValueColor(colKey, value, query = null, excludedRow = null) {
+  getAutocompleteRichKey(scope, value) {
+    return this.getAutocompleteColorKey(scope, value).replace('__color:', '__rich:');
+  }
+
+  getAutocompleteValueFormatting(colKey, value, query = null, excludedRow = null) {
     const scopes = query ? [this.getAutocompleteRuleKey(colKey, query), colKey] : [colKey];
     for (const scope of scopes) {
       const entry = COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)];
-      if (entry) return entry[0] || null;
+      const colors = COLUMN_PRESETS[this.getAutocompleteRichKey(scope, value)];
+      if (entry || colors) return { color: entry?.[0] || null,
+        richText: colors?.length === value.length ? { text: value, colors: colors.map(color => color || null) } : null };
     }
     const store = this.getSearchDataStore();
     for (const date of Object.keys(store).sort().reverse()) {
@@ -19,27 +25,46 @@ class PTTableFormatting {
       if (!row) continue;
       const setting = this.columnFormatting?.[colKey]?.color;
       const rich = row._richText?.[colKey];
-      if (rich?.text === String(row[colKey]) && rich.colors?.length &&
-          (!setting || row._formatRevisions?.[colKey]?.color === setting.revision) &&
-          rich.colors.every(color => color && color === rich.colors[0])) return rich.colors[0];
+      const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors) &&
+        (!setting || row._formatRevisions?.[colKey]?.color === setting.revision);
+      const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;
       // The latest matching record determines the candidate color, including
       // a record that inherits the column default instead of an older color.
-      return this.getCellFormatting(row, colKey, 'color') ?? null;
+      const offset = Math.max(0, String(row[colKey]).indexOf(value));
+      return { color: uniformColor || this.getCellFormatting(row, colKey, 'color') || null,
+        richText: validRich ? { text: value, colors: rich.colors.slice(offset, offset + value.length) } : null };
     }
-    return null;
+    return { color: null, richText: null };
   }
 
-  setAutocompleteValueColor(scope, value, color) {
+  getAutocompleteValueColor(colKey, value, query = null, excludedRow = null) {
+    return this.getAutocompleteValueFormatting(colKey, value, query, excludedRow).color;
+  }
+
+  setAutocompleteValueColor(scope, value, color, richText = null) {
     COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)] = [color || ''];
+    const key = this.getAutocompleteRichKey(scope, value);
+    if (richText?.text === value && richText.colors?.length === value.length) COLUMN_PRESETS[key] = richText.colors.map(color => color || '');
+    else delete COLUMN_PRESETS[key];
     saveColumnPresets(COLUMN_PRESETS);
   }
 
   applyAutocompleteColor(row, colKey, value, query) {
-    const color = this.getAutocompleteValueColor(colKey, value, query, row);
+    const { color, richText } = this.getAutocompleteValueFormatting(colKey, value, query, row);
     row._textColors ||= {};
     if (color) row._textColors[colKey] = color; else delete row._textColors[colKey];
     if (row._richText) delete row._richText[colKey];
+    if (richText) { row._richText ||= {}; row._richText[colKey] = richText; }
     this.markCellFormatting(row, colKey, 'color');
+  }
+
+  renderAutocompleteText(element, colKey, value, query, excludedRow = null) {
+    const { color, richText } = this.getAutocompleteValueFormatting(colKey, value, query, excludedRow);
+    element.style.color = color || '';
+    if (!value) { element.textContent = '빈칸'; return; }
+    const row = { [colKey]: value, _richText: { [colKey]: richText } };
+    this.markCellFormatting(row, colKey, 'color');
+    this.renderColoredText(element, row, colKey);
   }
 
   toColorPickerValue(color) {
@@ -54,7 +79,7 @@ class PTTableFormatting {
     return channels?.length >= 3 ? '#' + channels.slice(0, 3).map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('') : '#000000';
   }
 
-  openPresetTextColorEditor(title, value, color) {
+  openPresetTextColorEditor(title, value, color, richText = null) {
     return new Promise(resolve => {
       const previousFocus = document.activeElement;
       const overlay = document.createElement('div'); overlay.className = 'modal-overlay preset-color-editor';
@@ -63,13 +88,53 @@ class PTTableFormatting {
       const form = document.createElement('form'); form.className = 'modal-card';
       const heading = document.createElement('h2'); heading.textContent = title;
       const text = document.createElement('input'); text.type = 'text'; text.value = value; text.setAttribute('aria-label', '문구');
+      let baseColor = color || null;
+      let previousText = value;
+      let colors = richText?.text === value && richText.colors?.length === value.length ? [...richText.colors] : Array(value.length).fill(null);
       const label = document.createElement('label');
       const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(color);
-      label.append(enabled, document.createTextNode(' 글자색 지정'));
+      label.append(enabled, document.createTextNode(' 전체 기본 글자색 지정'));
       const picker = document.createElement('input'); picker.type = 'color'; picker.value = this.toColorPickerValue(color); picker.setAttribute('aria-label', '글자색');
-      text.style.color = color || '';
-      picker.oninput = () => { enabled.checked = true; text.style.color = picker.value; };
-      enabled.onchange = () => { text.style.color = enabled.checked ? picker.value : ''; };
+      const help = document.createElement('p'); help.className = 'preset-color-help';
+      help.textContent = '문구에서 원하는 글자를 선택하고 색을 고르세요. 글자마다 다른 색을 지정할 수 있습니다.';
+      const preview = document.createElement('div'); preview.className = 'preset-color-preview'; preview.setAttribute('aria-label', '글자색 미리보기');
+      const updatePreview = () => {
+        text.style.color = enabled.checked ? baseColor || '' : '';
+        preview.style.color = text.style.color;
+        preview.replaceChildren();
+        for (let i = 0; i < text.value.length;) {
+          let end = i + 1;
+          while (end < text.value.length && colors[end] === colors[i]) end++;
+          const span = document.createElement('span'); span.textContent = text.value.slice(i, end); span.style.color = colors[i] || '';
+          preview.append(span); i = end;
+        }
+      };
+      const applySelected = (selectedColor, whole = false) => {
+        const start = text.selectionStart, end = text.selectionEnd;
+        if (whole || (start === 0 && end === text.value.length) || start === end) {
+          baseColor = selectedColor; enabled.checked = Boolean(selectedColor); colors.fill(null);
+        } else for (let i = start; i < end; i++) colors[i] = selectedColor;
+        updatePreview();
+      };
+      picker.oninput = () => applySelected(picker.value);
+      enabled.onchange = () => { if (enabled.checked) baseColor = picker.value; updatePreview(); };
+      text.oninput = () => {
+        let start = 0, suffix = 0;
+        while (start < previousText.length && start < text.value.length && previousText[start] === text.value[start]) start++;
+        while (suffix < previousText.length - start && suffix < text.value.length - start &&
+          previousText[previousText.length - suffix - 1] === text.value[text.value.length - suffix - 1]) suffix++;
+        colors.splice(start, previousText.length - start - suffix, ...Array(text.value.length - start - suffix).fill(null));
+        previousText = text.value; updatePreview();
+      };
+      const colorActions = document.createElement('div'); colorActions.className = 'preset-character-color-actions';
+      for (const [caption, action] of [['선택 글자에 적용', () => {
+        if (text.selectionStart !== text.selectionEnd) applySelected(picker.value);
+      }], ['전체 글자에 적용', () => applySelected(picker.value, true)], ['선택 글자 기본색', () => {
+        if (text.selectionStart !== text.selectionEnd) applySelected(null);
+      }]]) {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = caption;
+        button.onmousedown = event => event.preventDefault(); button.onclick = action; colorActions.append(button);
+      }
       const actions = document.createElement('div'); actions.className = 'preset-color-editor-actions';
       const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = '취소';
       const save = document.createElement('button'); save.type = 'submit'; save.textContent = '저장';
@@ -79,10 +144,17 @@ class PTTableFormatting {
         resolve(result);
       };
       cancel.onclick = () => close(null);
-      form.onsubmit = event => { event.preventDefault(); close({ value: text.value.trim(), color: enabled.checked ? picker.value : null }); };
+      form.onsubmit = event => {
+        event.preventDefault();
+        const trimmed = text.value.trim(), offset = text.value.indexOf(trimmed);
+        const savedColors = colors.slice(Math.max(0, offset), Math.max(0, offset) + trimmed.length);
+        close({ value: trimmed, color: enabled.checked ? baseColor : null,
+          richText: savedColors.some(Boolean) ? { text: trimmed, colors: savedColors } : null });
+      };
       overlay.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(null); } };
       overlay.onclick = event => { if (event.target === overlay) close(null); };
-      actions.append(cancel, save); form.append(heading, text, label, picker, actions); overlay.append(form); document.body.append(overlay);
+      actions.append(cancel, save); form.append(heading, text, help, label, picker, colorActions, preview, actions); overlay.append(form); document.body.append(overlay);
+      updatePreview();
       text.focus(); text.select();
     });
   }

@@ -1073,6 +1073,7 @@ class PTApp {
   }
 
   setDate(dateStr, autoFocusFirstEmpty = false) {
+    const focusRequest = this._dateFocusRequest = {};
     const dateChanged = this.currentDate !== dateStr;
     if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
     clearTimeout(this._saveTimer);
@@ -1116,12 +1117,22 @@ class PTApp {
     this.updateHistoryButtons();
     this.updateSidebarStats();
 
-    // Pull from Supabase cloud if connected
+    const isToday = dateStr === this.getTodayString();
+    if (isToday) this.focusTodayEntryCell();
+    const todaySelection = this.activeCell;
+    const todayEditor = isToday && this.elTableBody.querySelector('.cell-input-element.is-armed');
+
+    // Reposition after newly received records only while the navigation
+    // selection is untouched. A later date change or user edit owns focus.
     if (this.supabaseClient) {
-      this.pullFromCloud(dateStr, false);
+      Promise.resolve(this.pullFromCloud(dateStr, false)).then(() => {
+        if (isToday && this._dateFocusRequest === focusRequest && this.currentDate === dateStr &&
+            this.activeCell === todaySelection && !this.crossDateSelection && !this.isEditingCell() &&
+            (!todayEditor || todayEditor.classList.contains('is-armed'))) this.focusTodayEntryCell();
+      });
     }
 
-    if (autoFocusFirstEmpty && !dateChanged) {
+    if (!isToday && autoFocusFirstEmpty && !dateChanged) {
       this._dateFocusTimer = setTimeout(() => this.focusFirstEmptyCell(), 80);
     }
   }
@@ -2350,8 +2361,7 @@ class PTApp {
 
       const textSpan = document.createElement("span");
       textSpan.className = "autocomplete-item-text";
-      textSpan.textContent = cand === "" ? "빈칸" : cand;
-      textSpan.style.color = this.getAutocompleteValueColor(colKey, cand, query, this.getCurrentRows()[rowIdx]) || "";
+      this.renderAutocompleteText(textSpan, colKey, cand, query, this.getCurrentRows()[rowIdx]);
       itemEl.appendChild(textSpan);
 
       const editButton = document.createElement("button");
@@ -2507,13 +2517,14 @@ class PTApp {
 
   async editAutocompleteValue(colKey, oldValue, input) {
     if (this.autocompleteRenameBusy) return;
+    const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
     const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색 수정", oldValue,
-      this.getAutocompleteValueColor(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query));
+      formatting.color, formatting.richText);
     if (!edit || !edit.value) return;
     const value = edit.value;
     this.autocompleteRenameBusy = true;
     try {
-      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color);
+      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText);
       // Do not let the existing editor restore the old text on blur.
       if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
       input?.blur();
@@ -2524,7 +2535,7 @@ class PTApp {
       if (this.autocompleteManagerContext?.colKey === colKey) {
         this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
         this.autocompleteManagerContext.hidden = (this.autocompleteManagerContext.hidden || []).map(item => item === oldValue ? value.trim() : item);
-        this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color);
+        this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color, edit.richText);
         this.savePresetManagerItems(colKey);
         this.renderPresetManagerList();
       }
@@ -2534,7 +2545,7 @@ class PTApp {
     } finally { this.autocompleteRenameBusy = false; }
   }
 
-  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined) {
+  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined) {
     const allowed = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
     const client = this.supabaseClient;
@@ -2545,7 +2556,7 @@ class PTApp {
       }
     }
     const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();
-    if (oldText === replacement && color === undefined) return 0;
+    if (oldText === replacement && color === undefined && richText === undefined) return 0;
     const source = this.getSearchDataStore();
     const changed = {}, baselines = new Map(this.syncBaselines || []);
     let count = 0;
@@ -2562,6 +2573,11 @@ class PTApp {
           if (color) row._textColors[colKey] = color; else delete row._textColors[colKey];
           this.markCellFormatting(row, colKey, "color");
         }
+        if (richText?.text === replacement && richText.colors?.length === replacement.length) {
+          row._richText ||= {};
+          row._richText[colKey] = JSON.parse(JSON.stringify(richText));
+          this.markCellFormatting(row, colKey, 'color');
+        }
         count++;
       }
       changed[date] = copy;
@@ -2573,11 +2589,16 @@ class PTApp {
     const presetChanged = (presets[colKey] || []).some(value => String(value).trim() === oldText);
     if (presetChanged) presets[colKey] = [...new Set(presets[colKey].map(value => String(value).trim() === oldText ? replacement : value))];
     if (color !== undefined) presets[this.getAutocompleteColorKey(colKey, replacement)] = [color || ""];
+    if (richText !== undefined || color !== undefined) {
+      const key = this.getAutocompleteRichKey(colKey, replacement);
+      if (richText?.text === replacement && richText.colors?.length === replacement.length) presets[key] = richText.colors.map(color => color || '');
+      else delete presets[key];
+    }
     if (!count && !presetChanged) return 0;
 
     // This backup covers records and presets only; no schema/Auth/Storage changes occur.
     const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
-      oldValue: oldText, newValue: replacement, color, dataStore: this.dataStore,
+      oldValue: oldText, newValue: replacement, color, richText, dataStore: this.dataStore,
       cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
       syncBaselines: Object.fromEntries(this.syncBaselines || []) });
     const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -2598,7 +2619,7 @@ class PTApp {
       this.editHistory?.delete(date);
       this.scheduleSupabaseSync(date);
     }
-    if (presetChanged || color !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
+    if (presetChanged || color !== undefined || richText !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
     return count;
   }
 
@@ -3864,6 +3885,32 @@ class PTApp {
     }
   }
 
+  focusTodayEntryCell() {
+    const rows = this.getCurrentRows();
+    const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+    const lastRow = rows.findLastIndex(row => keys.some(key => String(row?.[key] ?? '').trim()));
+    const targetRow = lastRow + 1;
+    const cell = this.elTableBody.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="name"]`);
+    if (!cell) return;
+    cell.closest('tr').style.display = '';
+    this.selectCell(targetRow, 'name', cell, false);
+
+    const container = this.elSheetContainer;
+    if (lastRow < 0 || !container?.getBoundingClientRect) { container.scrollTop = 0; return; }
+    const lastCell = this.elTableBody.querySelector(`.excel-cell[data-row="${lastRow}"][data-col="name"]`);
+    if (!lastCell) return;
+    const bounds = container.getBoundingClientRect();
+    const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
+    let top = bounds.top + (container.clientTop || 0);
+    container.querySelectorAll('#excelTable thead th, .current-history-headers th').forEach(header => {
+      const rect = header.getBoundingClientRect();
+      if (rect.height && rect.top < bottom && rect.bottom > top) top = Math.max(top, rect.bottom);
+    });
+    const rect = lastCell.getBoundingClientRect();
+    container.scrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight,
+      container.scrollTop + (rect.top + rect.bottom) / 2 - (top + bottom) / 2));
+  }
+
   addNewRow(andFocus = true) {
     const rows = this.getCurrentRows();
     const formattedDate = this.currentDate.replace(/-/g, ".");
@@ -3985,13 +4032,13 @@ class PTApp {
 
     const summary = this.getDailySummary(rows);
     this.elPrintTableBody.replaceChildren();
-    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     for (const row of rows) {
       const tr = document.createElement("tr");
       if (row._lunchBefore) tr.className = "print-lunch-row";
       for (const key of keys) {
         const td = document.createElement("td");
-        td.textContent = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
+        td.textContent = String(row[key] ?? "");
         tr.appendChild(td);
       }
       this.elPrintTableBody.appendChild(tr);
@@ -6250,7 +6297,7 @@ class PTApp {
     if (description) {
       description.dataset.defaultText ||= description.textContent;
       description.textContent = context
-        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 후보의 문구·글자색을 수정하거나 삭제·숨김·순서 변경할 수 있습니다. 지정한 색상은 자동완성으로 가져올 때 셀에 적용됩니다. 이전 기록 수정은 모든 날짜의 같은 열에서 해당 문구와 글자색을 변경합니다.`
+        ? `“${context.query}” 입력 중 표시되는 후보를 관리합니다. 수정 창에서 글자를 선택해 각각 색을 지정할 수 있습니다. 지정한 색상은 자동완성으로 가져올 때 셀에 적용됩니다. 이전 기록 수정은 모든 날짜의 같은 열에서 해당 문구와 글자색을 변경합니다.`
         : description.dataset.defaultText;
     }
     const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
@@ -6387,9 +6434,9 @@ class PTApp {
       const textEl = document.createElement("span");
       textEl.className = "preset-item-text";
       const label = val === "" ? "빈칸" : val;
-      textEl.textContent = hidden ? `${label} · 숨김` : label;
+      this.renderAutocompleteText(textEl, tab, val, this.autocompleteManagerContext?.query);
+      if (hidden) textEl.append(document.createTextNode(' · 숨김'));
       const itemColor = this.getAutocompleteValueColor(tab, val, this.autocompleteManagerContext?.query);
-      textEl.style.color = itemColor || "";
       textEl.title = `${val} (더블클릭하여 바로 수정)`;
       textEl.style.cursor = "pointer";
       textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
@@ -6435,7 +6482,7 @@ class PTApp {
       btnEdit.type = "button";
       btnEdit.className = "preset-action-btn";
       btnEdit.textContent = "✏️ 수정";
-      btnEdit.title = "프리셋 내용 수정";
+      btnEdit.title = "문구·전체 또는 선택 글자 색상 수정";
       btnEdit.addEventListener("click", () => this.editPresetAt(tab, idx));
       actionsEl.appendChild(btnEdit);
       if (this.autocompleteManagerContext) {
@@ -6493,16 +6540,19 @@ class PTApp {
     const curVal = this.getPresetManagerItems(tab)[index];
     if (curVal === undefined) return;
 
-    const edit = await this.openPresetTextColorEditor("자동완성 문구·글자색 수정", curVal,
-      this.getAutocompleteValueColor(tab, curVal, this.autocompleteManagerContext?.query));
+    const formatting = this.getAutocompleteValueFormatting(tab, curVal, this.autocompleteManagerContext?.query);
+    const edit = await this.openPresetTextColorEditor("자동완성 문구·글자색 수정", curVal, formatting.color, formatting.richText);
     if (!edit) return;
     const trimmed = tab === "writer" ? this.normalizeWriterInput(edit.value) : edit.value;
     const context = this.autocompleteManagerContext;
     if (context?.colKey === tab) context.hidden = (context.hidden || []).map(value => value === curVal ? trimmed : value);
     this.getPresetManagerItems(tab)[index] = trimmed;
     const scope = this.getPresetManagerKey(tab);
-    if (trimmed !== curVal && !this.getPresetManagerItems(tab).includes(curVal)) delete COLUMN_PRESETS[this.getAutocompleteColorKey(scope, curVal)];
-    this.setAutocompleteValueColor(scope, trimmed, edit.color);
+    if (trimmed !== curVal && !this.getPresetManagerItems(tab).includes(curVal)) {
+      delete COLUMN_PRESETS[this.getAutocompleteColorKey(scope, curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichKey(scope, curVal)];
+    }
+    this.setAutocompleteValueColor(scope, trimmed, edit.color, edit.richText);
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
@@ -6516,7 +6566,10 @@ class PTApp {
     if (confirm(`"${curVal}" 항목을 삭제하시겠습니까?`)) {
       const items = this.getPresetManagerItems(tab);
       items.splice(index, 1);
-      if (!items.includes(curVal)) delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
+      if (!items.includes(curVal)) {
+        delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
+        delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
+      }
       this.savePresetManagerItems(tab);
       this.renderPresetManagerList();
       this.renderQuickChips();
@@ -6545,7 +6598,7 @@ class PTApp {
       if (!confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
       delete COLUMN_PRESETS[context.key];
       delete COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)];
-      for (const key of Object.keys(COLUMN_PRESETS)) if (key.startsWith(`__color:${JSON.stringify(context.key)}:`)) delete COLUMN_PRESETS[key];
+      for (const key of Object.keys(COLUMN_PRESETS)) if (['__color:', '__rich:'].some(prefix => key.startsWith(`${prefix}${JSON.stringify(context.key)}:`))) delete COLUMN_PRESETS[key];
       context.hidden = [];
       const typed = this.assembleHangul(context.query);
       context.items = this.getAutocompleteSuggestions(context.colKey, context.query, true).filter(value => value !== context.query && value !== typed);
@@ -6555,7 +6608,7 @@ class PTApp {
     }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
       const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) =>
-        key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__color:"__query:')));
+        key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();
