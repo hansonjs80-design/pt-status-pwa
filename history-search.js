@@ -351,6 +351,9 @@ class PTHistorySearch {
   }
 
   openSearchPromptModal(targetRowIdx, initialQuery) {
+    // Windows IME can replay F without marking it as a repeat after the editor
+    // has gone. The same physical shortcut must not reopen the prompt.
+    if (this.directHistorySearchKeyHeld) return;
     clearTimeout(this.searchPromptFocusTimer);
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
@@ -547,6 +550,7 @@ class PTHistorySearch {
     if (!query || !query.trim()) return false;
     const q = query.trim().toLowerCase();
     const searchStore = this.getSearchDataStore();
+    const isChartQuery = this.isChartNumberQuery(q);
     const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
@@ -557,7 +561,7 @@ class PTHistorySearch {
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         if (!row || (!row.name && !row.chartNo && !row.part && !row.prescription)) continue;
-        const matches = isNameQuery
+        const matches = isChartQuery ? String(row.chartNo ?? "").trim().toLowerCase() === q : isNameQuery
           ? String(row.name ?? "").trim().toLowerCase() === q
           : colKeys.some(k => String(row[k] || "").toLowerCase().includes(q));
         if (matches) return true;
@@ -632,7 +636,7 @@ class PTHistorySearch {
     if (this.supabaseClient) await this.loadSearchHistory();
     // A repeated IME shortcut can open a prompt while cloud history is loading.
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
-    const searchByChart = /^[a-z0-9-]+$/i.test(query) && /\d/.test(query);
+    const searchByChart = this.isChartNumberQuery(query);
     if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
       this.showSearchNotFoundModal("해당 챠트번호/성함이 내역에 없습니다.", { query, targetRowIdx });
       return false;
@@ -655,7 +659,7 @@ class PTHistorySearch {
       if (this.supabaseClient) await this.loadSearchHistory();
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
-      const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
+      const searchByChart = this.isChartNumberQuery(q);
       let exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists && this.supabaseClient && this.getSearchPeriod() === "1year_plus") {
         await this.loadSearchHistory(true);
@@ -785,9 +789,14 @@ class PTHistorySearch {
     this.patientSearchDraft = { date: this.currentDate, rowIdx, colKey, input };
   }
 
+  isChartNumberQuery(query) {
+    const value = String(query ?? "").trim();
+    return /^[a-z0-9-]+$/i.test(value) && /\d/.test(value);
+  }
+
   handlePatientEditorSearchShortcut(event) {
     if (!this.isSearchShortcut(event)) return false;
-    if (event.repeat && this.directHistorySearchKeyHeld) {
+    if (this.directHistorySearchKeyHeld) {
       event.preventDefault(); event.stopPropagation();
       return true;
     }
@@ -899,6 +908,7 @@ class PTHistorySearch {
     const allMatchedRows = [];
 
     const searchStore = this.getSearchDataStore();
+    const isChartQuery = this.isChartNumberQuery(q);
     const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     // 성함 후보에 해당하는 검색어는 완전 일치로 찾고, 다른 열의 검색은 기존 방식으로 유지한다.
     const isNameQuery = Object.values(searchStore).some(rows => Array.isArray(rows) &&
@@ -911,7 +921,7 @@ class PTHistorySearch {
       dateRows.forEach((row, sourceRowIdx) => {
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
         const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
-        const matches = isNameQuery
+        const matches = isChartQuery ? String(row.chartNo ?? "").trim().toLowerCase() === q : isNameQuery
           ? String(row.name ?? "").trim().toLowerCase() === q
           : rowText.includes(q);
         if (matches) {

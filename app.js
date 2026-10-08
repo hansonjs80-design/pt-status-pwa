@@ -5467,7 +5467,7 @@ class PTApp {
   }
 
   releaseHistorySearchKey(e) {
-    if (e.key.toLowerCase() === "f" || e.code === "KeyF") this.directHistorySearchKeyHeld = false;
+    if (["f", "control", "meta"].includes(e.key.toLowerCase()) || e.code === "KeyF") this.directHistorySearchKeyHeld = false;
     if (e.key.toLowerCase() === this.historyApplyBlockedKey ||
         (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
   }

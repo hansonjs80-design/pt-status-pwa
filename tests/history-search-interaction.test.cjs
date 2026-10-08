@@ -1319,3 +1319,47 @@ test('a direct cloud history search removes any prompt opened during its await b
   assert.equal(await app.searchPatientHistory('검색 이름',0),true);
   assert.equal(rendered,true);
 });
+
+
+test('IME replay of the direct search shortcut without repeat cannot reopen the prompt', () => {
+  const {app}=createApp([{name:'입력 이름'}]);
+  app.elSearchPromptModal={style:{display:'none'},querySelector:()=>null};
+  app.elSearchPromptInput={value:'',focus(){},select(){}};
+  const input={tagName:'INPUT',value:'입력 이름',closest:()=>({dataset:{col:'name',row:'0'}}),blur(){}};
+  let searches=0;
+  app.searchPatientHistory=()=>{searches++;app.activeCell=null;app.crossDateSelection={endRow:0,endCol:9};};
+  app.handleGlobalKeyDown({key:'f',code:'KeyF',ctrlKey:true,target:input,preventDefault(){},stopPropagation(){}});
+  for(const repeat of [true,false]) app.handleGlobalKeyDown({key:'f',code:'KeyF',ctrlKey:true,repeat,
+    target:{tagName:'DIV',closest:()=>null},preventDefault(){},stopPropagation(){}});
+  app.openSearchPromptModal(0,'입력 이름');
+  assert.equal(searches,1);
+  assert.equal(app.elSearchPromptModal.style.display,'none');
+  app.releaseHistorySearchKey({key:'Control'});
+  app.closeSearchPromptAutocomplete=app.updateSearchPromptAutocomplete=()=>{};
+  app.openSearchPromptModal(0,'입력 이름');
+  assert.equal(app.elSearchPromptModal.style.display,'flex');
+  assert.equal(app.elSearchPromptInput.value,'입력 이름');
+});
+
+test('chart searches match the complete chart number and ignore prefixes, suffixes and other fields', () => {
+  const rows=[{chartNo:'411',name:'정확 번호'},{chartNo:'41123',name:'긴 번호'},{chartNo:'1411',name:'접미 번호'},{chartNo:'999',name:'다른 번호',memo:'411'}];
+  const {app}=createApp([{}]);
+  app.dataStore={'2026-09-01':rows};
+  app.elBtnClearSearch={style:{}};
+  app.elSheetContainer.classList={add(){}};
+  app.elTableBody={querySelectorAll:()=>[],querySelector:()=>null};
+  for(const name of ['clearCrossDateRows','syncMainColumnWidths','updateHistoryDestinationHighlight','loadSearchHistory'])app[name]=()=>{};
+  let initialOptions;
+  app.renderCrossDateSection=options=>{initialOptions=options;};
+  assert.equal(app.hasAnySearchMatches('411'),true);
+  app.searchAllDates('411',0);
+  assert.deepEqual(Array.from(app.allCrossDateMatchedRows,row=>row.chartNo),['411']);
+  assert.equal(initialOptions.selectLatestHistory,true);
+  app.dataStore['2026-09-01']=rows.slice(1);
+  assert.equal(app.hasAnySearchMatches('411'),false);
+  app.searchAllDates('411',0);
+  assert.equal(app.allCrossDateMatchedRows.length,0);
+  app.dataStore['2026-09-01']=[{chartNo:'T411',name:'문자번호'},{chartNo:'T41123',name:'긴 문자번호'}];
+  app.searchAllDates('t411',0);
+  assert.deepEqual(Array.from(app.allCrossDateMatchedRows,row=>row.chartNo),['T411']);
+});
