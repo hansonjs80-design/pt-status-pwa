@@ -1112,7 +1112,7 @@ class PTApp {
     const dateFormatted = `${y}.${String(m).padStart(2, "0")}.${String(d).padStart(2, "0")}`;
 
     this.elDateLabel.textContent = `${dateFormatted} (${dayLabel})`;
-    for (const element of [this.elDateLabel, this.elBtnPrevDay, this.elBtnNextDay]) {
+    for (const element of [this.elDateLabel, this.elBtnPrevDay, this.elBtnNextDay, this.elBtnGoToday]) {
       element?.classList?.toggle("is-saturday", dateObj.getDay() === 6);
       element?.classList?.toggle("is-sunday", dateObj.getDay() === 0);
     }
