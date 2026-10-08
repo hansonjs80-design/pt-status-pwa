@@ -1161,12 +1161,13 @@ class PTApp {
 
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+    const newPatientFlags = this.getNewPatientRowFlags(rows);
 
     rows.forEach((row, rowIdx) => {
       const tr = document.createElement("tr");
       tr.className = "excel-row";
       tr.dataset.rowIdx = rowIdx;
-      tr.classList.toggle("new-patient-row", this.isNewPatientRow(row, rowIdx));
+      tr.classList.toggle("new-patient-row", newPatientFlags[rowIdx]);
       tr.classList.toggle("lunch-break-row", Boolean(row._lunchBefore));
 
       // Row Number Header (1, 2, 3...)
@@ -2706,7 +2707,7 @@ class PTApp {
       if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
     }
     input.classList.remove("is-armed");
-    if (input.closest(".excel-cell")?.dataset.col === "memo") this.initMemoInput(input);
+    if (["name", "memo"].includes(input.closest(".excel-cell")?.dataset.col)) this.initMemoInput(input);
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
@@ -2746,6 +2747,8 @@ class PTApp {
       input.autocapitalize = "characters";
       input.spellcheck = false;
     }
+    // Set the Korean input hint before focus establishes the native IME context.
+    if (["name", "memo"].includes(colKey)) this.initMemoInput(input);
 
     cellElement.appendChild(input);
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
@@ -2754,8 +2757,6 @@ class PTApp {
     // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
     const len = input.value.length;
     input.setSelectionRange(armed ? 0 : len, len);
-
-    if (colKey === "memo") this.initMemoInput(input);
 
     // Input events
     // ★ 한글 IME 보호 원칙:
@@ -4977,9 +4978,27 @@ class PTApp {
 
   refreshNewPatientRows() {
     const rows = this.getCurrentRows();
+    const flags = this.getNewPatientRowFlags(rows);
     this.elTableBody.querySelectorAll(".excel-row[data-row-idx]").forEach(tr => {
       const index = Number(tr.dataset.rowIdx);
-      tr.classList.toggle("new-patient-row", this.isNewPatientRow(rows[index], index));
+      tr.classList.toggle("new-patient-row", flags[index]);
+    });
+  }
+
+  getNewPatientRowFlags(rows) {
+    const names = new Set(), charts = new Set();
+    const identity = row => [String(row?.name ?? "").trim().toLowerCase(), String(row?.chartNo ?? "").trim().toLowerCase()];
+    const remember = ([name, chart]) => { if (name) names.add(name); if (chart) charts.add(chart); };
+    // Scan prior dates once per repaint, instead of once for every visible row.
+    for (const [date, records] of Object.entries(this.getSearchDataStore())) {
+      if (date >= this.currentDate || !Array.isArray(records)) continue;
+      for (const row of records) remember(identity(row));
+    }
+    return rows.map(row => {
+      const [name, chart] = identity(row);
+      const isNew = Boolean(name || chart) && !(name && names.has(name)) && !(chart && charts.has(chart));
+      remember([name, chart]);
+      return isNew;
     });
   }
 
@@ -5155,13 +5174,14 @@ class PTApp {
 
       // One paste transaction uses the same current time for all pasted names.
       const pastedAt = new Date();
+      // Allocate the destination once. addNewRow saves and rebuilds the table;
+      // calling it for each pasted row caused repeated renders and undo entries.
+      const missingRows = startRow + grid.length - rows.length;
+      if (missingRows > 0) rows.push(...this.createDefaultEmptyRows(missingRows));
       // Apply grid data to rows
       grid.forEach((rowVals, rOffset) => {
         const r = startRow + rOffset;
         let includesName = false;
-        while (r >= rows.length) {
-          this.addNewRow(false);
-        }
         rowVals.forEach((val, cOffset) => {
           if (sourceSelection?.cells && !sourceSelection.cells.includes(`${sourceSelection.minRow+rOffset}:${sourceSelection.minCol+cOffset}`)) return;
           const c = startCol + cOffset;
@@ -5191,6 +5211,9 @@ class PTApp {
       if (sourceSelection?.kind === "history" || this.elSearchInput?.value?.trim()) {
         this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[startRow], rowIdx: startRow };
       }
+      // Include trailing entry rows before saving the undo snapshot. Adding
+      // them during render would otherwise consume the first Undo action.
+      this.getCurrentRows();
       this.saveDataStore();
       this.renderTable();
       this.showSaveIndicator("붙여넣기 완료됨");

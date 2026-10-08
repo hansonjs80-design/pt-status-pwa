@@ -234,6 +234,7 @@ test('partial history paste remembers the destination row for No. selection when
   app.elTableBody={querySelector:()=>({closest:()=>({style:{}}),scrollIntoView(){}})};
   app.selectCell=(rowIdx,colKey)=>{selected={rowIdx,colKey};};
   app.elSheetContainer={focus(){}};
+  app.focusSelectedCellEditor=()=>{};
   app.restoreAppliedHistorySelection(app.lastHistoryAppliedTarget);
   assert.deepEqual(selected,{rowIdx:1,colKey:'no'});
 });
@@ -444,4 +445,17 @@ test('editing a character color preserves earlier colors despite stale column re
   const captured=instance.captureCellFormatting(row,'name');
   assert.equal(captured.color,'#0000ff');
   assert.deepEqual(plain(captured.richText),plain(row._richText.name));
+});
+
+test('large paste allocates destination rows once and saves and renders one transaction', async () => {
+  const rows=[{}],app=createPasteApp(rows,'name');
+  let saves=0,renders=0;
+  app.saveDataStore=()=>saves++;
+  app.renderTable=()=>renders++;
+  app.addNewRow=()=>assert.fail('per-row allocation must not save or render during paste');
+  await app.pasteSelection(Array.from({length:200},(_,i)=>`가상${i}`).join('\n'));
+  assert.equal(rows.length,200);
+  assert.equal(rows[199].name,'가상199');
+  assert.equal(saves,1);assert.equal(renders,1);
+  assert.equal(rows[0]._visitedAt,rows[199]._visitedAt);
 });

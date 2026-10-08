@@ -17,7 +17,7 @@ function createApp(rows = []) {
     historyApplyTarget: { date: '2026-10-04', rows, row: rows[0], rowIdx: 0, colKey: 'name' },
   });
   app.getCurrentRows = () => rows;
-  for (const key of ['saveDataStore', 'renderTable', 'clearHeaderSelections', 'selectCell', 'showSaveIndicator']) app[key] = () => {};
+  for (const key of ['saveDataStore', 'renderTable', 'clearHeaderSelections', 'selectCell', 'showSaveIndicator', 'focusSelectedCellEditor']) app[key] = () => {};
   return { app, context };
 }
 
@@ -1167,7 +1167,7 @@ test('failed prompt search restores the original name border; changed queries re
     app.closeSearchNotFoundModal();
     const sameName = query === rows[0].name;
     assert.deepEqual(selected,{rowIdx:sameName ? 0 : 2,colKey:'name',editing:!sameName});
-    assert.equal(sheetFocus,sameName ? 1 : 0);
+    assert.equal(sheetFocus,0);
   }
 });
 
@@ -1404,4 +1404,27 @@ test('history selection restores by source identity after indices shift, while c
   app.crossDateResults=[a];app.restoreHistorySearchSelection(snapshot);assert.equal(selected,0);
   app.crossDateSelection=null;app.activeCell={rowIdx:0,colKey:'name'};
   assert.equal(app.captureHistorySearchSelection(),null);
+});
+
+test('closing history and no-results keeps the native name editor focused for the first IME key', () => {
+  for (const closing of ['origin', 'notFound']) {
+    const rows=[{name:'가상환자'}];
+    const {app,context}=createApp(rows);
+    let editorFocus=0;
+    const input={focus(){editorFocus++;}},cell={};
+    app.elTableBody.querySelector=selector=>selector.endsWith(' input') ? input : cell;
+    app.elSheetContainer.focus=()=>assert.fail('returning to the sheet loses the native IME context');
+    app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};};
+    app.ensureCurrentCellVisible=()=>{};
+    app.focusSelectedCellEditor=context.App.prototype.focusSelectedCellEditor;
+    if(closing==='origin') {
+      app.historyOriginSelection={date:app.currentDate,row:rows[0],colKey:'name'};
+      app.restoreHistoryOriginSelection();
+    } else {
+      app.searchNotFoundReturnTarget={date:app.currentDate,row:rows[0]};
+      app.closeSearchNotFoundModal();
+    }
+    assert.deepEqual(app.activeCell,{rowIdx:0,colKey:'name'});
+    assert.equal(editorFocus,1);
+  }
 });

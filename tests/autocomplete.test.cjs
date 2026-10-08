@@ -431,3 +431,13 @@ test('drag reorder moves across multiple rows in either direction and preserves 
   app.reorderPresetAt('part',-1,0);
   assert.deepEqual(Array.from(app.autocompleteManagerContext.items),['고','가','기','구']);
 });
+
+test('one-pass patient flags preserve historical identities and update after deletion', () => {
+  const rows=[{name:'신규',chartNo:'20'},{name:'신규',chartNo:'20'},{name:' 기존 '},{chartNo:'10'},{name:'미래'},{}];
+  const app=createApp({'2026-09-29':[{name:'기존',chartNo:'10'}],'2026-09-30':rows,'2026-10-01':[{name:'미래'}]});
+  assert.deepEqual(Array.from(app.getNewPatientRowFlags(rows)),rows.map((row,index)=>app.isNewPatientRow(row,index)));
+  rows.splice(0,1);
+  assert.deepEqual(Array.from(app.getNewPatientRowFlags(rows)),[true,false,false,true,false]);
+  app.cloudSearchHistory={'2026-09-28':[{name:'신규'}]};
+  assert.equal(app.getNewPatientRowFlags(rows)[0],false);
+});

@@ -244,7 +244,7 @@ class PTHistorySearch {
       this.selectCell(rowIdx, "no", cell, false);
       this.isCrossDateRowSelected = false;
       this.revealHistoryDestination(cell, rowIdx);
-      this.elSheetContainer.focus({ preventScroll: true });
+      this.focusSelectedCellEditor();
     }
   }
 
@@ -267,7 +267,7 @@ class PTHistorySearch {
     if (cell) {
       this.selectCell(rowIdx, colKey, cell, false);
       this.ensureCurrentCellVisible(cell);
-      this.elSheetContainer.focus({ preventScroll: true });
+      this.focusSelectedCellEditor();
     }
     this.historyOriginSelection = undefined;
   }
@@ -654,7 +654,7 @@ class PTHistorySearch {
     if (cell) {
       this.selectCell(rowIdx, "name", cell, originIdx < 0);
       this.ensureCurrentCellVisible(cell);
-      if (originIdx >= 0) this.elSheetContainer.focus({ preventScroll: true });
+      this.focusSelectedCellEditor();
     }
     this.historyOriginSelection = undefined;
   }
