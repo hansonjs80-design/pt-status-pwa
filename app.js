@@ -1901,7 +1901,7 @@ class PTApp {
       itemEl.appendChild(label);
       const hint = document.createElement("span");
       hint.className = "autocomplete-hint-badge gender-picker-hint";
-      hint.textContent = "↵ Enter";
+      hint.textContent = "Enter";
       itemEl.appendChild(hint);
       itemEl.setAttribute("role", "option");
       itemEl.classList.toggle("is-selected", index === this.genderPickerState.selectedIndex);
@@ -2381,7 +2381,7 @@ class PTApp {
       const editButton = document.createElement("button");
       editButton.type = "button";
       editButton.className = "autocomplete-edit-button";
-      editButton.textContent = "✎";
+      editButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5M4 15l5 5"/></svg>';
       const managedColumn = ["name", "part", "prescription", "extra", "memo", "specialNote"].includes(colKey);
       editButton.title = managedColumn ? "현재 입력값의 자동완성 세부 관리" : "모든 날짜의 같은 문구 수정";
       editButton.setAttribute("aria-label", `${cand} ${managedColumn ? "자동완성 관리" : "수정"}`);
@@ -2396,7 +2396,7 @@ class PTApp {
       if (idx === selectedIndex) {
         const hintBadge = document.createElement("span");
         hintBadge.className = "autocomplete-hint-badge";
-        hintBadge.textContent = "↵ Enter";
+        hintBadge.textContent = "Enter";
         itemEl.appendChild(hintBadge);
       }
 
@@ -2687,7 +2687,7 @@ class PTApp {
           if (!badge) {
             badge = document.createElement("span");
             badge.className = "autocomplete-hint-badge";
-            badge.textContent = "↵ Enter";
+            badge.textContent = "Enter";
             it.appendChild(badge);
           }
           it.scrollIntoView({ block: "nearest" });

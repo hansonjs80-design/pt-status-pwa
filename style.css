@@ -2298,6 +2298,9 @@ body {
 
 .autocomplete-edit-button {
   display: none;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(5px);
   margin-left: 8px;
   padding: 1px 5px;
   border: 0;
@@ -2306,6 +2309,15 @@ body {
   cursor: pointer;
   font-size: 16px;
   line-height: 18px;
+}
+.autocomplete-edit-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .autocomplete-item.is-selected .autocomplete-edit-button,
 .autocomplete-item:hover .autocomplete-edit-button { display: inline-flex; }
