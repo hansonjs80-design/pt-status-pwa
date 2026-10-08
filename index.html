@@ -54,7 +54,12 @@
             <button type="button" id="btnFontSize" title="글자 크기 선택" aria-label="글자 크기 선택" aria-haspopup="dialog">14</button>
             <button type="button" id="btnFontLarger" aria-label="글자 크기 0.5 늘리기" title="글자 크기 0.5 늘리기">+</button>
           </div>
-          <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 추가/수정/삭제 관리" onclick="if(window.ptApp) window.ptApp.openPresetManager();">⚙️ 관리</button>
+          <button type="button" class="tool-btn chip-manage" id="btnManagePresets" title="빠른 도구 관리" aria-label="빠른 도구 관리" aria-haspopup="dialog" onclick="if(window.ptApp) window.ptApp.openPresetManager();">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6h4m4 0h8M4 12h8m4 0h4M4 18h2m4 0h10"/>
+              <circle cx="10" cy="6" r="2"/><circle cx="14" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>
+            </svg>
+          </button>
           <div class="search-period-group" title="이전 날짜 기록 검색 기간 설정">
             <label for="searchPeriodSelect" class="search-period-label">검색 기간</label>
             <select id="searchPeriodSelect" class="search-period-select" aria-label="검색 기간 설정">
