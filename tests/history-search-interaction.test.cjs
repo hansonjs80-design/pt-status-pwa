@@ -372,8 +372,8 @@ test('history nonidentity cells also open an empty search prompt with the origin
   }
 });
 
-test('a transparent armed chart input retains its prefilled search prompt', () => {
-  for (const colKey of ['chartNo']) {
+test('transparent armed chart/name selections retain their prefilled search prompt', () => {
+  for (const colKey of ['name', 'chartNo']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell.colKey = colKey;
     let prompt;
@@ -1189,7 +1189,8 @@ test('focused populated name input searches directly even when table rendering h
     const input = {tagName:'INPUT',value:'입력한 이름',classList:{contains:()=>armed},
       closest:()=>cell,blur(){ this.value = '확정한 이름'; }};
     context.document.activeElement = input;
-    app.openSearchPromptModal = () => assert.fail('populated name input must skip the prompt');
+    if (armed) app.rememberPatientSearchDraft(0,'name',{tagName:'INPUT',value:input.value,classList:{contains:()=>false},closest:()=>null,blur(){this.value='확정한 이름';}});
+    app.openSearchPromptModal = () => assert.fail('populated name draft must skip the prompt');
     let searched;
     app.searchPatientHistory = (...args) => { searched = args; };
     const event = {key:'ㄹ',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,
@@ -1201,7 +1202,7 @@ test('focused populated name input searches directly even when table rendering h
 });
 
 test('empty focused name inputs and selected chart inputs still open the search prompt', () => {
-  for (const modifier of ['ctrlKey','metaKey']) for (const [colKey,value] of [['name',''],['chartNo','1234']]) {
+  for (const modifier of ['ctrlKey','metaKey']) for (const [colKey,value] of [['name',''],['name','선택한 이름'],['chartNo','1234']]) {
     const {app}=createApp([{[colKey]:value}]);
     app.activeCell = {rowIdx:0,colKey};
     const input = {tagName:'INPUT',value,classList:{contains:()=>true},closest:()=>({dataset:{row:'0',col:colKey}})};
@@ -1238,4 +1239,39 @@ test('search prompt input never borrows a composing name draft from the table', 
   const prompt={tagName:'INPUT',value:'별도 검색어',closest:()=>null};
   app.searchPatientHistory=()=>assert.fail('a modal shortcut must not search the table draft');
   assert.equal(app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:prompt}),false);
+});
+
+
+test('Windows Control handoff searches the typed draft after the native name editor has been removed', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const targetCell of [false,true]) {
+    const {app,context}=createApp([{name:'입력한이름'}]);
+    context.document.activeElement=null;
+    app.elTableBody.querySelector=()=>null; // Control ended composition and the blur removed the input.
+    const input={tagName:'INPUT',value:'입력한이름',classList:{contains:()=>false},closest:()=>null,blur(){}};
+    app.rememberPatientSearchDraft(0,'name',input);
+    let searches=[];
+    app.searchPatientHistory=(...args)=>searches.push(args);
+    app.openSearchPromptModal=()=>assert.fail('Windows draft handoff must skip the prompt');
+    const cell={dataset:{row:'0',col:'name'}};
+    app.handleGlobalKeyDown({key:'f',code:'KeyF',[modifier]:true,
+      target:{tagName:targetCell?'TD':'DIV',closest:()=>targetCell?cell:null},preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(searches,[['입력한이름',0]]);
+    assert.equal(app.patientSearchDraft,null);
+  }
+});
+
+test('draft search cannot reuse another date or a different cell, or replace modal search text', () => {
+  for (const mismatch of ['date','row','column','modal']) {
+    const {app,context}=createApp([{name:'현재 이름'},{}]);
+    context.document.activeElement=null;
+    app.elTableBody.querySelector=()=>null;
+    const input={tagName:'INPUT',value:'이전 입력',closest:()=>null};
+    app.rememberPatientSearchDraft(0,'name',input);
+    if(mismatch==='date') app.currentDate='2026-10-05';
+    if(mismatch==='row') app.activeCell.rowIdx=1;
+    if(mismatch==='column') app.activeCell.colKey='memo';
+    app.searchPatientHistory=()=>assert.fail('stale drafts must not search');
+    const target=mismatch==='modal'?{tagName:'INPUT',value:'검색창',closest:()=>null}:{tagName:'DIV',closest:()=>null};
+    assert.equal(app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target}),false);
+  }
 });

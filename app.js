@@ -813,6 +813,10 @@ class PTApp {
     this.initSummaryToggle();
 
     // Keyboard Shortcuts
+    // Intercept search before native editor/IME bubbling can lose its target.
+    document.addEventListener("keydown", e => {
+      if (!e.defaultPrevented) this.handlePatientEditorSearchShortcut(e);
+    }, true);
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
     document.addEventListener("keyup", (e) => {
       this.releaseHistorySearchKey(e);
@@ -1076,6 +1080,7 @@ class PTApp {
     this.clipboardSelection = null;
     this.historyApplyTarget = null;
     if (dateChanged) {
+      this.patientSearchDraft = null;
       this.sortState = { colKey: null, direction: "original" };
       this.clearHeaderSelections();
       this.activeCell = null;
@@ -1342,6 +1347,7 @@ class PTApp {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    this.patientSearchDraft = null;
     if (this.genderPickerState) this.closeGenderDropdown();
     if (colKey === "visitTime") {
       colKey = "specialNote";
@@ -2737,6 +2743,7 @@ class PTApp {
     };
     input.addEventListener("compositionstart", (e) => {
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
+      this.rememberPatientSearchDraft(rowIdx, colKey, input);
       clearTimeout(_hangulRepairTimer);
       input.dataset.nativeComposing = "true";
       this.activateNativeEditor(input);
@@ -2749,6 +2756,7 @@ class PTApp {
     input.addEventListener("beforeinput", (e) => {
       if (isCommitted) { e.preventDefault(); return; }
       if (this.blockInheritedNavigationInput(input, e, initialVal)) return;
+      this.rememberPatientSearchDraft(rowIdx, colKey, input);
       if (e.isComposing || e.inputType === "insertCompositionText") {
         composing = true; input.dataset.composing = "true"; input.dataset.nativeComposing = "true";
         clearTimeout(_hangulRepairTimer);
@@ -2762,6 +2770,7 @@ class PTApp {
     });
     input.addEventListener("input", (e) => {
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
+      this.rememberPatientSearchDraft(rowIdx, colKey, input);
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();

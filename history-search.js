@@ -774,6 +774,11 @@ class PTHistorySearch {
     });
   }
 
+  rememberPatientSearchDraft(rowIdx, colKey, input) {
+    if (!["name", "chartNo"].includes(colKey)) return;
+    this.patientSearchDraft = { date: this.currentDate, rowIdx, colKey, input };
+  }
+
   handlePatientEditorSearchShortcut(event) {
     if (!this.isSearchShortcut(event)) return false;
     let input = event.target;
@@ -790,22 +795,31 @@ class PTHistorySearch {
     }
     const cell = input?.closest?.(".excel-cell");
     const formulaEditor = Boolean(input && input === this.elFormulaInput);
-    const colKey = cell?.dataset?.col || this.activeCell?.colKey;
-    if (!cell && !formulaEditor) return false;
+    // Windows IME may blur/remove the editor when Control is pressed, before F
+    // reaches the document. Retain the typed draft through that handoff.
+    const draft = this.patientSearchDraft;
+    const useDraft = (typeof input?.value !== "string" || input.classList?.contains("is-armed")) && !formulaEditor &&
+      (!["INPUT", "TEXTAREA"].includes(event.target?.tagName) || Boolean(event.target?.closest?.(".excel-cell"))) &&
+      draft?.date === this.currentDate && draft.rowIdx === this.activeCell?.rowIdx &&
+      draft.colKey === this.activeCell?.colKey;
+    if (useDraft) input = draft.input;
+    const colKey = useDraft ? draft.colKey : cell?.dataset?.col || this.activeCell?.colKey;
+    if (!cell && !formulaEditor && !useDraft) return false;
     if (!["name", "chartNo"].includes(colKey)) return false;
-    // A focused name input searches its value even after a render re-arms it.
-    if (colKey !== "name" && input.classList?.contains("is-armed")) return false;
+    // An untouched armed input represents a selection border, not a text caret.
+    if (input.classList?.contains("is-armed") && !useDraft) return false;
     if (!String(input.value ?? "").trim()) return false;
     event.preventDefault();
     event.stopPropagation();
     this.captureHistoryOriginSelection();
     this.historyApplyBlockedKey = "f";
-    const rowIdx = cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
+    const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
     const rawValue = input.value;
     input.blur();
     this.closeAutocompleteMenu();
     this.elSheetContainer.focus({ preventScroll: true });
     const query = this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
+    this.patientSearchDraft = null;
     void this.searchPatientHistory(query, rowIdx);
     return true;
   }
