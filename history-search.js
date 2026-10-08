@@ -498,6 +498,10 @@ class PTHistorySearch {
       label.textContent = item.value;
       const hint = document.createElement("span");
       hint.className = "search-prompt-option-hint";
+      if (!item.typed) {
+        hint.classList.add("search-prompt-patient-hint");
+        if (item.value !== item.name) hint.classList.add("search-prompt-patient-name");
+      }
       hint.textContent = item.typed ? "입력값 · Enter" : item.value === item.name ? item.chartNo : item.name;
       option.append(label, hint);
       option.addEventListener("mousedown", event => {
