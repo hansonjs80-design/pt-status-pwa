@@ -831,8 +831,9 @@ class PTApp {
       if (!this.activeCell && !this.selectedRange && this.selectedRowIdx === null) return;
       if (target.matches?.("input, textarea") && !target.matches(".cell-input-element")) return;
       const text = event.clipboardData?.getData("text/plain");
+      const html = event.clipboardData?.getData("text/html") || "";
       if (text == null) return;
-      if (target.matches?.(".cell-input-element:not(.is-armed)") && !/[\t\r\n]/.test(text)) {
+      if (target.matches?.(".cell-input-element:not(.is-armed)") && !/[\t\r\n]/.test(text) && !/<table\b/i.test(html)) {
         const cell = target.closest(".excel-cell");
         const colKey = cell?.dataset.col;
         if (["name", "chartNo"].includes(colKey)) {
@@ -856,7 +857,7 @@ class PTApp {
       }
       event.preventDefault();
       if (target.matches?.(".cell-input-element")) target.blur();
-      void this.pasteSelection(text);
+      void this.pasteSelection(text, html);
     });
 
     // PWA에서 Cmd+C/X 시 keydown이 처리 못하는 경우 copy/cut 이벤트로 fallback
@@ -5112,19 +5113,28 @@ class PTApp {
     this.showSaveIndicator("잘라내기 선택됨 · 붙여넣으면 이동합니다");
   }
 
-  async pasteSelection(suppliedText) {
+  async pasteSelection(suppliedText, suppliedHtml = "") {
     if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) {
       document.activeElement?.blur?.();
     }
     if (typeof this.captureHistory === "function") this.captureHistory();
     let text = suppliedText ?? "";
-    if (suppliedText === undefined && navigator.clipboard && navigator.clipboard.readText) {
+    let html = suppliedHtml;
+    if (suppliedText === undefined && navigator.clipboard?.read) {
+      try {
+        for (const item of await navigator.clipboard.read()) {
+          if (!text && item.types.includes("text/plain")) text = await (await item.getType("text/plain")).text();
+          if (!html && item.types.includes("text/html")) html = await (await item.getType("text/html")).text();
+        }
+      } catch { /* Text-only clipboard access remains a fallback. */ }
+    }
+    if (!text && suppliedText === undefined && navigator.clipboard && navigator.clipboard.readText) {
       try {
         text = await navigator.clipboard.readText();
       } catch (err) {
         text = this.clipboardBuffer;
       }
-    } else if (suppliedText === undefined) {
+    } else if (!text && suppliedText === undefined) {
       text = this.clipboardBuffer;
     }
     if (!text && suppliedText === undefined && this.clipboardBuffer) text = this.clipboardBuffer;
@@ -5151,7 +5161,8 @@ class PTApp {
       const rows = this.getCurrentRows();
 
       const grid = this.parseClipboardGrid(text);
-      const sourceSelection = text === this.clipboardBuffer ? this.clipboardSelection : null;
+      const htmlColors = this.parseClipboardHtmlColors(html);
+      const sourceSelection = !htmlColors && text === this.clipboardBuffer ? this.clipboardSelection : null;
       const historySourceSelection = savedCrossDateSelection || (sourceSelection?.kind === "history" ? sourceSelection : null);
 
       // Determine start coordinate
@@ -5176,7 +5187,7 @@ class PTApp {
 
       // Clear the original only once a matching paste is ready, before writing (overlap-safe).
       const cut = this.pendingCut;
-      if (cut && cut.text === text && cut.date === this.currentDate) {
+      if (cut && !htmlColors && cut.text === text && cut.date === this.currentDate) {
         for (const { row, key, value } of cut.cells) if (rows.includes(row) && (row[key] ?? "") === value) row[key] = "";
       }
       this.pendingCut = null;
@@ -5201,8 +5212,12 @@ class PTApp {
               if (k === "name" && trimmed) includesName = true;
               rows[r][k] = k === "gender" ? this.normalizeGenderInput(trimmed)
                 : k === "writer" ? this.normalizeWriterInput(trimmed) : trimmed;
-              const formatting = sourceSelection?.formatting?.[rOffset]?.[cOffset];
-              if (formatting) this.applyCopiedCellFormatting(rows[r], k, formatting);
+              const external = htmlColors?.[rOffset]?.[cOffset];
+              if (external?.text === trimmed) this.applyPastedCellColors(rows[r], k, external.formatting);
+              else {
+                const formatting = sourceSelection?.formatting?.[rOffset]?.[cOffset];
+                if (formatting) this.applyCopiedCellFormatting(rows[r], k, formatting);
+              }
             }
           }
         });

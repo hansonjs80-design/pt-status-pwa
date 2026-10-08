@@ -459,3 +459,27 @@ test('large paste allocates destination rows once and saves and renders one tran
   assert.equal(saves,1);assert.equal(renders,1);
   assert.equal(rows[0]._visitedAt,rows[199]._visitedAt);
 });
+
+test('external Excel colors override matching internal text without changing column defaults or cell typography', async () => {
+  const rows=[{name:'기존',_textStyles:{name:{fontSize:18,fontWeight:700}}}],app=createPasteApp(rows,'name');
+  app.setColumnFormatting({minCol:3,maxCol:3},'color','#000000');
+  const defaults=JSON.stringify(app.columnFormatting);
+  app.clipboardBuffer='엑셀이름';app.clipboardSelection={formatting:[[{color:'#00ff00'}]]};
+  app.parseClipboardHtmlColors=()=>[[{text:'엑셀이름',formatting:{color:'#ff0000',richText:{text:'엑셀이름',colors:[null,'#0000ff',null,null]}}}]];
+  await app.pasteSelection('엑셀이름','<table>Excel HTML</table>');
+  assert.equal(rows[0].name,'엑셀이름');assert.equal(rows[0]._textColors.name,'#ff0000');
+  assert.equal(rows[0]._richText.name.colors[1],'#0000ff');
+  assert.deepEqual(rows[0]._textStyles.name,{fontSize:18,fontWeight:700});
+  assert.equal(JSON.stringify(app.columnFormatting),defaults);
+});
+
+test('context-menu paste reads HTML clipboard colors and falls back to plain text when access fails', async () => {
+  for(const allowed of [true,false]) {
+    const rows=[{}],app=createPasteApp(rows,'memo');
+    context.navigator={clipboard:{read:async()=>{if(!allowed)throw Error('unavailable');return [{types:['text/plain','text/html'],getType:async type=>({text:async()=>type==='text/plain'?'엑셀메모':'<table>colored</table>'})}];},readText:async()=> '일반메모'}};
+    app.parseClipboardHtmlColors=html=>html ? [[{text:'엑셀메모',formatting:{color:'#ff0000'}}]] : null;
+    await app.pasteSelection();
+    assert.equal(rows[0].memo,allowed?'엑셀메모':'일반메모');
+    assert.equal(rows[0]._textColors?.memo,allowed?'#ff0000':undefined);
+  }
+});

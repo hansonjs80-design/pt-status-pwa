@@ -1,6 +1,99 @@
 // Table typography, column defaults, cell overrides, and color menus.
 // Methods run with the PTApp instance as `this`; no separate state is created.
 class PTTableFormatting {
+  parseClipboardHtmlColors(html) {
+    if (!html || typeof document?.createElement !== "function") return null;
+    // Template contents stay inert: never insert clipboard HTML, styles or
+    // external resources into the live application document.
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const table = template.content.querySelector("table");
+    if (!table) return null;
+    const declaration = document.createElement("span").style;
+    const normalizeColor = value => {
+      declaration.color = "";
+      declaration.color = value || "";
+      return ["inherit", "initial", "unset", "currentcolor"].includes(declaration.color.toLowerCase()) ? null : declaration.color || null;
+    };
+    const rules = [];
+    for (const style of template.content.querySelectorAll("style")) {
+      const css = style.textContent.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        declaration.cssText = match[2];
+        const important = declaration.getPropertyPriority("color") === "important";
+        const color = normalizeColor(declaration.color);
+        if (!color) continue;
+        // Excel exports colors in .xlNN class rules as well as inline styles.
+        for (const selector of match[1].split(",")) {
+          const specificity = (selector.match(/#[\w-]+/g)?.length || 0) * 100 +
+            (selector.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g)?.length || 0) * 10 +
+            (selector.match(/(?:^|[\s>+~])\w+/g)?.length || 0);
+          rules.push({ selector: selector.trim(), color, specificity, important });
+        }
+      }
+    }
+    const colorCache = new WeakMap();
+    const colorFor = element => {
+      if (colorCache.has(element)) return colorCache.get(element);
+      let color = normalizeColor(element.getAttribute("color")), rank = -1;
+      for (const rule of rules) {
+        const priority = (rule.important ? 100000 : 0) + rule.specificity;
+        try {
+          if (priority >= rank && element.matches(rule.selector)) { color = rule.color; rank = priority; }
+        } catch { /* Ignore unsupported Office selectors. */ }
+      }
+      const inline = normalizeColor(element.style?.color);
+      if (inline && (element.style.getPropertyPriority("color") === "important" || rank < 100000)) color = inline;
+      color ||= element.parentElement ? colorFor(element.parentElement) : "#000000";
+      colorCache.set(element, color);
+      return color;
+    };
+    const grid = [];
+    Array.from(table.rows).forEach((row, rowIndex) => {
+      grid[rowIndex] ||= [];
+      let column = 0;
+      for (const cell of row.cells) {
+        while (grid[rowIndex][column] !== undefined) column++;
+        const baseColor = colorFor(cell);
+        let text = ""; const colors = [];
+        const append = (value, color) => { text += value; for (let i = 0; i < value.length; i++) colors.push(color === baseColor ? null : color); };
+        const read = (node, color) => {
+          if (node.nodeType === 3) append(node.nodeValue.replace(/\r/g, ""), color);
+          else if (node.nodeType === 1 && !["SCRIPT", "STYLE", "IMG", "IFRAME", "OBJECT"].includes(node.tagName)) {
+            if (node.tagName === "BR") append("\n", color);
+            else for (const child of node.childNodes) read(child, colorFor(node));
+          }
+        };
+        for (const child of cell.childNodes) read(child, baseColor);
+        const trimmed = text.trim(), offset = text.length - text.trimStart().length;
+        const formatting = { color: baseColor };
+        const trimmedColors = colors.slice(offset, offset + trimmed.length);
+        if (trimmedColors.some(Boolean)) formatting.richText = { text: trimmed, colors: trimmedColors };
+        grid[rowIndex][column] = { text: trimmed, formatting };
+        // Keep formatting coordinates aligned with TSV for merged Excel cells.
+        const rowSpan = Math.max(1, Math.min(10000, cell.rowSpan || 1));
+        const colSpan = Math.max(1, Math.min(1000, cell.colSpan || 1));
+        for (let r = 0; r < rowSpan; r++) for (let c = 0; c < colSpan; c++) {
+          grid[rowIndex + r] ||= [];
+          if (r || c) grid[rowIndex + r][column + c] = { text: "", formatting: { color: baseColor } };
+        }
+        column += colSpan;
+      }
+    });
+    return grid;
+  }
+
+  applyPastedCellColors(row, key, formatting) {
+    row._textColors ||= {};
+    row._textColors[key] = formatting.color;
+    if (row._richText) delete row._richText[key];
+    if (formatting.richText) {
+      row._richText ||= {};
+      row._richText[key] = JSON.parse(JSON.stringify(formatting.richText));
+    }
+    this.markCellFormatting(row, key, "color");
+  }
+
   getAutocompleteColorKey(scope, value) {
     // Keep metadata in string arrays so existing shared-preset sync and
     // backups can carry colors without changing their data format.
