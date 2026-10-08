@@ -21,6 +21,98 @@ function createApp(rows = []) {
   return { app, context };
 }
 
+function createSearchPrompt(storage = new Map()) {
+  const { app, context } = createApp([{}]);
+  const events = {}, windowEvents = {};
+  const header = { addEventListener: (name, fn) => { events[name] = fn; },
+    setPointerCapture() {}, classList: { add() {}, remove() {} } };
+  const card = { style: {}, querySelector: () => header,
+    getBoundingClientRect: () => ({ left: parseFloat(card.style.left) || 380,
+      top: parseFloat(card.style.top) || 300, width: 240, height: 130 }) };
+  context.window.innerWidth = 1000; context.window.innerHeight = 800;
+  context.window.addEventListener = (name, fn) => { windowEvents[name] = fn; };
+  context.localStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) };
+  app.elSearchPromptModal = { style: {}, querySelector: () => card };
+  app.elSearchPromptInput = { value: '', focus() {}, select() {} };
+  app.updateSearchPromptAutocomplete = app.closeSearchPromptAutocomplete = () => {};
+  app.initSearchPromptDrag();
+  const move = (left, top) => {
+    const rect = card.getBoundingClientRect();
+    events.pointerdown({ button: 0, pointerId: 1, clientX: rect.left + 20, clientY: rect.top + 10,
+      target: { closest: () => null }, preventDefault() {} });
+    events.pointermove({ pointerId: 1, clientX: left + 20, clientY: top + 10 });
+    events.pointerup();
+  };
+  return { app, context, card, storage, events, windowEvents, move };
+}
+
+test('search prompt remembers a dragged location after closing and after restarting the app', () => {
+  const first = createSearchPrompt();
+  first.app.openSearchPromptModal(0, '가상환자');
+  assert.equal(first.card.style.position, '');
+  let autocompleteMoves = 0;
+  first.app._searchPromptACPosition = () => autocompleteMoves++;
+  first.move(125, 210);
+  assert.equal(autocompleteMoves, 1);
+  assert.deepEqual(JSON.parse(first.storage.get('PT_SEARCH_PROMPT_POSITION')), { left: 125, top: 210 });
+  first.app.closeSearchPromptModal();
+  first.app.openSearchPromptModal(0, '');
+  assert.equal(first.card.style.left, '125px');
+  assert.equal(first.card.style.top, '210px');
+  const restarted = createSearchPrompt(first.storage);
+  restarted.app.openSearchPromptModal(0, '');
+  assert.equal(restarted.card.style.left, '125px');
+  assert.equal(restarted.card.style.top, '210px');
+});
+
+test('search prompt clamps restored and resized locations without losing the preferred location', () => {
+  const fixture = createSearchPrompt();
+  fixture.app.openSearchPromptModal(0, '');
+  fixture.move(700, 620);
+  fixture.app.closeSearchPromptModal();
+  fixture.context.window.innerWidth = 390; fixture.context.window.innerHeight = 400;
+  fixture.app.openSearchPromptModal(0, '');
+  assert.equal(fixture.card.style.left, '142px');
+  assert.equal(fixture.card.style.top, '262px');
+  fixture.context.window.innerWidth = 320; fixture.context.window.innerHeight = 300;
+  fixture.windowEvents.resize();
+  assert.equal(fixture.card.style.left, '72px');
+  assert.equal(fixture.card.style.top, '162px');
+  fixture.app.closeSearchPromptModal();
+  fixture.context.window.innerWidth = 1000; fixture.context.window.innerHeight = 800;
+  fixture.app.openSearchPromptModal(0, '');
+  assert.equal(fixture.card.style.left, '700px');
+  assert.equal(fixture.card.style.top, '620px');
+});
+
+test('invalid or unavailable position storage never prevents opening or moving search', () => {
+  for (const saved of ['broken json', '{"left":null,"top":20}', '{"left":"100","top":20}']) {
+    const fixture = createSearchPrompt(new Map([['PT_SEARCH_PROMPT_POSITION', saved]]));
+    fixture.app.openSearchPromptModal(0, '');
+    assert.equal(fixture.card.style.position, '');
+    fixture.move(-100, -100);
+    assert.equal(fixture.card.style.left, '8px');
+    assert.equal(fixture.card.style.top, '8px');
+  }
+  const fixture = createSearchPrompt();
+  fixture.context.localStorage = { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); } };
+  fixture.app.openSearchPromptModal(0, '');
+  fixture.move(90, 110);
+  fixture.app.closeSearchPromptModal();
+  fixture.app.openSearchPromptModal(0, '');
+  assert.equal(fixture.card.style.left, '90px');
+  assert.equal(fixture.card.style.top, '110px');
+});
+
+test('clicking the search header without dragging does not save a position', () => {
+  const fixture = createSearchPrompt();
+  fixture.app.openSearchPromptModal(0, '');
+  fixture.events.pointerdown({ button: 0, pointerId: 1, clientX: 400, clientY: 310,
+    target: { closest: () => null }, preventDefault() {} });
+  fixture.events.pointerup();
+  assert.equal(fixture.storage.size, 0);
+});
+
 test('Ctrl and Cmd minus retain the single selected cell column after rendering its replacement row', () => {
   for (const modifier of ['ctrlKey','metaKey']) for (const colKey of ['no','chartNo','name','memo','specialNote']) {
     const rows = [{name:'첫행'},{name:'삭제행'},{name:'다음행'}];

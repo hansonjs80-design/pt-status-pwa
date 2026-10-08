@@ -386,12 +386,11 @@ class PTHistorySearch {
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
-    const card = this.elSearchPromptModal.querySelector(".search-prompt-card");
-    if (card) { card.style.position = ""; card.style.left = ""; card.style.top = ""; }
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
+    this.restoreSearchPromptPosition();
     this.searchPromptFocusTimer = setTimeout(() => {
       if (this.elSearchPromptModal.style.display !== "flex") return;
       this.elSearchPromptInput.focus();
@@ -408,18 +407,43 @@ class PTHistorySearch {
     this.elSheetContainer?.focus({ preventScroll: true });
   }
 
+  positionSearchPrompt(left, top) {
+    const card = this.elSearchPromptModal?.querySelector(".search-prompt-card");
+    if (!card || !Number.isFinite(left) || !Number.isFinite(top)) return;
+    const rect = card.getBoundingClientRect();
+    const position = {
+      left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
+    };
+    card.style.position = "fixed";
+    card.style.left = `${position.left}px`;
+    card.style.top = `${position.top}px`;
+    this._searchPromptACPosition?.();
+    return position;
+  }
+
+  restoreSearchPromptPosition() {
+    const card = this.elSearchPromptModal?.querySelector(".search-prompt-card");
+    if (!card) return;
+    if (this.searchPromptPosition === undefined) {
+      this.searchPromptPosition = null;
+      try {
+        const saved = JSON.parse(localStorage.getItem("PT_SEARCH_PROMPT_POSITION") || "null");
+        if (Number.isFinite(saved?.left) && Number.isFinite(saved?.top)) this.searchPromptPosition = saved;
+      } catch (_) {}
+    }
+    if (this.searchPromptPosition) {
+      this.positionSearchPrompt(this.searchPromptPosition.left, this.searchPromptPosition.top);
+    } else {
+      card.style.position = ""; card.style.left = ""; card.style.top = "";
+    }
+  }
+
   initSearchPromptDrag() {
     const card = this.elSearchPromptModal.querySelector(".search-prompt-card");
     const header = card?.querySelector(".modal-header");
     if (!header) return;
     let drag = null;
-    const position = (left, top) => {
-      const rect = card.getBoundingClientRect();
-      card.style.position = "fixed";
-      card.style.left = `${Math.max(8, Math.min(left, window.innerWidth - rect.width - 8))}px`;
-      card.style.top = `${Math.max(8, Math.min(top, window.innerHeight - rect.height - 8))}px`;
-      this._searchPromptACPosition?.();
-    };
     header.addEventListener("pointerdown", event => {
       if (event.button !== 0 || event.target.closest("button")) return;
       event.preventDefault();
@@ -430,13 +454,20 @@ class PTHistorySearch {
     });
     header.addEventListener("pointermove", event => {
       if (drag?.id !== event.pointerId) return;
-      position(event.clientX - drag.x, event.clientY - drag.y);
+      drag.position = this.positionSearchPrompt(event.clientX - drag.x, event.clientY - drag.y);
     });
-    const finish = () => { drag = null; header.classList.remove("is-dragging"); };
+    const finish = () => {
+      if (drag?.position) {
+        this.searchPromptPosition = drag.position;
+        try { localStorage.setItem("PT_SEARCH_PROMPT_POSITION", JSON.stringify(drag.position)); } catch (_) {}
+      }
+      drag = null;
+      header.classList.remove("is-dragging");
+    };
     for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) header.addEventListener(event, finish);
     window.addEventListener("resize", () => {
       if (this.elSearchPromptModal.style.display === "none" || card.style.position !== "fixed") return;
-      const rect = card.getBoundingClientRect(); position(rect.left, rect.top);
+      const rect = card.getBoundingClientRect(); this.positionSearchPrompt(rect.left, rect.top);
     });
   }
 
