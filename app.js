@@ -5487,6 +5487,9 @@ class PTApp {
       this.clipboardSelection = null;
       this.saveDataStore();
       this.renderTable();
+      const nextRowIdx = Math.min(minRow, rows.length - 1);
+      const nextCell = this.elTableBody.querySelector(`[data-row="${nextRowIdx}"][data-col="no"]`);
+      if (nextCell) this.selectCell(nextRowIdx, "no", nextCell);
       const msg = deleteCount > 1
         ? `${minRow + BASE_ROW_NUMBER}~${minRow + deleteCount - 1 + BASE_ROW_NUMBER}행 (${deleteCount}개 행)이 삭제되었습니다.`
         : `${minRow + BASE_ROW_NUMBER}행이 삭제되었습니다.`;

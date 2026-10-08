@@ -21,6 +21,43 @@ function createApp(rows = []) {
   return { app, context };
 }
 
+test('Ctrl and Cmd minus delete the selected row and select its replacement No. cell after rendering', () => {
+  for (const modifier of ['ctrlKey','metaKey']) {
+    const rows = [{name:'첫행'},{name:'삭제행'},{name:'다음행'}];
+    const {app,context} = createApp(rows);
+    app.activeCell = {rowIdx:1,colKey:'name'};
+    let rendered=false, prevented=false, stopped=false, focused=false, committed=false;
+    const cell={};
+    context.document.activeElement={matches:()=>true,blur(){committed=true;}};
+    app.renderTable=()=>{assert.equal(committed,true);rendered=true;};
+    app.elTableBody.querySelector=selector=>{
+      assert.equal(rendered,true);assert.equal(selector,'[data-row="1"][data-col="no"]');return cell;
+    };
+    app.selectCell=(rowIdx,colKey,element)=>{assert.equal(element,cell);app.activeCell={rowIdx,colKey};};
+    app.elSheetContainer.focus=()=>{focused=true;};
+    assert.equal(app.handleRowDeleteShortcut({key:'-',code:'Minus',[modifier]:true,
+      preventDefault(){prevented=true;},stopPropagation(){stopped=true;}}),true);
+    assert.equal(rows[1].name,'다음행');
+    assert.deepEqual(app.activeCell,{rowIdx:1,colKey:'no'});
+    assert.equal(prevented&&stopped&&focused,true);
+  }
+});
+
+test('deleting a row range selects No. at the first deleted row and clamps at the remaining last row', () => {
+  for (const [length,minRow,maxRow,expected] of [[150,4,6,4],[153,150,152,149]]) {
+    const rows=Array.from({length},(_,i)=>({name:String(i)}));
+    const {app}=createApp(rows);
+    app.selectedRowRange={minRow,maxRow};
+    app.elTableBody.querySelector=selector=>{assert.equal(selector,`[data-row="${expected}"][data-col="no"]`);return {};};
+    app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};};
+    app.deleteRowAt(minRow);
+    assert.deepEqual(app.activeCell,{rowIdx:expected,colKey:'no'});
+    assert.equal(app.selectedRowRange,null);
+    assert.equal(rows.length,150);
+    if(minRow===4)assert.equal(rows[4].name,'7');
+  }
+});
+
 test('history range paste hands all four arrows to the pasted current-date cells', async () => {
   const rows = Array.from({ length: 10 }, () => ({}));
   const { app } = createApp(rows);
