@@ -56,6 +56,37 @@ function diskStore(disk = new Map()) {
   };
 }
 
+test('atomic width snapshot survives interrupted legacy timestamp writes and a backward clock', () => {
+  const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1','{"part":160}'],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','500']]);
+  const first=device(storage);first.context.Date=class extends Date {static now(){return 100;}};
+  const original=first.context.localStorage.setItem;
+  first.context.localStorage.setItem=(key,value)=>{if(key.endsWith('_UPDATED_AT'))throw Error('quota');original(key,value);};
+  first.app.saveColumnWidth('part',245.5);first.app.saveColumnWidth('part',260.5);
+  const snapshot=JSON.parse(storage.get('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT'));
+  assert.equal(snapshot.updatedAt,502);assert.equal(snapshot.widths.part,260.5);
+  assert.equal(device(storage).headers[2].style.width,'260.5px');
+});
+
+test('IndexedDB wins timestamp ties with stale local widths and repopulates the local snapshot', async () => {
+  const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1','{"part":160}'],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','10']]);
+  const disk=new Map([['device-column-widths-v1',{widths:{part:260.5},updatedAt:10}]]);
+  const first=device(storage);await first.app.restoreDeviceColumnWidths(diskStore(disk));
+  assert.equal(first.headers[2].style.width,'260.5px');
+  assert.equal(device(storage).headers[2].style.width,'260.5px');
+});
+
+test('drag writes are started immediately and verification accepts a newer saved drag position', async () => {
+  const first=device();const disk=new Map(),pending=[];
+  first.app.columnWidthsStore=async(key,value)=>{
+    if(value!==undefined){disk.set(key,JSON.parse(JSON.stringify(value)));await new Promise(resolve=>pending.push(resolve));}
+    return disk.get(key);
+  };
+  first.app.saveColumnWidth('part',200);first.app.saveColumnWidth('part',220);first.app.saveColumnWidth('part',240.5);
+  assert.equal(pending.length,3);assert.equal(disk.get('device-column-widths-v1').widths.part,240.5);
+  pending.forEach(resolve=>resolve());await first.app.columnWidthsWrite;
+  assert.equal(disk.get('device-column-widths-v1').widths.part,240.5);
+});
+
 test('full localStorage does not interrupt resizing and IndexedDB restores widths on a fresh app', async () => {
   const storage = new Map();
   const first = device(storage);

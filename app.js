@@ -3530,37 +3530,73 @@ class PTApp {
     if (indicator) indicator.textContent = direction === "asc" ? " ▲" : direction === "desc" ? " ▼" : " ↺";
   }
 
-  isSummaryClosed() {
+  readDeviceSummaryState() {
     try {
-      return localStorage.getItem(SUMMARY_CLOSED_STORAGE_KEY) === "1";
+      const snapshot = JSON.parse(localStorage.getItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`) || "null");
+      if (typeof snapshot?.closed === "boolean" && Number.isFinite(snapshot.updatedAt)) return snapshot;
+      return { closed: localStorage.getItem(SUMMARY_CLOSED_STORAGE_KEY) === "1", updatedAt: 0 };
     } catch (_) {
-      return false;
+      return { closed: false, updatedAt: 0 };
+    }
+  }
+
+  isSummaryClosed() {
+    return this.deviceSummaryState?.closed ?? this.readDeviceSummaryState().closed;
+  }
+
+  persistLocalSummaryState(snapshot) {
+    try { localStorage.setItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
+    try {
+      if (snapshot.closed) localStorage.setItem(SUMMARY_CLOSED_STORAGE_KEY, "1");
+      else localStorage.removeItem(SUMMARY_CLOSED_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  queueDeviceSummaryState(snapshot) {
+    if (!this.summaryStateStore) return;
+    const previous = this.summaryStateWrite || Promise.resolve();
+    const write = this.summaryStateStore("device-summary-state-v1", snapshot);
+    this.summaryStateWrite = Promise.all([previous, write]).catch(error => {
+      console.error("Failed to persist device summary state:", error);
+      this.showSaveIndicator?.("현황창 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
+    });
+  }
+
+  async restoreDeviceSummaryState(store) {
+    this.summaryStateStore = store;
+    const persisted = await store("device-summary-state-v1");
+    const local = this.deviceSummaryState || this.readDeviceSummaryState();
+    // Never undo a toggle made while the disk state is still loading.
+    if (!this.summaryStateChanged && typeof persisted?.closed === "boolean" &&
+        Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= local.updatedAt) {
+      this.deviceSummaryState = persisted;
+      this.persistLocalSummaryState(persisted);
+      this.setSummaryClosed(persisted.closed, false);
+    } else {
+      this.deviceSummaryState = local;
+      this.queueDeviceSummaryState(local);
+      await this.summaryStateWrite;
     }
   }
 
   setSummaryClosed(closed, save = true) {
     const sidebar = document.getElementById("summarySidebar");
     const button = document.getElementById("btnToggleSummary");
-    if (sidebar) {
-      sidebar.classList.toggle("summary-closed", closed);
-    }
+    if (sidebar) sidebar.classList.toggle("summary-closed", closed);
     if (button) {
       button.setAttribute("aria-expanded", String(!closed));
       button.title = closed ? "현황 열기" : "현황 닫기";
       button.setAttribute("aria-label", closed ? "현황 열기" : "현황 닫기");
     }
     if (save) {
-      try {
-        if (closed) {
-          localStorage.setItem(SUMMARY_CLOSED_STORAGE_KEY, "1");
-        } else {
-          localStorage.removeItem(SUMMARY_CLOSED_STORAGE_KEY);
-        }
-      } catch (_) {}
+      const previous = this.deviceSummaryState || this.readDeviceSummaryState();
+      const snapshot = { closed, updatedAt: Math.max(Date.now(), previous.updatedAt + 1) };
+      this.summaryStateChanged = true;
+      this.deviceSummaryState = snapshot;
+      this.persistLocalSummaryState(snapshot);
+      this.queueDeviceSummaryState(snapshot);
     }
-    if (typeof this.syncMainColumnWidths === "function") {
-      this.syncMainColumnWidths();
-    }
+    if (typeof this.syncMainColumnWidths === "function") this.syncMainColumnWidths();
   }
 
   initSummaryToggle() {
@@ -3713,37 +3749,64 @@ class PTApp {
 
   getSavedColumnWidths() {
     if (this.deviceColumnWidths) return { ...this.deviceColumnWidths };
+    return this.readDeviceColumnWidths().widths;
+  }
+
+  readDeviceColumnWidths() {
+    let snapshot = null;
+    try { snapshot = JSON.parse(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_SNAPSHOT`) || 'null'); } catch (_) {}
+    let legacy = {widths:{},updatedAt:0};
     try {
       const data = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
       const saved = data ? JSON.parse(data) : {};
-      return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
-    } catch (_) {
-      return {};
-    }
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) legacy = {
+        widths:saved, updatedAt:Number(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`)) || 0
+      };
+    } catch (_) {}
+    return snapshot?.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) && Number.isFinite(snapshot.updatedAt) &&
+      snapshot.updatedAt >= legacy.updatedAt ? snapshot : legacy;
+  }
+
+  persistLocalColumnWidths(snapshot) {
+    let atomicSaved = false, legacySaved = false;
+    try {
+      // Keep widths and their version together so an interrupted save cannot
+      // pair old widths with a new timestamp on the next launch.
+      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_SNAPSHOT`, JSON.stringify(snapshot));
+      atomicSaved = true;
+    } catch (_) {}
+    try {
+      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(snapshot.widths));
+      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`, String(snapshot.updatedAt));
+      legacySaved = true;
+    } catch (_) {}
+    this.columnWidthsLocalSaveFailed = !atomicSaved && !legacySaved;
   }
 
   persistColumnWidths(widths) {
     this.deviceColumnWidths = { ...widths };
     this.columnWidthsChanged = true;
-    const snapshot = { widths: { ...widths }, updatedAt: Date.now() };
+    const snapshot = { widths: { ...widths }, updatedAt: Math.max(Date.now(),
+      (this.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 0) + 1) };
     this.columnWidthsUpdatedAt = snapshot.updatedAt;
-    try {
-      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(widths));
-      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`, String(snapshot.updatedAt));
-    } catch (_) {
-      // IndexedDB remains available when the small localStorage quota is full.
-      this.columnWidthsLocalSaveFailed = true;
-    }
+    this.persistLocalColumnWidths(snapshot);
     this.queueDeviceColumnWidths(snapshot);
   }
 
   queueDeviceColumnWidths(snapshot) {
     if (!this.columnWidthsStore) return;
-    this.columnWidthsWrite = (this.columnWidthsWrite || Promise.resolve()).then(async () => {
+    const previous = this.columnWidthsWrite || Promise.resolve();
+    // Start each write now instead of leaving the final drag position behind a
+    // long promise queue when the user closes the app. IndexedDB orders writes.
+    const write = (async () => {
       await this.columnWidthsStore("device-column-widths-v1", snapshot);
       const restored = await this.columnWidthsStore("device-column-widths-v1");
-      if (JSON.stringify(restored) !== JSON.stringify(snapshot)) throw new Error("열 너비 저장 검증에 실패했습니다.");
-    }).catch(error => {
+      if (!restored || restored.updatedAt < snapshot.updatedAt ||
+          (restored.updatedAt === snapshot.updatedAt && JSON.stringify(restored.widths) !== JSON.stringify(snapshot.widths))) {
+        throw new Error("열 너비 저장 검증에 실패했습니다.");
+      }
+    })();
+    this.columnWidthsWrite = Promise.all([previous, write]).catch(error => {
       console.error("Failed to persist device column widths:", error);
       this.showSaveIndicator?.("열 너비 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
     });
@@ -3752,13 +3815,13 @@ class PTApp {
   async restoreDeviceColumnWidths(store) {
     this.columnWidthsStore = store;
     const persisted = await store("device-column-widths-v1");
-    let localUpdatedAt = 0;
-    try { localUpdatedAt = Number(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`)) || 0; } catch (_) {}
+    const localUpdatedAt = this.readDeviceColumnWidths().updatedAt;
     const saved = this.getSavedColumnWidths();
     // A resize during startup must win over the asynchronous disk read.
-    if (!this.columnWidthsChanged && persisted?.widths && persisted.updatedAt > localUpdatedAt) {
+    if (!this.columnWidthsChanged && persisted?.widths && persisted.updatedAt >= localUpdatedAt) {
       this.deviceColumnWidths = { ...persisted.widths };
       this.columnWidthsUpdatedAt = persisted.updatedAt;
+      this.persistLocalColumnWidths(persisted);
       this.applySavedColumnWidths();
       this.syncCrossDateColWidths();
     } else if (Object.keys(saved).length) {

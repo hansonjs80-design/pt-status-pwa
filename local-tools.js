@@ -115,11 +115,12 @@
     }
     async db() {
       if (this.database) return this.database;
-      this.database = await new Promise((resolve, reject) => {
+      this.databasePromise ||= new Promise((resolve, reject) => {
         const request = indexedDB.open('PT_DEVICE_BACKUPS', 1);
         request.onupgradeneeded = () => { request.result.createObjectStore('files'); };
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
+      this.database = await this.databasePromise;
       return this.database;
     }
     async store(key, value) {
@@ -133,8 +134,11 @@
       });
     }
     async init() {
+      await Promise.all([
+        this.app.restoreDeviceColumnWidths(this.store.bind(this)),
+        this.app.restoreDeviceSummaryState(this.store.bind(this)),
+      ]);
       this.folder = await this.store('folder');
-      await this.app.restoreDeviceColumnWidths(this.store.bind(this));
       await this.app.migrateTextEditBackups(this.store.bind(this));
       this.timer = setInterval(() => void this.tick(), 30000);
       window.addEventListener('focus', () => void this.tick());

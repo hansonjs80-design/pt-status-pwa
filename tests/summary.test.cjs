@@ -284,3 +284,60 @@ test('summary sidebar toggle persists closed state per device in localStorage an
   assert.equal(storage.has('device-summary-closed-v1'), false);
   assert.equal(relaunched.isSummaryClosed(), false);
 });
+
+function deviceSummaryHarness() {
+  const storage = new Map();
+  const disk = new Map();
+  const sidebar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } } };
+  let failLocal = false;
+  const ctx = vm.createContext({
+    window: { addEventListener() {} },
+    document: { getElementById: id => id === 'summarySidebar' ? sidebar : null },
+    localStorage: {
+      getItem: key => storage.get(key) || null,
+      setItem: (key, value) => { if (failLocal) throw Error('quota'); storage.set(key, value); },
+      removeItem: key => storage.delete(key),
+    },
+    console,
+  });
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', ctx);
+  const create = () => { const app = Object.create(ctx.App.prototype); app.syncMainColumnWidths = () => {}; return app; };
+  const store = async (key, value) => { if (value !== undefined) disk.set(key, structuredClone(value)); return disk.get(key); };
+  return { storage, disk, sidebar, create, store, failLocal() { failLocal = true; } };
+}
+
+test('summary closed state survives restart with full localStorage and remains device-local', async () => {
+  const h = deviceSummaryHarness();
+  const first = h.create();
+  await first.restoreDeviceSummaryState(h.store);
+  h.failLocal();
+  first.setSummaryClosed(true);
+  await first.summaryStateWrite;
+  assert.equal(first.isSummaryClosed(), true);
+  const reopened = h.create();
+  await reopened.restoreDeviceSummaryState(h.store);
+  assert.equal(reopened.isSummaryClosed(), true);
+  assert.equal(h.sidebar.classList.closed, true);
+  reopened.setSummaryClosed(false);
+  await reopened.summaryStateWrite;
+  const again = h.create();
+  await again.restoreDeviceSummaryState(h.store);
+  assert.equal(again.isSummaryClosed(), false);
+  const otherDevice = deviceSummaryHarness();
+  const otherApp = otherDevice.create();
+  await otherApp.restoreDeviceSummaryState(otherDevice.store);
+  assert.equal(otherApp.isSummaryClosed(), false);
+});
+
+test('summary toggle during startup wins over an older asynchronous disk result', async () => {
+  const h = deviceSummaryHarness();
+  let release;
+  const app = h.create();
+  const loading = app.restoreDeviceSummaryState((key, value) => value !== undefined ? h.store(key, value) : new Promise(resolve => { release = resolve; }));
+  app.setSummaryClosed(true);
+  release({ closed: false, updatedAt: Date.now() + 10000 });
+  await loading;
+  assert.equal(app.isSummaryClosed(), true);
+  assert.equal(h.sidebar.classList.closed, true);
+  assert.equal(h.disk.get('device-summary-state-v1').closed, true);
+});
