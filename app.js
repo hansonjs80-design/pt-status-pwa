@@ -4882,7 +4882,7 @@ class PTApp {
       }
 
       // Hide row/col exclusive items
-      rowOnlyItems.forEach((el) => el.classList.toggle("hidden", el.dataset.action !== "delete-row"));
+      rowOnlyItems.forEach((el) => el.classList.toggle("hidden", !["delete-row", "lunch-line"].includes(el.dataset.action)));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
       this.showContextMenu(e.clientX, e.clientY);
     }
