@@ -1060,3 +1060,58 @@ test('current rows keep at least 150 rows and fifteen blank rows after the last 
     assert.equal(result.length, count, 'repeated reads must not continually add blank rows');
   }
 });
+
+
+test('selected chart, name, part and memo cells move right on Enter with or without contents', () => {
+  for (const value of ['', '기존 값']) for (const [colKey, nextKey] of [
+    ['chartNo', 'name'], ['name', 'part'], ['part', 'prescription'], ['memo', 'specialNote'],
+  ]) {
+    const { app, context } = createApp([{}, { [colKey]: value }, {}]);
+    context.document.querySelector = () => ({});
+    app.activeCell = { rowIdx: 1, colKey };
+    app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
+    app.focusSelectedCellEditor = () => {};
+    const event = { key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} };
+    app.handleGlobalKeyDown(event);
+    assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: nextKey });
+    app.activeCell = { rowIdx: 1, colKey };
+    app.handleGlobalKeyDown({ ...event, shiftKey: true });
+    assert.deepEqual(app.activeCell, { rowIdx: 0, colKey });
+  }
+  const { app, context } = createApp([{ no: '1' }, { no: '2' }, {}]);
+  context.document.querySelector = () => ({});
+  app.activeCell = { rowIdx: 0, colKey: 'no' };
+  app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; };
+  app.handleGlobalKeyDown({ key: 'Enter', target: { tagName: 'DIV', closest: () => null }, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: 'no' });
+});
+
+test('date navigation starts at row one and cancels delayed empty-row focus', () => {
+  for (const autoFocus of [false, true]) {
+    const { app, context } = createApp(Array.from({ length: 80 }, () => ({ name: '가상 환자' })));
+    const pending = new Map();
+    let timerId = 0;
+    context.setTimeout = fn => { pending.set(++timerId, fn); return timerId; };
+    context.clearTimeout = id => pending.delete(id);
+    app.isEditingCell = () => false;
+    for (const name of ['getEditHistory', 'updateHistoryButtons', 'updateSidebarStats']) app[name] = () => {};
+    app.elDatePicker = {};
+    app.elDateLabel = { classList: { toggle() {} } };
+    app.elSidebarDateTag = {};
+    app.elSheetTabTitle = {};
+    app.focusFirstEmptyCell = () => { app.elSheetContainer.scrollTop = 2500; };
+    app.setDate(app.currentDate, true); // A pending startup/Today focus must not leak into the next date.
+    app.activeCell = { rowIdx: 79, colKey: 'memo' };
+    app.selectedRowIdx = 79;
+    app.rangeStart = app.rangeEnd = { rowIdx: 79, colKey: 'memo' };
+    app.elSheetContainer.scrollTop = 2500;
+    app.renderTable = () => { assert.equal(app.activeCell, null); assert.equal(app.elSheetContainer.scrollTop, 0); };
+    app.setDate('2026-10-05', autoFocus);
+    for (const fn of pending.values()) fn();
+    assert.equal(app.elSheetContainer.scrollTop, 0);
+    assert.equal(app.selectedRowIdx, null);
+    assert.equal(app.rangeStart, null);
+    assert.equal(app.rangeEnd, null);
+    assert.equal(app.elDatePicker.value, '2026-10-05');
+  }
+});

@@ -1069,11 +1069,22 @@ class PTApp {
   }
 
   setDate(dateStr, autoFocusFirstEmpty = false) {
+    const dateChanged = this.currentDate !== dateStr;
     if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
     clearTimeout(this._saveTimer);
+    clearTimeout(this._dateFocusTimer);
     this.clipboardSelection = null;
     this.historyApplyTarget = null;
-    if (this.currentDate !== dateStr) this.sortState = { colKey: null, direction: "original" };
+    if (dateChanged) {
+      this.sortState = { colKey: null, direction: "original" };
+      this.clearHeaderSelections();
+      this.activeCell = null;
+      this.selectedRowIdx = null;
+      this.selectedColKey = null;
+      this.rangeStart = null;
+      this.rangeEnd = null;
+      this.elSheetContainer.scrollTop = 0;
+    }
     this.pendingCut = null;
     this.lastHistoryAppliedTarget = null;
     this.historyOriginSelection = undefined;
@@ -1096,6 +1107,7 @@ class PTApp {
     this.getCurrentRows();
     this.getEditHistory();
     this.renderTable();
+    if (dateChanged) this.elSheetContainer.scrollTop = 0;
     this.updateHistoryButtons();
     this.updateSidebarStats();
 
@@ -1104,8 +1116,8 @@ class PTApp {
       this.pullFromCloud(dateStr, false);
     }
 
-    if (autoFocusFirstEmpty) {
-      setTimeout(() => this.focusFirstEmptyCell(), 80);
+    if (autoFocusFirstEmpty && !dateChanged) {
+      this._dateFocusTimer = setTimeout(() => this.focusFirstEmptyCell(), 80);
     }
   }
 
@@ -5740,6 +5752,13 @@ class PTApp {
       }
     }
 
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        ["chartNo", "name", "part", "memo"].includes(this.activeCell?.colKey)) {
+      e.preventDefault();
+      this.selectAutocompleteRightCell(this.activeCell.rowIdx, this.activeCell.colKey);
+      this.focusSelectedCellEditor();
+      return;
+    }
     if (this.handleEmptyCellEnter(e)) return;
 
     // G열 성별 키보드 직접 입력 ('ㄹ' -> 'F', 'ㅡ' -> 'M', 'f'/'F' -> 'F', 'm'/'M' -> 'M')
