@@ -2377,6 +2377,15 @@ body {
 .preset-detail-controls { display:flex; gap:8px; padding:10px; margin-bottom:12px; border:1px solid #cbded3; border-radius:6px; background:#f1f8f4; }
 .preset-detail-controls input { flex:1; min-width:0; padding:7px 9px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px; }
 .preset-detail-controls button { white-space:nowrap; color:#107c41; font-weight:600; }
+.preset-new-color { display:flex; align-items:center; gap:6px; margin-bottom:12px; font-size:12px; }
+.preset-item-color { width:30px; height:26px; padding:1px; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; }
+.preset-color-editor { z-index:10000; }
+.preset-color-editor .modal-card { width:360px; max-width:92vw; padding:20px; }
+.preset-color-editor h2 { margin:0 0 14px; font-size:16px; }
+.preset-color-editor input[type=text] { box-sizing:border-box; width:100%; padding:9px; margin-bottom:14px; border:1px solid #cbd5e1; border-radius:5px; font:inherit; }
+.preset-color-editor input[type=color] { vertical-align:middle; margin-left:12px; }
+.preset-color-editor-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+.preset-color-editor-actions button { padding:7px 16px; border:1px solid #cbd5e1; border-radius:5px; cursor:pointer; }
 #presetManagerModal .preset-item-text { min-width:0; }
 #presetManagerModal .preset-item-actions { flex-wrap:wrap; justify-content:flex-end; }
 

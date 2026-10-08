@@ -175,7 +175,7 @@ test('autocomplete refresh preserves the selected value until the query or edito
   const app = createApp({}, {}, { document, window });
   app.moveAutocompleteSelection = () => {};
   const cell = { isConnected: true, getBoundingClientRect: () => ({left: 100, top: 100, bottom: 130, width: 100}) };
-  const input = { value: '김' };
+  const input = { value: '김', dataset: {} };
   const show = candidates => app.showAutocompleteMenu(0, 'name', cell, input, candidates);
   show(['김가', '김나', '김다']);
   assert.deepEqual(Array.from(app.autocompleteState.candidates), ['김', '김가', '김나', '김다']);
@@ -195,7 +195,7 @@ test('autocomplete refresh preserves the selected value until the query or edito
   show(['김가']);
   assert.equal(app.getSelectedAutocompleteItem(), '김가');
   show(['김가', '김가나']); app.autocompleteState.selectedIndex = 1;
-  app.showAutocompleteMenu(1, 'name', cell, {value: '김가'}, ['김가', '김가나']);
+  app.showAutocompleteMenu(1, 'name', cell, {value: '김가', dataset: {}}, ['김가', '김가나']);
   assert.equal(app.autocompleteState.selectedIndex, 1);
   input.value = '이솔'; show(['이소림']);
   app.autocompleteState.selectedIndex = 0;
@@ -318,7 +318,7 @@ test('body part IME matching ignores spacing and keeps managed order for pending
 });
 
 
-test('input-specific candidate management persists order and additions without changing historical rows', () => {
+test('input-specific candidate management persists order and additions without changing historical rows', async () => {
   const saved=[];
   const app=createApp({'2026-09-29':[{part:'오 엉덩이'}]}, {part:['오 어']}, {
     localStorage:{getItem(){return null;},setItem(key,value){saved.push(JSON.parse(value));}},
@@ -329,9 +329,10 @@ test('input-specific candidate management persists order and additions without c
   app.activePresetTab='part';
   app.renderPresetManagerList=app.renderQuickChips=app.showSaveIndicator=()=>{};
   app.elManagerNewPresetInput={value:'오 엄지',focus(){}};
+  app.openPresetTextColorEditor = async () => ({value:'오 어깨',color:null});
   app.addPresetFromManager();
   app.movePresetAt('part',2,-1);
-  app.editPresetAt('part',0);
+  await app.editPresetAt('part',0);
   app.deletePresetAt('part',2);
   app.autocompleteManagerContext=null;
   assert.deepEqual(Array.from(app.getAutocompleteSuggestions('part','옹',true)),['옹','오 어깨','오 엄지']);
@@ -342,7 +343,7 @@ test('input-specific candidate management persists order and additions without c
 });
 
 
-test('detail management includes displayed historical typo and keeps the corrected candidate when reopened', () => {
+test('detail management includes displayed historical typo and keeps the corrected candidate when reopened', async () => {
   const query = '척추 ( HP / 자기장 / ICT )';
   const bad = query + 'd';
   const app = createApp({ '2026-10-05': [{ prescription: bad }] }, { prescription: [query] }, {
@@ -351,9 +352,10 @@ test('detail management includes displayed historical typo and keeps the correct
   app.closeAutocompleteMenu = () => {};
   app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
   app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
+  app.openPresetTextColorEditor = async () => ({value:query,color:null});
   app.openAutocompletePresetManager('prescription', bad, { value: query });
   assert.deepEqual(Array.from(app.autocompleteManagerContext.items), [query, bad]);
-  app.editPresetAt('prescription', 1);
+  await app.editPresetAt('prescription', 1);
   app.openAutocompletePresetManager('prescription', null, { value: query });
   assert.equal(app.autocompleteManagerContext.items.includes(bad), false);
   assert.equal(app.autocompleteManagerContext.items.includes(query), true);
@@ -361,20 +363,21 @@ test('detail management includes displayed historical typo and keeps the correct
 });
 
 
-test('hidden detail candidates stay manageable, preserve order and can be restored', () => {
+test('hidden detail candidates stay manageable, preserve order and can be restored', async () => {
   const app = createApp({}, { part: ['오어', '오 엉'] }, {
     localStorage: { getItem() { return null; }, setItem() {} }, prompt: () => '오 엉덩이',
   });
   app.closeAutocompleteMenu = () => {};
   app.openPresetManager = (col, context) => { app.autocompleteManagerContext = context; };
   app.renderPresetManagerList = app.renderQuickChips = app.showSaveIndicator = () => {};
+  app.openPresetTextColorEditor = async () => ({value:'오 엉덩이',color:null});
   app.openAutocompletePresetManager('part', null, { value: '옹' });
   const original = Array.from(app.autocompleteManagerContext.items);
   app.togglePresetCandidateVisibility('part', 0);
   assert.equal(suggestions(app, 'part', '옹').includes(original[0]), false);
   app.openAutocompletePresetManager('part', null, { value: '옹' });
   assert.deepEqual(Array.from(app.autocompleteManagerContext.items), original);
-  app.editPresetAt('part', 0);
+  await app.editPresetAt('part', 0);
   assert.equal(suggestions(app, 'part', '옹').includes('오 엉덩이'), false);
   app.togglePresetCandidateVisibility('part', 0);
   assert.equal(suggestions(app, 'part', '옹')[1], '오 엉덩이');

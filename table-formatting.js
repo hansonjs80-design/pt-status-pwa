@@ -1,6 +1,92 @@
 // Table typography, column defaults, cell overrides, and color menus.
 // Methods run with the PTApp instance as `this`; no separate state is created.
 class PTTableFormatting {
+  getAutocompleteColorKey(scope, value) {
+    // Keep metadata in string arrays so existing shared-preset sync and
+    // backups can carry colors without changing their data format.
+    return `__color:${JSON.stringify(scope)}:${JSON.stringify(value)}`;
+  }
+
+  getAutocompleteValueColor(colKey, value, query = null, excludedRow = null) {
+    const scopes = query ? [this.getAutocompleteRuleKey(colKey, query), colKey] : [colKey];
+    for (const scope of scopes) {
+      const entry = COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)];
+      if (entry) return entry[0] || null;
+    }
+    const store = this.getSearchDataStore();
+    for (const date of Object.keys(store).sort().reverse()) {
+      const row = store[date]?.find(row => row !== excludedRow && String(row?.[colKey] ?? '').trim() === String(value).trim());
+      if (!row) continue;
+      const setting = this.columnFormatting?.[colKey]?.color;
+      const rich = row._richText?.[colKey];
+      if (rich?.text === String(row[colKey]) && rich.colors?.length &&
+          (!setting || row._formatRevisions?.[colKey]?.color === setting.revision) &&
+          rich.colors.every(color => color && color === rich.colors[0])) return rich.colors[0];
+      // The latest matching record determines the candidate color, including
+      // a record that inherits the column default instead of an older color.
+      return this.getCellFormatting(row, colKey, 'color') ?? null;
+    }
+    return null;
+  }
+
+  setAutocompleteValueColor(scope, value, color) {
+    COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)] = [color || ''];
+    saveColumnPresets(COLUMN_PRESETS);
+  }
+
+  applyAutocompleteColor(row, colKey, value, query) {
+    const color = this.getAutocompleteValueColor(colKey, value, query, row);
+    row._textColors ||= {};
+    if (color) row._textColors[colKey] = color; else delete row._textColors[colKey];
+    if (row._richText) delete row._richText[colKey];
+    this.markCellFormatting(row, colKey, 'color');
+  }
+
+  toColorPickerValue(color) {
+    if (/^#[0-9a-f]{6}$/i.test(color || '')) return color;
+    if (/^#[0-9a-f]{3}$/i.test(color || '')) return '#' + color.slice(1).split('').map(char => char + char).join('');
+    let rgb = String(color || '');
+    if (color && typeof getComputedStyle === 'function') {
+      const probe = document.createElement('span'); probe.style.color = color;
+      document.body.append(probe); rgb = getComputedStyle(probe).color; probe.remove();
+    }
+    const channels = /^rgba?\(/.test(rgb) ? rgb.match(/\d+/g) : null;
+    return channels?.length >= 3 ? '#' + channels.slice(0, 3).map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('') : '#000000';
+  }
+
+  openPresetTextColorEditor(title, value, color) {
+    return new Promise(resolve => {
+      const previousFocus = document.activeElement;
+      const overlay = document.createElement('div'); overlay.className = 'modal-overlay preset-color-editor';
+      overlay.style.display = 'flex'; overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', title);
+      const form = document.createElement('form'); form.className = 'modal-card';
+      const heading = document.createElement('h2'); heading.textContent = title;
+      const text = document.createElement('input'); text.type = 'text'; text.value = value; text.setAttribute('aria-label', '문구');
+      const label = document.createElement('label');
+      const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(color);
+      label.append(enabled, document.createTextNode(' 글자색 지정'));
+      const picker = document.createElement('input'); picker.type = 'color'; picker.value = this.toColorPickerValue(color); picker.setAttribute('aria-label', '글자색');
+      text.style.color = color || '';
+      picker.oninput = () => { enabled.checked = true; text.style.color = picker.value; };
+      enabled.onchange = () => { text.style.color = enabled.checked ? picker.value : ''; };
+      const actions = document.createElement('div'); actions.className = 'preset-color-editor-actions';
+      const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = '취소';
+      const save = document.createElement('button'); save.type = 'submit'; save.textContent = '저장';
+      const close = result => {
+        overlay.remove();
+        if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+        resolve(result);
+      };
+      cancel.onclick = () => close(null);
+      form.onsubmit = event => { event.preventDefault(); close({ value: text.value.trim(), color: enabled.checked ? picker.value : null }); };
+      overlay.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(null); } };
+      overlay.onclick = event => { if (event.target === overlay) close(null); };
+      actions.append(cancel, save); form.append(heading, text, label, picker, actions); overlay.append(form); document.body.append(overlay);
+      text.focus(); text.select();
+    });
+  }
+
   getFormattingRange() {
     if (this.crossDateSelection) return null;
     if (this.selectedRange) return { ...this.selectedRange };

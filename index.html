@@ -478,6 +478,9 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
           <input type="text" id="managerNewPresetInput" placeholder="새 프리셋 내용 입력 (예: 사지 ( HP / Laser ))" style="flex:1; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px;">
           <button type="button" id="btnManagerAddPreset" style="padding:8px 16px; background:var(--excel-green); color:#fff; border:none; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; white-space:nowrap;">➕ 추가</button>
         </div>
+        <label class="preset-new-color"><input id="managerNewPresetColorEnabled" type="checkbox"> 새 항목 글자색
+          <input id="managerNewPresetColor" type="color" value="#000000" aria-label="새 항목 글자색" oninput="document.getElementById('managerNewPresetColorEnabled').checked=true">
+        </label>
 
         <!-- 항목 리스트 -->
         <div id="presetListContainer" style="max-height:280px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; background:#fafbfc;">

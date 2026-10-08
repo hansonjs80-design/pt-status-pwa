@@ -56,6 +56,39 @@ test('cloud read failure or unverified backup prevents all edits and synchroniza
   }
 });
 
+test('color-only history edits back up originals before applying to exact same-column values across dates', async () => {
+  const { app, storage, context, queued } = createApp({
+    '2026-10-04': [{ memo: '충 완', specialNote: '충 완', _textColors: { memo: '#000000', specialNote: '#00ff00' } }, { memo: '충 완 대기' }],
+  }, { memo: ['충 완'] });
+  app.cloudSearchHistory = { '2025-09-09': [{ memo: '충 완' }] };
+  app.columnFormatting = { memo: { color: { value: '#0000ff', revision: 'column' } } };
+  const original = JSON.stringify(app.dataStore), defaults = JSON.stringify(app.columnFormatting);
+  app.scheduleSupabaseSync = date => {
+    const key = [...storage.keys()].find(key => key.startsWith('PT_TEXT_EDIT_BACKUP_'));
+    assert.equal(JSON.stringify(JSON.parse(storage.get(key)).dataStore), original);
+    queued.push(date);
+  };
+  assert.equal(await app.renameAutocompleteValue('memo', '충 완', '충 완', '#ff0000'), 2);
+  assert.equal(app.getCellFormatting(app.dataStore['2026-10-04'][0], 'memo', 'color'), '#ff0000');
+  assert.equal(app.dataStore['2026-10-04'][0]._textColors.specialNote, '#00ff00');
+  assert.equal(app.dataStore['2026-10-04'][1]._textColors, undefined);
+  assert.equal(app.dataStore['2025-09-09'][0]._textColors.memo, '#ff0000');
+  assert.equal(app.getAutocompleteValueColor('memo', '충 완'), '#ff0000');
+  assert.deepEqual(Array.from(context.getPresets().memo), ['충 완']);
+  assert.equal(JSON.stringify(app.columnFormatting), defaults);
+  assert.equal(queued.length, 2);
+});
+
+test('failed color-edit backup leaves records and preset colors untouched', async () => {
+  const { app, context, queued } = createApp({ '2026-10-04': [{ memo: '기록', _textColors: { memo: '#ff0000' } }] }, { memo: ['기록'] });
+  const records = JSON.stringify(app.dataStore), presets = JSON.stringify(context.getPresets());
+  app.persistTextEditBackup = async () => { throw new Error('backup failure'); };
+  await assert.rejects(app.renameAutocompleteValue('memo', '기록', '기록', '#0000ff'));
+  assert.equal(JSON.stringify(app.dataStore), records);
+  assert.equal(JSON.stringify(context.getPresets()), presets);
+  assert.equal(queued.length, 0);
+});
+
 test('bulk rename refreshes cloud history and preserves all pending merge baselines', async () => {
   const { app } = createApp();
   app.supabaseClient = {};
