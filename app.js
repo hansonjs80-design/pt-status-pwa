@@ -98,6 +98,7 @@ const DEFAULT_PRESETS = {
 
 const PRESETS_STORAGE_KEY = "PT_APP_CUSTOM_PRESETS_V1";
 const SHARED_PRESETS_RECORD = "__pt_shared_presets_v1__";
+const SHARED_COLUMN_FORMATTING_RECORD = "__pt_shared_column_formatting_v1__";
 const SUMMARY_CLOSED_STORAGE_KEY = "device-summary-closed-v1";
 
 // localStorage에서 사용자 커스텀 프리셋 로드 (없으면 기본값 사용)
@@ -2709,6 +2710,7 @@ class PTApp {
       if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
     }
     input.classList.remove("is-armed");
+    input.refreshEditorColors?.();
     if (["name", "memo"].includes(input.closest(".excel-cell")?.dataset.col)) this.initMemoInput(input);
   }
 
@@ -2753,9 +2755,14 @@ class PTApp {
     if (["name", "memo"].includes(colKey)) this.initMemoInput(input);
 
     cellElement.appendChild(input);
+    input.refreshEditorColors = () => this.refreshEditorTextColors(input, cellElement, rows[rowIdx], colKey);
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
-    for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, () => this.updateInlineAutocompletePreview());
+    for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, () => {
+      input.refreshEditorColors();
+      this.updateInlineAutocompletePreview();
+    });
+    input.refreshEditorColors();
     // 커서를 텍스트 끝에 배치 (전체 선택하지 않음)
     const len = input.value.length;
     input.setSelectionRange(armed ? 0 : len, len);
@@ -2810,6 +2817,7 @@ class PTApp {
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
       const val = input.value;
+      this.updateEditorTextColors(rows[rowIdx], colKey, val);
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
       if (colKey === "writer") {
@@ -2820,6 +2828,7 @@ class PTApp {
         rows[rowIdx][colKey] = val;
       }
       this.elFormulaInput.value = input.value;
+      input.refreshEditorColors();
       this.debounceSaveDataStore();
       if (!composing && input.dataset.nativeComposing !== "true") repairCompletedInput();
 
@@ -4367,6 +4376,7 @@ class PTApp {
   stopLiveSync() {
     clearInterval(this.liveSyncTimer);
     clearTimeout(this.presetsSyncTimer);
+    clearTimeout(this.columnFormattingSyncTimer);
     if (this.liveChannel && this.liveClient) void this.liveClient.removeChannel(this.liveChannel);
     this.liveChannel = null;
     this.syncTimers?.forEach(timer => clearTimeout(timer));
@@ -4398,6 +4408,7 @@ class PTApp {
     this.liveClient = client;
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
+        if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.pullSharedColumnFormatting(); return; }
         if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
         else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
         this.searchHistoryLoadedAt = 0;
@@ -4424,6 +4435,7 @@ class PTApp {
         }
         if (this.presetsDirty) await this.pushSharedPresets();
         else await this.pullSharedPresets();
+        await this.syncSharedColumnFormatting();
         // push가 모두 완료된 후 pull 실행
         if (!this.pendingSyncDates.has(this.currentDate)) {
           await this.pullFromCloud(this.currentDate);

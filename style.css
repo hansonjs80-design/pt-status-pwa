@@ -2341,7 +2341,9 @@ body {
 
 /* Native input contains only typed text; the completion is never saved until confirmed. */
 .excel-table .cell-input-element:not(.is-armed) { color: inherit; caret-color: currentColor; }
-.excel-table .cell-input-element.has-inline-completion { color: transparent; -webkit-text-fill-color: transparent; caret-color: #111; }
+.excel-table .cell-input-element.has-inline-completion,
+.excel-table .cell-input-element.has-editor-colors { -webkit-text-fill-color: transparent; caret-color: currentColor; }
+.inline-editor-color-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
 .inline-autocomplete-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
 .inline-completion-prefix { color: inherit; }
 .inline-completion-suffix { color: #92979e; }

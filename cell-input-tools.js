@@ -124,7 +124,42 @@ class PTCellInputTools {
     this.inlineAutocompletePreview?.remove();
     this.inlineAutocompletePreview = null;
     this.inlineAutocompleteInput?.classList.remove('has-inline-completion');
+    this.inlineAutocompleteInput?.refreshEditorColors?.();
     this.inlineAutocompleteInput = null;
+  }
+
+  updateEditorTextColors(row, key, value) {
+    const rich = row._richText?.[key];
+    if (!rich || rich.text === value || !Array.isArray(rich.colors)) return;
+    const old = rich.text;
+    let start = 0, suffix = 0;
+    while (start < Math.min(old.length, value.length) && old[start] === value[start]) start++;
+    while (suffix < Math.min(old.length, value.length) - start && old[old.length - 1 - suffix] === value[value.length - 1 - suffix]) suffix++;
+    const inserted = value.length - start - suffix;
+    const color = rich.colors[start] ?? rich.colors[start - 1] ?? null;
+    row._richText[key] = { text: value, colors: [
+      ...rich.colors.slice(0, start), ...Array(inserted).fill(color),
+      ...(suffix ? rich.colors.slice(old.length - suffix) : [])
+    ] };
+  }
+
+  refreshEditorTextColors(input, cellElement, row, key) {
+    input.editorColorPreview?.remove();
+    input.classList.remove?.('has-editor-colors');
+    if (!input.isConnected || input.classList.contains('is-armed') || input.classList.contains('has-inline-completion')) return;
+    const rich = row._richText?.[key];
+    if (rich?.text !== input.value || !rich.colors?.some(Boolean)) return;
+    const font = getComputedStyle(input);
+    const preview = document.createElement('span');
+    preview.className = 'inline-editor-color-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    this.renderColoredText(preview, row, key);
+    preview.style.left = `${input.offsetLeft + (parseFloat(font.paddingLeft) || 0) - input.scrollLeft}px`;
+    preview.style.top = `${input.offsetTop}px`;
+    preview.style.height = `${input.offsetHeight}px`;
+    input.classList.add('has-editor-colors');
+    input.editorColorPreview = preview;
+    cellElement.append(preview);
   }
 
   getInlineCompletionParts(query, candidate) {
@@ -307,6 +342,7 @@ class PTCellInputTools {
     const state = this.autocompleteState;
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
+    input.refreshEditorColors?.();
     // The preview only paints a separate overlay; never rewrite or refocus the IME input.
     if (!input.isConnected || document.activeElement !== input || !input.value ||
         input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length) return;
@@ -317,7 +353,24 @@ class PTCellInputTools {
     const font = getComputedStyle(input);
     preview.style.font = font.font;
     preview.style.letterSpacing = font.letterSpacing;
-    for (const block of blocks) preview.append(this.createPartialHangulPreview(block, font));
+    const rich = this.getCurrentRows?.()[state.rowIdx]?._richText?.[state.colKey];
+    const baseColor = getComputedStyle(cellElement).color;
+    let offset = 0;
+    for (const block of blocks) {
+      const color = rich?.text === input.value ? rich.colors?.[offset] : null;
+      // Resolve colors before hiding native text; transparent input styles must
+      // never become the ink color of the completion canvas.
+      let inkColor = baseColor;
+      if (color) {
+        const resolved = document.createElement('span');
+        resolved.style.color = color; cellElement.append(resolved);
+        inkColor = getComputedStyle(resolved).color; resolved.remove();
+      }
+      preview.append(this.createPartialHangulPreview(block, { font: font.font, fontSize: font.fontSize, color: inkColor }));
+      offset += block.char.length;
+    }
+    input.editorColorPreview?.remove();
+    input.classList.remove?.('has-editor-colors');
     input.classList.add('has-inline-completion');
     const paddingLeft = parseFloat(font.paddingLeft) || 0;
     preview.style.left = `${input.offsetLeft + paddingLeft - input.scrollLeft}px`;

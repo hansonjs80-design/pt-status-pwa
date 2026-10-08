@@ -115,3 +115,68 @@ test('restoring backup resets baselines, registers pending sync, and uploads to 
   assert.equal(b.dataStore['2026-10-02'][0].name, '복원환자2');
 });
 
+
+function setSharedColumn(app, column, property, value) {
+  const client=app.supabaseClient;app.supabaseClient=null;
+  app.setColumnFormatting({minCol:column,maxCol:column},property,value);
+  app.supabaseClient=client;
+}
+
+test('column defaults synchronize between devices, replacing old device caches and preserving cell exceptions', async () => {
+  const db=new Map(),a=createApp(db),b=createApp(db);
+  a.app.columnFormatting={};b.app.columnFormatting={name:{fontSize:{value:9,revision:'old-device'}}};
+  setSharedColumn(a.app,3,'fontSize',18.5);setSharedColumn(a.app,3,'fontWeight','700');setSharedColumn(a.app,3,'color','#123456');
+  await a.app.pushSharedColumnFormatting();await b.app.pullSharedColumnFormatting();
+  assert.deepEqual(clone(b.app.columnFormatting),clone(a.app.columnFormatting));
+  assert.equal(b.app.getCellFormatting({},'name','fontSize'),18.5);
+  const exception={_textStyles:{name:{fontSize:12,fontWeight:400}},_textColors:{name:'#ff0000'}};
+  assert.equal(b.app.getCellFormatting(exception,'name','fontSize'),12);
+  assert.equal(b.app.getCellFormatting(exception,'name','fontWeight'),400);
+  assert.equal(b.app.getCellFormatting(exception,'name','color'),'#ff0000');
+  assert.deepEqual(clone(a.app.columnFormattingPending),{});
+  assert.equal(JSON.parse(b.storage.get('PT_COLUMN_FORMATTING')).name.fontSize.value,18.5);
+});
+
+test('simultaneous column edits on different devices merge without overwriting unrelated settings', async () => {
+  const db=new Map(),a=createApp(db).app,b=createApp(db).app;a.columnFormatting={};b.columnFormatting={};
+  await a.pullSharedColumnFormatting();await b.pullSharedColumnFormatting();
+  setSharedColumn(a,3,'fontSize',22.5);setSharedColumn(b,8,'color','#ff0000');
+  await Promise.all([a.pushSharedColumnFormatting(),b.pushSharedColumnFormatting()]);
+  await a.pullSharedColumnFormatting();await b.pullSharedColumnFormatting();
+  assert.equal(a.getCellFormatting({},'name','fontSize'),22.5);
+  assert.equal(a.getCellFormatting({},'memo','color'),'#ff0000');
+  assert.deepEqual(clone(a.columnFormatting),clone(b.columnFormatting));
+});
+
+test('offline pending column settings survive reload and merge with newer shared settings on reconnect', async () => {
+  const db=new Map(),a=createApp(db),b=createApp(db);a.app.columnFormatting={};b.app.columnFormatting={};
+  await a.app.pullSharedColumnFormatting();await b.app.pullSharedColumnFormatting();
+  setSharedColumn(a.app,3,'fontSize',19.5);
+  setSharedColumn(b.app,8,'fontWeight','700');await b.app.pushSharedColumnFormatting();
+  a.app.columnFormatting=a.app.loadColumnFormatting();
+  assert.equal(a.app.columnFormattingPending.name.fontSize.value,19.5);
+  await a.app.pushSharedColumnFormatting();await b.app.pullSharedColumnFormatting();
+  assert.equal(b.app.getCellFormatting({},'name','fontSize'),19.5);
+  assert.equal(b.app.getCellFormatting({},'memo','fontWeight'),'700');
+});
+
+test('shared column changes preserve an active native editor and repaint after composition finishes', () => {
+  const {app}=createApp();app.columnFormatting={};let editing=true,renders=0;
+  app.isEditingCell=()=>editing;app.renderTable=()=>renders++;
+  const shared={name:{fontSize:{value:16.5,revision:'shared'}}};
+  app.acceptSharedColumnFormatting(shared);assert.equal(renders,0);assert.equal(app.getCellFormatting({},'name','fontSize'),16.5);
+  editing=false;app.acceptSharedColumnFormatting(shared);assert.equal(renders,1);
+});
+
+test('saving an open manager only publishes edited fields and preserves newly received defaults', () => {
+  const {app}=createApp();app.supabaseClient=null;app.columnFormatting={};
+  app.saveColumnFontSettings(app.getColumnFontSettings());app.columnFormattingPending={};
+  const baseline=app.getColumnFontSettings(),draft=clone(baseline);
+  draft[3].fontSize=21.5;
+  const remote=clone(app.columnFormatting);remote.memo.color={value:'#ff0000',revision:'new-remote'};
+  app.acceptSharedColumnFormatting(remote);
+  app.saveColumnFontSettings(draft,baseline);
+  assert.equal(app.columnFormatting.memo.color.value,'#ff0000');
+  assert.equal(app.columnFormatting.name.fontSize.value,21.5);
+});
+

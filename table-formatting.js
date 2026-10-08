@@ -282,6 +282,8 @@ class PTTableFormatting {
   }
 
   loadColumnFormatting() {
+    try { this.columnFormattingPending = JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING_PENDING") || "{}"); }
+    catch { this.columnFormattingPending = {}; }
     try { return JSON.parse(localStorage.getItem("PT_COLUMN_FORMATTING") || "{}"); }
     catch { return {}; }
   }
@@ -295,8 +297,109 @@ class PTTableFormatting {
       const existing = this.columnFormatting[keys[col]][property];
       if (existing && (existing.value === value || (property === "fontWeight" && String(existing.value) === String(value)))) continue;
       this.columnFormatting[keys[col]][property] = { value, revision };
+      this.columnFormattingPending ||= {};
+      this.columnFormattingPending[keys[col]] ||= {};
+      this.columnFormattingPending[keys[col]][property] = { value, revision };
     }
     localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(this.columnFormatting));
+    localStorage.setItem("PT_COLUMN_FORMATTING_PENDING", JSON.stringify(this.columnFormattingPending || {}));
+    if (this.supabaseClient) {
+      clearTimeout(this.columnFormattingSyncTimer);
+      this.columnFormattingSyncTimer = setTimeout(() => { void this.syncSharedColumnFormatting(); }, 250);
+    }
+  }
+
+  validateSharedColumnFormatting(formatting) {
+    if (!formatting || typeof formatting !== "object" || Array.isArray(formatting)) return false;
+    const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    return Object.entries(formatting).every(([key, properties]) => keys.includes(key) && properties &&
+      Object.entries(properties).every(([property, setting]) => setting && typeof setting.revision === "string" &&
+        (property === "fontSize" ? setting.value === null || (Number.isInteger(setting.value * 2) && setting.value >= 8 && setting.value <= 72)
+          : property === "fontWeight" ? setting.value === null || [400,500,600,700,800,900].includes(Number(setting.value))
+            : property === "color" && (setting.value === null || /^#[0-9a-f]{6}$/i.test(setting.value)))));
+  }
+
+  acceptSharedColumnFormatting(formatting) {
+    if (!this.validateSharedColumnFormatting(formatting)) return;
+    const merged = JSON.parse(JSON.stringify(formatting));
+    for (const [key, properties] of Object.entries(this.columnFormattingPending || {})) {
+      merged[key] = { ...merged[key], ...properties };
+    }
+    const changed = JSON.stringify(merged) !== JSON.stringify(this.columnFormatting || {});
+    this.columnFormatting = merged;
+    localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(merged));
+    if (changed) this.columnFormattingRenderPending = true;
+    // A live IME editor keeps its DOM and composition; repaint after editing ends.
+    if (this.columnFormattingRenderPending && !this.isEditingCell()) {
+      this.columnFormattingRenderPending = false;
+      this.renderTable();
+    }
+  }
+
+  async syncSharedColumnFormatting() {
+    if (Object.keys(this.columnFormattingPending || {}).length) await this.pushSharedColumnFormatting();
+    else await this.pullSharedColumnFormatting();
+  }
+
+  async pullSharedColumnFormatting() {
+    const client = this.supabaseClient;
+    if (!client || this.columnFormattingSyncBusy || Object.keys(this.columnFormattingPending || {}).length) return;
+    this.columnFormattingSyncBusy = true;
+    try {
+      const { data, error } = await client.from("pt_daily_records").select("rows_data").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle();
+      if (error) throw error;
+      if (client !== this.supabaseClient || Object.keys(this.columnFormattingPending || {}).length) return;
+      if (!data) {
+        // Only the first device seeds legacy settings. Every later device uses
+        // the established shared values, never its old device-specific cache.
+        const result = await client.from("pt_daily_records").insert({ date: SHARED_COLUMN_FORMATTING_RECORD,
+          rows_data: [{ columnFormatting: this.columnFormatting || {} }], total_count: 0, updated_at: new Date().toISOString() });
+        if (result.error && result.error.code !== "23505") throw result.error;
+        this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
+        return;
+      }
+      this.acceptSharedColumnFormatting(data.rows_data?.[0]?.columnFormatting);
+    } catch { this.showSaveIndicator("열 글자 설정 동기화 재시도 중", true); }
+    finally { this.columnFormattingSyncBusy = false; }
+  }
+
+  async pushSharedColumnFormatting() {
+    const client = this.supabaseClient;
+    if (!client || this.columnFormattingSyncBusy || !Object.keys(this.columnFormattingPending || {}).length) return;
+    this.columnFormattingSyncBusy = true;
+    const pending = JSON.parse(JSON.stringify(this.columnFormattingPending));
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data, error } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle();
+        if (error) throw error;
+        if (client !== this.supabaseClient) return;
+        const remote = data?.rows_data?.[0]?.columnFormatting;
+        if (data && !this.validateSharedColumnFormatting(remote)) throw new Error("invalid shared settings");
+        const merged = JSON.parse(JSON.stringify(data ? remote : this.columnFormatting || {}));
+        for (const [key, properties] of Object.entries(pending)) merged[key] = { ...merged[key], ...properties };
+        const record = { date: SHARED_COLUMN_FORMATTING_RECORD, rows_data: [{ columnFormatting: merged }], total_count: 0,
+          updated_at: new Date(Math.max(Date.now(), (Date.parse(data?.updated_at) || 0) + 1)).toISOString() };
+        let result;
+        if (data) {
+          const update = client.from("pt_daily_records").update(record).eq("date", SHARED_COLUMN_FORMATTING_RECORD);
+          result = await (data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date");
+        } else result = await client.from("pt_daily_records").insert(record).select("date");
+        if (result.error?.code === "23505") continue;
+        if (result.error) throw result.error;
+        if (!result.data?.length) continue;
+        if (client !== this.supabaseClient) return;
+        for (const [key, properties] of Object.entries(pending)) for (const [property, setting] of Object.entries(properties)) {
+          if (this.columnFormattingPending[key]?.[property]?.revision === setting.revision) delete this.columnFormattingPending[key][property];
+          if (!Object.keys(this.columnFormattingPending[key] || {}).length) delete this.columnFormattingPending[key];
+        }
+        localStorage.setItem("PT_COLUMN_FORMATTING_PENDING", JSON.stringify(this.columnFormattingPending));
+        this.acceptSharedColumnFormatting(merged);
+        this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
+        return;
+      }
+      throw new Error("shared settings changed concurrently");
+    } catch { this.showSaveIndicator("열 글자 설정 동기화 재시도 중", true); }
+    finally { this.columnFormattingSyncBusy = false; }
   }
 
   getColumnFontSettings() {
@@ -309,7 +412,7 @@ class PTTableFormatting {
     }));
   }
 
-  saveColumnFontSettings(settings) {
+  saveColumnFontSettings(settings, baseline = null) {
     const columns = this.getColumnFontSettings();
     if (settings.length !== columns.length || settings.some((setting, index) =>
       setting.key !== columns[index].key || !Number.isInteger(setting.fontSize * 2) ||
@@ -320,6 +423,7 @@ class PTTableFormatting {
     // must not invalidate later cell-specific formatting on any date.
     settings.forEach((setting, index) => {
       for (const property of ["fontSize", "fontWeight", "color"]) {
+        if (baseline && setting[property] === baseline[index]?.[property] && this.columnFormatting?.[setting.key]?.[property]) continue;
         const value = property === "fontWeight" ? String(setting[property]) : setting[property];
         this.setColumnFormatting({ minCol: index, maxCol: index }, property, value);
       }
@@ -334,12 +438,13 @@ class PTTableFormatting {
     overlay.className = "modal-overlay column-font-settings";
     overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle">
       <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 고정 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="닫기">✕</button></div>
-      <div class="modal-body"><p>저장한 열 기본값은 모든 날짜와 검색 내역에 적용됩니다. 셀에 지정한 글자색은 기본값보다 우선하며, 셀별 수정은 해당 셀에만 적용됩니다.</p>
+      <div class="modal-body"><p>저장한 열 기본값은 모든 기기, 날짜와 검색 내역에 적용됩니다. 개별 셀에 지정한 크기·굵기·색은 그대로 유지됩니다.</p>
       <div class="column-font-list"><table><thead><tr><th>열</th><th>크기 (px)</th><th>굵기</th><th>글자색</th></tr></thead><tbody></tbody></table></div>
       <p class="column-font-error" role="alert"></p>
       <div class="column-font-actions"><button type="button" data-close>취소</button><button type="submit">저장</button></div></div></form>`;
     const tbody = overlay.querySelector("tbody");
-    for (const setting of this.getColumnFontSettings()) {
+    const baseline = this.getColumnFontSettings();
+    for (const setting of baseline) {
       const row = document.createElement("tr");
       row.dataset.key = setting.key;
       row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
@@ -362,7 +467,7 @@ class PTTableFormatting {
         fontWeight: row.querySelector('[data-property="fontWeight"]').value,
         color: row.querySelector('[data-property="color"]').value,
       }));
-      if (!this.saveColumnFontSettings(settings)) {
+      if (!this.saveColumnFontSettings(settings, baseline)) {
         overlay.querySelector(".column-font-error").textContent = "글자 크기는 8~72 사이에서 0.5 단위로 입력해 주세요.";
         return;
       }
@@ -385,10 +490,9 @@ class PTTableFormatting {
   getCellFormatting(row, key, property) {
     const setting = this.columnFormatting?.[key]?.[property];
     const local = property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property];
-    // Explicit cell colors always win, including legacy records without a
-    // revision stamp. Column colors only fill cells without their own color.
-    if (property === "color") return local ?? setting?.value;
-    return setting && row._formatRevisions?.[key]?.[property] !== setting.revision ? setting.value : local ?? setting?.value;
+    // Explicit cell formatting always wins, including legacy records without
+    // revision stamps. Shared column defaults only fill unspecified properties.
+    return local ?? setting?.value;
   }
 
   applyCellFormatting(element, row, key) {

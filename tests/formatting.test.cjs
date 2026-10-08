@@ -6,6 +6,15 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+test('editing colored text retains prefix and suffix colors and inherits inserted text color', () => {
+  const row = {name:'가나다',_richText:{name:{text:'가나다',colors:['#ff0000','#0000ff','#00ff00']}}};
+  app.updateEditorTextColors(row,'name','가새나다');
+  assert.deepEqual(plain(row._richText.name),{text:'가새나다',colors:['#ff0000','#0000ff','#0000ff','#00ff00']});
+  app.updateEditorTextColors(row,'name','가다');
+  assert.deepEqual(plain(row._richText.name),{text:'가다',colors:['#ff0000','#00ff00']});
+  app.updateEditorTextColors(row,'name','');
+  assert.deepEqual(plain(row._richText.name),{text:'',colors:[]});
+});
 test('manager saves durable defaults for every column across current and history dates', () => {
   const instance = Object.create(context.App.prototype);
   instance.columnFormatting = {};
@@ -15,8 +24,8 @@ test('manager saves durable defaults for every column across current and history
   const reloaded = Object.create(context.App.prototype);
   reloaded.columnFormatting = reloaded.loadColumnFormatting();
   for (const row of [{name:'현재'}, {name:'이전',_textStyles:{name:{fontSize:11,fontWeight:400}},_textColors:{name:'#ff0000'}}, {}]) {
-    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontSize'), 22);
-    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontWeight'), '700');
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontSize'), row._textStyles?.name?.fontSize ?? 22);
+    assert.equal(reloaded.getCellFormatting(row, 'name', 'fontWeight'), row._textStyles?.name?.fontWeight ?? '700');
     assert.equal(reloaded.getCellFormatting(row, 'name', 'color'), row._textColors?.name ?? '#123abc');
   }
   assert.deepEqual(plain(reloaded.getColumnFontSettings()), plain(settings));
@@ -34,7 +43,7 @@ test('unchanged manager saves preserve cell exceptions and changed properties up
   assert.equal(instance.getCellFormatting(row,'name','color'),'#ff0000');
   const settings = instance.getColumnFontSettings(); settings[3].fontSize = 20;
   instance.saveColumnFontSettings(settings);
-  assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
+  assert.equal(instance.getCellFormatting(row,'name','fontSize'),24);
   assert.equal(instance.getCellFormatting(row,'name','color'),'#ff0000');
   assert.equal(instance.getCellFormatting(row,'name','fontWeight'),700);
   assert.deepEqual(plain(instance.columnFormatting.memo),before.memo);
@@ -303,7 +312,7 @@ test('whole column formatting covers historical and new rows while later cell ov
   const before = JSON.stringify(oldRow);
   for (const [property,value] of [['fontSize',20],['fontWeight',400],['color','#123456']]) {
     instance.setColumnFormatting({minCol:3,maxCol:3},property,value);
-    assert.equal(instance.getCellFormatting(oldRow,'name',property),property === 'color' ? '#ff0000' : value);
+    assert.equal(instance.getCellFormatting(oldRow,'name',property),property === 'color' ? '#ff0000' : oldRow._textStyles.name[property] ?? value);
     assert.equal(instance.getCellFormatting(newRow,'name',property),value);
     assert.equal(instance.getCellFormatting(newRow,'memo',property),undefined);
   }
@@ -315,7 +324,7 @@ test('whole column formatting covers historical and new rows while later cell ov
   assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),24);
   assert.equal(instance.getCellFormatting(newRow,'name','fontSize'),20);
   instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
-  assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),16);
+  assert.equal(instance.getCellFormatting(oldRow,'name','fontSize'),24);
   instance.setColumnFormatting({minCol:3,maxCol:3},'color',null);
   assert.equal(instance.getCellFormatting(oldRow,'name','color'),'#ff0000');
 });
@@ -337,7 +346,7 @@ test('column defaults persist across past, future, empty and search rows with in
     for (const key of ['chartNo','name','part','prescription','extra','writer','memo','specialNote']) {
       const element = {style:{}};
       instance.applyCellFormatting(element,row,key);
-      assert.deepEqual(element.style,{color:row._textColors?.[key] ?? '#123456',fontSize:'18px',fontWeight:600});
+      assert.deepEqual(element.style,{color:row._textColors?.[key] ?? '#123456',fontSize:(row._textStyles?.[key]?.fontSize ?? 18)+'px',fontWeight:row._textStyles?.[key]?.fontWeight ?? 600});
     }
     assert.equal(instance.getCellFormatting(row,'no','fontSize'),undefined);
   }
@@ -345,9 +354,9 @@ test('column defaults persist across past, future, empty and search rows with in
   instance.markCellFormatting(local,'name','fontSize');
   local._textStyles = {name:{fontSize:24}};
   assert.equal(instance.getCellFormatting(local,'name','fontSize'),24);
-  assert.equal(instance.getCellFormatting(dates['2026-09-01'][0],'name','fontSize'),18);
+  assert.equal(instance.getCellFormatting(dates['2026-09-01'][0],'name','fontSize'),11);
   instance.setColumnFormatting({minCol:3,maxCol:3},'fontSize',16);
-  assert.equal(instance.getCellFormatting(local,'name','fontSize'),16);
+  assert.equal(instance.getCellFormatting(local,'name','fontSize'),24);
 });
 
 
@@ -364,8 +373,8 @@ test('header formatting updates every date without copying defaults into individ
   instance.applyColumnTypography('fontWeight',500);
   instance.applyTextColor('#123456');
   for(const row of [...rows,history,{name:'미래'}]) {
-    assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
-    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),500);
+    assert.equal(instance.getCellFormatting(row,'name','fontSize'),row._textStyles?.name?.fontSize ?? 20);
+    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),row._textStyles?.name?.fontWeight ?? 500);
     assert.equal(instance.getCellFormatting(row,'name','color'),row._textColors?.name ?? '#123456');
   }
   assert.equal(JSON.stringify(rows),before);
