@@ -776,7 +776,18 @@ class PTHistorySearch {
 
   handlePatientEditorSearchShortcut(event) {
     if (!this.isSearchShortcut(event)) return false;
-    const input = event.target;
+    let input = event.target;
+    // During native composition the physical shortcut can target the sheet
+    // instead of the input. Read the live draft before falling back to selection.
+    if (!["INPUT", "TEXTAREA"].includes(input?.tagName)) {
+      const focused = document.activeElement;
+      if (focused?.tagName === "INPUT" && focused.closest?.(".excel-cell")) input = focused;
+      else if (this.activeCell && (event.isComposing || event.keyCode === 229 || event.key === "Process")) {
+        const { rowIdx, colKey } = this.activeCell;
+        const editor = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"] input:not(.is-armed)`);
+        if (editor?.tagName === "INPUT") input = editor;
+      }
+    }
     const cell = input?.closest?.(".excel-cell");
     const formulaEditor = Boolean(input && input === this.elFormulaInput);
     const colKey = cell?.dataset?.col || this.activeCell?.colKey;

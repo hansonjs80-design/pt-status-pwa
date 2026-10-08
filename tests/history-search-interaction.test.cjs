@@ -1212,3 +1212,30 @@ test('empty focused name inputs and selected chart inputs still open the search 
     assert.deepEqual(prompt,[0,value]);
   }
 });
+
+
+test('new-name IME search uses the focused editor when the shortcut is delivered to the sheet', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const focusOnInput of [true,false]) {
+    const {app,context}=createApp([{name:''}]);
+    const cell={dataset:{row:'0',col:'name'}};
+    const input={tagName:'INPUT',value:'입력중이름',classList:{contains:()=>false},closest:()=>cell,
+      blur(){this.value='입력한이름';}};
+    context.document.activeElement=focusOnInput ? input : null;
+    app.elTableBody.querySelector=()=>input;
+    app.openSearchPromptModal=()=>assert.fail('new-name IME search must not open a prompt');
+    let searched;
+    app.searchPatientHistory=(...args)=>{searched=args;};
+    app.handleGlobalKeyDown({key:'Process',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,
+      target:{tagName:'DIV',closest:()=>null},preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(searched,['입력한이름',0]);
+  }
+});
+
+
+test('search prompt input never borrows a composing name draft from the table', () => {
+  const {app,context}=createApp([{name:''}]);
+  context.document.activeElement={tagName:'INPUT',value:'성함 초안',closest:()=>({dataset:{col:'name',row:'0'}})};
+  const prompt={tagName:'INPUT',value:'별도 검색어',closest:()=>null};
+  app.searchPatientHistory=()=>assert.fail('a modal shortcut must not search the table draft');
+  assert.equal(app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:prompt}),false);
+});
