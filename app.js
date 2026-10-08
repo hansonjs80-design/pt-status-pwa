@@ -5440,16 +5440,21 @@ class PTApp {
         ![event.key, event.code].some(key => ["-", "_", "Minus", "NumpadSubtract"].includes(key))) return false;
     const rowIdx = this.selectedRowRange?.minRow ?? this.activeCell?.rowIdx ?? this.selectedRowIdx;
     if (!Number.isInteger(rowIdx)) return false;
+    const range = this.selectedRange;
+    const singleCell = this.activeCell && !this.selectedRowRange && !this.selectedColumnRange &&
+      this.selectedColKey == null && (!this.selectedCellSet || this.selectedCellSet.size === 1) &&
+      (!range || (range.minRow === range.maxRow && range.minCol === range.maxCol));
+    const nextColKey = singleCell ? this.activeCell.colKey : "no";
     event.preventDefault();
     event.stopPropagation();
     // Commit an active editor before removing its row so a later blur cannot overwrite the next row.
     if (document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
-    this.deleteRowAt(rowIdx);
+    this.deleteRowAt(rowIdx, nextColKey);
     this.elSheetContainer.focus({ preventScroll: true });
     return true;
   }
 
-  deleteRowAt(targetRowIdx) {
+  deleteRowAt(targetRowIdx, nextColKey = "no") {
     const rows = this.getCurrentRows();
     let minRow = targetRowIdx;
     let deleteCount = 1;
@@ -5488,8 +5493,8 @@ class PTApp {
       this.saveDataStore();
       this.renderTable();
       const nextRowIdx = Math.min(minRow, rows.length - 1);
-      const nextCell = this.elTableBody.querySelector(`[data-row="${nextRowIdx}"][data-col="no"]`);
-      if (nextCell) this.selectCell(nextRowIdx, "no", nextCell);
+      const nextCell = this.elTableBody.querySelector(`[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`);
+      if (nextCell) this.selectCell(nextRowIdx, nextColKey, nextCell);
       const msg = deleteCount > 1
         ? `${minRow + BASE_ROW_NUMBER}~${minRow + deleteCount - 1 + BASE_ROW_NUMBER}행 (${deleteCount}개 행)이 삭제되었습니다.`
         : `${minRow + BASE_ROW_NUMBER}행이 삭제되었습니다.`;
