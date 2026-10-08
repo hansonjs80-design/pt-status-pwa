@@ -1072,7 +1072,7 @@ class PTApp {
     popup.querySelector(".is-selected")?.focus();
   }
 
-  setDate(dateStr, autoFocusFirstEmpty = false) {
+  setDate(dateStr) {
     const focusRequest = this._dateFocusRequest = {};
     const dateChanged = this.currentDate !== dateStr;
     if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
@@ -1117,23 +1117,18 @@ class PTApp {
     this.updateHistoryButtons();
     this.updateSidebarStats();
 
-    const isToday = dateStr === this.getTodayString();
-    if (isToday) this.focusTodayEntryCell();
-    const todaySelection = this.activeCell;
-    const todayEditor = isToday && this.elTableBody.querySelector('.cell-input-element.is-armed');
+    this.focusDateEntryCell();
+    const entrySelection = this.activeCell;
+    const entryEditor = this.elTableBody.querySelector('.cell-input-element.is-armed');
 
     // Reposition after newly received records only while the navigation
     // selection is untouched. A later date change or user edit owns focus.
     if (this.supabaseClient) {
       Promise.resolve(this.pullFromCloud(dateStr, false)).then(() => {
-        if (isToday && this._dateFocusRequest === focusRequest && this.currentDate === dateStr &&
-            this.activeCell === todaySelection && !this.crossDateSelection && !this.isEditingCell() &&
-            (!todayEditor || todayEditor.classList.contains('is-armed'))) this.focusTodayEntryCell();
+        if (this._dateFocusRequest === focusRequest && this.currentDate === dateStr &&
+            this.activeCell === entrySelection && !this.crossDateSelection && !this.isEditingCell() &&
+            (!entryEditor || entryEditor.classList.contains('is-armed'))) this.focusDateEntryCell();
       });
-    }
-
-    if (!isToday && autoFocusFirstEmpty && !dateChanged) {
-      this._dateFocusTimer = setTimeout(() => this.focusFirstEmptyCell(), 80);
     }
   }
 
@@ -3885,20 +3880,21 @@ class PTApp {
     }
   }
 
-  focusTodayEntryCell() {
+  focusDateEntryCell() {
     const rows = this.getCurrentRows();
     const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
     const lastRow = rows.findLastIndex(row => keys.some(key => String(row?.[key] ?? '').trim()));
     const targetRow = lastRow + 1;
-    const cell = this.elTableBody.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="name"]`);
+    const colKey = lastRow < 0 ? 'no' : 'name';
+    const cell = this.elTableBody.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="${colKey}"]`);
     if (!cell) return;
     cell.closest('tr').style.display = '';
-    this.selectCell(targetRow, 'name', cell, false);
+    this.selectCell(targetRow, colKey, cell, false);
 
     const container = this.elSheetContainer;
     if (lastRow < 0 || !container?.getBoundingClientRect) { container.scrollTop = 0; return; }
     const lastCell = this.elTableBody.querySelector(`.excel-cell[data-row="${lastRow}"][data-col="name"]`);
-    if (!lastCell) return;
+    const scrollCell = lastCell?.getBoundingClientRect().height ? lastCell : cell;
     const bounds = container.getBoundingClientRect();
     const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
     let top = bounds.top + (container.clientTop || 0);
@@ -3906,7 +3902,7 @@ class PTApp {
       const rect = header.getBoundingClientRect();
       if (rect.height && rect.top < bottom && rect.bottom > top) top = Math.max(top, rect.bottom);
     });
-    const rect = lastCell.getBoundingClientRect();
+    const rect = scrollCell.getBoundingClientRect();
     container.scrollTop = Math.max(0, Math.min(container.scrollHeight - container.clientHeight,
       container.scrollTop + (rect.top + rect.bottom) / 2 - (top + bottom) / 2));
   }

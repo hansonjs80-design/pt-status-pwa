@@ -1093,7 +1093,7 @@ test('selected chart, name, part and memo cells move right on Enter with or with
   assert.deepEqual(app.activeCell, { rowIdx: 1, colKey: 'no' });
 });
 
-test('date navigation starts at row one and cancels delayed empty-row focus', () => {
+test('date navigation applies its destination selection and cancels stale delayed focus', () => {
   for (const autoFocus of [false, true]) {
     const { app, context } = createApp(Array.from({ length: 80 }, () => ({ name: '가상 환자' })));
     const pending = new Map();
@@ -1107,6 +1107,7 @@ test('date navigation starts at row one and cancels delayed empty-row focus', ()
     app.elSidebarDateTag = {};
     app.elSheetTabTitle = {};
     app.focusFirstEmptyCell = () => { app.elSheetContainer.scrollTop = 2500; };
+    app.focusDateEntryCell = () => { app.activeCell = {rowIdx:80,colKey:'name'}; app.elSheetContainer.scrollTop = 2000; };
     app.setDate(app.currentDate, true); // A pending startup/Today focus must not leak into the next date.
     app.activeCell = { rowIdx: 79, colKey: 'memo' };
     app.selectedRowIdx = 79;
@@ -1115,7 +1116,8 @@ test('date navigation starts at row one and cancels delayed empty-row focus', ()
     app.renderTable = () => { assert.equal(app.activeCell, null); assert.equal(app.elSheetContainer.scrollTop, 0); };
     app.setDate('2026-10-05', autoFocus);
     for (const fn of pending.values()) fn();
-    assert.equal(app.elSheetContainer.scrollTop, 0);
+    assert.equal(app.elSheetContainer.scrollTop, 2000);
+    assert.deepEqual(app.activeCell, {rowIdx:80,colKey:'name'});
     assert.equal(app.selectedRowIdx, null);
     assert.equal(app.rangeStart, null);
     assert.equal(app.rangeEnd, null);

@@ -21,55 +21,61 @@ function createApp(records = []) {
     querySelectorAll: () => [{ getBoundingClientRect: () => ({ top: 100, bottom: 160, height: 60 }) }],
   };
   app.elTableBody = { querySelector(selector) {
-    const match = selector.match(/data-row="(\d+)".*data-col="name"/);
+    const match = selector.match(/data-row="(\d+)".*data-col="(?:name|no)"/);
     if (!match) return null;
     const idx = Number(match[1]);
     if (!app.getCurrentRows()[idx]) return null;
-    return { closest: () => ({ style: {} }), getBoundingClientRect: () => ({ top: 160 + idx * 30 - container.scrollTop, bottom: 190 + idx * 30 - container.scrollTop }) };
+    return { closest: () => ({ style: {} }), getBoundingClientRect: () => ({ top: 160 + idx * 30 - container.scrollTop, bottom: 190 + idx * 30 - container.scrollTop, height:30 }) };
   } };
   app.selectCell = (rowIdx, colKey) => { app.activeCell = { rowIdx, colKey }; app.crossDateSelection = null; };
   return app;
 }
 
-test('every route to Today selects the name below the last entered row and centers the last record', () => {
-  for (const route of ['today', 'calendar', 'picker', 'next', 'previous']) {
-    const app = createApp(Array.from({ length: 80 }, (_, i) => ({ name: i === 15 ? '' : `가상 ${i}` })));
-    if (route === 'previous') app.currentDate = '2026-10-09';
-    if (route === 'next') app.shiftDay(1);
-    else if (route === 'previous') app.shiftDay(-1);
-    else app.setDate('2026-10-08', route !== 'picker');
+test('all dates select the name below the last entered row and center the last record through every route', () => {
+  for (const date of ['2026-10-08', '2025-09-09', '2026-10-10']) for (const route of ['button', 'calendar', 'picker', 'next', 'previous']) {
+    const records = Array.from({ length: 80 }, (_, i) => ({ name: i === 15 ? '' : `가상 ${i}` }));
+    const app = createApp();
+    app.dataStore[date] = records;
+    if (route === 'previous' || route === 'next') {
+      const adjacent = new Date(date + 'T12:00:00');
+      adjacent.setDate(adjacent.getDate() + (route === 'previous' ? 1 : -1));
+      app.currentDate = `${adjacent.getFullYear()}-${String(adjacent.getMonth()+1).padStart(2,'0')}-${String(adjacent.getDate()).padStart(2,'0')}`;
+      app.shiftDay(route === 'previous' ? -1 : 1);
+    } else app.setDate(date, route !== 'picker');
     assert.deepEqual(app.activeCell, { rowIdx: 80, colKey: 'name' });
     const rect = app.elTableBody.querySelector('[data-row="79"][data-col="name"]').getBoundingClientRect();
     assert.equal((rect.top + rect.bottom) / 2, 430);
     app.activeCell = { rowIdx: 0, colKey: 'memo' };
-    app.setDate('2026-10-08', true);
+    app.setDate(date, true);
     assert.deepEqual(app.activeCell, { rowIdx: 80, colKey: 'name' });
     app.setDate('2026-10-07', true);
     assert.equal(app.elSheetContainer.scrollTop, 0);
-    assert.equal(app.activeCell, null);
+    assert.deepEqual(app.activeCell, {rowIdx:0,colKey:'no'});
   }
 });
 
-test('Today uses row one when empty, skips internal gaps and counts other entered columns', () => {
-  for (const [rows, target] of [[[], 0], [[{name:'첫 기록'}, {}, {name:'끝 기록'}, {}, {memo:'준비 내용'}], 5]]) {
+test('all dates use A1 when empty, skip internal gaps and count other entered columns', () => {
+  for (const date of ['2026-10-08', '2025-09-09']) for (const [rows, target] of [[[], 0], [[{name:'첫 기록'}, {}, {name:'끝 기록'}, {}, {memo:'준비 내용'}], 5]]) {
     const app = createApp(rows);
-    app.setDate('2026-10-08');
-    assert.deepEqual(app.activeCell, { rowIdx: target, colKey: 'name' });
+    app.dataStore[date]=rows;
+    app.setDate(date);
+    assert.deepEqual(app.activeCell, { rowIdx: target, colKey: target ? 'name' : 'no' });
     assert.equal(app.elSheetContainer.scrollTop, 0);
   }
 });
 
-test('cloud records update the Today destination without stealing later navigation, selection or editing', async () => {
-  for (const action of ['untouched', 'leave', 'select', 'edit']) {
+test('cloud records update any date destination without stealing later navigation, selection or editing', async () => {
+  for (const date of ['2026-10-08','2025-09-09']) for (const action of ['untouched', 'leave', 'select', 'edit']) {
     const app = createApp([{name:'로컬 기록'}]);
+    app.dataStore[date]=[{name:'로컬 기록'}];
     let finish;
     app.supabaseClient = {};
-    app.pullFromCloud = date => date === '2026-10-08' ? new Promise(resolve => { finish = resolve; }) : Promise.resolve();
-    app.setDate('2026-10-08');
+    app.pullFromCloud = requested => requested === date ? new Promise(resolve => { finish = resolve; }) : Promise.resolve();
+    app.setDate(date);
     if (action === 'leave') app.setDate('2026-10-07');
     if (action === 'select') app.selectCell(0, 'memo');
     if (action === 'edit') app.editing = true;
-    app.dataStore['2026-10-08'] = Array.from({ length: 90 }, () => ({name:'클라우드 가상 기록'}));
+    app.dataStore[date] = Array.from({ length: 90 }, () => ({name:'클라우드 가상 기록'}));
     finish();
     await new Promise(resolve => setImmediate(resolve));
     if (action === 'untouched') assert.deepEqual(app.activeCell, { rowIdx: 90, colKey: 'name' });
