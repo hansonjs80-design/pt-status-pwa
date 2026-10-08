@@ -221,7 +221,7 @@ class PTTableFormatting {
   saveColumnFontSettings(settings) {
     const columns = this.getColumnFontSettings();
     if (settings.length !== columns.length || settings.some((setting, index) =>
-      setting.key !== columns[index].key || !Number.isInteger(setting.fontSize) ||
+      setting.key !== columns[index].key || !Number.isInteger(setting.fontSize * 2) ||
       setting.fontSize < 8 || setting.fontSize > 72 ||
       ![400, 500, 600, 700, 800, 900].includes(Number(setting.fontWeight)) ||
       !/^#[0-9a-f]{6}$/i.test(setting.color))) return false;
@@ -251,7 +251,7 @@ class PTTableFormatting {
     for (const setting of this.getColumnFontSettings()) {
       const row = document.createElement("tr");
       row.dataset.key = setting.key;
-      row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="1" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
+      row.innerHTML = `<th scope="row">${setting.label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기"></td>
         <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
         <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td>`;
       for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = setting[property];
@@ -272,7 +272,7 @@ class PTTableFormatting {
         color: row.querySelector('[data-property="color"]').value,
       }));
       if (!this.saveColumnFontSettings(settings)) {
-        overlay.querySelector(".column-font-error").textContent = "글자 크기는 8~72 사이의 정수로 입력해 주세요.";
+        overlay.querySelector(".column-font-error").textContent = "글자 크기는 8~72 사이에서 0.5 단위로 입력해 주세요.";
         return;
       }
       this.renderTable();

@@ -47,6 +47,18 @@ test('invalid manager values cannot partially change saved defaults', () => {
   assert.equal(instance.saveColumnFontSettings(settings),false);
   assert.deepEqual(plain(instance.columnFormatting),before);
 });
+test('column font settings persist half-point sizes and reject smaller steps', () => {
+  const instance = Object.create(context.App.prototype); instance.columnFormatting = {};
+  const settings = instance.getColumnFontSettings(); settings[3].fontSize = 14.5;
+  assert.equal(instance.saveColumnFontSettings(settings), true);
+  instance.columnFormatting = instance.loadColumnFormatting();
+  assert.equal(instance.getColumnFontSettings()[3].fontSize, 14.5);
+  assert.equal(instance.getCellFormatting({}, 'name', 'fontSize'), 14.5);
+  const before = plain(instance.columnFormatting);
+  settings[3].fontSize = 14.25;
+  assert.equal(instance.saveColumnFontSettings(settings), false);
+  assert.deepEqual(plain(instance.columnFormatting), before);
+});
 test('partial colors preserve unselected characters and replace only overlapping ranges', () => {
   const row = { name: '가나다라' };
   app.setPartialTextColor(row, 'name', 1, 3, '#ff0000');
