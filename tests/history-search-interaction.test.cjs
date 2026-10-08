@@ -1428,3 +1428,31 @@ test('closing history and no-results keeps the native name editor focused for th
     assert.equal(editorFocus,1);
   }
 });
+
+test('native name search uses its highlighted autocomplete name before blur closes the menu', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const selectedIndex of [0,1,2]) {
+    const {app}=createApp([{name:'이추'}]);
+    const cell={dataset:{row:'0',col:'name'}};
+    const input={tagName:'INPUT',value:'이추',classList:{contains:()=>false},closest:()=>cell,blur(){app.autocompleteState=null;this.value='이추';}};
+    app.autocompleteState={rowIdx:0,colKey:'name',input,candidates:['이추','이춘식','이춘화'],selectedIndex};
+    app.isAutocompleteOpen=()=>true;
+    app.closeAutocompleteMenu=()=>{app.autocompleteState=null;};
+    let searched;app.searchPatientHistory=(...args)=>{searched=args;};
+    app.handlePatientEditorSearchShortcut({key:'Process',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(searched,[['이추','이춘식','이춘화'][selectedIndex],0]);
+  }
+});
+
+test('name search falls back to live input when no own autocomplete candidate is highlighted', () => {
+  for (const mode of ['closed','unselected','otherRow','otherInput','chart']) {
+    const {app}=createApp([{name:'입력한이름',chartNo:'411'}]);
+    const colKey=mode==='chart'?'chartNo':'name';
+    const cell={dataset:{row:'0',col:colKey}};
+    const input={tagName:'INPUT',value:colKey==='name'?'입력한이름':'411',classList:{contains:()=>false},closest:()=>cell,blur(){}};
+    app.autocompleteState={rowIdx:mode==='otherRow'?1:0,colKey:'name',input:mode==='otherInput'?{}:input,candidates:['다른이름'],selectedIndex:mode==='unselected'?-1:0};
+    app.isAutocompleteOpen=()=>mode!=='closed';app.closeAutocompleteMenu=()=>{};
+    let searched;app.searchPatientHistory=(...args)=>{searched=args;};
+    app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:input,preventDefault(){},stopPropagation(){}});
+    assert.deepEqual(searched,[input.value,0]);
+  }
+});

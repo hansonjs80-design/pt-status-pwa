@@ -862,11 +862,19 @@ class PTHistorySearch {
     this.historyApplyBlockedKey = "f";
     this.directHistorySearchKeyHeld = true;
     const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
+    // Capture the highlighted name before blur removes the autocomplete menu.
+    // A menu from another cell must never supply this editor's search query.
+    const autocomplete = this.autocompleteState;
+    const selectedName = colKey === "name" && autocomplete?.colKey === "name" &&
+      autocomplete.rowIdx === rowIdx && autocomplete.input === input &&
+      autocomplete.selectedIndex >= 0 && this.isAutocompleteOpen()
+      ? autocomplete.candidates[autocomplete.selectedIndex] : undefined;
     const rawValue = input.value;
     input.blur();
     this.closeAutocompleteMenu();
     this.elSheetContainer.focus({ preventScroll: true });
-    const query = this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
+    const query = typeof selectedName === "string" && selectedName.trim()
+      ? selectedName.trim() : this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
     this.patientSearchDraft = null;
     this.closeSearchPromptModal();
     void this.searchPatientHistory(query, rowIdx);
