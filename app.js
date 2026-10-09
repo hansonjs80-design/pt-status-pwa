@@ -809,6 +809,7 @@ class PTApp {
       header?.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
+    const fromHistory = Boolean(this.crossDateSelection);
     const range = this.crossDateSelection || this.selectedRange;
     const colKey = this.crossDateSelection ? keys[range.minCol]
       : this.activeCell?.colKey || (range ? keys[range.minCol] : 'no');
@@ -821,7 +822,8 @@ class PTApp {
     if (cell) {
       cell.closest("tr").style.display = "";
       this.selectCell(rowIdx, colKey, cell);
-      cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (fromHistory) this.ensureCurrentCellVisible(cell, { center: true });
+      else cell.scrollIntoView({ block: "nearest", inline: "nearest" });
     }
   }
 

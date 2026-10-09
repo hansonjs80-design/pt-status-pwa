@@ -276,6 +276,10 @@ test('history Ctrl/Cmd+Down after copy or cut ignores prepared writer rows and s
     app.clipboardSelection = { date: '2026-10-03', minRow: 0, maxRow: 0, minCol: 0, maxCol: 9 };
     app.pendingCut = cut ? { date: '2026-10-03', cells: [] } : null;
     let selected, scrolled = 0;
+    app.ensureCurrentCellVisible = (cell, options) => {
+      assert.equal(options.center, true);
+      cell.scrollIntoView();
+    };
     app.selectCell = (rowIdx, colKey) => { selected = { rowIdx, colKey }; };
     app.elTableBody.querySelector = () => ({ closest: () => ({ style: {} }), scrollIntoView() { scrolled++; } });
     app.handleGlobalKeyDown({ key: 'ArrowDown', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {} });
@@ -285,6 +289,21 @@ test('history Ctrl/Cmd+Down after copy or cut ignores prepared writer rows and s
     rows[2] = { writer: 'K' };
     app.jumpToLastRecord();
     assert.deepEqual(selected, { rowIdx: 0, colKey: 'no' });
+  }
+});
+
+test('history jump centers the current cell below pinned search and daily headers at different viewport heights', () => {
+  for (const height of [500, 900]) {
+    const { app } = createApp();
+    const top = 400, bottom = 100 + height;
+    const container = {scrollTop: 0, clientHeight: height,
+      getBoundingClientRect: () => ({top: 100}),
+      querySelectorAll: () => [{getBoundingClientRect: () => ({top: 100, bottom: top, height: 300})}]};
+    app.elSheetContainer = container;
+    const cell = {scrollIntoView() {}, getBoundingClientRect: () => ({top: 1000 - container.scrollTop, bottom: 1030 - container.scrollTop})};
+    app.ensureCurrentCellVisible(cell, {center: true});
+    const rect = cell.getBoundingClientRect();
+    assert.equal((rect.top + rect.bottom) / 2, (top + bottom) / 2);
   }
 });
 
