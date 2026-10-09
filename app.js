@@ -801,8 +801,7 @@ class PTApp {
   jumpToLastRecord() {
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     if (this.selectedRowRange && !this.crossDateSelection) {
-      const rows = this.getCurrentRows();
-      const rowIdx = Math.max(0, rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim())));
+      const rowIdx = Math.max(0, this.getLastPatientRowIndex());
       const lastCol = this.selectedRange?.maxCol ?? 10;
       const header = this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"] .row-num`);
       if (header) header.closest("tr").style.display = "";
@@ -810,19 +809,14 @@ class PTApp {
       header?.scrollIntoView({ block: "nearest", inline: "nearest" });
       return;
     }
-    const copiedRange = this.clipboardSelection?.date === this.currentDate ? this.clipboardSelection : null;
-    const range = copiedRange || this.crossDateSelection || this.selectedRange;
-    const colKey = range ? keys[range.minCol] : this.activeCell?.colKey || "no";
+    const range = this.crossDateSelection || this.selectedRange;
+    const colKey = this.crossDateSelection ? keys[range.minCol]
+      : this.activeCell?.colKey || (range ? keys[range.minCol] : 'no');
     if (!colKey) return;
     if (!range && !this.activeCell && this.selectedRowIdx == null) return;
-    const rows = this.getCurrentRows();
-    // 이전 내역에서 내려올 때는 삭제/이동 전의 적용 위치 대신 현재 데이터 전체를 확인한다.
-    let rowIdx = this.crossDateSelection
-      ? this.getLastPatientRowIndex()
-      : range ? rows.findLastIndex(row => String(row[colKey] ?? "").trim()) : -1;
-    // A wholly empty first column (for example No. in a copied row) still lands on the last record.
-    if (rowIdx < 0 && !this.crossDateSelection) rowIdx = rows.findLastIndex(row => keys.slice(0, -1).some(key => String(row[key] ?? "").trim()));
-    rowIdx = Math.max(0, rowIdx);
+    // Patient identity determines the destination for every selection mode.
+    // Prepared writer initials, notes and allocated blank rows are not records.
+    const rowIdx = Math.max(0, this.getLastPatientRowIndex());
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
     if (cell) {
       cell.closest("tr").style.display = "";

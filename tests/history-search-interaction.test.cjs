@@ -244,6 +244,30 @@ test('row-header Ctrl/Cmd+Down keeps row selection on the last actual record, in
   }
 });
 
+test('Ctrl/Cmd+Down uses the last patient for row, cell, range and column selections regardless of default row count', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const count of [80,120,180]) for (const mode of ['row','cell','range','column']) {
+    const rows=Array.from({length:count},()=>({writer:'S',memo:'미리 입력'}));
+    rows[5].name='첫 환자';rows[31].name='마지막 성함';rows[42].chartNo='00999';
+    rows[count-1].name='　 ';
+    const {app}=createApp(rows);let selected,scrolled=0;
+    app.clipboardSelection={date:app.currentDate,minCol:7,maxCol:9};
+    if(mode==='row'){
+      app.activeCell=null;app.selectedRowRange={minRow:1,maxRow:3};app.selectedRange={minRow:1,maxRow:3,minCol:0,maxCol:9};
+      app.selectRowRange=(minRow,maxRow)=>{selected={minRow,maxRow};};
+    }else if(mode==='column'){
+      app.activeCell=null;app.selectedColumnRange={minCol:4,maxCol:4};app.selectedRange={minRow:0,maxRow:count-1,minCol:4,maxCol:4};
+    }else{
+      app.activeCell={rowIdx:2,colKey:'part'};
+      app.selectedRange={minRow:2,maxRow:mode==='range'?8:2,minCol:4,maxCol:mode==='range'?8:4};
+    }
+    app.elTableBody.querySelector=()=>({closest:()=>({style:{}}),scrollIntoView(){scrolled++;}});
+    app.selectCell=(rowIdx,colKey)=>{selected={rowIdx,colKey};};
+    app.handleGlobalKeyDown({key:'ArrowDown',[modifier]:true,target:{tagName:'DIV'},preventDefault(){}});
+    assert.deepEqual(selected,mode==='row'?{minRow:42,maxRow:42}:{rowIdx:42,colKey:'part'},`${modifier}/${count}/${mode}`);
+    assert.equal(scrolled,1);
+  }
+});
+
 test('history Ctrl/Cmd+Down after copy or cut ignores prepared writer rows and selects the last patient', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) for (const cut of [false, true]) {
     const rows = [{ name: '첫 환자' }, {}, { chartNo: 'LAST' }, { writer: 'J' }, { writer: 'S', memo: '미리 입력' }];

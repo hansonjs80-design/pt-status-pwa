@@ -205,14 +205,14 @@ test('cut keeps content until paste and handles overlapping destination', async 
   assert.deepEqual(rows.map(r=>r.name),['','첫째','둘째']); assert.equal(instance.pendingCut,null);
 });
 
-test('clipboard jump uses leftmost column and its last populated row', () => {
+test('last-patient jump preserves the active column and ignores older copied ranges and prepared notes', () => {
   const instance=Object.create(context.App.prototype), rows=[{chartNo:'1'},{chartNo:'2'},{memo:'later other column'}];
   Object.assign(instance,{currentDate:'2026-10-01',activeCell:{rowIdx:0,colKey:'prescription'},clipboardSelection:{date:'2026-10-01',minCol:2,maxCol:5}});
   instance.getCurrentRows=()=>rows;
   instance.elTableBody={querySelector:()=>({closest:()=>({style:{}}),scrollIntoView(){}})};
   let target; instance.selectCell=(rowIdx,colKey)=>{target={rowIdx,colKey};};
-  instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:1,colKey:'chartNo'});
-  instance.clipboardSelection.minCol=0; instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:2,colKey:'no'});
+  instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:1,colKey:'prescription'});
+  instance.clipboardSelection.minCol=0; instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:1,colKey:'prescription'});
   instance.clipboardSelection.minCol=2; instance.crossDateSelection={minCol:2,maxCol:5};
   instance.historyApplyTarget={date:'2026-10-01',row:rows[2],rowIdx:2,colKey:'name'}; instance.scrollToHistoryTarget=()=>{};
   instance.jumpToLastRecord(); assert.deepEqual(target,{rowIdx:1,colKey:'chartNo'});
