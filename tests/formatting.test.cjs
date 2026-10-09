@@ -620,3 +620,47 @@ test('copy preserves assigned backgrounds without copying transient selection ti
   try { assert.equal(instance.captureCellFormatting({},'name',{}).backgroundColor,undefined); }
   finally { delete context.getComputedStyle; }
 });
+
+test('column settings background apply survives reload and device transfer with later cell overrides', () => {
+  const first=Object.create(context.App.prototype);
+  first.columnFormatting={};first.columnFormattingPending={};first.renderTable=()=>{};first.showSaveIndicator=()=>{};
+  const oldRow={name:'가상',_textStyles:{name:{backgroundColor:'#ff0000'}}};
+  const settings={...first.getColumnFontSettings()[3],backgroundColor:'#e2efda'};
+  assert.equal(first.applyColumnFontSettings([settings]),true);
+  assert.equal(first.getCellFormatting(oldRow,'name','backgroundColor'),'#e2efda');
+  const second=Object.create(context.App.prototype);
+  second.columnFormatting=second.loadColumnFormatting();second.columnFormattingPending={};second.renderTable=()=>{};second.isEditingCell=()=>false;
+  second.acceptSharedColumnFormatting(plain(first.columnFormatting));
+  assert.equal(second.getColumnFontSettings()[3].backgroundColor,'#e2efda');
+  assert.equal(second.getCellFormatting(oldRow,'name','backgroundColor'),'#e2efda');
+  second.markCellFormatting(oldRow,'name','backgroundColor');
+  assert.equal(second.getCellFormatting(oldRow,'name','backgroundColor'),'#ff0000');
+  assert.equal(second.getCellFormatting({},'memo','backgroundColor'),undefined);
+});
+
+test('column background none clears old fills without rewriting patient records or later exceptions', () => {
+  const instance=Object.create(context.App.prototype);
+  instance.columnFormatting={};instance.renderTable=()=>{};instance.showSaveIndicator=()=>{};
+  const row={name:'가상',_textColors:{name:'#0000ff'},_textStyles:{name:{backgroundColor:'#ff0000'}}};
+  const before=JSON.stringify(row),settings={...instance.getColumnFontSettings()[3],color:'#0000ff',backgroundColor:null};
+  assert.equal(instance.applyColumnFontSettings([settings]),true);
+  assert.equal(instance.getCellFormatting(row,'name','backgroundColor'),null);
+  assert.equal(instance.getCellFormatting(row,'name','color'),'#0000ff');
+  assert.equal(JSON.stringify(row),before);
+  instance.markCellFormatting(row,'name','backgroundColor');
+  assert.equal(instance.getCellFormatting(row,'name','backgroundColor'),'#ff0000');
+});
+
+test('column background validation is atomic and legacy font-only calls preserve the background', () => {
+  const instance=Object.create(context.App.prototype);
+  instance.columnFormatting={};instance.renderTable=()=>{};instance.showSaveIndicator=()=>{};
+  instance.setColumnFormatting({minCol:3,maxCol:3},'backgroundColor','#e2efda');
+  const before=JSON.stringify(instance.columnFormatting);
+  assert.equal(instance.applyColumnFontSettings([{...instance.getColumnFontSettings()[3],backgroundColor:'invalid'}]),false);
+  const all=instance.getColumnFontSettings();all[2].backgroundColor='invalid';
+  assert.equal(instance.saveColumnFontSettings(all),false);
+  assert.equal(JSON.stringify(instance.columnFormatting),before);
+  const fontOnly={...instance.getColumnFontSettings()[3],fontSize:20};delete fontOnly.backgroundColor;
+  assert.equal(instance.applyColumnFontSettings([fontOnly]),true);
+  assert.equal(instance.getColumnFontSettings()[3].backgroundColor,'#e2efda');
+});

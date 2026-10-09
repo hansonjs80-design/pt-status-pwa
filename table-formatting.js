@@ -471,7 +471,7 @@ class PTTableFormatting {
         this.acceptSharedColumnFormatting(merged);
         this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
         this.columnFormattingSyncFailed = false;
-        if (!Object.keys(this.columnFormattingPending).length) this.showSaveIndicator("열 글자 설정 저장 및 동기화 완료");
+        if (!Object.keys(this.columnFormattingPending).length) this.showSaveIndicator("열 서식 저장 및 동기화 완료");
         return;
       }
       throw new Error("shared settings changed concurrently");
@@ -480,7 +480,7 @@ class PTTableFormatting {
   }
 
   reportColumnFormattingSyncFailure() {
-    if (!this.columnFormattingSyncFailed) this.showSaveIndicator("열 글자 설정 동기화 대기 · 연결되면 다시 저장합니다", true);
+    if (!this.columnFormattingSyncFailed) this.showSaveIndicator("열 서식 동기화 대기 · 연결되면 다시 저장합니다", true);
     this.columnFormattingSyncFailed = true;
   }
 
@@ -491,6 +491,7 @@ class PTTableFormatting {
       fontSize: this.columnFormatting?.[key]?.fontSize?.value ?? (index === 0 ? 16 : 14),
       fontWeight: String(this.columnFormatting?.[key]?.fontWeight?.value ?? (index < 2 ? 600 : 500)),
       color: this.columnFormatting?.[key]?.color?.value ?? "#000000",
+      backgroundColor: this.columnFormatting?.[key]?.backgroundColor?.value ?? null,
     }));
   }
 
@@ -500,11 +501,13 @@ class PTTableFormatting {
       setting.key !== columns[index].key || !Number.isInteger(setting.fontSize * 2) ||
       setting.fontSize < 8 || setting.fontSize > 72 ||
       ![400, 500, 600, 700, 800, 900].includes(Number(setting.fontWeight)) ||
-      !/^#[0-9a-f]{6}$/i.test(setting.color))) return false;
+      !/^#[0-9a-f]{6}$/i.test(setting.color) ||
+      (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)))) return false;
     // Only changed properties receive a new revision. Saving the same defaults
     // must not invalidate later cell-specific formatting on any date.
     settings.forEach((setting, index) => {
-      for (const property of ["fontSize", "fontWeight", "color"]) {
+      for (const property of ["fontSize", "fontWeight", "color", "backgroundColor"]) {
+        if (property === "backgroundColor" && setting[property] === undefined) continue;
         if (baseline && setting[property] === baseline[index]?.[property] && this.columnFormatting?.[setting.key]?.[property]) continue;
         const value = property === "fontWeight" ? String(setting[property]) : setting[property];
         this.setColumnFormatting({ minCol: index, maxCol: index }, property, value);
@@ -529,11 +532,11 @@ class PTTableFormatting {
     overlay.id = "columnFontSettingsModal";
     overlay.className = "modal-overlay column-font-settings";
     overlay.innerHTML = `<form class="modal-card" role="dialog" aria-modal="true" aria-labelledby="columnFontSettingsTitle" aria-describedby="columnFontSettingsNote" novalidate>
-      <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 글자 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="설정창 닫기">✕</button></div>
+      <div class="modal-header"><h2 id="columnFontSettingsTitle" class="modal-title">열 서식 설정</h2><button type="button" class="btn-close-modal" data-close aria-label="설정창 닫기">✕</button></div>
       <div class="modal-body">
         <p id="columnFontSettingsNote" class="column-font-note">적용한 열의 기존 셀 서식은 모든 날짜·검색 내역에서 바뀝니다. 적용 후 지정한 개별 셀 서식은 유지됩니다.</p>
         <div class="column-font-guide"><strong>10개 열</strong><span>크기 8~72px · 0.5px 단위 · 입력칸 Enter로 해당 열 적용</span></div>
-        <div class="column-font-list"><table><thead><tr><th scope="col">열</th><th scope="col">크기</th><th scope="col">굵기</th><th scope="col">색</th><th scope="col">미리보기</th><th scope="col">열별 적용</th></tr></thead><tbody></tbody></table></div>
+        <div class="column-font-list"><table><thead><tr><th scope="col">열</th><th scope="col">크기</th><th scope="col">굵기</th><th scope="col">글자색</th><th scope="col">배경색</th><th scope="col">미리보기</th><th scope="col">열별 적용</th></tr></thead><tbody></tbody></table></div>
         <p id="columnFontSettingsError" class="column-font-error" role="alert" hidden></p>
       </div>
       <div class="column-font-footer">
@@ -552,6 +555,7 @@ class PTTableFormatting {
       fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
       fontWeight: row.querySelector('[data-property="fontWeight"]').value,
       color: row.querySelector('[data-property="color"]').value,
+      backgroundColor: row.querySelector('[data-background-default]').checked ? null : row.querySelector('[data-property="backgroundColor"]').value,
     });
     const updateButtons = () => {
       for (const row of rows) {
@@ -583,7 +587,7 @@ class PTTableFormatting {
       let applied = false;
       try {
         if (!this.applyColumnFontSettings(settings)) {
-          error.textContent = '입력값을 확인해 주세요. 크기·굵기·색을 올바르게 설정해야 합니다.';
+          error.textContent = '입력값을 확인해 주세요. 크기·굵기·글자색·배경색을 올바르게 설정해야 합니다.';
           error.hidden = false;
           return;
         }
@@ -609,16 +613,21 @@ class PTTableFormatting {
       const [letter, label] = setting.label.split('열 · ');
       row.innerHTML = `<th scope="row"><span class="column-font-letter">${letter}</span>${label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기" aria-describedby="columnFontSettingsError"></td>
         <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
-        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td><td><span class="column-font-preview" aria-hidden="true">가Aa</span></td><td><button type="button" data-apply-column aria-label="${setting.label}만 적용 및 저장">적용</button></td>`;
+        <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td>
+        <td><div class="column-background-controls"><input type="color" data-property="backgroundColor" aria-label="${setting.label} 셀 배경색"><label><input type="checkbox" data-background-default aria-label="${setting.label} 셀 배경색 없음">없음</label></div></td><td><span class="column-font-preview" aria-hidden="true">가Aa</span></td><td><button type="button" data-apply-column aria-label="${setting.label}만 적용 및 저장">적용</button></td>`;
       for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = property === 'color' ? this.toColorPickerValue(setting.color) : setting[property];
+      row.querySelector('[data-property="backgroundColor"]').value = this.toColorPickerValue(setting.backgroundColor || "#ffffff");
+      row.querySelector('[data-background-default]').checked = setting.backgroundColor === null;
       const preview = () => {
         const value = readSetting(row), sample = row.querySelector('.column-font-preview');
         sample.style.fontSize = `${value.fontSize >= 8 && value.fontSize <= 72 ? value.fontSize : setting.fontSize}px`;
         sample.style.fontWeight = value.fontWeight; sample.style.color = value.color;
-        sample.title = `${value.fontSize}px · ${value.fontWeight} · ${value.color}`;
+        sample.style.backgroundColor = value.backgroundColor || "";
+        sample.title = `${value.fontSize}px · ${value.fontWeight} · 글자색 ${value.color} · 배경색 ${value.backgroundColor || "없음"}`;
       };
       const changed = event => {
         if (!event.target.matches('input, select')) return;
+        if (event.target.dataset.property === 'backgroundColor') row.querySelector('[data-background-default]').checked = false;
         row.dataset.applied = 'false'; row.classList.add('is-modified');
         row.querySelector('[data-apply-column]').textContent = '적용';
         event.target.removeAttribute('aria-invalid'); error.hidden = true;
@@ -656,10 +665,12 @@ class PTTableFormatting {
     if (!settings.length || new Set(settings.map(setting => setting.key)).size !== settings.length ||
         settings.some(setting => !columns.some(column => column.key === setting.key) ||
           !Number.isInteger(setting.fontSize * 2) || setting.fontSize < 8 || setting.fontSize > 72 ||
-          ![400,500,600,700,800,900].includes(Number(setting.fontWeight)) || !/^#[0-9a-f]{6}$/i.test(setting.color))) return false;
+          ![400,500,600,700,800,900].includes(Number(setting.fontWeight)) || !/^#[0-9a-f]{6}$/i.test(setting.color) ||
+          (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)))) return false;
     for (const setting of settings) {
       const index = columns.findIndex(column => column.key === setting.key);
-      for (const property of ['fontSize','fontWeight','color']) {
+      for (const property of ['fontSize','fontWeight','color','backgroundColor']) {
+        if (property === 'backgroundColor' && setting[property] === undefined) continue;
         this.setColumnFormatting({minCol:index,maxCol:index}, property,
           property === 'fontWeight' ? String(setting[property]) : setting[property], true);
       }
