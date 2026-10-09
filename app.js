@@ -4796,8 +4796,10 @@ class PTApp {
 
     // Open context menu on right click in sheet container
     this.elSheetContainer.addEventListener("contextmenu", (e) => {
+      this.cancelCellLongPress?.();
       this.handleTableContextMenu(e);
     });
+    this.initCellLongPressMenu();
 
     // Context menu item click dispatcher
     this.elContextMenu.addEventListener("click", (e) => {
@@ -4808,6 +4810,49 @@ class PTApp {
       this.executeContextAction(action);
       this.hideContextMenu();
     });
+  }
+
+  initCellLongPressMenu() {
+    const sheet = this.elSheetContainer;
+    let timer = null, press = null, suppressClickUntil = 0;
+    const cancel = () => { clearTimeout(timer); timer = null; press = null; };
+    this.cancelCellLongPress = cancel;
+    sheet.addEventListener("touchstart", event => {
+      cancel();
+      if (event.touches.length !== 1) return;
+      const cell = event.target.closest(".excel-cell");
+      if (!cell || cell.closest(".cross-date-row") || event.target.closest(".cell-fill-handle, .col-resizer")) return;
+      // Keep native text selection available inside an active editor.
+      if (event.target.closest("input:not(.is-armed), textarea")) return;
+      const touch = event.touches[0];
+      press = { cell, x: touch.clientX, y: touch.clientY, opened: false };
+      timer = setTimeout(() => {
+        if (!press || !cell.isConnected) return;
+        this.handleTableContextMenu({ target: cell, clientX: press.x, clientY: press.y, preventDefault() {} });
+        press.opened = true;
+        suppressClickUntil = Date.now() + 1000;
+      }, 550);
+    }, { passive: true });
+    sheet.addEventListener("touchmove", event => {
+      if (!press) return;
+      const touch = event.touches[0];
+      if (event.touches.length !== 1 || Math.hypot(touch.clientX - press.x, touch.clientY - press.y) > 10) cancel();
+    }, { passive: true });
+    sheet.addEventListener("touchend", event => {
+      if (press?.opened) {
+        event.preventDefault();
+        suppressClickUntil = Date.now() + 800;
+      }
+      cancel();
+    }, { passive: false });
+    sheet.addEventListener("touchcancel", cancel, { passive: true });
+    sheet.addEventListener("scroll", cancel, { passive: true, capture: true });
+    sheet.addEventListener("click", event => {
+      if (Date.now() >= suppressClickUntil) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      suppressClickUntil = 0;
+    }, true);
   }
 
   handleTableContextMenu(e) {
