@@ -24,6 +24,61 @@ function createApp() {
   return { app, storage, context };
 }
 
+test('history Apply undoes the whole row allocation and restores the prior row-header selection', () => {
+  const {app}=createApp();
+  const rows=app.getCurrentRows();rows[118].name='기존환자';app.saveDataStore();
+  app.selectRowRange=(minRow,maxRow)=>{app.selectedRowRange={minRow,maxRow};app.activeCell=null;};
+  app.selectRowRange(118,118);app.selectedRange={minCol:0,maxCol:9};
+  app.clearHeaderSelections=()=>{app.selectedRowRange=null;app.selectedRange=null;};
+  app.elTableBody={querySelector:()=>null,querySelectorAll:()=>[]};
+  app.historyApplyTarget={date:app.currentDate,row:rows[118],rowIdx:118,rows};
+  app.elSearchInput.value='새환자';
+  app.searchAllDates=()=>{};
+  app.renderTable=()=>app.getCurrentRows();
+  app.restoreAppliedHistorySelection=target=>{app.activeCell={rowIdx:target.rowIdx,colKey:'no'};};
+  const before=JSON.stringify(app.getCurrentRows());
+  app.captureHistory();
+  const undoBefore=app.getEditHistory().undo.length;
+  app.applyHistoryRow({name:'새환자',chartNo:'TEST',part:'허리',_sourceDate:'2026-09-01'},{focusAppliedRow:true});
+  const after=JSON.stringify(app.getCurrentRows());
+  assert.equal(app.getCurrentRows()[119].name,'새환자');
+  assert.equal(app.getEditHistory().undo.length,undoBefore+1);
+  app.restoreEditHistory();
+  assert.equal(JSON.stringify(app.getCurrentRows()),before);
+  assert.deepEqual(app.selectedRowRange,{minRow:118,maxRow:118});
+  assert.equal(app.lastHistoryAppliedTarget,null);
+  app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};};
+  app.elTableBody.querySelector=()=>({});
+  app.restoreEditHistory(true);
+  assert.equal(JSON.stringify(app.getCurrentRows()),after);
+  assert.deepEqual(app.activeCell,{rowIdx:119,colKey:'no'});
+});
+
+test('consecutive search applies and partial history selection undo and redo independently', () => {
+  const {app}=createApp();
+  const rows=app.getCurrentRows();Object.assign(rows[0],{name:'가상환자',chartNo:'TEST',part:'원래',memo:'보존'});app.saveDataStore();
+  app.elTableBody={querySelector:()=>null,querySelectorAll:()=>[]};
+  app.elSearchInput.value='가상환자';app.searchAllDates=()=>{};
+  app.renderTable=()=>app.getCurrentRows();
+  app.historyApplyTarget={date:app.currentDate,row:rows[0],rowIdx:0,rows};
+  const baseline=JSON.stringify(rows);
+  const source={name:'가상환자',chartNo:'TEST',part:'첫 적용',memo:'변경 금지',_sourceDate:'2026-09-01',_sourceRowIdx:0};
+  app.crossDateResults=[source];
+  app.selectCrossDateCell=(row,col,extend)=>{app.crossDateSelection={startRow:0,endRow:row,startCol:4,endCol:col,minRow:0,maxRow:row,minCol:4,maxCol:col};};
+  app.selectCrossDateCell(0,4);
+  app.applyHistoryRow(source);
+  const first=JSON.stringify(app.getCurrentRows());
+  assert.equal(app.getCurrentRows()[0].part,'첫 적용');assert.equal(app.getCurrentRows()[0].memo,'보존');
+  source.part='두번째 적용';app.applyHistoryRow(source);
+  app.restoreEditHistory();assert.equal(JSON.stringify(app.getCurrentRows()),first);
+  assert.equal(app.crossDateSelection.minCol,4);
+  app.restoreEditHistory();assert.equal(JSON.stringify(app.getCurrentRows()),baseline);
+  assert.equal(app.crossDateSelection.minCol,4);
+  app.restoreEditHistory(true);assert.equal(JSON.stringify(app.getCurrentRows()),first);
+  app.restoreEditHistory(true);assert.equal(app.getCurrentRows()[0].part,'두번째 적용');
+  assert.equal(app.getCurrentRows()[0].memo,'보존');
+});
+
 test('multi-cell changes restore as one transaction and persist undo/redo', () => {
   const { app, storage } = createApp();
   const rows = app.getCurrentRows();

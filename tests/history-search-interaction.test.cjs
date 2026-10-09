@@ -11,7 +11,7 @@ function createApp(rows = []) {
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
   Object.assign(app, {
-    currentDate: '2026-10-04', activeCell: { rowIdx: 0, colKey: 'name' },
+    currentDate: '2026-10-04', dataStore: {'2026-10-04':rows}, activeCell: { rowIdx: 0, colKey: 'name' },
     elSearchInput: { value: '' }, elTableBody: { querySelector: () => ({}) },
     elSheetContainer: { focus() {} },
     historyApplyTarget: { date: '2026-10-04', rows, row: rows[0], rowIdx: 0, colKey: 'name' },

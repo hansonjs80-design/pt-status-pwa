@@ -73,12 +73,20 @@ class PTHistorySearch {
     if (!target || target.date !== this.currentDate) return;
     // Finish a live editor before assigning; a later blur cannot restore old text.
     if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) document.activeElement?.blur?.();
-    if (typeof this.captureHistory === "function") this.captureHistory();
     const rows = this.getCurrentRows();
+    if (typeof this.captureHistory === "function") this.captureHistory();
     const referenceIndex = rows.indexOf(target.row);
     if (referenceIndex < 0 && target.rows === rows) return;
     const targetRowIdx = referenceIndex >= 0 ? referenceIndex : target.rowIdx;
     if (!Number.isInteger(targetRowIdx) || !rows[targetRowIdx]) return;
+    const history = this.getEditHistory();
+    history.applySelections ||= new Map();
+    history.applySelections.set(history.current, {
+      rowRange: this.selectedRowRange && { ...this.selectedRowRange },
+      lastCol: this.selectedRange?.maxCol ?? 9,
+      cell: this.activeCell && { rowIdx: this.activeCell.rowIdx, colKey: this.activeCell.colKey },
+      search: this.captureHistorySearchSelection()
+    });
     let rowIdx;
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const selection = this.crossDateSelection;
@@ -102,8 +110,6 @@ class PTHistorySearch {
     this.clipboardSelection = null;
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
-    this.saveDataStore();
-    if (typeof this.captureHistory === "function") this.captureHistory();
     this.renderTable();
     if (searchQuery) {
       this.searchAllDates(searchQuery, rowIdx, { scrollToAppliedRow: focusAppliedRow });
@@ -123,6 +129,18 @@ class PTHistorySearch {
     }
     this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
     if (focusAppliedRow) this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
+    // Include row allocation and final selection in the same Apply transaction.
+    this.captureHistory();
+    history.applySelections.set(history.current, {
+      rowRange: this.selectedRowRange && { ...this.selectedRowRange },
+      lastCol: this.selectedRange?.maxCol ?? 9,
+      cell: this.activeCell && { rowIdx: this.activeCell.rowIdx, colKey: this.activeCell.colKey },
+      search: this.captureHistorySearchSelection()
+    });
+    for (const snapshot of history.applySelections.keys()) {
+      if (snapshot !== history.current && !history.undo.includes(snapshot) && !history.redo.includes(snapshot)) history.applySelections.delete(snapshot);
+    }
+    this.saveDataStore(false);
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
 

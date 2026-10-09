@@ -287,9 +287,10 @@ class PTApp {
     const to = redo ? history.undo : history.redo;
     to.push(history.current);
     history.current = from.pop();
+    const appliedSelection = history.applySelections?.get(history.current);
     const searchQuery = this.elSearchInput.value.trim();
     const searchTarget = this.historyApplyTarget && { ...this.historyApplyTarget };
-    const selected = this.activeCell ? { ...this.activeCell } : null;
+    const selected = appliedSelection ? appliedSelection.cell : this.activeCell ? { ...this.activeCell } : null;
     this.clearHeaderSelections();
     this.closeAutocompleteMenu();
     this.closeGenderDropdown();
@@ -299,13 +300,17 @@ class PTApp {
     this.selectedColKey = null;
     this.clipboardSelection = null;
     this.historyApplyTarget = null;
+    this.lastHistoryAppliedTarget = null;
     this.pendingCut = null;
     this.sortState = { colKey: null, direction: "original" };
     document.querySelectorAll?.(".sort-indicator").forEach(el => { el.textContent = ""; });
     this.elSearchInput.value = searchQuery;
     this.elBtnClearSearch.style.display = searchQuery ? "block" : "none";
     this.renderTable();
-    if (selected) {
+    if (appliedSelection?.rowRange) {
+      const { minRow, maxRow } = appliedSelection.rowRange;
+      this.selectRowRange(minRow, maxRow, appliedSelection.lastCol);
+    } else if (selected) {
       const rowIdx = Math.min(selected.rowIdx, this.getCurrentRows().length - 1);
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${selected.colKey}"]`);
       if (cell) this.selectCell(rowIdx, selected.colKey, cell);
@@ -318,7 +323,9 @@ class PTApp {
     if (searchQuery) {
       const target = Math.min(searchTarget?.rowIdx ?? selected?.rowIdx ?? 0, this.getCurrentRows().length - 1);
       this.searchAllDates(searchQuery, Math.max(0, target), { preserveCurrentSelection: true });
+      if (appliedSelection?.search) this.restoreHistorySearchSelection(appliedSelection.search);
     }
+    if (appliedSelection?.rowRange) this.ensureCurrentCellVisible(this.elTableBody.querySelector(`tr[data-row-idx="${appliedSelection.rowRange.minRow}"] .row-num`));
     this.saveDataStore(false);
     this.showSaveIndicator(redo ? "다시 실행됨" : "되돌림 완료");
   }
