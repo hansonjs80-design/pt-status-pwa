@@ -630,6 +630,7 @@ class PTApp {
     const requestPeriod = currentPeriod;
     this.searchHistoryRequestPeriod = requestPeriod;
     const request = (async () => {
+      this.searchHistoryLoadError = null;
       this.cloudSearchHistory ||= {};
       const history = {};
       const pageSize = 200;
@@ -642,7 +643,25 @@ class PTApp {
           if (cutoffDate && typeof query.gte === "function") {
             query = query.gte("date", cutoffDate);
           }
-          const { data, error } = await query.range(offset, offset + pageSize - 1);
+          // Bound each page so a stalled connection cannot lock the search dialog.
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          let timeout;
+          let result;
+          try {
+            if (controller) {
+              if (typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
+              result = await Promise.race([
+                query.range(offset, offset + pageSize - 1),
+                new Promise((_, reject) => {
+                  timeout = setTimeout(() => {
+                    controller.abort();
+                    reject(new Error("검색 기록 연결 시간이 초과되었습니다."));
+                  }, 15000);
+                }),
+              ]);
+            } else result = await query.range(offset, offset + pageSize - 1);
+          } finally { if (timeout !== undefined) clearTimeout(timeout); }
+          const { data, error } = result;
           if (error) throw error;
           if (this.supabaseClient !== client) return false;
           for (const entry of data || []) {
@@ -663,6 +682,7 @@ class PTApp {
         if (this.elSearchInput?.value?.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
         return true;
       } catch (error) {
+        if (this.supabaseClient === client) this.searchHistoryLoadError = error;
         console.warn("이전 날짜 검색 기록을 불러오지 못했습니다:", error.message || error);
         return false;
       }

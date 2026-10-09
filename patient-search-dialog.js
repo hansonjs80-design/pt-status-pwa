@@ -4,6 +4,7 @@ class PTPatientSearchDialog {
     // Windows IME can replay F without marking it as a repeat after the editor
     // has gone. The same physical shortcut must not reopen the prompt.
     if (this.directHistorySearchKeyHeld) return;
+    this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     clearTimeout(this.searchPromptFocusTimer);
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
@@ -22,6 +23,7 @@ class PTPatientSearchDialog {
   }
 
   closeSearchPromptModal() {
+    this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     clearTimeout(this.searchPromptFocusTimer);
     if (!this.elSearchPromptModal) return;
     this.closeSearchPromptAutocomplete();
@@ -325,7 +327,12 @@ class PTPatientSearchDialog {
     // A repeated IME shortcut can open a prompt while cloud history is loading.
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
     const searchByChart = this.isChartNumberQuery(query);
-    if (!searchByChart && !this.hasRecordedPatientName(query, targetRowIdx)) {
+    const exists = searchByChart ? this.hasRecordedPatientValue(query, targetRowIdx, "chartNo") : this.hasRecordedPatientName(query, targetRowIdx);
+    if (!exists) {
+      if (this.supabaseClient && this.searchHistoryLoadError) {
+        this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
+        return false;
+      }
       this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query, targetRowIdx });
       return false;
     }
@@ -343,8 +350,15 @@ class PTPatientSearchDialog {
     const targetIdx = this.searchPromptTargetRowIdx;
     if (!q) return;
     this.searchPromptSubmitting = true;
+    const requestId = this.searchPromptRequestId || 0;
+    const button = this.elBtnSearchPromptSubmit;
+    const buttonLabel = button?.innerHTML;
+    if (button) { button.disabled = true; button.textContent = "검색 중"; }
+    this.elSearchPromptInput.setAttribute?.("aria-busy", "true");
     try {
       if (this.supabaseClient) await this.loadSearchHistory();
+      // Closing or reopening the dialog must invalidate its old async result.
+      if ((this.searchPromptRequestId || 0) !== requestId) return;
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
       const searchByChart = this.isChartNumberQuery(q);
@@ -352,6 +366,10 @@ class PTPatientSearchDialog {
       // A miss must not force a second full download of the same date range.
       const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists) {
+        if (this.supabaseClient && this.searchHistoryLoadError) {
+          this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
+          return;
+        }
         this.closeSearchPromptModal();
         this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query: q, targetRowIdx: targetIdx });
         return;
@@ -361,7 +379,13 @@ class PTPatientSearchDialog {
       const field = searchByChart ? "chartNo" : "name";
       const focusCurrentTarget = String(targetRow?.[field] ?? "").trim().toLowerCase() === normalized;
       this.searchAllDates(q, targetIdx, { focusCurrentTarget });
-    } finally { this.searchPromptSubmitting = false; }
+    } catch (error) {
+      this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
+    } finally {
+      this.searchPromptSubmitting = false;
+      this.elSearchPromptInput.removeAttribute?.("aria-busy");
+      if (button) { button.disabled = false; button.innerHTML = buttonLabel; }
+    }
   }
 
 }

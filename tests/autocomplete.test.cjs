@@ -510,3 +510,19 @@ test('closing preset manager restores focus and prevents delayed input focus fro
   app.closePresetManager();
   assert.equal(returned, 1);
 });
+
+test('stalled cloud history pages time out, release their request and retry successfully', async () => {
+  let expire, signal, cleared = 0, stalled = true;
+  const app = createApp({}, {}, { AbortController, setTimeout(fn, ms) { assert.equal(ms, 15000); expire = fn; return 1; }, clearTimeout() { cleared++; }, console: { warn() {} } });
+  app.refreshSearchSuggestions = () => {};
+  app.supabaseClient = { from() { return { select() { return this; }, order() { return this; }, abortSignal(value) { signal = value; return this; }, range() { return stalled ? new Promise(() => {}) : Promise.resolve({ data: [] }); } }; } };
+  const pending = app.loadSearchHistory(); expire();
+  assert.equal(await pending, false);
+  assert.equal(signal.aborted, true);
+  assert.equal(app.searchHistoryRequest, null);
+  assert.match(app.searchHistoryLoadError.message, /시간/);
+  stalled = false;
+  assert.equal(await app.loadSearchHistory(), true);
+  assert.equal(app.searchHistoryLoadError, null);
+  assert.equal(cleared, 2);
+});

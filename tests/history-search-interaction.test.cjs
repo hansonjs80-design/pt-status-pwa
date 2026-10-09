@@ -1704,3 +1704,55 @@ test('Windows removed-editor handoff completes the captured autocomplete name an
   assert.equal(app.getHistoryDestinationIndex({name:'가상춘식',chartNo:'999'},0),0);
   assert.equal(rows[1].name,undefined);
 });
+
+test('slow prompt search exposes pending state, ignores duplicate submission and completes once', async () => {
+  const { app } = createApp([{}]);
+  app.elSearchPromptInput = { value: '가상환자', setAttribute() {}, removeAttribute() {} };
+  app.elBtnSearchPromptSubmit = { innerHTML: '검색 <span>Enter</span>', disabled: false };
+  app.searchPromptTargetRowIdx = 0;
+  app.supabaseClient = {};
+  let finish, loads = 0, searches = 0;
+  app.loadSearchHistory = () => { loads++; return new Promise(resolve => { finish = resolve; }); };
+  app.searchAllDates = () => searches++;
+  const pending = app.submitSearchPrompt();
+  assert.equal(app.elBtnSearchPromptSubmit.disabled, true);
+  assert.equal(app.elBtnSearchPromptSubmit.textContent, '검색 중');
+  await app.submitSearchPrompt();
+  assert.equal(loads, 1);
+  app.cloudSearchHistory = { '2026-10-01': [{ name: '가상환자' }] };
+  finish(true); await pending;
+  assert.equal(searches, 1);
+  assert.equal(app.elBtnSearchPromptSubmit.disabled, false);
+  assert.equal(app.elBtnSearchPromptSubmit.innerHTML, '검색 <span>Enter</span>');
+  assert.equal(app.searchPromptSubmitting, false);
+});
+
+test('failed prompt history load permits retry and does not falsely report missing history', async () => {
+  const { app } = createApp([{}]);
+  app.elSearchPromptInput = { value: '가상환자' }; app.searchPromptTargetRowIdx = 0;
+  app.supabaseClient = {};
+  let misses = 0, searches = 0, message = '';
+  app.showSearchNotFoundModal = () => misses++;
+  app.showSaveIndicator = value => { message = value; };
+  app.searchAllDates = () => searches++;
+  app.loadSearchHistory = async () => { app.searchHistoryLoadError = new Error('offline'); };
+  await app.submitSearchPrompt();
+  assert.equal(misses, 0); assert.equal(searches, 0); assert.match(message, /연결/);
+  assert.equal(app.searchPromptSubmitting, false);
+  app.loadSearchHistory = async () => { app.searchHistoryLoadError = null; };
+  await app.submitSearchPrompt(); assert.equal(misses, 1);
+  app.cloudSearchHistory = { '2026-10-01': [{ name: '가상환자' }] };
+  await app.submitSearchPrompt(); assert.equal(searches, 1);
+});
+
+test('closing a pending search discards its late result and releases the submission guard', async () => {
+  const { app } = createApp([{}]);
+  app.elSearchPromptModal = { style: { display: 'flex' } };
+  app.elSearchPromptInput = { value: '가상환자' }; app.searchPromptTargetRowIdx = 0;
+  app.supabaseClient = {}; let finish;
+  app.loadSearchHistory = () => new Promise(resolve => { finish = resolve; });
+  app.searchAllDates = app.showSearchNotFoundModal = () => assert.fail('closed search must not render');
+  const pending = app.submitSearchPrompt();
+  app.closeSearchPromptModal(); finish(true); await pending;
+  assert.equal(app.searchPromptSubmitting, false);
+});
