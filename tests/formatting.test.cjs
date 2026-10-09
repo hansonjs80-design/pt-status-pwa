@@ -702,7 +702,7 @@ test('alignment applies only selected cells while keeping native input and colum
   assert.equal(rows[0]._textStyles.name.textAlign,'left');assert.equal(rows[1]._textStyles,undefined);
   assert.equal(cell.style.textAlign,'left');assert.equal(cell.style.paddingLeft,'20px');assert.equal(cell.dataset.cellAlignment,'left');
   assert.equal(refreshed,1);assert.equal(snapshots,2);assert.equal(saves,1);assert.deepEqual(plain(instance.columnFormatting),{});
-  instance.applyAlignment('right');assert.equal(cell.style.paddingLeft,'6px');assert.equal(cell.style.textAlign,'right');
+  instance.applyAlignment('right');assert.equal(cell.style.paddingLeft,'6px');assert.equal(cell.style.paddingRight,'20px');assert.equal(cell.style.textAlign,'right');
 });
 
 test('header alignment replaces all prior cell overrides, including when reapplying the same alignment', () => {

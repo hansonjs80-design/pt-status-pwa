@@ -342,7 +342,7 @@ class PTTableFormatting {
     if (alignment || element.style.textAlign) {
       element.style.textAlign = alignment || '';
       element.style.paddingLeft = alignment === 'left' ? '20px' : alignment ? '6px' : '';
-      element.style.paddingRight = alignment ? '6px' : '';
+      element.style.paddingRight = alignment === 'right' ? '20px' : alignment ? '6px' : '';
     }
   }
 
