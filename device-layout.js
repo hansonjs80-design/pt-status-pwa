@@ -212,6 +212,10 @@ class PTDeviceLayout {
 
     // 태블릿/모바일 터치 이벤트 리스너
     document.addEventListener("touchstart", (e) => {
+      if (e.touches.length > 1) {
+        endResize();
+        return;
+      }
       if (e.target.classList.contains("col-resizer") && e.touches.length === 1) {
         e.preventDefault();
         e.stopPropagation();
@@ -220,6 +224,10 @@ class PTDeviceLayout {
     }, { passive: false });
 
     document.addEventListener("touchmove", (e) => {
+      if (e.touches.length > 1) {
+        endResize();
+        return;
+      }
       if (activeTh && e.touches.length === 1) {
         e.preventDefault();
         doResize(e.touches[0].pageX);
@@ -229,6 +237,7 @@ class PTDeviceLayout {
     document.addEventListener("touchend", () => {
       endResize();
     });
+    document.addEventListener("touchcancel", endResize);
 
     // 리사이저 더블클릭 시 해당 열 기본 너비로 복원 기능
     document.addEventListener("dblclick", (e) => {

@@ -56,6 +56,21 @@ function diskStore(disk = new Map()) {
   };
 }
 
+test('pinching releases a column resize without blocking the gesture or resizing after a finger lifts', () => {
+  for (const interruption of ['touchstart', 'touchmove', 'touchcancel']) {
+    const { headers, listeners } = device();
+    const th = headers[2];
+    const handle = { classList: { contains: () => true, add() {} }, closest: () => th };
+    listeners.touchstart({ target: handle, touches: [{ pageX: 200 }], preventDefault() {}, stopPropagation() {} });
+    listeners.touchmove({ touches: [{ pageX: 220 }], preventDefault() {} });
+    assert.equal(th.style.width, '150px');
+    const gesture = { target: handle, touches: [{ pageX: 220 }, { pageX: 300 }], preventDefault() { throw Error('pinch blocked'); } };
+    listeners[interruption](gesture);
+    listeners.touchmove({ touches: [{ pageX: 260 }], preventDefault() { throw Error('resize resumed after pinch'); } });
+    assert.equal(th.style.width, '150px', interruption);
+  }
+});
+
 test('atomic width snapshot survives interrupted legacy timestamp writes and a backward clock', () => {
   const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1','{"part":160}'],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','500']]);
   const first=device(storage);first.context.Date=class extends Date {static now(){return 100;}};
