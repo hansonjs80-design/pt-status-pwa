@@ -850,7 +850,7 @@ class PTApp {
     if (cell) cell.closest("tr").style.display = "";
     if (rowSelected) this.selectRowRange(0, 0, this.selectedRange?.maxCol ?? 10);
     else if (cell) this.selectCell(0, keys[Math.max(0, colIdx)], cell);
-    cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    this.ensureCurrentCellVisible(cell);
   }
 
   applyCompoundPatientInput(row, key, value) {

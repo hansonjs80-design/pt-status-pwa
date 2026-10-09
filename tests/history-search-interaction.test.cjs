@@ -346,6 +346,29 @@ test('Ctrl/Cmd+Up selects the newest history row in full from either a daily cel
   }
 });
 
+test('row-header Ctrl/Cmd+Up reveals the first row below fixed column headers', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const endRow of [40, 45]) {
+    const { app } = createApp(Array.from({length:120},()=>({})));
+    app.activeCell = null;
+    app.selectedRowRange = {minRow:40,maxRow:endRow};
+    app.selectedRange = {minRow:40,maxRow:endRow,minCol:0,maxCol:9};
+    const container = {scrollTop:500,clientHeight:600,
+      getBoundingClientRect:()=>({top:100}),
+      querySelectorAll:()=>[{getBoundingClientRect:()=>({top:100,bottom:180,height:80})}]};
+    app.elSheetContainer = container;
+    const cell = {closest:()=>({style:{}}),
+      scrollIntoView(){container.scrollTop=80;},
+      getBoundingClientRect:()=>({top:180-container.scrollTop,bottom:210-container.scrollTop})};
+    app.elTableBody.querySelector=()=>cell;
+    let selected;
+    app.selectRowRange=(...args)=>{selected=args;};
+    app.handleGlobalKeyDown({key:'ArrowUp',[modifier]:true,target:{tagName:'DIV'},preventDefault(){}});
+    assert.deepEqual(selected,[0,0,9]);
+    assert.equal(container.scrollTop,0);
+    assert.equal(cell.getBoundingClientRect().top,180,'first row is below the sticky headers');
+  }
+});
+
 test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
