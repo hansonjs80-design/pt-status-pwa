@@ -284,7 +284,7 @@ class PTTableView {
     }) || rows[0];
   }
 
-  ensureCurrentCellVisible(cell, { center = false } = {}) {
+  ensureCurrentCellVisible(cell, { center = false, viewportRatio = 0.5 } = {}) {
     const container = this.elSheetContainer;
     cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (!cell?.getBoundingClientRect || !container?.getBoundingClientRect) return;
@@ -297,7 +297,7 @@ class PTTableView {
       if (rect.height && rect.bottom > top && rect.top < bottom) top = Math.max(top, rect.bottom);
     });
     const rect = cell.getBoundingClientRect();
-    if (center) container.scrollTop += (rect.top + rect.bottom - top - bottom) / 2;
+    if (center) container.scrollTop += (rect.top + rect.bottom) / 2 - (top + (bottom - top) * viewportRatio);
     else if (rect.top < top) container.scrollTop += rect.top - top;
     else if (rect.bottom > bottom) container.scrollTop += rect.bottom - bottom;
   }

@@ -261,6 +261,11 @@ test('Ctrl/Cmd+Down uses the last patient for row, cell, range and column select
       app.selectedRange={minRow:2,maxRow:mode==='range'?8:2,minCol:4,maxCol:mode==='range'?8:4};
     }
     app.elTableBody.querySelector=()=>({closest:()=>({style:{}}),scrollIntoView(){scrolled++;}});
+    app.ensureCurrentCellVisible=(cell,options)=>{
+      assert.equal(options.center,true);
+      assert.equal(options.viewportRatio,0.65);
+      cell.scrollIntoView();
+    };
     app.selectCell=(rowIdx,colKey)=>{selected={rowIdx,colKey};};
     app.handleGlobalKeyDown({key:'ArrowDown',[modifier]:true,target:{tagName:'DIV'},preventDefault(){}});
     assert.deepEqual(selected,mode==='row'?{minRow:42,maxRow:42}:{rowIdx:42,colKey:'part'},`${modifier}/${count}/${mode}`);
@@ -292,8 +297,8 @@ test('history Ctrl/Cmd+Down after copy or cut ignores prepared writer rows and s
   }
 });
 
-test('history jump centers the current cell below pinned search and daily headers at different viewport heights', () => {
-  for (const height of [500, 900]) {
+test('jumps place current cells at the requested viewport position below pinned headers', () => {
+  for (const height of [500, 900]) for (const ratio of [0.5,0.65]) {
     const { app } = createApp();
     const top = 400, bottom = 100 + height;
     const container = {scrollTop: 0, clientHeight: height,
@@ -301,9 +306,9 @@ test('history jump centers the current cell below pinned search and daily header
       querySelectorAll: () => [{getBoundingClientRect: () => ({top: 100, bottom: top, height: 300})}]};
     app.elSheetContainer = container;
     const cell = {scrollIntoView() {}, getBoundingClientRect: () => ({top: 1000 - container.scrollTop, bottom: 1030 - container.scrollTop})};
-    app.ensureCurrentCellVisible(cell, {center: true});
+    app.ensureCurrentCellVisible(cell, {center: true,viewportRatio:ratio});
     const rect = cell.getBoundingClientRect();
-    assert.equal((rect.top + rect.bottom) / 2, (top + bottom) / 2);
+    assert.equal((rect.top + rect.bottom) / 2, top+(bottom-top)*ratio);
   }
 });
 

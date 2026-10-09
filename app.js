@@ -806,7 +806,7 @@ class PTApp {
       const header = this.elTableBody.querySelector(`tr[data-row-idx="${rowIdx}"] .row-num`);
       if (header) header.closest("tr").style.display = "";
       this.selectRowRange(rowIdx, rowIdx, lastCol);
-      header?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      this.ensureCurrentCellVisible(header, { center: true, viewportRatio: 0.65 });
       return;
     }
     const fromHistory = Boolean(this.crossDateSelection);
@@ -822,8 +822,7 @@ class PTApp {
     if (cell) {
       cell.closest("tr").style.display = "";
       this.selectCell(rowIdx, colKey, cell);
-      if (fromHistory) this.ensureCurrentCellVisible(cell, { center: true });
-      else cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      this.ensureCurrentCellVisible(cell, { center: true, viewportRatio: fromHistory ? 0.5 : 0.65 });
     }
   }
 
