@@ -12,5 +12,11 @@ module.exports = [
   'cloud-sync.js',
   'context-menu.js',
   'preset-manager.js',
+  'autocomplete.js',
+  'cell-editor.js',
+  'sheet-selection.js',
+  'sheet-actions.js',
+  'sheet-keyboard.js',
+  'column-settings.js',
   'app.js'
 ].map(file => readFileSync(resolve(__dirname, '../..', file), 'utf8')).join('\n');

@@ -7,7 +7,7 @@
 
 | 파일 | 담당 영역 |
 | --- | --- |
-| `app.js` | 앱 초기화, 이벤트 연결, 데이터·편집 이력, 표 렌더링, 셀 편집·선택·키보드 처리 |
+| `app.js` | 앱 초기화, 이벤트 연결, 데이터·편집 이력, 표 렌더링과 탐색 |
 | `history-search.js` | 환자 이력 검색과 기록 적용 |
 | `table-formatting.js` | 글자·배경·서식과 색상 도구 |
 | `summary.js` | 일일 현황 집계와 표시 |
@@ -17,6 +17,12 @@
 | `cloud-sync.js` | 클라우드 연결, 실시간 통신, 기록·프리셋 병합과 동기화 |
 | `context-menu.js` | 우클릭 메뉴, 모바일 길게 터치, 메뉴 작업 실행 |
 | `preset-manager.js` | 빠른 입력 관리, 목록 편집·정렬·숨김과 관리 창 |
+| `autocomplete.js` | 자동완성 검색·후보 표시·선택과 입력 문구 수정 |
+| `cell-editor.js` | 네이티브 셀 편집, 입력·IME·확정·포커스 처리 |
+| `sheet-selection.js` | 셀·행·열·범위 선택, 헤더 강조와 정렬 |
+| `sheet-actions.js` | 표 복사·잘라내기·붙여넣기, 행 추가·삭제와 내용 지우기 |
+| `sheet-keyboard.js` | 표 키보드 단축키, 선택 이동과 이력 적용 단축키 |
+| `column-settings.js` | 열 기본 서식 설정 창, 저장·검증·공유 동기화 |
 | `local-tools.js` | 기기 저장소와 로컬 도구 초기화 |
 
 기능 파일은 `index.html`에서 `app.js`보다 먼저 로드하고, `app.js`의 기능 설치
