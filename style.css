@@ -2957,10 +2957,20 @@ body {
   padding-left: inherit;
   padding-right: inherit;
 }
-.alignment-button { gap: 1px; }
-.alignment-button > span { font-size: 9px; }
+.history-button.alignment-button { width: 40px; padding: 3px; gap: 2px; }
+.history-button.alignment-button svg { width: 26px; height: 26px; flex-shrink: 0; stroke-width: 2.4; }
+.alignment-button > span { font-size: 9px; flex-shrink: 0; }
 .column-typography-menu.alignment-menu { display: flex; gap: 4px; width: auto; min-width: 0; padding: 6px; }
 .alignment-menu button { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 6px; }
 .alignment-menu button.is-current { background: #d3e3fd; color: #174ea6; }
 .alignment-menu button:focus-visible { outline: 2px solid #174ea6; outline-offset: -2px; }
 .alignment-menu svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* The sticky top-left corner becomes an exit control while viewing search history. */
+.history-search-close { display: none; position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: #495057; cursor: pointer; align-items: center; justify-content: center; touch-action: manipulation; }
+.history-search-close svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }
+.history-search-active .corner-select-icon { display: none; }
+.history-search-active .history-search-close { display: flex; }
+.history-search-active #cornerHeader { cursor: default; }
+.history-search-close:hover { background: #d8dee4; color: #111; }
+.history-search-close:focus-visible { outline: 2px solid #495057; outline-offset: -2px; }

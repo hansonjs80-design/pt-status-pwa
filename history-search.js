@@ -295,6 +295,20 @@ class PTHistorySearch {
     this.ensureCurrentCellVisible(cell);
   }
 
+  closeHistorySearch() {
+    this.closeAutocompleteMenu();
+    this.closeGenderDropdown();
+    this.hideContextMenu();
+    this.clipboardSelection = null;
+    this.pendingCut = null;
+    this.renderClipboardSelection();
+    this.clearHeaderSelections();
+    this.elSearchInput.value = '';
+    // Use the same exit path as Escape to restore the origin or applied row.
+    this.handleSearch();
+    this.elSheetContainer.focus({ preventScroll: true });
+  }
+
   handleSearch() {
     const q = this.elSearchInput.value.trim().toLowerCase();
     this.elBtnClearSearch.style.display = q ? "block" : "none";

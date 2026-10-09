@@ -520,7 +520,13 @@ class PTApp {
     // Corner Header Click (Select All Sheet)
     const cornerHeader = document.getElementById("cornerHeader");
     if (cornerHeader) {
-      cornerHeader.addEventListener("click", () => this.selectAllCells());
+      cornerHeader.addEventListener("click", event => {
+        if (event.target.closest('#btnCloseHistorySearch')) {
+          event.preventDefault(); event.stopPropagation();
+          this.closeHistorySearch();
+        } else this.selectAllCells();
+      });
+      document.getElementById('btnCloseHistorySearch')?.addEventListener('mousedown', event => event.preventDefault());
     }
 
     this.elDateLabel.addEventListener("click", () => this.openCalendar());
