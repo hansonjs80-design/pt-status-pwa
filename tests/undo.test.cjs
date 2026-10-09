@@ -79,6 +79,40 @@ test('consecutive search applies and partial history selection undo and redo ind
   assert.equal(app.getCurrentRows()[0].memo,'보존');
 });
 
+test('repeated Apply and history-range paste undo survive synchronization between every cycle', async () => {
+  for (const operation of ['apply','paste']) {
+    const {app,context}=createApp();context.navigator={};
+    app.getCurrentRows()[0].name='기존환자';app.saveDataStore();
+    app.elSearchInput.value='검색환자';
+    app.elTableBody={querySelector:()=>({scrollIntoView(){}}),querySelectorAll:()=>[]};
+    app.renderClipboardSelection=()=>{};
+    app.renderTable=()=>app.getCurrentRows();
+    app.updateRangeSelection=()=>{};
+    app.selectCell=(rowIdx,colKey)=>{app.activeCell={rowIdx,colKey};app.selectedRange=null;};
+    app.selectRowRange=(minRow,maxRow)=>{app.selectedRowRange={minRow,maxRow};app.activeCell=null;app.selectedRange={minRow,maxRow,minCol:0,maxCol:9};};
+    app.clearHeaderSelections=()=>{app.selectedRowRange=null;app.selectedRange=null;};
+    app.searchAllDates=()=>{const rows=app.getCurrentRows();app.historyApplyTarget={date:app.currentDate,row:rows[1],rowIdx:1,rows};};
+    app.restoreAppliedHistorySelection=target=>app.selectCell(target.rowIdx,'no');
+    for(let cycle=0;cycle<4;cycle++) {
+      app.searchAllDates();app.selectRowRange(1,1);
+      if(operation==='apply') app.applyHistoryRow({name:'검색환자',chartNo:'TEST',part:'허리',_sourceDate:'2026-09-01'},{focusAppliedRow:true});
+      else {
+        app.clipboardBuffer='1\tF\tTEST\t검색환자\t허리\t치료\t\tJ\t메모\t특이사항';
+        app.clipboardSelection={kind:'history',minRow:0,maxRow:0,minCol:0,maxCol:9};
+        await app.pasteSelection(app.clipboardBuffer);
+      }
+      assert.equal(app.getCurrentRows()[1].name,'검색환자',`${operation}/${cycle} apply`);
+      const previous=JSON.parse(JSON.stringify(app.getCurrentRows()));
+      app.getCurrentRows()[4].memo=`원격 메모 ${cycle}`;
+      app.rebaseEditHistoryAfterSync(app.currentDate,previous);
+      app.restoreEditHistory();
+      assert.equal(app.getCurrentRows()[1].name,'',`${operation}/${cycle} undo`);
+      assert.equal(app.getCurrentRows()[4].memo,`원격 메모 ${cycle}`);
+      assert.equal(app.getEditHistory().redo.length,1);
+    }
+  }
+});
+
 test('multi-cell changes restore as one transaction and persist undo/redo', () => {
   const { app, storage } = createApp();
   const rows = app.getCurrentRows();

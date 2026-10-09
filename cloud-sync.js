@@ -260,6 +260,24 @@ class PTCloudSync {
     this.syncTimers.set(date, setTimeout(() => { this.syncTimers.delete(date); void this.pushToCloud(date); }, 400));
   }
 
+  rebaseEditHistoryAfterSync(date, previousRows) {
+    const history = this.editHistory?.get(date);
+    if (!history) return;
+    const currentRows = this.dataStore[date] || [];
+    const remapped = new Map();
+    const rebase = snapshot => {
+      if (!remapped.has(snapshot)) remapped.set(snapshot,
+        JSON.stringify(this.mergeCloudRows(previousRows, JSON.parse(snapshot), currentRows)));
+      return remapped.get(snapshot);
+    };
+    history.undo = history.undo.map(rebase);
+    history.redo = history.redo.map(rebase);
+    history.current = rebase(history.current);
+    if (history.applySelections) history.applySelections = new Map(
+      [...history.applySelections].filter(([snapshot]) => remapped.has(snapshot))
+        .map(([snapshot, selection]) => [remapped.get(snapshot), selection]));
+  }
+
   mergeCloudRows(base, local, remote) {
     if (!base || base.length === 0) return local;
     const merged = JSON.parse(JSON.stringify(remote || []));
@@ -309,14 +327,15 @@ class PTCloudSync {
         }
         latest.length = rebased.length;
         this.dataStore[dateStr] = latest;
+        if (JSON.stringify(latest) !== latestText) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(latestText));
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
         localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
         if (latestText === snapshot) this.pendingSyncDates.delete(dateStr);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
         if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
-          this.editHistory.delete(dateStr); this.getEditHistory(dateStr);
           this.renderTable(); this.updateSidebarStats();
         }
+        if (dateStr === this.currentDate) this.updateHistoryButtons();
         localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
         this.notifyCloudChange(dateStr);
         this.showSaveIndicator("클라우드 동기화 완료");
@@ -374,7 +393,7 @@ class PTCloudSync {
         this.dataStore[dateStr] = data.rows_data;
         // Ensure the current default row count
         this.getCurrentRows();
-        if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.editHistory.delete(dateStr);
+        if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
         this.getEditHistory(dateStr);
         this.updateHistoryButtons();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));

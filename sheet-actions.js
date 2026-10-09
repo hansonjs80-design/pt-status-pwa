@@ -246,6 +246,8 @@ class PTSheetActions {
     try {
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
       const rows = this.getCurrentRows();
+      // Capture after clipboard reads and row normalization, directly before mutation.
+      this.captureHistory();
 
       const grid = this.parseClipboardGrid(text);
       const htmlColors = this.parseClipboardHtmlColors(html);
@@ -325,8 +327,11 @@ class PTSheetActions {
       // Include trailing entry rows before saving the undo snapshot. Adding
       // them during render would otherwise consume the first Undo action.
       this.getCurrentRows();
-      this.saveDataStore();
+      this.saveDataStore(false);
       this.renderTable();
+      // Explicitly record the completed paste even if an editor still owns focus.
+      this.captureHistory();
+      this.updateHistoryButtons();
       this.showSaveIndicator("붙여넣기 완료됨");
       this.clipboardSelection = null;
       this.renderClipboardSelection();

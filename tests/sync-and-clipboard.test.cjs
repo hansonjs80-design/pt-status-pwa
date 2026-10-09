@@ -59,6 +59,29 @@ test('preset edits and deletions propagate to another computer', async () => {
 });
 
 
+test('cloud merge preserves local undo and redo while retaining unrelated remote edits', async () => {
+  const db=new Map(),{app}=createApp(db),date=app.currentDate;
+  app.dataStore[date]=app.createDefaultEmptyRows();
+  const baseline=clone(app.dataStore[date]);
+  app.syncBaselines.set(date,baseline);app.getEditHistory();
+  app.dataStore[date][0].name='적용환자';app.captureHistory();
+  const remote=clone(baseline);remote[1].memo='다른 기기 메모';
+  db.set(date,{date,rows_data:remote,updated_at:null});
+  app.pendingSyncDates.add(date);
+  await app.pushToCloud(date);
+  assert.equal(app.getEditHistory().undo.length,1,'sync must not erase the Apply transaction');
+  const undone=JSON.parse(app.getEditHistory().undo.at(-1));
+  assert.equal(undone[0].name,'');assert.equal(undone[1].memo,'다른 기기 메모');
+  app.dataStore[date]=undone;
+  const history=app.getEditHistory();history.redo.push(history.current);history.current=history.undo.pop();
+  const incoming=clone(db.get(date).rows_data);incoming[2].memo='추가 원격 메모';
+  db.set(date,{date,rows_data:incoming,updated_at:'2026-10-01T00:00:00Z'});
+  app.pendingSyncDates.clear();await app.pullFromCloud(date);
+  assert.equal(history.redo.length,1);
+  const redone=JSON.parse(history.redo[0]);
+  assert.equal(redone[0].name,'적용환자');assert.equal(redone[1].memo,'다른 기기 메모');assert.equal(redone[2].memo,'추가 원격 메모');
+});
+
 test('older dates missing on the server retain all local rows on upload and another device receives them', async () => {
   for (const date of ['2026-03-05','2026-06-07','2026-06-08']) {
     const db=new Map(),a=createApp(db).app,b=createApp(db).app;
@@ -262,4 +285,3 @@ test('saving an open manager only publishes edited fields and preserves newly re
   assert.equal(app.columnFormatting.memo.color.value,'#ff0000');
   assert.equal(app.columnFormatting.name.fontSize.value,21.5);
 });
-
