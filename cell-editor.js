@@ -129,7 +129,8 @@ class PTCellEditor {
       if (!composing && input.dataset.nativeComposing !== "true") repairCompletedInput();
 
       // Keep the native input and focus intact during composition.
-      // Only the separate suggestion popup is refreshed, including Windows IME input.
+      // Refresh the separate popup on the next task, coalescing IME/input events
+      // without adding a fixed wait before the inline completion can appear.
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
@@ -140,7 +141,7 @@ class PTCellEditor {
           } else {
             this.closeAutocompleteMenu();
           }
-        }, 50);
+        }, 0);
       }
     });
 
@@ -164,7 +165,7 @@ class PTCellEditor {
       this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
 
-      // 한글 조합이 완전히 끝난 시점에서 자동완성 목록 갱신 (약간 지연)
+      // Let final input events settle before refreshing, without a fixed IME delay.
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
         _acDebounceTimer = setTimeout(() => {
@@ -175,7 +176,7 @@ class PTCellEditor {
           } else {
             this.closeAutocompleteMenu();
           }
-        }, 80);
+        }, 0);
       }
     });
 
