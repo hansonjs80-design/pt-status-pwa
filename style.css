@@ -2964,9 +2964,9 @@ body {
   #btnManagerDone { grid-column: 3; grid-row: 1; }
 }
 
-/* Explicit alignment applies to both the cell and its native editor. */
+/* Keep typing left-aligned while the cell retains its saved display alignment. */
 .excel-table .excel-cell[data-cell-alignment] .cell-input-element {
-  text-align: inherit;
+  text-align: left;
   padding-left: inherit;
   padding-right: inherit;
 }
