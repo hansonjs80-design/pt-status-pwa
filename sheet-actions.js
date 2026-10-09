@@ -60,7 +60,7 @@ class PTSheetActions {
     const rows = this.getCurrentRows();
     const filtered = rows.filter((r) => r.name || r.chartNo || r.part || r.prescription || r.extra);
     const formattedDate = this.currentDate.replace(/-/g, ".");
-    while (filtered.length < DEFAULT_ROW_COUNT) {
+    while (filtered.length < this.getDefaultRowCount()) {
       filtered.push({
         no: "",
         gender: "",
@@ -543,9 +543,9 @@ class PTSheetActions {
 
     if (minRow >= 0 && minRow < rows.length) {
       rows.splice(minRow, deleteCount);
-      // Guarantee minimum 150 rows maintained
+      // Guarantee the current default row count is maintained
       const formattedDate = this.currentDate.replace(/-/g, ".");
-      while (rows.length < DEFAULT_ROW_COUNT) {
+      while (rows.length < this.getDefaultRowCount()) {
         rows.push({
           no: "",
           gender: "",

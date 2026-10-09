@@ -146,7 +146,7 @@ test('row deletion keeps No. as the destination for multiple selected cells', ()
 });
 
 test('deleting a row range selects No. at the first deleted row and clamps at the remaining last row', () => {
-  for (const [length,minRow,maxRow,expected] of [[150,4,6,4],[153,150,152,149]]) {
+  for (const [length,minRow,maxRow,expected] of [[120,4,6,4],[123,120,122,119]]) {
     const rows=Array.from({length},(_,i)=>({name:String(i)}));
     const {app}=createApp(rows);
     app.selectedRowRange={minRow,maxRow};
@@ -155,7 +155,7 @@ test('deleting a row range selects No. at the first deleted row and clamps at th
     app.deleteRowAt(minRow);
     assert.deepEqual(app.activeCell,{rowIdx:expected,colKey:'no'});
     assert.equal(app.selectedRowRange,null);
-    assert.equal(rows.length,150);
+    assert.equal(rows.length,120);
     if(minRow===4)assert.equal(rows[4].name,'7');
   }
 });
@@ -1191,8 +1191,8 @@ test('row selection arrows reveal the endpoint below pinned history headers, inc
   }
 });
 
-test('current rows keep at least 150 rows and fifteen blank rows after the last entered cell', () => {
-  for (const [lastIdx, count] of [[49, 150], [149, 165], [179, 195]]) {
+test('current rows keep at least 120 rows and fifteen blank rows after the last entered cell', () => {
+  for (const [lastIdx, count] of [[49, 120], [119, 135], [149, 165], [179, 195]]) {
     const {app, context} = createApp();
     const rows = Array.from({length: lastIdx + 1}, () => ({}));
     rows[lastIdx] = {name: '가상환자'};
@@ -1207,6 +1207,23 @@ test('current rows keep at least 150 rows and fifteen blank rows after the last 
   }
 });
 
+
+test('120-row default compacts only pristine legacy allocation and preserves extra data and formatting', () => {
+  for (const kind of ['empty','patient','format','visit','added']) {
+    const {app,context}=createApp();
+    const rows=context.App.prototype.createDefaultEmptyRows.call(app,kind==='added'?151:150);
+    if(kind==='patient')rows[140].name='기존 환자';
+    if(kind==='format')rows[140]._textStyles={part:{textAlign:'right'}};
+    if(kind==='visit')rows[140].visitTime='12:34:56';
+    app.dataStore={[app.currentDate]:rows};
+    const protectedCount=kind==='format'?141:rows.length;
+    const saved=kind!=='empty'?JSON.stringify(rows.slice(0,protectedCount)):null;
+    const result=context.App.prototype.getCurrentRows.call(app);
+    assert.equal(result.length,kind==='empty'?120:kind==='patient'||kind==='visit'?156:kind==='added'?151:141,kind);
+    if(saved)assert.equal(JSON.stringify(result.slice(0,protectedCount)),saved);
+    assert.equal(context.App.prototype.createDefaultEmptyRows.call(app).length,120);
+  }
+});
 
 test('selected text cells enter editing on Enter while Shift+Enter still moves up', () => {
   for (const value of ['', '기존 값']) for (const colKey of ['no','chartNo','name','part','memo','specialNote']) {

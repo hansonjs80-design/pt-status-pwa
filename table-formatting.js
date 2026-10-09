@@ -556,14 +556,19 @@ class PTTableFormatting {
 
   renderColoredText(element, row, key) {
     const text = key === "visitTime" ? this.getVisitTime(row) : String(row[key] ?? "");
+    // Imported non-breaking/full-width spaces can look like a missed alignment.
+    // Normalize the display origin only; retain the saved value and color offsets.
+    const offset = !element.classList?.contains('inline-editor-color-preview') &&
+      this.getCellFormatting(row, key, 'textAlign') === 'left'
+      ? text.length - text.trimStart().length : 0;
     const rich = this.getEffectiveCellRichText(row, key);
     element.textContent = "";
     if (rich?.text !== text || !Array.isArray(rich.colors)) {
-      element.textContent = text;
+      element.textContent = text.slice(offset);
       if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
       return;
     }
-    let start = 0;
+    let start = offset;
     while (start < text.length) {
       const color = rich.colors[start];
       let end = start + 1;

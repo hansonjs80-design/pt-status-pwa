@@ -665,6 +665,28 @@ test('column background validation is atomic and legacy font-only calls preserve
   assert.equal(instance.getColumnFontSettings()[3].backgroundColor,'#e2efda');
 });
 
+test('left-aligned display removes imported leading spaces without changing values or character colors', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.columnFormatting = {};
+  const originalDocument = context.document;
+  context.document = {createElement() { return {style:{},textContent:''}; }};
+  const element = {children:[],_text:'',set textContent(value){this._text=value;this.children=[];},get textContent(){return this._text+this.children.map(c=>c.textContent).join('');},append(child){this.children.push(child);}};
+  try {
+    const row = {part:'\u3000\u00a0허리',_textStyles:{part:{textAlign:'left'}},_richText:{part:{text:'\u3000\u00a0허리',colors:['#ff0000','#ff0000','#123456','#123456']}}};
+    const before = JSON.stringify(row);
+    instance.renderColoredText(element,row,'part');
+    assert.equal(element.textContent,'허리');
+    assert.equal(element.children[0].style.color,'#123456');
+    assert.equal(JSON.stringify(row),before);
+    delete row._richText;
+    instance.renderColoredText(element,row,'part');
+    assert.equal(element.textContent,'허리');
+    row._textStyles.part.textAlign='center';
+    instance.renderColoredText(element,row,'part');
+    assert.equal(element.textContent,row.part);
+  } finally {context.document=originalDocument;}
+});
+
 test('alignment applies only selected cells while keeping native input and column defaults', () => {
   const instance=Object.create(context.App.prototype), rows=[{name:'가상'},{name:'다른 셀'}];
   let refreshed=0, snapshots=0, saves=0;

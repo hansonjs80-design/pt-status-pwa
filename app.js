@@ -39,7 +39,7 @@ const DEFAULT_SUPABASE_URL = "https://uqivbmkeuupsaghwshcw.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxaXZibWtldXVwc2FnaHdzaGN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0ODM3OTUsImV4cCI6MjA4NTA1OTc5NX0.FY86a0vaN_x-KeErBYAVyCpyXKsxloZiy7eysZGSFjk";
 const DEFAULT_WRITER = "";
 const BASE_ROW_NUMBER = 1; // 행 번호 1부터 시작
-const DEFAULT_ROW_COUNT = 150; // 기본 하루 150개 행
+const DEFAULT_ROW_COUNT = 120; // 기본 하루 120개 행
 
 // =============================================================================
 // 엑셀(Excel) 기반 기본 단축키 설정 매핑 테이블
@@ -479,12 +479,12 @@ class PTApp {
 
   getCurrentRows() {
     if (!this.dataStore[this.currentDate]) {
-      this.dataStore[this.currentDate] = this.createDefaultEmptyRows(DEFAULT_ROW_COUNT);
+      this.dataStore[this.currentDate] = this.createDefaultEmptyRows();
     } else {
       const rows = this.dataStore[this.currentDate];
-      if (rows.length < DEFAULT_ROW_COUNT) {
+      if (rows.length < this.getDefaultRowCount()) {
         const formattedDate = this.currentDate.replace(/-/g, ".");
-        const diff = DEFAULT_ROW_COUNT - rows.length;
+        const diff = this.getDefaultRowCount() - rows.length;
         for (let i = 0; i < diff; i++) {
           rows.push({
             no: "",
@@ -503,10 +503,7 @@ class PTApp {
       }
     }
     const currentRows = this.dataStore[this.currentDate];
-    const contentKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    const lastEnteredIdx = currentRows.findLastIndex(row => contentKeys.some(key => String(row[key] ?? "").trim()));
-    const requiredCount = Math.max(DEFAULT_ROW_COUNT, lastEnteredIdx + 16);
-    if (currentRows.length < requiredCount) currentRows.push(...this.createDefaultEmptyRows(requiredCount - currentRows.length));
+    this.normalizeRowAllocation(currentRows, this.currentDate);
     this.visitNameState ||= new WeakMap();
     this.visitTimeState ||= new WeakMap();
     for (const row of this.dataStore[this.currentDate]) {
@@ -516,8 +513,8 @@ class PTApp {
     return this.dataStore[this.currentDate];
   }
 
-  createDefaultEmptyRows(count = DEFAULT_ROW_COUNT) {
-    const formattedDate = this.currentDate.replace(/-/g, ".");
+  createDefaultEmptyRows(count = this.getDefaultRowCount(), date = this.currentDate) {
+    const formattedDate = date.replace(/-/g, ".");
     const rows = [];
     for (let i = 1; i <= count; i++) {
       rows.push({

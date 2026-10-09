@@ -214,7 +214,7 @@ class PTDocumentTools {
 
   clearCurrentDayData() {
     if (confirm(`정말로 ${this.currentDate} 날짜의 데이터를 모두 초기화하시겠습니까?`)) {
-      this.dataStore[this.currentDate] = this.createDefaultEmptyRows(DEFAULT_ROW_COUNT);
+      this.dataStore[this.currentDate] = this.createDefaultEmptyRows();
       this.saveDataStore();
       this.renderTable();
       this.closeBackupModal();

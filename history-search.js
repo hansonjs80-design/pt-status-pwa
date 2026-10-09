@@ -525,7 +525,7 @@ class PTHistorySearch {
     this.elSheetContainer.classList.add("history-search-active");
     this.syncMainColumnWidths();
 
-    // Every current-date row remains reachable, including the blank rows through 150.
+    // Every current-date row remains reachable, including the default blank rows.
     const currentRows = this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row)");
     const rowsData = this.getCurrentRows();
     let lastDataIdx = -1;

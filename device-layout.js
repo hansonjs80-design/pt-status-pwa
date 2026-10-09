@@ -1,5 +1,62 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTDeviceLayout {
+  readRowCountSettings() {
+    try {
+      const setting = JSON.parse(localStorage.getItem('PT_DEFAULT_ROWS_V1') || 'null');
+      const valid = n => Number.isInteger(n) && n >= 1 && n <= 2000;
+      if (valid(setting?.baseCount) && Array.isArray(setting.changes) &&
+          (setting.allocations === undefined || (Array.isArray(setting.allocations) && setting.allocations.every(valid))) &&
+          setting.changes.every(c => valid(c.count) && /^\d{4}-(0[1-9]|1[0-2])$/.test(c.fromMonth))) return setting;
+    } catch (_) { /* Use the default when stored settings are unavailable. */ }
+    return {baseCount: DEFAULT_ROW_COUNT, changes: [], allocations: [120,150]};
+  }
+
+  getDefaultRowCount(date = this.currentDate) {
+    const setting = this.rowCountSettings ||= this.readRowCountSettings();
+    return [...setting.changes].sort((a,b) => a.fromMonth.localeCompare(b.fromMonth))
+      .filter(c => c.fromMonth <= String(date).slice(0,7)).at(-1)?.count ?? setting.baseCount;
+  }
+
+  normalizeRowAllocation(rows, date, compact = false) {
+    const count = this.getDefaultRowCount(date);
+    const contentKeys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+    const lastContent = rows.findLastIndex(row => contentKeys.some(key => String(row[key] ?? '').trim()));
+    const lastProtected = rows.findLastIndex(row => Object.entries(row).some(([key,value]) =>
+      key !== 'date' && value != null && value !== '' &&
+      (typeof value !== 'object' || Object.keys(value).length > 0)));
+    const minimum = Math.max(count, lastContent + 16, lastProtected + 1);
+    const allocations = this.rowCountSettings?.allocations || [120,150];
+    if ((compact || allocations.includes(rows.length)) && rows.length > minimum) rows.splice(minimum);
+    if (rows.length < minimum) rows.push(...this.createDefaultEmptyRows(minimum - rows.length, date));
+    return rows;
+  }
+
+  applyDefaultRowCount(count, scope) {
+    if (!Number.isInteger(count) || count < 1 || count > 2000 || !['all','month'].includes(scope)) return false;
+    const old = this.rowCountSettings || this.readRowCountSettings();
+    const month = this.getTodayString().slice(0,7);
+    const setting = {
+      baseCount: scope === 'all' ? count : old.baseCount,
+      changes: scope === 'all' ? [] : [...old.changes.filter(c => c.fromMonth < month), {fromMonth: month, count}],
+      allocations: [...new Set([120,150,...(old.allocations || []),old.baseCount,...old.changes.map(c=>c.count),count])]
+    };
+    localStorage.setItem('PT_DEFAULT_ROWS_V1', JSON.stringify(setting));
+    this.rowCountSettings = setting;
+    if (this.isEditingCell()) document.activeElement.blur();
+    for (const [date,rows] of Object.entries(this.dataStore)) {
+      if (!Array.isArray(rows) || (scope === 'month' && date.slice(0,7) < month)) continue;
+      const before = rows.length;
+      this.normalizeRowAllocation(rows,date,true);
+      if (rows.length !== before) this.editHistory?.delete(date);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+    this.clearHeaderSelections();
+    this.activeCell = null;
+    this.renderTable();
+    this.showSaveIndicator('기본 행 설정 저장됨');
+    return true;
+  }
+
   readDeviceSummaryState() {
     try {
       const snapshot = JSON.parse(localStorage.getItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`) || "null");

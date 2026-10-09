@@ -12,7 +12,7 @@
 | `table-formatting.js` | 글자·배경·서식과 색상 도구 |
 | `summary.js` | 일일 현황 집계와 표시 |
 | `cell-input-tools.js` | 셀 입력 보조 도구, 한글 조합·초성·접두어 보정 |
-| `device-layout.js` | 기기별 열 너비, 현황창·도구 모음 접기와 저장·복원 |
+| `device-layout.js` | 기기별 기본 행 수·적용 월, 열 너비, 현황창·도구 모음 접기와 저장·복원 |
 | `document-tools.js` | 인쇄 미리보기, CSV 내보내기, 백업·복원 |
 | `cloud-sync.js` | 클라우드 연결, 실시간 통신, 기록·프리셋 병합과 동기화 |
 | `context-menu.js` | 우클릭 메뉴, 모바일 길게 터치, 메뉴 작업 실행 |

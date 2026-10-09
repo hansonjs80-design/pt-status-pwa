@@ -556,10 +556,19 @@
           <button data-close aria-label="닫기">×</button>
         </header>
         <nav>
+          <button data-tab="rows">기본 행</button>
           <button data-tab="backup">💾 로컬 백업</button>
           <button data-tab="exports">자동 PDF</button>
           <button data-tab="usage">사용량</button>
         </nav>
+        <section data-panel="rows" hidden>
+          <h3>테이블 기본 행 설정</h3>
+          <label>기본 행 수 <input type="number" data-default-row-count min="1" max="2000" step="1" aria-label="기본 행 수"></label>
+          <label>적용 범위 <select data-default-row-scope aria-label="기본 행 적용 범위"><option value="all">전체 날짜</option><option value="month">현재 달부터</option></select></label>
+          <p>현재 달부터 적용하면 이번 달과 이후 날짜에 적용합니다. 이전 달의 기본 행 설정은 유지됩니다.</p>
+          <p>입력한 기록과 개별 서식은 보존하며, 마지막 기록 아래에는 입력할 빈 행 15개를 유지합니다. 이 기기에 저장됩니다.</p>
+          <button type="button" data-apply-default-rows>기본 행 적용</button>
+        </section>
         <section data-panel="backup">
           <div class="backup-config-card">
             <div class="backup-toggle-header">
@@ -686,6 +695,8 @@
       dialog.querySelector('[data-status]').textContent = this.status;
 
       // 설정값 바인딩
+      const rowCount = dialog.querySelector('[data-default-row-count]');
+      rowCount.value = String(window.ptApp?.getDefaultRowCount() || 120);
       const chkBackup = dialog.querySelector('[data-backup]');
       chkBackup.checked = Boolean(this.settings.backup);
 
@@ -833,7 +844,18 @@
       });
 
       // 설정 저장
+      dialog.querySelector('[data-apply-default-rows]').onclick = run(async () => {
+        if (!window.ptApp?.applyDefaultRowCount(Number(rowCount.value), dialog.querySelector('[data-default-row-scope]').value)) {
+          throw Error('기본 행 수를 1~2000 사이의 정수로 입력해 주세요.');
+        }
+        this.report('기본 행 설정이 적용되었습니다.');
+      });
       dialog.querySelector('[data-save]').onclick = run(async () => {
+        if (!dialog.querySelector('[data-panel="rows"]').hidden) {
+          if (!window.ptApp?.applyDefaultRowCount(Number(rowCount.value), dialog.querySelector('[data-default-row-scope]').value)) throw Error('기본 행 수를 1~2000 사이의 정수로 입력해 주세요.');
+          this.report('기본 행 설정이 적용되었습니다.');
+          return;
+        }
         const pdf = chkPdf.checked;
         const backup = chkBackup.checked;
         const time = inpPdfTime.value;

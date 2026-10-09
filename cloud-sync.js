@@ -368,11 +368,11 @@ class PTCloudSync {
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
         localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
         const padded = data.rows_data.slice();
-        while (dateStr === this.currentDate && padded.length < DEFAULT_ROW_COUNT) padded.push({ ...this.createDefaultEmptyRows(1)[0], date: dateStr.replace(/-/g, ".") });
+        if (dateStr === this.currentDate) this.normalizeRowAllocation(padded, dateStr);
         if (localAtRequest === JSON.stringify(padded)) return;
         const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
         this.dataStore[dateStr] = data.rows_data;
-        // Ensure minimum 150 rows
+        // Ensure the current default row count
         this.getCurrentRows();
         if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.editHistory.delete(dateStr);
         this.getEditHistory(dateStr);

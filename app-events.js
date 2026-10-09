@@ -489,5 +489,5 @@ class PTAppEvents {
     });
   }
 
-  // Keep at least 150 rows and fifteen empty rows below the last entered record.
+  // Keep the default row count and fifteen empty rows below the last entered record.
 }
