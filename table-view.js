@@ -332,7 +332,9 @@ class PTTableView {
 
   updateFillDrag(event) {
     if (!this.fillDrag) return;
-    const row = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-row-idx]");
+    this.fillDragPointer = {clientX: event.clientX, clientY: event.clientY};
+    this.startFillDragAutoScroll();
+    const row = this.getFillDragRow(event);
     if (!row || !this.elTableBody.contains(row)) return;
     const endRow = Math.max(this.fillDrag.rowIdx, Number(row.dataset.rowIdx));
     // 카운트 뱃지 위치 항상 업데이트 (endRow 변화 여부 무관)
@@ -343,6 +345,38 @@ class PTTableView {
     for (let r = this.fillDrag.rowIdx + 1; r <= endRow; r++) {
       this.elTableBody.querySelector(`.excel-cell[data-row="${r}"][data-col="${this.fillDrag.colKey}"]`)?.classList.add("fill-preview");
     }
+  }
+
+  getFillDragRow(point) {
+    const rect = this.elSheetContainer.getBoundingClientRect();
+    if (point.clientX < rect.left || point.clientX >= rect.right) return null;
+    // Keep targeting the last visible row when the pointer passes the bottom.
+    const header = document.getElementById('excelTable')?.querySelector('thead');
+    const top = Math.max(rect.top, header?.getBoundingClientRect().bottom || rect.top);
+    const y = Math.max(top + 1, Math.min(rect.bottom - 2, point.clientY));
+    return document.elementFromPoint(point.clientX, y)?.closest('tr[data-row-idx]');
+  }
+
+  startFillDragAutoScroll() {
+    if (this.fillDragScrollFrame != null || typeof requestAnimationFrame !== 'function') return;
+    this.fillDragScrollFrame = requestAnimationFrame(time => {
+      this.fillDragScrollFrame = null;
+      if (!this.fillDrag || !this.fillDragPointer) return;
+      const container = this.elSheetContainer, rect = container.getBoundingClientRect();
+      const point = this.fillDragPointer;
+      if (point.clientX < rect.left || point.clientX >= rect.right) return;
+      const header = document.getElementById('excelTable')?.querySelector('thead');
+      const top = Math.max(rect.top, header?.getBoundingClientRect().bottom || rect.top);
+      const edge = Math.min(36, (rect.bottom - top) / 3);
+      const velocity = point.clientY > rect.bottom - edge
+        ? Math.min(1, (point.clientY - (rect.bottom - edge)) / edge)
+        : point.clientY < top + edge ? -Math.min(1, (top + edge - point.clientY) / edge) : 0;
+      const elapsed = Math.min(32, this.fillDragScrollTime == null ? 16 : time - this.fillDragScrollTime);
+      this.fillDragScrollTime = time;
+      const before = container.scrollTop;
+      container.scrollTop += velocity * elapsed * .8;
+      if (container.scrollTop !== before) this.updateFillDrag(point);
+    });
   }
 
   _updateFillDragBadge(mouseX, mouseY, count) {
@@ -365,6 +399,10 @@ class PTTableView {
   }
 
   cancelFillDrag() {
+    if (this.fillDragScrollFrame != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.fillDragScrollFrame);
+    this.fillDragScrollFrame = null;
+    this.fillDragScrollTime = null;
+    this.fillDragPointer = null;
     if (!this.fillDrag) return;
     this.fillDrag = null;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
@@ -376,7 +414,7 @@ class PTTableView {
   finishFillDrag(event) {
     this.updateFillDrag(event);
     const drag = this.fillDrag;
-    const releasedRow = document.elementFromPoint(event.clientX, event.clientY)?.closest("tr[data-row-idx]");
+    const releasedRow = this.getFillDragRow(event);
     this.cancelFillDrag();
     if (!drag || drag.date !== this.currentDate || drag.endRow <= drag.rowIdx ||
         !releasedRow || !this.elTableBody.contains(releasedRow)) return;
