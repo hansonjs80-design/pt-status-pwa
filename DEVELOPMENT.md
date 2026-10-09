@@ -7,11 +7,11 @@
 
 | 파일 | 담당 영역 |
 | --- | --- |
-| `app.js` | 앱 초기화, 이벤트 연결, 데이터·편집 이력, 표 렌더링과 탐색 |
+| `app.js` | 앱 초기화, 공통 데이터·편집 이력과 탐색 |
 | `history-search.js` | 환자 이력 검색과 기록 적용 |
 | `table-formatting.js` | 글자·배경·서식과 색상 도구 |
 | `summary.js` | 일일 현황 집계와 표시 |
-| `cell-input-tools.js` | 셀 입력 보조 도구 |
+| `cell-input-tools.js` | 셀 입력 보조 도구, 한글 조합·초성·접두어 보정 |
 | `device-layout.js` | 기기별 열 너비, 현황창·도구 모음 접기와 저장·복원 |
 | `document-tools.js` | 인쇄 미리보기, CSV 내보내기, 백업·복원 |
 | `cloud-sync.js` | 클라우드 연결, 실시간 통신, 기록·프리셋 병합과 동기화 |
@@ -23,6 +23,12 @@
 | `sheet-actions.js` | 표 복사·잘라내기·붙여넣기, 행 추가·삭제와 내용 지우기 |
 | `sheet-keyboard.js` | 표 키보드 단축키, 선택 이동과 이력 적용 단축키 |
 | `column-settings.js` | 열 기본 서식 설정 창, 저장·검증·공유 동기화 |
+| `app-events.js` | 앱 시작 시 화면 컨트롤과 이벤트 연결 |
+| `table-view.js` | 일일 표 렌더링, 활성 셀 표시, 채우기 드래그 |
+| `date-navigation.js` | 달력 표시, 날짜 변경과 이전·다음 날짜 이동 |
+| `cell-pickers.js` | 성별·작성자·처방 선택 목록과 선택 키 처리 |
+| `patient-search-dialog.js` | 환자 검색창, 후보 목록, 검색 제출과 검색 결과 없음 안내 |
+| `history-table.js` | 검색 결과 표 렌더링, 날짜 확장·선택과 스크롤·너비 처리 |
 | `local-tools.js` | 기기 저장소와 로컬 도구 초기화 |
 
 기능 파일은 `index.html`에서 `app.js`보다 먼저 로드하고, `app.js`의 기능 설치

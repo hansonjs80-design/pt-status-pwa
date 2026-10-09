@@ -413,4 +413,194 @@ class PTCellInputTools {
     input.autocapitalize = 'off';
     input.spellcheck = false;
   }
+  assembleHangul(str) {
+    if (!str || typeof str !== "string") return str;
+
+    const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    const JUNGSUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+    const JONGSUNG = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+    str = str.normalize("NFC");
+    const hasIsolatedJamo = /[\u3131-\u318E]/.test(str);
+    if (!hasIsolatedJamo) return str;
+
+    function decomposeChar(ch) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const offset = code - 0xAC00;
+        const choIdx = Math.floor(offset / (21 * 28));
+        const jungIdx = Math.floor((offset % (21 * 28)) / 28);
+        const jongIdx = offset % 28;
+        return [CHOSUNG[choIdx], JUNGSUNG[jungIdx], JONGSUNG[jongIdx]];
+      }
+      return [ch];
+    }
+
+    let stream = [];
+    for (const ch of str) {
+      const decomp = decomposeChar(ch);
+      for (const j of decomp) {
+        if (j) stream.push(j);
+      }
+    }
+
+    const DOUBLE_JUNG = {
+      'ㅗㅏ': 'ㅘ', 'ㅗㅐ': 'ㅙ', 'ㅗㅣ': 'ㅚ',
+      'ㅜㅓ': 'ㅝ', 'ㅜㅔ': 'ㅞ', 'ㅜㅣ': 'ㅟ',
+      'ㅡㅣ': 'ㅢ'
+    };
+
+    const DOUBLE_JONG = {
+      'ㄱㅅ': 'ㄳ', 'ㄴㅈ': 'ㄵ', 'ㄴㅎ': 'ㄶ',
+      'ㄹㄱ': 'ㄺ', 'ㄹㅁ': 'ㄻ', 'ㄹㅂ': 'ㄼ', 'ㄹㅅ': 'ㄽ', 'ㄹㅌ': 'ㄾ', 'ㄹㅍ': 'ㄿ', 'ㄹㅎ': 'ㅀ',
+      'ㅂㅅ': 'ㅄ'
+    };
+
+    const SPLIT_DOUBLE_JONG = {
+      'ㄳ': ['ㄱ', 'ㅅ'], 'ㄵ': ['ㄴ', 'ㅈ'], 'ㄶ': ['ㄴ', 'ㅎ'],
+      'ㄺ': ['ㄹ', 'ㄱ'], 'ㄻ': ['ㄹ', 'ㅁ'], 'ㄼ': ['ㄹ', 'ㅂ'], 'ㄽ': ['ㄹ', 'ㅅ'],
+      'ㄾ': ['ㄹ', 'ㅌ'], 'ㄿ': ['ㄹ', 'ㅍ'], 'ㅀ': ['ㄹ', 'ㅎ'],
+      'ㅄ': ['ㅂ', 'ㅅ']
+    };
+
+    function isCho(c) { return CHOSUNG.includes(c); }
+    function isJung(c) { return JUNGSUNG.includes(c); }
+    function isJong(c) { return JONGSUNG.includes(c) && c !== ''; }
+
+    function makeSyllable(c1, c2, c3 = '') {
+      const c1Idx = CHOSUNG.indexOf(c1);
+      const c2Idx = JUNGSUNG.indexOf(c2);
+      const c3Idx = JONGSUNG.indexOf(c3);
+      if (c1Idx === -1 || c2Idx === -1 || c3Idx === -1) return c1 + c2 + c3;
+      return String.fromCharCode(0xAC00 + (c1Idx * 21 + c2Idx) * 28 + c3Idx);
+    }
+
+    let result = '';
+    let cho = '', jung = '', jong = '';
+
+    function flush() {
+      if (cho && jung) {
+        result += makeSyllable(cho, jung, jong);
+      } else {
+        result += cho + jung + jong;
+      }
+      cho = '';
+      jung = '';
+      jong = '';
+    }
+
+    for (let i = 0; i < stream.length; i++) {
+      const c = stream[i];
+      if (isJung(c)) {
+        if (jong) {
+          if (SPLIT_DOUBLE_JONG[jong]) {
+            const [j1, j2] = SPLIT_DOUBLE_JONG[jong];
+            jong = j1;
+            flush();
+            cho = j2;
+            jung = c;
+          } else {
+            const prevJong = jong;
+            jong = '';
+            flush();
+            cho = prevJong;
+            jung = c;
+          }
+        } else if (jung) {
+          const combined = DOUBLE_JUNG[jung + c];
+          if (combined) {
+            jung = combined;
+          } else {
+            flush();
+            result += c;
+          }
+        } else if (cho) {
+          jung = c;
+        } else {
+          flush();
+          result += c;
+        }
+      } else if (isCho(c)) {
+        if (!cho) {
+          cho = c;
+        } else if (!jung) {
+          flush();
+          cho = c;
+        } else if (!jong) {
+          if (isJong(c)) {
+            const next = stream[i + 1];
+            if (next && isJung(next)) {
+              flush();
+              cho = c;
+            } else {
+              jong = c;
+            }
+          } else {
+            flush();
+            cho = c;
+          }
+        } else {
+          const combinedJong = DOUBLE_JONG[jong + c];
+          const next = stream[i + 1];
+          if (combinedJong && (!next || !isJung(next))) {
+            jong = combinedJong;
+          } else {
+            flush();
+            cho = c;
+          }
+        }
+      } else {
+        flush();
+        result += c;
+      }
+    }
+    flush();
+    return result;
+  }
+
+  getChosung(str) {
+    if (!str || typeof str !== "string") return "";
+    const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    let res = "";
+    for (const ch of str) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const choIdx = Math.floor((code - 0xAC00) / (21 * 28));
+        res += CHOSUNG[choIdx];
+      } else {
+        res += ch;
+      }
+    }
+    return res;
+  }
+
+  matchesHangulPrefix(value, rawQuery, isComposing = false) {
+    const name = String(value ?? "").replace(/\s+/g, "").toLowerCase();
+    const query = String(rawQuery ?? "").replace(/\s+/g, "").toLowerCase();
+    if (!query) return false;
+    if (name.startsWith(query)) return true;
+    if (/[ㄱ-ㅎ]/.test(query)) {
+      return [...query].every((char, index) => name[index] !== undefined &&
+        (/^[ㄱ-ㅎ]$/.test(char) ? this.getChosung(name[index]) === char : name[index] === char));
+    }
+    const code = query.charCodeAt(query.length - 1) - 0xac00;
+    if (code < 0 || code > 11171) return false;
+    const stem = query.slice(0, -1);
+    if (code % 28 === 0) {
+      const candidate = name.charCodeAt(stem.length) - 0xac00;
+      return name.startsWith(stem) && candidate >= 0 && candidate <= 11171 &&
+        Math.floor(candidate / 28) === Math.floor(code / 28);
+    }
+    if (!isComposing) return false;
+    // A pending next initial can be attached as a final consonant: 이 + ㅊ → 잋.
+    const finals = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    const splitFinals = {'ㄳ':['ㄱ','ㅅ'],'ㄵ':['ㄴ','ㅈ'],'ㄶ':['ㄴ','ㅎ'],
+      'ㄺ':['ㄹ','ㄱ'],'ㄻ':['ㄹ','ㅁ'],'ㄼ':['ㄹ','ㅂ'],'ㄽ':['ㄹ','ㅅ'],
+      'ㄾ':['ㄹ','ㅌ'],'ㄿ':['ㄹ','ㅍ'],'ㅀ':['ㄹ','ㅎ'],'ㅄ':['ㅂ','ㅅ']};
+    const [retained, initial] = splitFinals[finals[code % 28]] || ['', finals[code % 28]];
+    const prefix = stem + String.fromCharCode(0xac00 + code - code % 28 + finals.indexOf(retained));
+    return name.startsWith(prefix) && name.length > prefix.length && this.getChosung(name[prefix.length]) === initial;
+  }
+
+
 }

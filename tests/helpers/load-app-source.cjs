@@ -18,5 +18,11 @@ module.exports = [
   'sheet-actions.js',
   'sheet-keyboard.js',
   'column-settings.js',
+  'app-events.js',
+  'date-navigation.js',
+  'table-view.js',
+  'cell-pickers.js',
+  'patient-search-dialog.js',
+  'history-table.js',
   'app.js'
 ].map(file => readFileSync(resolve(__dirname, '../..', file), 'utf8')).join('\n');

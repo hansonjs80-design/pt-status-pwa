@@ -38,7 +38,8 @@ test('feature methods do not collide and are installed before the app starts', (
     globalThis.App = PTApp;
     globalThis.features = [PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools,
       PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager,
-      PTAutocomplete, PTCellEditor, PTSheetSelection, PTSheetActions, PTSheetKeyboard, PTColumnSettings];
+      PTAutocomplete, PTCellEditor, PTSheetSelection, PTSheetActions, PTSheetKeyboard, PTColumnSettings,
+      PTAppEvents, PTDateNavigation, PTTableView, PTCellPickers, PTPatientSearchDialog, PTHistoryTable];
   `, context);
   const owners = new Map();
   for (const feature of context.features) {
