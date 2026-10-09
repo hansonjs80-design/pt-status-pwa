@@ -154,6 +154,20 @@ class PTCellInputTools {
     ] };
   }
 
+  getEditorTextLeft(input, font) {
+    const left = parseFloat(font.paddingLeft) || 0;
+    let offset = 0;
+    if (['center', 'right'].includes(font.textAlign)) {
+      this.editorMeasurementCanvas ||= document.createElement('canvas');
+      const context = this.editorMeasurementCanvas.getContext('2d');
+      context.font = font.font;
+      const width = context.measureText(input.value).width + (parseFloat(font.letterSpacing) || 0) * input.value.length;
+      const available = input.clientWidth - left - (parseFloat(font.paddingRight) || 0);
+      offset = Math.max(0, available - width) / (font.textAlign === 'center' ? 2 : 1);
+    }
+    return input.offsetLeft + left + offset - input.scrollLeft;
+  }
+
   refreshEditorTextColors(input, cellElement, row, key) {
     input.editorColorPreview?.remove();
     input.classList.remove?.('has-editor-colors');
@@ -165,7 +179,7 @@ class PTCellInputTools {
     preview.className = 'inline-editor-color-preview';
     preview.setAttribute('aria-hidden', 'true');
     this.renderColoredText(preview, row, key);
-    preview.style.left = `${input.offsetLeft + (parseFloat(font.paddingLeft) || 0) - input.scrollLeft}px`;
+    preview.style.left = `${this.getEditorTextLeft(input, font)}px`;
     preview.style.top = `${input.offsetTop}px`;
     preview.style.height = `${input.offsetHeight}px`;
     input.classList.add('has-editor-colors');
@@ -384,8 +398,7 @@ class PTCellInputTools {
     input.editorColorPreview?.remove();
     input.classList.remove?.('has-editor-colors');
     input.classList.add('has-inline-completion');
-    const paddingLeft = parseFloat(font.paddingLeft) || 0;
-    preview.style.left = `${input.offsetLeft + paddingLeft - input.scrollLeft}px`;
+    preview.style.left = `${this.getEditorTextLeft(input, font)}px`;
     preview.style.top = `${input.offsetTop}px`;
     preview.style.height = `${input.offsetHeight}px`;
     cellElement.append(preview);

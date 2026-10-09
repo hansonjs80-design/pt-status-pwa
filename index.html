@@ -60,6 +60,7 @@
           <div class="toolbar-formatting-controls" role="group" aria-label="실행 취소, 글자 서식 및 빠른 도구 관리">
           <button type="button" id="btnPatientSearch" class="history-button" title="환자 검색 (Ctrl/Cmd+F)" aria-label="환자 검색" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></button>
           <span class="history-controls" id="historyControls" role="group" aria-label="되돌리기 및 다시 실행"></span>
+          <button type="button" id="btnTextAlign" class="history-button alignment-button" title="셀 정렬" aria-label="셀 정렬" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18M6 10h12M3 15h18M6 20h12"/></svg><span aria-hidden="true">▾</span></button>
           <button type="button" id="btnFontColor" class="history-button font-color-button" title="글자색" aria-label="글자색"><span class="format-icon" aria-hidden="true"><span class="font-color-letter">A</span></span></button>
           <button type="button" id="btnFontWeight" class="history-button font-weight-button" title="글자 굵기" aria-label="글자 굵기" aria-haspopup="dialog"><span class="format-icon" aria-hidden="true">B</span></button>
           <div class="font-size-controls" role="group" aria-label="글자 크기">
@@ -473,7 +474,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
       <div class="modal-header">
         <h2 class="modal-title" id="presetManagerTitle">빠른 입력 도구 관리</h2>
         <div class="preset-manager-header-actions">
-          <button type="button" id="btnColumnFontSettings" class="preset-action-btn column-font-open" title="열 글자 크기·굵기·글자색·배경색 설정" onclick="if(window.ptApp) window.ptApp.openColumnFontSettings();">열 서식</button>
+          <button type="button" id="btnColumnFontSettings" class="preset-action-btn column-font-open" title="열 글자 크기·굵기·글자색·배경색·정렬 설정" onclick="if(window.ptApp) window.ptApp.openColumnFontSettings();">열 서식</button>
           <button type="button" class="btn-close-modal" id="btnClosePresetManagerModal" aria-label="관리창 닫기">✕</button>
         </div>
       </div>

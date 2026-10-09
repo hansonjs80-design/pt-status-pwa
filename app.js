@@ -539,6 +539,7 @@ class PTApp {
       document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
       this.updateFontColorIndicator();
       this.updateBackgroundColorIndicator();
+      this.updateAlignmentIndicator();
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
       const button = document.getElementById(id);
@@ -568,6 +569,9 @@ class PTApp {
     const backgroundButton = document.getElementById("btnBackgroundColor");
     backgroundButton.addEventListener("mousedown", event => event.preventDefault());
     backgroundButton.addEventListener("click", event => this.openFontColorMenu(event.currentTarget, "backgroundColor"));
+    const alignmentButton = document.getElementById("btnTextAlign");
+    alignmentButton.addEventListener("mousedown", event => event.preventDefault());
+    alignmentButton.addEventListener("click", event => this.openAlignmentMenu(event.currentTarget));
     const patientSearchButton = document.getElementById("btnPatientSearch");
     patientSearchButton.addEventListener("mousedown", event => event.preventDefault());
     patientSearchButton.addEventListener("click", () => this.openSearchPromptModal(this.activeCell?.rowIdx ?? this.selectedRowIdx));

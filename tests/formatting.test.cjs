@@ -664,3 +664,52 @@ test('column background validation is atomic and legacy font-only calls preserve
   assert.equal(instance.applyColumnFontSettings([fontOnly]),true);
   assert.equal(instance.getColumnFontSettings()[3].backgroundColor,'#e2efda');
 });
+
+test('alignment applies only selected cells while keeping native input and column defaults', () => {
+  const instance=Object.create(context.App.prototype), rows=[{name:'가상'},{name:'다른 셀'}];
+  let refreshed=0, snapshots=0, saves=0;
+  const cell={dataset:{},style:{},querySelector(){return {refreshEditorColors(){refreshed++;}};}};
+  instance.columnFormatting={};instance.getCurrentRows=()=>rows;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:1,minCol:3,maxCol:3});
+  instance.getSelectedFormattingColumns=()=>null;instance.isSelectedCoordinate=r=>r===0;
+  instance.elTableBody={querySelector:()=>cell};instance.captureHistory=()=>snapshots++;
+  instance.saveDataStore=record=>{assert.equal(record,false);saves++;};
+  instance.updateInlineAutocompletePreview=()=>{};instance.updateAlignmentIndicator=()=>{};
+  instance.renderTable=()=>assert.fail('must keep native editor alive');
+  instance.applyAlignment('left');
+  assert.equal(rows[0]._textStyles.name.textAlign,'left');assert.equal(rows[1]._textStyles,undefined);
+  assert.equal(cell.style.textAlign,'left');assert.equal(cell.style.paddingLeft,'20px');assert.equal(cell.dataset.cellAlignment,'left');
+  assert.equal(refreshed,1);assert.equal(snapshots,2);assert.equal(saves,1);assert.deepEqual(plain(instance.columnFormatting),{});
+  instance.applyAlignment('right');assert.equal(cell.style.paddingLeft,'6px');assert.equal(cell.style.textAlign,'right');
+});
+
+test('column alignment persists and later cell alignment stays independent across devices and copies', () => {
+  const first=Object.create(context.App.prototype);first.columnFormatting={};first.renderTable=()=>{};first.showSaveIndicator=()=>{};
+  const setting={...first.getColumnFontSettings()[3],textAlign:'right'};
+  assert.equal(first.applyColumnFontSettings([setting]),true);
+  const old={name:'과거',_textStyles:{name:{textAlign:'left'}}};
+  assert.equal(first.getCellFormatting(old,'name','textAlign'),'right');
+  first.markCellFormatting(old,'name','textAlign');
+  assert.equal(first.getCellFormatting(old,'name','textAlign'),'left');
+  const second=Object.create(context.App.prototype);second.columnFormatting=second.loadColumnFormatting();
+  assert.equal(second.validateSharedColumnFormatting(second.columnFormatting),true);
+  assert.equal(second.getColumnFontSettings()[3].textAlign,'right');
+  assert.equal(second.getCellFormatting(plain(old),'name','textAlign'),'left');
+  const copy={};second.applyCopiedCellFormatting(copy,'memo',first.captureCellFormatting(old,'name'));
+  assert.equal(copy._textStyles.memo.textAlign,'left');
+  const before=JSON.stringify(first.columnFormatting);
+  assert.equal(first.applyColumnFontSettings([{...setting,textAlign:'justify'}]),false);
+  assert.equal(JSON.stringify(first.columnFormatting),before);
+});
+
+test('colored editor overlays follow centered and right native text with scrolling and left padding', () => {
+  const instance=Object.create(context.App.prototype);
+  instance.editorMeasurementCanvas={getContext:()=>({measureText:()=>({width:40})})};
+  const input={value:'가상',clientWidth:120,offsetLeft:0,scrollLeft:0};
+  const font={paddingLeft:'20px',paddingRight:'6px',textAlign:'left',letterSpacing:'normal',font:'14px Arial'};
+  assert.equal(instance.getEditorTextLeft(input,font),20);
+  assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'center'}),47);
+  assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'right'}),74);
+  input.scrollLeft=10;assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'right'}),64);
+  input.clientWidth=30;assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'right'}),10);
+});

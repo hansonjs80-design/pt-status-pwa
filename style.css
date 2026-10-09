@@ -2493,7 +2493,7 @@ body {
 
 .column-font-open { width:100%; padding:10px; margin-bottom:14px; color:#107c41; font-weight:600; }
 .column-font-settings { z-index: 10000; }
-.column-font-settings .modal-card { width: calc(100% - 32px); max-width: 780px; max-height: calc(100dvh - 48px); overflow: hidden; border-radius: 14px; }
+.column-font-settings .modal-card { width: calc(100% - 32px); max-width: 870px; max-height: calc(100dvh - 48px); overflow: hidden; border-radius: 14px; }
 .column-font-settings .modal-header { flex-shrink: 0; padding: 12px 16px; background: #f8faf9; }
 .column-font-settings .modal-title { margin: 0; font-size: 16px; font-weight: 700; }
 .column-font-settings .modal-body { padding: 12px 16px; min-height: 0; overflow-y: auto; }
@@ -2501,7 +2501,7 @@ body {
 .column-font-guide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px; margin-bottom: 8px; color: #829087; font-size: 10px; }
 .column-font-guide strong { color: #42584a; font-size: 12px; }
 .column-font-list { overflow: auto; max-height: min(55vh, 470px); border: 1px solid #e2e8e4; border-radius: 8px; }
-.column-font-list table { width: 100%; min-width: 690px; border-collapse: collapse; }
+.column-font-list table { width: 100%; min-width: 780px; border-collapse: collapse; }
 .column-font-list th, .column-font-list td { padding: 5px 7px; text-align: left; border-bottom: 1px solid #e9eeeb; white-space: nowrap; font-size: 12px; }
 .column-font-list tbody tr:last-child :is(th, td) { border-bottom: 0; }
 .column-font-list thead th { position: sticky; top: 0; z-index: 1; padding: 9px 7px; color: #617568; background: #f2f6f3; font-size: 11px; font-weight: 600; }
@@ -2950,3 +2950,17 @@ body {
   #presetManagerFeedback { grid-row: 2; grid-column: 1 / -1; }
   #btnManagerDone { grid-column: 3; grid-row: 1; }
 }
+
+/* Explicit alignment applies to both the cell and its native editor. */
+.excel-table .excel-cell[data-cell-alignment] .cell-input-element {
+  text-align: inherit;
+  padding-left: inherit;
+  padding-right: inherit;
+}
+.alignment-button { gap: 1px; }
+.alignment-button > span { font-size: 9px; }
+.column-typography-menu.alignment-menu { display: flex; gap: 4px; width: auto; min-width: 0; padding: 6px; }
+.alignment-menu button { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 6px; }
+.alignment-menu button.is-current { background: #d3e3fd; color: #174ea6; }
+.alignment-menu button:focus-visible { outline: 2px solid #174ea6; outline-offset: -2px; }
+.alignment-menu svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }

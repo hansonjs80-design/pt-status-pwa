@@ -380,6 +380,7 @@ class PTTableFormatting {
         (setting.resetRevision === undefined || typeof setting.resetRevision === "string") &&
         (property === "fontSize" ? setting.value === null || (Number.isInteger(setting.value * 2) && setting.value >= 8 && setting.value <= 72)
           : property === "fontWeight" ? setting.value === null || [400,500,600,700,800,900].includes(Number(setting.value))
+            : property === "textAlign" ? setting.value === null || ["left", "center", "right"].includes(setting.value)
             : ["color", "backgroundColor"].includes(property) && (setting.value === null || /^#[0-9a-f]{6}$/i.test(setting.value)))));
   }
 
@@ -492,6 +493,7 @@ class PTTableFormatting {
       fontWeight: String(this.columnFormatting?.[key]?.fontWeight?.value ?? (index < 2 ? 600 : 500)),
       color: this.columnFormatting?.[key]?.color?.value ?? "#000000",
       backgroundColor: this.columnFormatting?.[key]?.backgroundColor?.value ?? null,
+      textAlign: this.columnFormatting?.[key]?.textAlign?.value ?? (key === "prescription" ? "left" : "center"),
     }));
   }
 
@@ -502,12 +504,13 @@ class PTTableFormatting {
       setting.fontSize < 8 || setting.fontSize > 72 ||
       ![400, 500, 600, 700, 800, 900].includes(Number(setting.fontWeight)) ||
       !/^#[0-9a-f]{6}$/i.test(setting.color) ||
-      (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)))) return false;
+      (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)) ||
+      (setting.textAlign != null && !["left", "center", "right"].includes(setting.textAlign)))) return false;
     // Only changed properties receive a new revision. Saving the same defaults
     // must not invalidate later cell-specific formatting on any date.
     settings.forEach((setting, index) => {
-      for (const property of ["fontSize", "fontWeight", "color", "backgroundColor"]) {
-        if (property === "backgroundColor" && setting[property] === undefined) continue;
+      for (const property of ["fontSize", "fontWeight", "color", "backgroundColor", "textAlign"]) {
+        if (["backgroundColor", "textAlign"].includes(property) && setting[property] === undefined) continue;
         if (baseline && setting[property] === baseline[index]?.[property] && this.columnFormatting?.[setting.key]?.[property]) continue;
         const value = property === "fontWeight" ? String(setting[property]) : setting[property];
         this.setColumnFormatting({ minCol: index, maxCol: index }, property, value);
@@ -536,7 +539,7 @@ class PTTableFormatting {
       <div class="modal-body">
         <p id="columnFontSettingsNote" class="column-font-note">적용한 열의 기존 셀 서식은 모든 날짜·검색 내역에서 바뀝니다. 적용 후 지정한 개별 셀 서식은 유지됩니다.</p>
         <div class="column-font-guide"><strong>10개 열</strong><span>크기 8~72px · 0.5px 단위 · 입력칸 Enter로 해당 열 적용</span></div>
-        <div class="column-font-list"><table><thead><tr><th scope="col">열</th><th scope="col">크기</th><th scope="col">굵기</th><th scope="col">글자색</th><th scope="col">배경색</th><th scope="col">미리보기</th><th scope="col">열별 적용</th></tr></thead><tbody></tbody></table></div>
+        <div class="column-font-list"><table><thead><tr><th scope="col">열</th><th scope="col">크기</th><th scope="col">굵기</th><th scope="col">글자색</th><th scope="col">배경색</th><th scope="col">정렬</th><th scope="col">미리보기</th><th scope="col">열별 적용</th></tr></thead><tbody></tbody></table></div>
         <p id="columnFontSettingsError" class="column-font-error" role="alert" hidden></p>
       </div>
       <div class="column-font-footer">
@@ -555,6 +558,7 @@ class PTTableFormatting {
       fontSize: Number(row.querySelector('[data-property="fontSize"]').value),
       fontWeight: row.querySelector('[data-property="fontWeight"]').value,
       color: row.querySelector('[data-property="color"]').value,
+      textAlign: row.querySelector('[data-property="textAlign"]').value,
       backgroundColor: row.querySelector('[data-background-default]').checked ? null : row.querySelector('[data-property="backgroundColor"]').value,
     });
     const updateButtons = () => {
@@ -587,7 +591,7 @@ class PTTableFormatting {
       let applied = false;
       try {
         if (!this.applyColumnFontSettings(settings)) {
-          error.textContent = '입력값을 확인해 주세요. 크기·굵기·글자색·배경색을 올바르게 설정해야 합니다.';
+          error.textContent = '입력값을 확인해 주세요. 크기·굵기·글자색·배경색·정렬을 올바르게 설정해야 합니다.';
           error.hidden = false;
           return;
         }
@@ -614,8 +618,9 @@ class PTTableFormatting {
       row.innerHTML = `<th scope="row"><span class="column-font-letter">${letter}</span>${label}</th><td><input type="number" min="8" max="72" step="0.5" required data-property="fontSize" aria-label="${setting.label} 글자 크기" aria-describedby="columnFontSettingsError"></td>
         <td><select data-property="fontWeight" aria-label="${setting.label} 글자 굵기">${[[400,"보통"],[500,"중간"],[600,"약간 굵게"],[700,"굵게"],[800,"더 굵게"],[900,"가장 굵게"]].map(([value,label]) => `<option value="${value}">${label}</option>`).join("")}</select></td>
         <td><input type="color" data-property="color" aria-label="${setting.label} 글자색"></td>
-        <td><div class="column-background-controls"><input type="color" data-property="backgroundColor" aria-label="${setting.label} 셀 배경색"><label><input type="checkbox" data-background-default aria-label="${setting.label} 셀 배경색 없음">없음</label></div></td><td><span class="column-font-preview" aria-hidden="true">가Aa</span></td><td><button type="button" data-apply-column aria-label="${setting.label}만 적용 및 저장">적용</button></td>`;
-      for (const property of ["fontSize", "fontWeight", "color"]) row.querySelector(`[data-property="${property}"]`).value = property === 'color' ? this.toColorPickerValue(setting.color) : setting[property];
+        <td><div class="column-background-controls"><input type="color" data-property="backgroundColor" aria-label="${setting.label} 셀 배경색"><label><input type="checkbox" data-background-default aria-label="${setting.label} 셀 배경색 없음">없음</label></div></td>
+        <td><select data-property="textAlign" aria-label="${setting.label} 셀 정렬"><option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option></select></td><td><span class="column-font-preview" aria-hidden="true">가Aa</span></td><td><button type="button" data-apply-column aria-label="${setting.label}만 적용 및 저장">적용</button></td>`;
+      for (const property of ["fontSize", "fontWeight", "color", "textAlign"]) row.querySelector(`[data-property="${property}"]`).value = property === 'color' ? this.toColorPickerValue(setting.color) : setting[property];
       row.querySelector('[data-property="backgroundColor"]').value = this.toColorPickerValue(setting.backgroundColor || "#ffffff");
       row.querySelector('[data-background-default]').checked = setting.backgroundColor === null;
       const preview = () => {
@@ -623,6 +628,7 @@ class PTTableFormatting {
         sample.style.fontSize = `${value.fontSize >= 8 && value.fontSize <= 72 ? value.fontSize : setting.fontSize}px`;
         sample.style.fontWeight = value.fontWeight; sample.style.color = value.color;
         sample.style.backgroundColor = value.backgroundColor || "";
+        sample.style.textAlign = value.textAlign;
         sample.title = `${value.fontSize}px · ${value.fontWeight} · 글자색 ${value.color} · 배경색 ${value.backgroundColor || "없음"}`;
       };
       const changed = event => {
@@ -666,11 +672,12 @@ class PTTableFormatting {
         settings.some(setting => !columns.some(column => column.key === setting.key) ||
           !Number.isInteger(setting.fontSize * 2) || setting.fontSize < 8 || setting.fontSize > 72 ||
           ![400,500,600,700,800,900].includes(Number(setting.fontWeight)) || !/^#[0-9a-f]{6}$/i.test(setting.color) ||
-          (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)))) return false;
+          (setting.backgroundColor != null && !/^#[0-9a-f]{6}$/i.test(setting.backgroundColor)) ||
+      (setting.textAlign != null && !["left", "center", "right"].includes(setting.textAlign)))) return false;
     for (const setting of settings) {
       const index = columns.findIndex(column => column.key === setting.key);
-      for (const property of ['fontSize','fontWeight','color','backgroundColor']) {
-        if (property === 'backgroundColor' && setting[property] === undefined) continue;
+      for (const property of ['fontSize','fontWeight','color','backgroundColor','textAlign']) {
+        if (['backgroundColor', 'textAlign'].includes(property) && setting[property] === undefined) continue;
         this.setColumnFormatting({minCol:index,maxCol:index}, property,
           property === 'fontWeight' ? String(setting[property]) : setting[property], true);
       }
@@ -706,21 +713,35 @@ class PTTableFormatting {
   }
 
   applyCellFormatting(element, row, key) {
-    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor", "textAlign"]) {
       const value = this.getCellFormatting(row, key, property);
       if (property === "backgroundColor") {
         if (value != null || element.style.backgroundColor) {
           if (element.style.setProperty) element.style.setProperty("background-color", value || "", value ? "important" : "");
           else element.style.backgroundColor = value || "";
         }
-      } else element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
+      } else if (property !== "textAlign") element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
+    }
+    this.applyCellAlignmentStyle(element, row, key);
+  }
+
+  applyCellAlignmentStyle(element, row, key) {
+    const alignment = this.getCellFormatting(row, key, 'textAlign');
+    if (element.dataset) {
+      if (alignment) element.dataset.cellAlignment = alignment;
+      else delete element.dataset.cellAlignment;
+    }
+    if (alignment || element.style.textAlign) {
+      element.style.textAlign = alignment || '';
+      element.style.paddingLeft = alignment === 'left' ? '20px' : alignment ? '6px' : '';
+      element.style.paddingRight = alignment ? '6px' : '';
     }
   }
 
   captureCellFormatting(row, key, element = null) {
     const computed = element && typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
     const formatting = {};
-    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor", "textAlign"]) {
       const value = this.getCellFormatting(row, key, property) ?? (property === "backgroundColor" ? undefined : computed?.[property]);
       if (value != null && value !== "") formatting[property] = property === "fontSize" ? parseFloat(value) : value;
     }
@@ -735,7 +756,7 @@ class PTTableFormatting {
     for (const metadata of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
       if (row[metadata]) delete row[metadata][key];
     }
-    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor"]) {
+    for (const property of ["color", "fontSize", "fontWeight", "backgroundColor", "textAlign"]) {
       if (formatting[property] !== undefined) {
         if (property === "color") { row._textColors ||= {}; row._textColors[key] = formatting[property]; }
         else { row._textStyles ||= {}; row._textStyles[key] ||= {}; row._textStyles[key][property] = formatting[property]; }
@@ -757,7 +778,7 @@ class PTTableFormatting {
 
   applyColumnTypography(property, value) {
     const range = this.getFormattingRange();
-    if (!range || !["fontSize", "fontWeight", "backgroundColor"].includes(property)) return;
+    if (!range || !["fontSize", "fontWeight", "backgroundColor", "textAlign"].includes(property)) return;
     const columns = this.getSelectedFormattingColumns();
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -779,6 +800,95 @@ class PTTableFormatting {
     }
     this.captureHistory?.();
     this.saveDataStore(); this.renderTable();
+  }
+
+  getAlignmentIconPath(alignment) {
+    return alignment === 'left' ? 'M3 5h18M3 10h12M3 15h18M3 20h12'
+      : alignment === 'right' ? 'M3 5h18M9 10h12M3 15h18M9 20h12'
+        : 'M3 5h18M6 10h12M3 15h18M6 20h12';
+  }
+
+  updateAlignmentIndicator() {
+    const button = document.getElementById('btnTextAlign');
+    if (!button) return;
+    const status = this.getFormattingStatus('textAlign');
+    button.querySelector('path').setAttribute('d', this.getAlignmentIconPath(status.value));
+    button.title = `셀 정렬: ${{left:'왼쪽',center:'가운데',right:'오른쪽'}[status.value] || status.label}`;
+    button.setAttribute('aria-label', button.title);
+  }
+
+  applyAlignment(alignment) {
+    if (!['left', 'center', 'right'].includes(alignment)) return;
+    const range = this.getFormattingRange();
+    if (!range) return;
+    const columns = this.getSelectedFormattingColumns();
+    if (columns) {
+      this.applyColumnTypography('textAlign', alignment);
+    } else {
+      // Keep the original native input alive, including its selection and IME.
+      const keys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+      const rows = this.getCurrentRows();
+      this.captureHistory();
+      for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+        if (!this.isSelectedCoordinate(r, c)) continue;
+        const key = keys[c], row = rows[r];
+        row._textStyles ||= {}; row._textStyles[key] ||= {};
+        row._textStyles[key].textAlign = alignment;
+        this.markCellFormatting(row, key, 'textAlign');
+        const cell = this.elTableBody.querySelector(`[data-row="${r}"][data-col="${key}"]`);
+        if (cell) {
+          this.applyCellFormatting(cell, row, key);
+          cell.querySelector('input')?.refreshEditorColors?.();
+        }
+      }
+      this.captureHistory();
+      this.saveDataStore(false);
+      this.updateInlineAutocompletePreview();
+    }
+    this.updateAlignmentIndicator();
+  }
+
+  openAlignmentMenu(anchor) {
+    if (!this.getFormattingRange()) return;
+    this.typographyCleanup?.(); document.getElementById('columnTypographyMenu')?.remove();
+    const originalFocus = document.activeElement;
+    const nativeEditor = originalFocus?.matches?.('.cell-input-element') ? originalFocus : null;
+    const popup = document.createElement('div');
+    popup.id = 'columnTypographyMenu'; popup.className = 'column-typography-menu alignment-menu';
+    popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '셀 정렬');
+    const current = this.getFormattingStatus('textAlign').value;
+    const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
+    for (const [value, label] of [['left','왼쪽 정렬'],['center','가운데 정렬'],['right','오른쪽 정렬']]) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.dataset.alignment = value;
+      button.title = label; button.setAttribute('aria-label', label);
+      button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${this.getAlignmentIconPath(value)}"/></svg>`;
+      button.classList.toggle('is-current', current === value); button.setAttribute('aria-pressed', String(current === value));
+      button.onclick = () => {
+        this.applyAlignment(value); close();
+        if (nativeEditor?.isConnected) nativeEditor.focus({preventScroll:true});
+        else this.elSheetContainer.focus({preventScroll:true});
+      };
+      popup.append(button);
+    }
+    popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
+    const rect = anchor.getBoundingClientRect();
+    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
+    const outside = event => { if (!popup.contains(event.target) && !anchor.contains(event.target)) close(); };
+    popup.onkeydown = event => {
+      event.stopPropagation();
+      if (event.key === 'Escape') { event.preventDefault(); close(); (nativeEditor?.isConnected ? nativeEditor : anchor).focus({preventScroll:true}); }
+      if (['ArrowDown','ArrowUp','ArrowLeft','ArrowRight'].includes(event.key)) {
+        event.preventDefault();
+        const options = [...popup.querySelectorAll('button')];
+        const index = options.indexOf(document.activeElement);
+        options[(index + (['ArrowDown','ArrowRight'].includes(event.key) ? 1 : -1) + options.length) % options.length].focus();
+      }
+    };
+    document.addEventListener('mousedown', outside);
+    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+    if (!nativeEditor) (popup.querySelector('.is-current') || popup.querySelector('button')).focus();
   }
 
   openColumnTypographyMenu(property, anchor = null) {
