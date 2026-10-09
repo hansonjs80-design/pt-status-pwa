@@ -2266,11 +2266,12 @@ body {
 .excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #18181b; }
 .excel-table .cell-writer { color: #000; }
 
-.print-table { width: 100%; table-layout: fixed; }
+.print-table { width: 100%; table-layout: auto; }
 .print-table th, .print-table td { padding: 3px 4px; text-align: center !important; vertical-align: middle; font: 600 10px/1.35 Arial, sans-serif; overflow-wrap: anywhere; white-space: normal; }
 .print-table tr { break-inside: avoid; }
 .print-table thead { display: table-header-group; }
-.print-table thead th { font-size: 12px; }
+.print-table thead th { font-size: 12px; white-space: nowrap; }
+.print-table td:nth-child(1), .print-table td:nth-child(2), .print-table td:nth-child(3), .print-table td:nth-child(4), .print-table td:nth-child(8) { white-space: nowrap; }
 .print-table .print-lunch-row td { border-top: 1.5px dashed #d93025; }
 .print-summary-bar { flex-wrap: wrap; gap: 6px; }
 @media print { @page { size: A4 landscape; margin: 8mm; } .preview-printable-area { padding: 0 !important; } }
