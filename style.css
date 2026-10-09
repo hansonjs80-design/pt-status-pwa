@@ -2970,6 +2970,11 @@ body {
   padding-left: inherit;
   padding-right: inherit;
 }
+.excel-table .excel-cell:is(.cell-no, .cell-gender, .cell-writer) .cell-input-element {
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
 .history-button.alignment-button { width: 40px; padding: 3px; gap: 2px; }
 .history-button.alignment-button svg { width: 20px; height: 20px; flex-shrink: 0; stroke-width: 2.4; }
 .alignment-button > span { font-size: 12px; flex-shrink: 0; }
