@@ -683,6 +683,31 @@ test('alignment applies only selected cells while keeping native input and colum
   instance.applyAlignment('right');assert.equal(cell.style.paddingLeft,'6px');assert.equal(cell.style.textAlign,'right');
 });
 
+test('header alignment replaces all prior cell overrides, including when reapplying the same alignment', () => {
+  const instance = Object.create(context.App.prototype);
+  instance.columnFormatting = {};
+  const rows = [{name:'첫 행'}, {name:'개별 정렬',_textStyles:{name:{textAlign:'right',fontSize:18}},_textColors:{name:'#123456'}}, {name:'마지막 행'}];
+  instance.getCurrentRows = () => rows;
+  instance.selectedColumnRange = {minCol:3,maxCol:3};
+  instance.selectedRange = {minRow:0,maxRow:2,minCol:3,maxCol:3};
+  instance.isEditingCell = () => false;
+  instance.renderTable = () => {};
+  instance.selectEntireColumn = () => {};
+  instance.updateAlignmentIndicator = () => {};
+  instance.applyAlignment('left');
+  for (const row of rows) assert.equal(instance.getCellFormatting(row,'name','textAlign'),'left');
+  assert.equal(instance.getCellFormatting(rows[1],'name','fontSize'),18);
+  assert.equal(instance.getCellFormatting(rows[1],'name','color'),'#123456');
+  instance.markCellFormatting(rows[1],'name','textAlign');
+  assert.equal(instance.getCellFormatting(rows[1],'name','textAlign'),'right');
+  instance.applyAlignment('left');
+  const reloaded = Object.create(context.App.prototype);
+  reloaded.columnFormatting = reloaded.loadColumnFormatting();
+  for (const row of rows) assert.equal(reloaded.getCellFormatting(plain(row),'name','textAlign'),'left');
+  reloaded.markCellFormatting(rows[1],'name','textAlign');
+  assert.equal(reloaded.getCellFormatting(rows[1],'name','textAlign'),'right');
+});
+
 test('column alignment persists and later cell alignment stays independent across devices and copies', () => {
   const first=Object.create(context.App.prototype);first.columnFormatting={};first.renderTable=()=>{};first.showSaveIndicator=()=>{};
   const setting={...first.getColumnFontSettings()[3],textAlign:'right'};

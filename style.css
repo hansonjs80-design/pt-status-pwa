@@ -2658,6 +2658,14 @@ body {
   .summary-panel-shell, .summary-toggle-bar { display: none; }
   .sheet-container, .cross-date-scroll-wrap { scrollbar-width: none; }
   .sheet-container::-webkit-scrollbar, .cross-date-scroll-wrap::-webkit-scrollbar { width: 0; height: 0; }
+  /* Leave room for today's rows and let swipes continue into the outer sheet
+     when the history list reaches its edge. Override its desktop inline cap. */
+  .cross-date-scroll-wrap {
+    max-height: min(300px, 25dvh) !important;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sheet-container { min-height: 0; -webkit-overflow-scrolling: touch; }
 }
 @media (prefers-reduced-motion: reduce) {
   .summary-panel-shell, .summary-panel-shell > #summarySidebar, .toolbar-actions-toggle svg { transition: none; }

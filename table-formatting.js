@@ -391,7 +391,9 @@ class PTTableFormatting {
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     if (columns) {
-      this.setColumnFormatting(columns, property, value);
+      // Applying alignment to a whole column must also replace older cell
+      // overrides. Later cell edits can still override the new reset revision.
+      this.setColumnFormatting(columns, property, value, property === 'textAlign');
       this.renderTable();
       this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
       return;
