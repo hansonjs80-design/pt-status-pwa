@@ -2270,6 +2270,7 @@ body {
 .print-table th, .print-table td { padding: 3px 4px; text-align: center !important; vertical-align: middle; font: 600 10px/1.35 Arial, sans-serif; overflow-wrap: anywhere; white-space: normal; }
 .print-table tr { break-inside: avoid; }
 .print-table thead { display: table-header-group; }
+.print-table thead th { font-size: 12px; }
 .print-table .print-lunch-row td { border-top: 1.5px dashed #d93025; }
 .print-summary-bar { flex-wrap: wrap; gap: 6px; }
 @media print { @page { size: A4 landscape; margin: 8mm; } .preview-printable-area { padding: 0 !important; } }
