@@ -149,6 +149,7 @@
         this.app.restoreDeviceColumnWidths(this.store.bind(this)),
         this.app.restoreDeviceSummaryState(this.store.bind(this)),
         this.app.restoreDeviceToolbarState(this.store.bind(this)),
+        window.ptSheetClock?.restore(this.store.bind(this)),
       ]);
       this.folder = await this.store('folder');
       await this.app.migrateTextEditBackups(this.store.bind(this));
@@ -561,6 +562,7 @@
         </header>
         <nav>
           <button data-tab="rows">기본 행</button>
+          <button data-tab="display">화면</button>
           <button type="button" data-staff-count-settings>근무표 PT건수</button>
           <button data-tab="backup">💾 로컬 백업</button>
           <button data-tab="exports">자동 PDF</button>
@@ -573,6 +575,11 @@
           <p>현재 달부터 적용하면 이번 달과 이후 날짜에 적용합니다. 이전 달의 기본 행 설정은 유지됩니다.</p>
           <p>입력한 기록과 개별 서식은 보존하며, 마지막 기록 아래에는 입력할 빈 행 15개를 유지합니다. 이 기기에 저장됩니다.</p>
           <button type="button" data-apply-default-rows>기본 행 적용</button>
+        </section>
+        <section data-panel="display" hidden>
+          <h3>시계 표시</h3>
+          <label><input type="checkbox" data-clock-enabled> 디지털 시계 켜기</label>
+          <p>이 기기에만 적용하며, 변경한 상태는 즉시 저장됩니다.</p>
         </section>
         <section data-panel="backup">
           <div class="backup-config-card">
@@ -701,6 +708,14 @@
       dialog.querySelector('[data-status]').textContent = this.status;
 
       // 설정값 바인딩
+      const clockEnabled = dialog.querySelector('[data-clock-enabled]');
+      clockEnabled.checked = window.ptSheetClock?.enabled !== false;
+      clockEnabled.onchange = async () => {
+        try {
+          await window.ptSheetClock?.setEnabled(clockEnabled.checked);
+          this.report('이 기기에 시계 설정 저장됨');
+        } catch (error) { this.report(`시계 설정 저장 실패: ${error.message}`); }
+      };
       const rowCount = dialog.querySelector('[data-default-row-count]');
       rowCount.value = String(window.ptApp?.getDefaultRowCount() || 120);
       const chkBackup = dialog.querySelector('[data-backup]');
@@ -857,6 +872,11 @@
         this.report('기본 행 설정이 적용되었습니다.');
       });
       dialog.querySelector('[data-save]').onclick = run(async () => {
+        if (!dialog.querySelector('[data-panel="display"]').hidden) {
+          await window.ptSheetClock?.setEnabled(clockEnabled.checked);
+          this.report('이 기기에 시계 설정 저장됨');
+          return;
+        }
         if (!dialog.querySelector('[data-panel="rows"]').hidden) {
           if (!window.ptApp?.applyDefaultRowCount(Number(rowCount.value), dialog.querySelector('[data-default-row-scope]').value)) throw Error('기본 행 수를 1~2000 사이의 정수로 입력해 주세요.');
           this.report('기본 행 설정이 적용되었습니다.');

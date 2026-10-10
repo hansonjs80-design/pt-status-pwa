@@ -1,5 +1,29 @@
 // A seven-segment clock that occupies only the visible spacer column.
 (() => {
+  const storageKey = 'PT_SHEET_CLOCK_V1';
+  let state = { enabled: true, updatedAt: 0 }, changed = false, store;
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    if (typeof saved?.enabled === 'boolean' && Number.isFinite(saved.updatedAt)) state = saved;
+  } catch (_) {}
+  const persistLocal = () => { try { localStorage.setItem(storageKey,JSON.stringify(state)); } catch (_) {} };
+  const notify = () => window.dispatchEvent(new Event('pt-clock-setting-changed'));
+  window.ptSheetClock = {
+    get enabled() { return state.enabled; },
+    async setEnabled(enabled) {
+      changed = true;
+      state = { enabled: Boolean(enabled), updatedAt: Math.max(Date.now(),state.updatedAt+1) };
+      persistLocal(); notify();
+      if (store) await store('device-sheet-clock-v1',state);
+    },
+    async restore(deviceStore) {
+      store = deviceStore;
+      const saved = await store('device-sheet-clock-v1');
+      if (!changed && typeof saved?.enabled === 'boolean' && Number.isFinite(saved.updatedAt) && saved.updatedAt >= state.updatedAt) {
+        state = saved; persistLocal(); notify();
+      } else await store('device-sheet-clock-v1',state);
+    },
+  };
   const digits = ['abcdef','bc','abdeg','abcdg','bcfg','acdfg','acdefg','abc','abcdefg','abcdfg'];
   const shapes = {
     a:'5,0 45,0 37,8 13,8', b:'46,2 46,46 38,38 38,10',
@@ -17,6 +41,7 @@
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns,'svg');
     svg.setAttribute('viewBox','0 0 366 100');
+    svg.setAttribute('preserveAspectRatio','none');
     svg.setAttribute('aria-hidden','true');
     const segments = [0,56,130,186,260,316].map(x => {
       const group = document.createElementNS(ns,'g');
@@ -37,6 +62,7 @@
     let pending = false;
     const position = () => {
       pending = false;
+      if (!state.enabled) { clock.hidden = true; return; }
       const spacer = document.querySelector('.col-headers-row .col-spacer');
       if (!spacer) { clock.hidden = true; return; }
       const bounds = sheet.getBoundingClientRect(), blank = spacer.getBoundingClientRect();
@@ -58,10 +84,11 @@
       }
       clock.hidden = height < 24;
       if (clock.hidden) return;
-      Object.assign(clock.style,{left:`${right-height*3.66}px`,top:`${bottom-height}px`,width:`${height*3.66}px`,height:`${height}px`});
+      Object.assign(clock.style,{left:`${right-height*3.66}px`,top:`${bottom-height*0.85}px`,width:`${height*3.66}px`,height:`${height*0.85}px`});
     };
     const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(position); } };
     const tick = () => {
+      if (!state.enabled) { clock.hidden = true; return; }
       if (document.visibilityState === 'hidden') return;
       const now = new Date();
       const parts = [now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0'));
@@ -78,6 +105,7 @@
     window.visualViewport?.addEventListener('resize',schedule);
     window.visualViewport?.addEventListener('scroll',schedule);
     document.addEventListener('visibilitychange',tick);
+    window.addEventListener('pt-clock-setting-changed',tick);
     tick(); setInterval(tick,1000);
   }
   window.addEventListener('DOMContentLoaded',createClock);
