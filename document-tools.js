@@ -109,6 +109,7 @@ class PTDocumentTools {
       createdAt: new Date().toISOString(),
       scope: "PT app records and presets",
       dataStore: this.dataStore,
+      staffCalendarCounts: this.staffCountSettings || null,
       presets: typeof COLUMN_PRESETS !== "undefined" ? COLUMN_PRESETS : null
     };
     const dataStr = JSON.stringify(backupObj, null, 2);

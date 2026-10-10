@@ -156,6 +156,7 @@ class PTCloudSync {
     this.liveClient = client;
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
+        if (payload?.date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
         if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
         if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
         else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
@@ -181,6 +182,7 @@ class PTCloudSync {
           if (this.supabaseClient !== client) break;
           if (!this.activePushes.has(date)) await this.pushToCloud(date);
         }
+        void this.syncStaffCountSettings();
         if (this.presetsDirty) await this.pushSharedPresets();
         else await this.pullSharedPresets();
         // push가 모두 완료된 후 pull 실행
@@ -192,6 +194,7 @@ class PTCloudSync {
     this.liveSyncTimer = setInterval(refresh, 2000);
     this.columnFormattingLiveTimer = setInterval(() => { void this.syncSharedColumnFormatting(); }, 2000);
     void this.syncSharedColumnFormatting();
+    void this.syncStaffCountSettings();
     void refresh();
   }
 

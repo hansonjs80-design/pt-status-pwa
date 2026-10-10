@@ -6,7 +6,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 function createApp(db = new Map()) {
   const storage = new Map();
   const context = vm.createContext({ window: { addEventListener() {} }, document: { activeElement: null },
-    localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout,
+    localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout, AbortController,
     confirm: () => true, alert: () => {} });
   vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
@@ -15,7 +15,7 @@ function createApp(db = new Map()) {
   app.isEditingCell = () => false;
   app.supabaseClient = { from() {
     let action = 'read', record, conditions = [];
-    const query = { select() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, is(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
+    const query = { select() { return query; }, abortSignal() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, is(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
       return Promise.resolve().then(() => {
         if (action === 'read') return { data: clone(db.get(conditions.find(([k]) => k === 'date')[1]) || null) };
         const old = db.get(record.date);
@@ -209,6 +209,7 @@ test('column settings save independently while the daily-record synchronization 
   app.startLiveSync();
   try {
     await app.columnFormattingSyncTask;
+    await app.staffCountSyncTask?.promise;
     assert.equal(Object.keys(app.columnFormattingPending).length,0);
     assert.equal(app.liveRefreshBusy,true);
   } finally {app.stopLiveSync();}

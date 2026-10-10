@@ -3,6 +3,14 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 function tools(){const window={addEventListener(){}};vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'),'utf8'),{window,Blob,TextEncoder,Date,localStorage:{getItem(){return null;}},setTimeout});return window.PTLocalTools;}
+test('full backup preserves staff-calendar scope separately from patient dates',async()=>{
+ const {LocalTools}=tools(),l=Object.create(LocalTools.prototype),saved=new Map();
+ l.app={dataStore:{},supabaseClient:{from(){const q={select(){return q},order(){return q},range(){return Promise.resolve({data:[{date:'2026-10-10',rows_data:[{name:'가상'}]},{date:'__pt_staff_calendar_count_settings_v1__',rows_data:[{staffCalendarCounts:{scope:'from',startDate:'2026-09-01'}}]}]})}};return q}}};
+ l.settings={};l.store=async(k,v)=>v===undefined?saved.get(k):saved.set(k,v);l.save=()=>{};l.cleanupOldBackups=async()=>{};l.write=async()=>{};l.report=()=>{};
+ await l.backup(true);const backup=JSON.parse([...saved.values()][0]);
+ assert.equal(backup.staffCalendarCounts.startDate,'2026-09-01');assert.equal(backup.staffCalendarCounts.scope,'from');
+ assert.deepEqual(Object.keys(backup.dataStore),['2026-10-10']);
+});
 test('PDF writer records valid byte offsets and all page objects',async()=>{
  const {jpegPDF}=tools();const blob=jpegPDF([new Uint8Array([255,216,255,217]),new Uint8Array([255,216,255,217])],1684,1190);
  const bytes=Buffer.from(await blob.arrayBuffer()),text=bytes.toString('latin1');assert.ok(text.includes('/Count 2'));
@@ -182,6 +190,5 @@ test('backup pauses outside work hours when workHoursOnly is enabled', async () 
  // 근무 시간 내이므로 백업 실행되어야 함
  assert.equal(backups, 1);
 });
-
 
 

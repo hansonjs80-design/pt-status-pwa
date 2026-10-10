@@ -208,6 +208,7 @@
     async backup(automatic = false) {
       const cloud = {};
       let shared = null;
+      let staffCalendarCounts = null;
       if (this.app.supabaseClient) {
         try {
           for (let offset = 0; ; offset += 200) {
@@ -216,6 +217,7 @@
             for (const record of data || []) {
               if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;
               else if (record.date === '__pt_shared_presets_v1__') shared = record;
+              else if (record.date === '__pt_staff_calendar_count_settings_v1__') staffCalendarCounts = record.rows_data?.[0]?.staffCalendarCounts || null;
             }
             if (!data || data.length < 200) break;
           }
@@ -236,6 +238,7 @@
         cloudDataStore: cloud,
         localDataStore: this.app.dataStore,
         sharedPresets: shared,
+        staffCalendarCounts: staffCalendarCounts || this.app.staffCountSettings || null,
         presets: JSON.parse(localStorage.getItem('PT_APP_CUSTOM_PRESETS_V1') || 'null')
       };
       const text = JSON.stringify(backup);
@@ -557,6 +560,7 @@
         </header>
         <nav>
           <button data-tab="rows">기본 행</button>
+          <button type="button" data-staff-count-settings>근무표 PT건수</button>
           <button data-tab="backup">💾 로컬 백업</button>
           <button data-tab="exports">자동 PDF</button>
           <button data-tab="usage">사용량</button>
@@ -692,6 +696,7 @@
 
       document.body.append(dialog);
       dialog.showModal();
+      dialog.querySelector('[data-staff-count-settings]').onclick = () => this.app.openStaffCountSettings();
       dialog.querySelector('[data-status]').textContent = this.status;
 
       // 설정값 바인딩
