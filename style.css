@@ -2262,6 +2262,8 @@ body {
 .font-color-button .font-color-letter { display: inline-block; transform: translateY(3.28px); }
 /* Compensate for the parent icon's .9 vertical scale: lift the Windows glyph 2px. */
 .platform-windows .font-color-button .font-color-letter { transform: translateY(1.06px); }
+.platform-windows .quick-inputs .date-display-wrap { padding-block: 0; align-items: center; }
+.platform-windows .quick-inputs .date-label { display: inline-flex; align-items: center; justify-content: center; height: 30px; box-sizing: border-box; padding: 0 5px; line-height: 1; }
 .fill-color-icon { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .history-button .fill-color-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
 .fill-color-bar { display: block; width: 23px; height: 4px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
