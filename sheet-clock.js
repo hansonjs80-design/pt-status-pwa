@@ -35,6 +35,22 @@
     g:'4,51 10,46 40,46 46,51 40,56 10,56',
   };
   function createClock() {
+    const toggle = document.getElementById('btnToggleSheetClock');
+    const updateToggle = () => {
+      if (toggle) {
+        const label = state.enabled ? '디지털 시계 끄기' : '디지털 시계 켜기';
+        toggle.setAttribute('aria-pressed', String(state.enabled));
+        toggle.setAttribute('aria-label', label);
+        toggle.title = label;
+      }
+      const setting = document.querySelector('[data-clock-enabled]');
+      if (setting) setting.checked = state.enabled;
+    };
+    toggle?.addEventListener('click', () => {
+      window.ptSheetClock.setEnabled(!state.enabled).catch(error => console.error('시계 설정 저장 실패', error));
+    });
+    window.addEventListener('pt-clock-setting-changed', updateToggle);
+    updateToggle();
     const sheet = document.getElementById('sheetContainer');
     if (!sheet) return;
     const clock = document.createElement('div');
