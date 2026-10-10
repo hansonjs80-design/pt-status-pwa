@@ -724,6 +724,11 @@ body {
   outline: none;
 }
 
+.sheet-digital-clock { position: fixed; z-index: 4; pointer-events: none; user-select: none; color: #161b18; }
+.sheet-digital-clock svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+.sheet-digital-clock[hidden] { display: none; }
+@media print { .sheet-digital-clock { display: none !important; } }
+
 .modal-card.search-prompt-card, .modal-card.search-not-found-card { width: calc(100% - 32px); max-width: 240px; border-radius: 10px; box-shadow: 0 12px 32px #183a2926; }
 #searchPromptModal { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .search-prompt-card .modal-header { cursor: grab; user-select: none; touch-action: pinch-zoom; }

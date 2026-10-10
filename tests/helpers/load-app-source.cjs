@@ -8,6 +8,7 @@ module.exports = [
   'summary.js',
   'cell-input-tools.js',
   'device-layout.js',
+  'sheet-clock.js',
   'document-tools.js',
   'cloud-sync.js',
   'context-menu.js',

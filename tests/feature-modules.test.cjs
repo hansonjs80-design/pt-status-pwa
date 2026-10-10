@@ -51,5 +51,6 @@ test('feature methods do not collide and are installed before the app starts', (
         Object.getOwnPropertyDescriptor(feature.prototype, name), feature.name + '.' + name);
     }
   }
-  assert.equal(ready.length, 1);
+  // The clock has its own DOM-only startup; PTApp still starts once.
+  assert.equal(ready.length, 2);
 });
