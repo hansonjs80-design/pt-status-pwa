@@ -87,7 +87,11 @@ class PTDeviceLayout {
   queueDeviceSummaryState(snapshot) {
     if (!this.summaryStateStore) return;
     const previous = this.summaryStateWrite || Promise.resolve();
-    const write = this.summaryStateStore("device-summary-state-v1", snapshot);
+    const write = (async () => {
+      await this.summaryStateStore("device-summary-state-v1", snapshot);
+      const saved = await this.summaryStateStore("device-summary-state-v1");
+      if (!saved || saved.updatedAt < snapshot.updatedAt) throw new Error("현황창 설정 저장 검증 실패");
+    })();
     this.summaryStateWrite = Promise.all([previous, write]).catch(error => {
       console.error("Failed to persist device summary state:", error);
       this.showSaveIndicator?.("현황창 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
@@ -148,16 +152,60 @@ class PTDeviceLayout {
     button.title = closed ? "빠른 도구 및 설정 펼치기" : "빠른 도구 및 설정 접기";
     button.setAttribute("aria-label", button.title);
     if (save) {
-      try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1", String(closed)); }
-      catch (error) { console.error("Failed to persist device toolbar state:", error); }
+      const previous = this.deviceToolbarState || this.readDeviceToolbarState();
+      this.deviceToolbarState = { closed, updatedAt: Math.max(Date.now(), previous.updatedAt + 1) };
+      this.toolbarStateChanged = true;
+      this.persistLocalToolbarState(this.deviceToolbarState);
+      this.queueDeviceToolbarState(this.deviceToolbarState);
+    }
+  }
+
+  readDeviceToolbarState() {
+    try {
+      const snapshot = JSON.parse(localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT") || "null");
+      if (typeof snapshot?.closed === "boolean" && Number.isFinite(snapshot.updatedAt)) return snapshot;
+      return { closed: localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1") === "true", updatedAt: 0 };
+    } catch { return { closed: false, updatedAt: 0 }; }
+  }
+
+  persistLocalToolbarState(snapshot) {
+    try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT", JSON.stringify(snapshot)); } catch (_) {}
+    try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1", String(snapshot.closed)); } catch (_) {}
+  }
+
+  queueDeviceToolbarState(snapshot) {
+    if (!this.toolbarStateStore) return;
+    const previous = this.toolbarStateWrite || Promise.resolve();
+    const write = (async () => {
+      await this.toolbarStateStore("device-toolbar-state-v1", snapshot);
+      const saved = await this.toolbarStateStore("device-toolbar-state-v1");
+      if (!saved || saved.updatedAt < snapshot.updatedAt) throw new Error("도구 설정 저장 검증 실패");
+    })();
+    this.toolbarStateWrite = Promise.all([previous, write]).catch(error => {
+      console.error("Failed to persist device toolbar state:", error);
+      this.showSaveIndicator?.("도구 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
+    });
+  }
+
+  async restoreDeviceToolbarState(store) {
+    this.toolbarStateStore = store;
+    const persisted = await store("device-toolbar-state-v1");
+    const local = this.deviceToolbarState || this.readDeviceToolbarState();
+    if (!this.toolbarStateChanged && typeof persisted?.closed === "boolean" &&
+        Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= local.updatedAt) {
+      this.deviceToolbarState = persisted;
+      this.persistLocalToolbarState(persisted);
+      this.setToolbarActionsClosed(persisted.closed, false);
+    } else {
+      this.deviceToolbarState = local;
+      this.queueDeviceToolbarState(local);
+      await this.toolbarStateWrite;
     }
   }
 
   initToolbarActionsToggle() {
-    let closed = false;
-    try { closed = localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1") === "true"; }
-    catch { /* Keep the toolbar open when device storage is unavailable. */ }
-    this.setToolbarActionsClosed(closed, false);
+    this.deviceToolbarState = this.readDeviceToolbarState();
+    this.setToolbarActionsClosed(this.deviceToolbarState.closed, false);
     document.getElementById("btnToggleToolbarActions")?.addEventListener("click", () => {
       const panel = document.getElementById("collapsibleToolbarActions");
       this.setToolbarActionsClosed(!panel?.classList.contains("is-collapsed"));
@@ -165,9 +213,8 @@ class PTDeviceLayout {
   }
 
   initSummaryToggle() {
-    if (this.isSummaryClosed()) {
-      this.setSummaryClosed(true, false);
-    }
+    this.deviceSummaryState = this.readDeviceSummaryState();
+    this.setSummaryClosed(this.deviceSummaryState.closed, false);
     document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
       const sidebar = document.getElementById("summarySidebar");
       const nextClosed = sidebar ? !sidebar.classList.contains("summary-closed") : true;

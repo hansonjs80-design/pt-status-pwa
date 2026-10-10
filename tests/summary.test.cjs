@@ -289,10 +289,12 @@ function deviceSummaryHarness() {
   const storage = new Map();
   const disk = new Map();
   const sidebar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } } };
+  const toolbar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } }, contains:()=>false, setAttribute(){} };
+  const toolbarButton = { setAttribute(){}, addEventListener(){}, focus(){} };
   let failLocal = false;
   const ctx = vm.createContext({
     window: { addEventListener() {} },
-    document: { getElementById: id => id === 'summarySidebar' ? sidebar : null },
+    document: { getElementById: id => id === 'summarySidebar' ? sidebar : id === 'collapsibleToolbarActions' ? toolbar : id === 'btnToggleToolbarActions' ? toolbarButton : null },
     localStorage: {
       getItem: key => storage.get(key) || null,
       setItem: (key, value) => { if (failLocal) throw Error('quota'); storage.set(key, value); },
@@ -303,7 +305,7 @@ function deviceSummaryHarness() {
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', ctx);
   const create = () => { const app = Object.create(ctx.App.prototype); app.syncMainColumnWidths = () => {}; return app; };
   const store = async (key, value) => { if (value !== undefined) disk.set(key, structuredClone(value)); return disk.get(key); };
-  return { storage, disk, sidebar, create, store, failLocal() { failLocal = true; } };
+  return { storage, disk, sidebar, toolbar, create, store, failLocal() { failLocal = true; } };
 }
 
 test('summary closed state survives restart with full localStorage and remains device-local', async () => {
@@ -333,11 +335,49 @@ test('summary toggle during startup wins over an older asynchronous disk result'
   const h = deviceSummaryHarness();
   let release;
   const app = h.create();
-  const loading = app.restoreDeviceSummaryState((key, value) => value !== undefined ? h.store(key, value) : new Promise(resolve => { release = resolve; }));
+  const loading = app.restoreDeviceSummaryState((key, value) => value !== undefined || release ? h.store(key, value) : new Promise(resolve => { release = resolve; }));
   app.setSummaryClosed(true);
   release({ closed: false, updatedAt: Date.now() + 10000 });
   await loading;
   assert.equal(app.isSummaryClosed(), true);
   assert.equal(h.sidebar.classList.closed, true);
   assert.equal(h.disk.get('device-summary-state-v1').closed, true);
+});
+
+test('toolbar collapsed state survives restarts with unavailable localStorage and stays device-local', async () => {
+  const h=deviceSummaryHarness();
+  const first=h.create();
+  await first.restoreDeviceToolbarState(h.store);
+  h.failLocal();
+  first.setToolbarActionsClosed(true);
+  await first.toolbarStateWrite;
+  const reopened=h.create();
+  await reopened.restoreDeviceToolbarState(h.store);
+  assert.equal(h.toolbar.classList.closed,true);
+  reopened.setToolbarActionsClosed(false);
+  await reopened.toolbarStateWrite;
+  const again=h.create();
+  await again.restoreDeviceToolbarState(h.store);
+  assert.equal(h.toolbar.classList.closed,false);
+  const other=deviceSummaryHarness();
+  await other.create().restoreDeviceToolbarState(other.store);
+  assert.equal(other.toolbar.classList.closed,false);
+});
+
+test('toolbar migrates existing local setting and startup toggles win over delayed disk restore', async () => {
+  const h=deviceSummaryHarness();
+  h.storage.set('PT_TOOLBAR_ACTIONS_COLLAPSED_V1','true');
+  const app=h.create();
+  app.initToolbarActionsToggle();
+  assert.equal(h.toolbar.classList.closed,true);
+  await app.restoreDeviceToolbarState(h.store);
+  assert.equal(h.disk.get('device-toolbar-state-v1').closed,true);
+  let release;
+  const reopened=h.create();
+  const loading=reopened.restoreDeviceToolbarState((key,value)=>value!==undefined||release?h.store(key,value):new Promise(resolve=>{release=resolve;}));
+  reopened.setToolbarActionsClosed(false);
+  release({closed:true,updatedAt:Date.now()+10000});
+  await loading;
+  assert.equal(h.toolbar.classList.closed,false);
+  assert.equal(h.disk.get('device-toolbar-state-v1').closed,false);
 });
