@@ -760,3 +760,27 @@ test('colored editor overlays follow centered and right native text with scrolli
   input.scrollLeft=10;assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'right'}),64);
   input.clientWidth=30;assert.equal(instance.getEditorTextLeft(input,{...font,textAlign:'right'}),10);
 });
+
+test('formatting popup preparation closes repeated anchors and switches other tools', () => {
+  const instance=Object.create(context.App.prototype);
+  const anchor={},other={};
+  let popup,cleans=0;
+  context.document={getElementById:id=>id==='columnTypographyMenu'?popup:null};
+  instance.closeFontColorMenu=()=>{};
+  const prepare=(property,button)=>{
+    instance.typographyCleanup=()=>{cleans++;};
+    return instance.prepareFormattingMenu(property,button);
+  };
+  try {
+    for(const property of ['color','backgroundColor','fontSize','fontWeight','textAlign']){
+      popup={_formatAnchor:anchor,_formatProperty:property,remove(){popup=null;}};
+      assert.equal(prepare(property,anchor),false);
+      assert.equal(popup,null);
+      assert.equal(prepare(property,anchor),true);
+      popup={_formatAnchor:anchor,_formatProperty:property,remove(){popup=null;}};
+      assert.equal(prepare(property,other),true);
+      assert.equal(popup,null);
+    }
+    assert.equal(cleans,15);
+  } finally { delete context.document; }
+});

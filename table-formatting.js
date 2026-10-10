@@ -458,13 +458,24 @@ class PTTableFormatting {
     this.updateAlignmentIndicator();
   }
 
+  prepareFormattingMenu(property, anchor) {
+    const popup = document.getElementById('fontColorMenu') || document.getElementById('columnTypographyMenu');
+    const repeated = Boolean(anchor && popup?._formatAnchor === anchor && popup?._formatProperty === property);
+    this.closeFontColorMenu();
+    this.typographyCleanup?.(); this.typographyCleanup = null;
+    document.getElementById('columnTypographyMenu')?.remove();
+    return !repeated;
+  }
+
   openAlignmentMenu(anchor) {
+    if (!this.prepareFormattingMenu('textAlign', anchor)) return;
     if (!this.getFormattingRange()) return;
     this.typographyCleanup?.(); document.getElementById('columnTypographyMenu')?.remove();
     const originalFocus = document.activeElement;
     const nativeEditor = originalFocus?.matches?.('.cell-input-element') ? originalFocus : null;
     const popup = document.createElement('div');
     popup.id = 'columnTypographyMenu'; popup.className = 'column-typography-menu alignment-menu';
+    popup._formatAnchor = anchor; popup._formatProperty = 'textAlign';
     popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '셀 정렬');
     const current = this.getFormattingStatus('textAlign').value;
     const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
@@ -502,10 +513,12 @@ class PTTableFormatting {
   }
 
   openColumnTypographyMenu(property, anchor = null) {
+    if (!this.prepareFormattingMenu(property, anchor)) return;
     if (!this.getFormattingRange()) return;
     const status = this.getFormattingStatus(property);
     this.typographyCleanup?.(); document.getElementById("columnTypographyMenu")?.remove();
     const popup = document.createElement("div"); popup.id = "columnTypographyMenu"; popup.className = "column-typography-menu";
+    popup._formatAnchor = anchor; popup._formatProperty = property;
     popup.setAttribute("role", "dialog"); popup.setAttribute("aria-label", property === "fontSize" ? "글자 크기" : "글자 굵기");
     const title = document.createElement("strong"); title.textContent = property === "fontSize" ? "글자 크기" : "글자 굵기"; popup.append(title);
     const current = document.createElement("div"); current.className = "format-current"; current.textContent = `현재: ${status.label}`; popup.append(current);
@@ -525,7 +538,7 @@ class PTTableFormatting {
     const rect = (anchor || this.elContextMenu).getBoundingClientRect();
     popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
     popup.style.top = `${Math.max(8, Math.min(anchor ? rect.bottom + 6 : rect.top, innerHeight - popup.offsetHeight - 8))}px`;
-    const outside = event => { if (!popup.contains(event.target)) close(); };
+    const outside = event => { if (!popup.contains(event.target) && !anchor?.contains(event.target)) close(); };
     const escape = event => { event.stopPropagation(); if (event.key === "Escape") { close(); this.elSheetContainer.focus(); } };
     document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
     this.typographyCleanup = () => document.removeEventListener("mousedown", outside);
@@ -648,8 +661,9 @@ class PTTableFormatting {
   }
 
   openFontColorMenu(anchor, property = "color") {
-    this.closeFontColorMenu();
+    if (!this.prepareFormattingMenu(property, anchor)) return;
     const menu = document.createElement("div"); menu.id = "fontColorMenu"; menu.className = "font-color-menu";
+    menu._formatAnchor = anchor; menu._formatProperty = property;
     const isBackground = property === "backgroundColor";
     const apply = color => isBackground ? this.applyBackgroundColor(color) : this.applyTextColor(color);
     menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isBackground ? "셀 배경색 선택" : "글자색 선택");
