@@ -26,10 +26,13 @@
   };
   const digits = ['abcdef','bc','abdeg','abcdg','bcfg','acdfg','acdefg','abc','abcdefg','abcdfg'];
   const shapes = {
-    a:'5,0 45,0 37,8 13,8', b:'46,2 46,46 38,38 38,10',
-    c:'46,54 46,98 38,90 38,62', d:'5,100 45,100 37,92 13,92',
-    e:'4,54 12,62 12,90 4,98', f:'4,2 12,10 12,38 4,46',
-    g:'5,50 13,46 37,46 45,50 37,54 13,54',
+    a:'6,0 44,0 49,5 42,12 8,12 1,5',
+    b:'50,8 50,47 38,41 38,20',
+    c:'50,53 50,92 38,80 38,59',
+    d:'6,100 44,100 49,95 42,88 8,88 1,95',
+    e:'0,53 12,59 12,80 0,92',
+    f:'0,8 12,20 12,41 0,47',
+    g:'2,50 8,44 42,44 48,50 42,56 8,56',
   };
   function createClock() {
     const sheet = document.getElementById('sheetContainer');
@@ -93,7 +96,7 @@
       const now = new Date();
       const parts = [now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0'));
       parts.join('').split('').forEach((value,index)=>segments[index].forEach(({name,polygon})=>{
-        polygon.style.display = digits[Number(value)].includes(name) ? '' : 'none';
+        polygon.classList.toggle('is-off', !digits[Number(value)].includes(name));
       }));
       clock.setAttribute('aria-label',`현재 시간 ${parts.join(':')}`);
       schedule();
