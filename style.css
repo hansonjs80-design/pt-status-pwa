@@ -2208,10 +2208,10 @@ body {
 .date-trigger:hover, .date-trigger:focus-visible { background: #e5e5e5; outline: 2px solid #73737355; }
 .date-calendar, .column-typography-menu { position: fixed; z-index: 5100; background: #fff; color: #263d31; border: 1px solid #dce6df; border-radius: 16px; padding: 16px; box-shadow: 0 12px 36px #183a2929; }
 .date-calendar { width: 280px; max-width: calc(100vw - 16px); }
-.calendar-heading { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; }
-.calendar-heading select.calendar-year-select { width: 84px; }
-.calendar-heading select { width: 60px; box-sizing: border-box; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; }
-.calendar-heading input, .calendar-heading select { font-family: inherit; font-size: 15px; font-weight: 700; border: 1px solid #e0e8e2; border-radius: 7px; padding: 6px; color: #171717; background: #f7faf8; }
+.calendar-heading { display: flex; align-items: center; justify-content: center; gap: 2px; margin-bottom: 12px; }
+.calendar-heading select.calendar-year-select { width: 70px; }
+.calendar-heading select { width: 44px; height: 28px; flex-shrink: 0; box-sizing: border-box; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.calendar-heading input, .calendar-heading select { font-family: inherit; font-size: 15px; font-weight: 700; border: 0; border-radius: 0; padding: 0; margin: 0; line-height: normal; color: #171717; background: transparent; }
 .date-calendar button { border: 0; cursor: pointer; background: transparent; color: inherit; border-radius: 9px; font-family: inherit; }
 .calendar-heading button { display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; color: #171717; width: 30px; height: 32px; flex-shrink: 0; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
