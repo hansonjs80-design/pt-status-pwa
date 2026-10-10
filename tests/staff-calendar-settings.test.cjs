@@ -76,3 +76,23 @@ test('read failures never seed or overwrite existing shared settings', async () 
   assert.equal(writes.length, 0);
   assert.equal(app.staffCountSettings, undefined);
 });
+
+test('legacy scopes stay enabled and disabled scopes survive refresh and re-enabling', async () => {
+  for (const scope of ['today', 'all', 'from']) {
+    const value = { scope, startDate: scope === 'all' ? null : '2026-09-01' };
+    const { app, writes } = fixture({ rows_data: [{ staffCalendarCounts: value }] });
+    assert.equal((await app.syncStaffCountSettings()).enabled, true);
+    assert.equal(writes.length, 0);
+    assert.equal(await app.saveStaffCountSettings({ ...value, enabled: false }), true);
+    const disabled = await app.syncStaffCountSettings();
+    assert.equal(disabled.enabled, false);
+    assert.equal(disabled.scope, scope);
+    assert.equal(disabled.startDate, value.startDate);
+    assert.equal(await app.saveStaffCountSettings({ ...disabled, enabled: true }), true);
+    const restored = await app.syncStaffCountSettings();
+    assert.equal(restored.enabled, true);
+    assert.equal(restored.startDate, value.startDate);
+    assert.equal(restored.scope, scope);
+    assert.equal(writes.length, 2);
+  }
+});
