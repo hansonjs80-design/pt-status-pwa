@@ -122,6 +122,7 @@ let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
   constructor() {
+    this.initDevicePlatformAppearance();
     window.ptApp = this;
     this.dataStore = this.loadDataStore();
     this.columnFormatting = this.loadColumnFormatting();

@@ -1,5 +1,10 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTDeviceLayout {
+  initDevicePlatformAppearance() {
+    const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent;
+    document.documentElement.classList.toggle('platform-windows', /win/i.test(platform));
+  }
+
   readRowCountSettings() {
     try {
       const setting = JSON.parse(localStorage.getItem('PT_DEFAULT_ROWS_V1') || 'null');

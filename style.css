@@ -2260,6 +2260,8 @@ body {
 .font-color-button .format-icon { position: relative; display: inline-block; width: 19.55px; text-align: center; transform: translateY(-2px) scaleY(.9); }
 .font-color-button .format-icon::after { content: ""; position: absolute; left: 0; right: 0; bottom: -3px; border-bottom: inherit; transform: scaleY(1.15); pointer-events: none; }
 .font-color-button .font-color-letter { display: inline-block; transform: translateY(3.28px); }
+/* Compensate for the parent icon's .9 vertical scale: lift the Windows glyph 2px. */
+.platform-windows .font-color-button .font-color-letter { transform: translateY(1.06px); }
 .fill-color-icon { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .history-button .fill-color-icon svg { width: 22px; height: 22px; stroke-width: 1.8; }
 .fill-color-bar { display: block; width: 23px; height: 4px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
