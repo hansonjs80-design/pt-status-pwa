@@ -367,7 +367,7 @@ test('history row and partial-range paste retain the actual destination selectio
     app.activeCell = {rowIdx:1,colKey:'no'};
     let selected, rangeUpdated = false, scrolled = false;
     const cell = {scrollIntoView(){scrolled=true;}};
-    app.elTableBody = {querySelector:()=>cell};
+    app.elTableBody = {querySelector:()=>cell,querySelectorAll:()=>[]};
     app.elSheetContainer = {focus(){}};
     app.selectCell = (row,key) => {selected={row,key};};
     app.selectRowRange = (start,end,col) => {selected={start,end,col};};

@@ -238,8 +238,6 @@ class PTSheetActions {
     if (prevHistoryScrollTop !== null) {
       this._preservedHistoryScrollTop = prevHistoryScrollTop;
     }
-    const savedCrossDateSelection = this.crossDateSelection ? { ...this.crossDateSelection } : null;
-    const wasCrossDateRowSelected = Boolean(this.isCrossDateRowSelected);
     const isHistoryActive = Boolean(this.elSearchInput?.value?.trim());
 
     this._isPasting = true;
@@ -252,7 +250,6 @@ class PTSheetActions {
       const grid = this.parseClipboardGrid(text);
       const htmlColors = this.parseClipboardHtmlColors(html);
       const sourceSelection = !htmlColors && text === this.clipboardBuffer ? this.clipboardSelection : null;
-      const historySourceSelection = savedCrossDateSelection || (sourceSelection?.kind === "history" ? sourceSelection : null);
 
       // Determine start coordinate
       let startRow = 0;
@@ -327,6 +324,9 @@ class PTSheetActions {
       // Include trailing entry rows before saving the undo snapshot. Adding
       // them during render would otherwise consume the first Undo action.
       this.getCurrentRows();
+      // The completed paste transfers focus to the daily range immediately.
+      this.clearCrossDateSelection();
+      this.isCrossDateRowSelected = false;
       this.saveDataStore(false);
       this.renderTable();
       // Explicitly record the completed paste even if an editor still owns focus.
@@ -352,17 +352,6 @@ class PTSheetActions {
 
       if (typeof clearTimeout === "function") clearTimeout(this.historyCurrentScrollTimer);
       if (isHistoryActive) {
-        if (historySourceSelection && this.crossDateResults?.length) {
-          this.crossDateSelection = historySourceSelection;
-          this.isCrossDateRowSelected = wasCrossDateRowSelected;
-          if (typeof this.renderCrossDateSelectionHighlight === "function") {
-            this.renderCrossDateSelectionHighlight();
-          }
-          // Keep the copied source's visual highlight, but the pasted daily
-          // range now owns keyboard navigation, copying and editing.
-          this.crossDateSelection = null;
-          this.isCrossDateRowSelected = false;
-        }
         const restoreScrollPositions = () => {
           if (sheetContainer) {
             sheetContainer.scrollTop = prevScrollTop;

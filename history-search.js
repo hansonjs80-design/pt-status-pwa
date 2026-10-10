@@ -41,7 +41,8 @@ class PTHistorySearch {
       const row = body.querySelector(`.excel-row[data-row-idx="${index}"]`);
       if (!row) continue;
       row.classList.add("history-destination-row");
-      if (!this.activeCell && !this.selectedRowRange) {
+      // History owns keyboard focus; the daily destination is a row preview only.
+      if (!this.crossDateSelection && !this.activeCell && !this.selectedRowRange) {
         row.querySelector(`[data-col="${colKey}"]`)?.classList.add("history-destination-cell");
       }
       if (previewButton) this.ensureCurrentCellVisible(row.querySelector(".excel-cell"));
@@ -174,6 +175,7 @@ class PTHistorySearch {
     this.crossDateSelection = null;
     this.isSelectingCrossDate = false;
     this.elTableBody?.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
+    this.elTableBody?.querySelectorAll(".cross-date-num").forEach(header => header.classList.remove("selected", "header-active"));
     if (this.elFormulaInput) this.elFormulaInput.readOnly = false;
     this.elTableBody?.querySelectorAll(".cross-date-cell").forEach(cell => {
       cell.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");

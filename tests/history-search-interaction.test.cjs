@@ -184,7 +184,8 @@ test('history range paste hands all four arrows to the pasted current-date cells
   await app.pasteSelection(app.clipboardBuffer);
   assert.equal(rows[4].name, '복사환자');
   assert.equal(rows[5].part, '허리');
-  assert.deepEqual(JSON.parse(JSON.stringify(highlighted)), source);
+  assert.equal(highlighted, undefined, 'completed paste must not repaint the history selection');
+  assert.equal(app.isCrossDateRowSelected, false);
   assert.equal(app.crossDateSelection, null);
   assert.equal(app.elSheetContainer.scrollTop, 240);
   for (const [key, rowIdx, colKey] of [
@@ -1156,6 +1157,32 @@ test('destination tint follows actual Apply destination or selected paste row wi
   app.updateHistoryDestinationHighlight();
   assert.equal(highlighted.size,0);
   assert.equal(JSON.stringify(rows),before);
+});
+
+test('history focus keeps destination row tint without a second cell border', () => {
+  const {app}=createApp([{name:'가상환자',chartNo:'T1'},{}]);
+  const rowClasses=new Set(), cellClasses=new Set();
+  const classList=set=>({add:value=>set.add(value),remove:(...values)=>values.forEach(value=>set.delete(value))});
+  const cell={classList:classList(cellClasses),scrollIntoView(){}};
+  const row={classList:classList(rowClasses),querySelector:()=>cell};
+  app.elTableBody={querySelectorAll:()=>[row,cell],querySelector:()=>row};
+  app.elSearchInput.value='가상환자';
+  app.activeCell=null;
+  app.crossDateResults=[{name:'가상환자',chartNo:'T1'}];
+  app.crossDateSelection=null;
+  app.updateHistoryDestinationHighlight();
+  assert.ok(cellClasses.has('history-destination-cell'));
+  for (const minRow of [0,1,0]) {
+    app.crossDateSelection={minRow};
+    app.updateHistoryDestinationHighlight(app.crossDateResults[0]);
+    assert.ok(rowClasses.has('history-destination-row'));
+    assert.equal(cellClasses.has('history-destination-cell'),false);
+  }
+  app.crossDateSelection=null;
+  app.activeCell={rowIdx:0,colKey:'name'};
+  app.updateHistoryDestinationHighlight();
+  assert.ok(rowClasses.has('history-destination-row'));
+  assert.equal(cellClasses.has('history-destination-cell'),false);
 });
 
 test('history Down transition targets the first current row actually visible below sticky headers', () => {
