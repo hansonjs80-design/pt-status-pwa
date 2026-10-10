@@ -724,9 +724,9 @@ body {
   outline: none;
 }
 
-.sheet-digital-clock { position: fixed; z-index: 4; pointer-events: none; user-select: none; color: #242424; }
+.sheet-digital-clock { position: fixed; z-index: 4; pointer-events: none; user-select: none; color: #000000; background: transparent; }
 .sheet-digital-clock svg { display: block; width: 100%; height: 100%; fill: currentColor; }
-.sheet-digital-clock polygon.is-off { fill: #f0f0f0; }
+.sheet-digital-clock polygon.is-off { display: none; }
 .sheet-digital-clock[hidden] { display: none; }
 @media print { .sheet-digital-clock { display: none !important; } }
 
