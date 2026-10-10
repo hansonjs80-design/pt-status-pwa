@@ -390,10 +390,10 @@ class PTAutocomplete {
 
     const nextStore = { ...this.dataStore, ...changed };
     const pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
-    // Persist the retry queue before the records, so a reload cannot lose bulk edits.
+    // Never publish a retry queue for records that failed to persist (e.g. quota).
     await this.persistSyncBaselines(baselines);
+    await this.persistDataStore(nextStore);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore));
     this.dataStore = nextStore;
     this.syncBaselines = baselines;
     this.pendingSyncDates = pending;

@@ -1,6 +1,10 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCloudSync {
   async syncBaselineDisk(value) {
+    return this.syncStateDisk('baselines', value);
+  }
+
+  async syncStateDisk(key, value) {
     this._baselineDatabase ||= new Promise((resolve, reject) => {
       const request = indexedDB.open('PT_SYNC_STATE', 1);
       request.onupgradeneeded = () => request.result.createObjectStore('state');
@@ -12,7 +16,7 @@ class PTCloudSync {
     catch (error) { this._baselineDatabase = null; throw error; }
     return new Promise((resolve, reject) => {
       const tx = db.transaction('state', value === undefined ? 'readonly' : 'readwrite');
-      const request = value === undefined ? tx.objectStore('state').get('baselines') : tx.objectStore('state').put(value, 'baselines');
+      const request = value === undefined ? tx.objectStore('state').get(key) : tx.objectStore('state').put(value, key);
       tx.oncomplete = () => resolve(request.result);
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error || Error('동기화 기준 저장이 중단되었습니다.'));
@@ -25,6 +29,35 @@ class PTCloudSync {
     const saved = await this.syncBaselineDisk();
     if (typeof saved !== 'string') throw new Error('동기화 기준 데이터를 복원하지 못했습니다.');
     this.syncBaselines = new Map(Object.entries(JSON.parse(saved)));
+  }
+
+  async restoreDiskRecords() {
+    if (this._recordRestoreError) throw this._recordRestoreError;
+    if (!this._recordsOnDisk) return;
+    const saved = await this.syncStateDisk('records');
+    const records = typeof saved === 'string' ? JSON.parse(saved) : null;
+    if (!records || typeof records !== 'object' || Array.isArray(records)) throw new Error('로컬 기록을 복원하지 못했습니다.');
+    this.dataStore = records;
+  }
+
+  persistDataStore(records = this.dataStore) {
+    if (this._recordRestoreError) return Promise.reject(this._recordRestoreError);
+    const snapshot = JSON.stringify(records);
+    const isQuota = error => error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014;
+    if (!this._recordsOnDisk && !this._recordWrite) {
+      try { localStorage.setItem(STORAGE_KEY, snapshot); return Promise.resolve(); }
+      catch (error) { if (!isQuota(error)) return Promise.reject(error); }
+    }
+    const save = async () => {
+      await this.syncStateDisk('records', snapshot);
+      if (await this.syncStateDisk('records') !== snapshot) throw new Error('로컬 기록 저장 검증에 실패했습니다.');
+      localStorage.setItem(STORAGE_KEY, '"indexedDB"');
+      this._recordsOnDisk = true;
+    };
+    const pending = (this._recordWrite || Promise.resolve()).catch(() => {}).then(save);
+    this._recordWrite = pending;
+    pending.catch(() => {});
+    return pending;
   }
 
   persistSyncBaselines(baselines = this.syncBaselines) {
@@ -349,11 +382,31 @@ class PTCloudSync {
     return merged;
   }
 
+  async restoreProtectedCloudDate(date, record) {
+    // Preserve the suspect local cache separately before adopting the intact server day.
+    const backup = JSON.stringify({date, local: this.dataStore[date] || null,
+      baseline: this.syncBaselines.get(date) || null, serverUpdatedAt: record.updated_at});
+    const key = `quarantined:${date}:${Date.now()}`;
+    await this.syncStateDisk(key, backup);
+    if (await this.syncStateDisk(key) !== backup) throw new Error('로컬 기록 보존 검증 실패');
+    this.dataStore[date] = JSON.parse(JSON.stringify(record.rows_data));
+    this.syncBaselines.set(date, JSON.parse(JSON.stringify(record.rows_data)));
+    await this.persistDataStore();
+    await this.persistSyncBaselines();
+    this.pendingSyncDates.delete(date);
+    localStorage.setItem('PT_PENDING_DATES', JSON.stringify([...this.pendingSyncDates]));
+    if (date === this.currentDate) { this.renderTable(); this.updateSidebarStats(); }
+    this.showSaveIndicator(`${date} 클라우드 기록 복원 · 기존 로컬 상태 별도 보관`);
+  }
+
   async pushToCloud(dateStr, showNotice = false) {
-    try { await this.syncBaselinesReady; await this._baselineWrite; }
+    try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     const client = this.supabaseClient;
     if (!client || this.activePushes.has(dateStr)) return;
+    // A persisted retry queue can outlive a failed bulk-record save. Missing data
+    // is not a deletion request and must never become an empty server snapshot.
+    const missingLocal = !Object.hasOwn(this.dataStore, dateStr) || !Array.isArray(this.dataStore[dateStr]);
     const snapshot = JSON.stringify(this.dataStore[dateStr] || []);
     const local = JSON.parse(snapshot), base = this.syncBaselines.get(dateStr) || [];
     this.activePushes.set(dateStr, true);
@@ -361,9 +414,23 @@ class PTCloudSync {
       for (let attempt = 0; attempt < 3; attempt++) {
         const { data, error: readError } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", dateStr).maybeSingle();
         if (readError) throw readError;
+        if (missingLocal) {
+          if (data && Array.isArray(data.rows_data) && data.rows_data.some(row => String(row?.name || '').trim() || String(row?.chartNo || '').trim())) {
+            await this.restoreProtectedCloudDate(dateStr, data);
+          } else this.showSaveIndicator(`${dateStr} 로컬 기록 없음 · 업로드 보류`, true);
+          return;
+        }
         // A date absent from the server has no merge baseline. Recreate it from
         // the full local snapshot, including unchanged records from older dates.
         const rows = data ? this.mergeCloudRows(base, local, data.rows_data || []) : local;
+        const hasPatients = values => values.some(row => String(row?.name || '').trim() || String(row?.chartNo || '').trim());
+        if (data && hasPatients(data.rows_data || []) && !hasPatients(rows)) {
+          // Full-day removal must be deliberate; stale/partial caches cannot erase
+          // a populated date. Keep both the retry state and server data intact.
+          this.showSaveIndicator(`${dateStr} 전체 기록 삭제 감지 · 클라우드 기록 보존`, true);
+          await this.restoreProtectedCloudDate(dateStr, data);
+          return;
+        }
         const record = { date: dateStr, rows_data: rows, total_count: this.getDailySummary(rows).total, updated_at: new Date(Math.max(Date.now(), (Date.parse(data?.updated_at) || 0) + 1)).toISOString() };
         let result;
         if (data) {
@@ -389,7 +456,7 @@ class PTCloudSync {
         const mergedSnapshot = JSON.stringify(latest);
         await this.persistSyncBaselines();
         if (latestText === snapshot && JSON.stringify(this.dataStore[dateStr] || []) === mergedSnapshot) this.pendingSyncDates.delete(dateStr);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+        await this.persistDataStore();
         if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
           this.renderTable(); this.updateSidebarStats();
         }
@@ -409,7 +476,7 @@ class PTCloudSync {
   }
 
   async pullFromCloud(dateStr, showNotice = false) {
-    try { await this.syncBaselinesReady; await this._baselineWrite; }
+    try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
         (dateStr === this.currentDate && this.isEditingCell())) return;
@@ -459,7 +526,7 @@ class PTCloudSync {
         if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
         this.getEditHistory(dateStr);
         this.updateHistoryButtons();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+        await this.persistDataStore();
         if (this.currentDate === dateStr) {
           this.renderTable();
           this.updateSidebarStats();

@@ -193,6 +193,42 @@ test('baseline disk failure leaves history records unchanged and next save can r
   assert.equal(storage.get('PT_SYNC_BASELINES'), '"indexedDB"');
 });
 
+test('record quota failure must not publish pending dates for missing local history', async () => {
+  const {app,storage,context}=createApp();
+  app.cloudSearchHistory={'2026-06-08':[{name:'가상',memo:'기존'}]};
+  app.persistTextEditBackup=async()=>{};
+  app.syncStateDisk=async()=>{throw new Error('disk quota');};
+  const originalSet=context.localStorage.setItem;
+  context.localStorage.setItem=(key,value)=>{
+    if(key==='PT_APP_DATA_STORAGE_V1'){const error=new Error('quota');error.name='QuotaExceededError';throw error;}
+    originalSet(key,value);
+  };
+  await assert.rejects(app.renameAutocompleteValue('memo','기존','수정'),/quota/);
+  assert.equal(storage.get('PT_PENDING_DATES'),undefined);
+  assert.equal(app.pendingSyncDates.size,0);
+  assert.equal(Object.hasOwn(app.dataStore,'2026-06-08'),false);
+  assert.equal(app.cloudSearchHistory['2026-06-08'][0].memo,'기존');
+});
+
+test('full record quota uses disk storage and restores all edited dates after restart', async () => {
+  const {app,storage,context}=createApp();const disk=new Map();
+  app.cloudSearchHistory={'2026-06-08':[{name:'가상',memo:'기존'}],'2026-06-09':[{chartNo:'T',memo:'기존'}]};
+  app.persistTextEditBackup=async()=>{};
+  app.syncStateDisk=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+  const originalSet=context.localStorage.setItem;
+  context.localStorage.setItem=(key,value)=>{
+    if(key==='PT_APP_DATA_STORAGE_V1' && value!=='"indexedDB"'){const error=new Error('quota');error.name='QuotaExceededError';throw error;}
+    originalSet(key,value);
+  };
+  assert.equal(await app.renameAutocompleteValue('memo','기존','수정'),2);
+  assert.equal(storage.get('PT_APP_DATA_STORAGE_V1'),'"indexedDB"');
+  assert.equal(app.pendingSyncDates.size,2);
+  const restarted=Object.create(Object.getPrototypeOf(app));restarted._recordsOnDisk=true;restarted.dataStore={};restarted.syncStateDisk=app.syncStateDisk;
+  await restarted.restoreDiskRecords();
+  assert.equal(restarted.dataStore['2026-06-08'][0].memo,'수정');
+  assert.equal(restarted.dataStore['2026-06-09'][0].chartNo,'T');
+});
+
 test('Ctrl/Cmd horizontal navigation reaches filled runs, gaps and table boundaries', () => {
   const { app } = createApp();
   const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime'];

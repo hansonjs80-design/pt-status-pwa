@@ -41,6 +41,49 @@ test('two computers concurrently editing different cells retain both changes', a
   await a.pullFromCloud(date);
   assert.equal(a.dataStore[date][0].memo, '메모');
 });
+
+test('stale bulk retry dates without local records cannot erase populated cloud dates', async () => {
+  const date='2026-06-08',record={date,rows_data:[{name:'가상 보존',chartNo:'TEST',memo:'기록'}],updated_at:'2026-10-10T00:00:00Z'};
+  for (const local of [undefined,[],[{}],[{prescription:'수정 문구'}]]) {
+    const db=new Map([[date,clone(record)]]),{app}=createApp(db);
+    app.syncBaselines.set(date,clone(record.rows_data));app.pendingSyncDates.add(date);
+    if (local !== undefined) app.dataStore[date]=local;
+    await app.pushToCloud(date);
+    assert.deepEqual(db.get(date),record);
+    assert.equal(app.pendingSyncDates.has(date),true);
+  }
+});
+
+test('partial row removal still retains remaining patients and concurrent remote edits', async () => {
+  const date='2026-06-08',before=[{name:'첫째'},{name:'둘째',memo:''}];
+  const db=new Map([[date,{date,rows_data:[{name:'첫째'},{name:'둘째',memo:'원격 변경'}],updated_at:null}]]),{app}=createApp(db);
+  app.syncBaselines.set(date,clone(before));app.dataStore[date]=[{name:'첫째'},{}];app.pendingSyncDates.add(date);
+  await app.pushToCloud(date);
+  assert.equal(db.get(date).rows_data[0].name,'첫째');
+});
+
+test('invalid pending empty date adopts restored cloud records after preserving local state', async () => {
+  const date='2026-06-08',record={date,rows_data:[{name:'가상 복구',chartNo:'T',memo:'원본'}],updated_at:'2026-10-11T00:00:00Z'};
+  for(const local of [undefined,[],[{}],[{memo:'미완료 편집'}]]) {
+    const db=new Map([[date,clone(record)]]),{app,storage}=createApp(db),disk=new Map();
+    app.syncStateDisk=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+    app.syncBaselines.set(date,clone(record.rows_data));app.pendingSyncDates.add(date);
+    if(local!==undefined)app.dataStore[date]=local;
+    await app.pushToCloud(date);
+    assert.deepEqual(db.get(date),record,'repair must not write to server');
+    assert.equal(app.dataStore[date][0].name,'가상 복구');
+    assert.equal(app.pendingSyncDates.has(date),false);
+    assert.deepEqual(JSON.parse([...disk.values()][0]).local,local??null);
+    assert.equal(JSON.parse(storage.get('PT_APP_DATA_STORAGE_V1'))[date][0].memo,'원본');
+  }
+});
+
+test('corrupt local storage is retained instead of overwritten with sample data', async()=>{
+  const {app,storage}=createApp();storage.set('PT_APP_DATA_STORAGE_V1','{corrupted');
+  assert.deepEqual(clone(app.loadDataStore()),{});
+  await assert.rejects(app.persistDataStore({}),/JSON/);
+  assert.equal(storage.get('PT_APP_DATA_STORAGE_V1'),'{corrupted');
+});
 test('offline edits retain their date and baseline for retry after restart', async () => {
   const {app, storage}=createApp(); app.supabaseClient=null;
   app.syncBaselines.set(app.currentDate,[{name:'이전'}]); app.scheduleSupabaseSync(); app.currentDate='2026-10-01';

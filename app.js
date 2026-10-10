@@ -139,7 +139,7 @@ class PTApp {
     this.syncTimers = new Map();
     this.syncBaselines = new Map();
     try { const saved = JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"); if (saved && typeof saved === 'object') for (const [date, rows] of Object.entries(saved)) this.syncBaselines.set(date, rows); } catch (_) {}
-    this.syncBaselinesReady = this.restoreSyncBaselines();
+    this.syncBaselinesReady = Promise.all([this.restoreSyncBaselines(), this.restoreDiskRecords()]);
     this.syncBaselinesReady.catch(() => this.showSaveIndicator('동기화 기준 복원 실패 · 동기화 보류', true));
     this.activePushes = new Map();
     this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
@@ -168,6 +168,13 @@ class PTApp {
     this.contextTarget = null; // { type: 'cell'|'row'|'col'|'corner', rowIdx, colKey, colIdx }
 
     this.cacheElements();
+    if (this._recordsOnDisk) {
+      this.elSheetContainer.inert = true;
+      this.syncBaselinesReady.then(() => {
+        this.elSheetContainer.inert = false;
+        this.getCurrentRows(); this.renderTable(); this.updateSidebarStats();
+      }).catch(() => {});
+    }
     this.bindEvents();
     this.initContextMenu();
     this.initColumnResizing();
@@ -194,10 +201,15 @@ class PTApp {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed === 'indexedDB') { this._recordsOnDisk = true; return {}; }
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('기록 저장 형식 오류');
+        return parsed;
       }
     } catch (e) {
       console.error("Failed to parse localStorage data", e);
+      this._recordRestoreError = e;
+      return {}; // Preserve the original saved bytes instead of replacing them with samples.
     }
     // Save sample data on first run
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_DATA));
@@ -229,15 +241,15 @@ class PTApp {
     }
     if (recordHistory && !this.isEditingCell()) this.captureHistory();
     this.updateHistoryButtons();
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+    const date = this.currentDate;
+    return this.persistDataStore().then(() => {
       this.showSaveIndicator("저장 완료됨");
       this.updateSidebarStats();
-      this.scheduleSupabaseSync();
-    } catch (e) {
+      this.scheduleSupabaseSync(date);
+    }).catch(e => {
       console.error("Save error", e);
       this.showSaveIndicator("저장 실패", true);
-    }
+    });
   }
 
   isEditingCell() {
@@ -372,10 +384,9 @@ class PTApp {
   debounceSaveDataStore(delay = 350) {
     // Protect edits immediately; a pending cloud response must not replace this date.
     this.pendingSyncDates.add(this.currentDate);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+    void this.persistDataStore().then(() => {
       localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
-    } catch (_) { this.showSaveIndicator("로컬 저장 공간을 확인해 주세요", true); }
+    }).catch(() => this.showSaveIndicator("로컬 저장 공간을 확인해 주세요", true));
     this.updateHistoryButtons();
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {

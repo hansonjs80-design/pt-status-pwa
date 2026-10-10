@@ -54,7 +54,7 @@ class PTDeviceLayout {
       this.normalizeRowAllocation(rows,date,true);
       if (rows.length !== before) this.editHistory?.delete(date);
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
+    void this.persistDataStore().catch(() => this.showSaveIndicator('기본 행 설정 저장 실패', true));
     this.clearHeaderSelections();
     this.activeCell = null;
     this.renderTable();
