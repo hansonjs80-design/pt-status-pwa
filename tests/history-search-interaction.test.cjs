@@ -1756,3 +1756,50 @@ test('closing a pending search discards its late result and releases the submiss
   app.closeSearchPromptModal(); finish(true); await pending;
   assert.equal(app.searchPromptSubmitting, false);
 });
+
+test('IME Process/229 Enter searches the final Korean text once without swallowing composition confirmation',()=>{
+  for(const code of ['Enter','NumpadEnter']) {
+    const {app,context}=createApp();let queued,blurred=0,searched=[];
+    context.setTimeout=fn=>{queued=fn;return 1;};
+    app.elSearchPromptInput={value:'가상환',blur(){blurred++;}};
+    app.submitSearchPrompt=()=>{searched.push(app.elSearchPromptInput.value);};
+    const event={key:'Process',code,keyCode:229,isComposing:true,stopPropagation(){},preventDefault(){assert.fail('native IME must confirm its text');}};
+    app.handleSearchPromptKeyDown(event);
+    app.handleSearchPromptKeyDown({...event,repeat:true});
+    app.handleSearchPromptKeyDown({...event,key:'Enter',keyCode:13,isComposing:false});
+    assert.equal(searched.length,0);
+    app.elSearchPromptInput.value='가상환자';queued();
+    assert.deepEqual(searched,['가상환자']);assert.equal(blurred,1);
+    assert.equal(app.searchPromptEnterPending,false);
+    app.handleSearchPromptKeyDown({...event,code:'KeyA'});
+    assert.equal(searched.length,1);
+  }
+});
+
+test('closing and reopening search immediately permits new Enter while the previous lookup is still unresolved',async()=>{
+  const {app}=createSearchPrompt();
+  const button=app.elBtnSearchPromptSubmit={innerHTML:'검색 <span>Enter</span>',disabled:false};
+  app.supabaseClient={};const finish=[];const searched=[];
+  app.loadSearchHistory=()=>new Promise(resolve=>finish.push(resolve));
+  app.hasRecordedPatientValue=()=>true;app.searchAllDates=query=>searched.push(query);
+  app.openSearchPromptModal(0,'첫검색');const first=app.submitSearchPrompt();
+  assert.equal(button.disabled,true);
+  app.closeSearchPromptModal();
+  assert.equal(app.searchPromptSubmitting,false);assert.equal(button.disabled,false);
+  app.openSearchPromptModal(0,'새검색');const second=app.submitSearchPrompt();
+  await first;
+  assert.equal(finish.length,2);assert.equal(app.searchPromptSubmitting,true);
+  finish[0](true);await Promise.resolve();await Promise.resolve();
+  assert.equal(app.searchPromptSubmitting,true);assert.equal(button.disabled,true);
+  finish[1](true);await second;
+  assert.deepEqual(searched,['새검색']);assert.equal(button.disabled,false);
+  assert.equal(button.innerHTML,'검색 <span>Enter</span>');
+});
+
+test('closing search invalidates a queued IME Enter before it can submit another dialog',()=>{
+  const {app,context}=createSearchPrompt();let queued;
+  app.openSearchPromptModal(0,'가상');context.setTimeout=fn=>{queued=fn;return 1;};
+  app.submitSearchPrompt=()=>assert.fail('cancelled Enter must not submit');
+  app.handleSearchPromptKeyDown({key:'Process',code:'Enter',keyCode:229,isComposing:true,stopPropagation(){}});
+  app.closeSearchPromptModal();queued();assert.equal(app.searchPromptEnterPending,false);
+});

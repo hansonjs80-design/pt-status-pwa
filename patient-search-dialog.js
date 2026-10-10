@@ -1,10 +1,58 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTPatientSearchDialog {
+  handleSearchPromptKeyDown(e) {
+    const enter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
+    if (enter || ["ArrowDown", "ArrowUp", "Escape"].includes(e.key)) e.stopPropagation();
+    if (enter) {
+      if (e.repeat || this.searchPromptEnterPending) return;
+      this.historyApplyBlockedKey = "enter";
+      this.historySearchEnterAt = Date.now();
+      if (e.isComposing || e.keyCode === 229) {
+        // Let the native Enter confirm Korean text before reading the final value.
+        const requestId = this.searchPromptRequestId || 0;
+        this.searchPromptEnterPending = true;
+        this.searchPromptEnterTimer = setTimeout(() => {
+          this.searchPromptEnterPending = false;
+          if ((this.searchPromptRequestId || 0) !== requestId) return;
+          this.elSearchPromptInput.blur?.();
+          void this.submitSearchPrompt();
+        }, 0);
+      } else {
+        e.preventDefault();
+        void this.submitSearchPrompt();
+      }
+      return;
+    }
+    if (e.isComposing || e.keyCode === 229) return;
+    if (["ArrowDown", "ArrowUp"].includes(e.key) && this._searchPromptACMenu) {
+      e.preventDefault();
+      this.moveSearchPromptAutocompleteSelection(e.key === "ArrowDown" ? 1 : -1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      this.closeSearchPromptModal();
+    }
+  }
+
+  cancelSearchPromptSubmission() {
+    clearTimeout(this.searchPromptEnterTimer);
+    this.searchPromptEnterPending = false;
+    this.searchPromptSubmission?.cancel();
+    this.searchPromptSubmission = null;
+    this.searchPromptSubmitting = false;
+    this.elSearchPromptInput?.removeAttribute?.("aria-busy");
+    const button = this.elBtnSearchPromptSubmit;
+    if (button) {
+      button.disabled = false;
+      if (this.searchPromptSubmitLabel !== undefined) button.innerHTML = this.searchPromptSubmitLabel;
+    }
+  }
+
   openSearchPromptModal(targetRowIdx, initialQuery) {
     // Windows IME can replay F without marking it as a repeat after the editor
     // has gone. The same physical shortcut must not reopen the prompt.
     if (this.directHistorySearchKeyHeld) return;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
+    this.cancelSearchPromptSubmission();
     clearTimeout(this.searchPromptFocusTimer);
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
@@ -24,6 +72,7 @@ class PTPatientSearchDialog {
 
   closeSearchPromptModal() {
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
+    this.cancelSearchPromptSubmission();
     clearTimeout(this.searchPromptFocusTimer);
     if (!this.elSearchPromptModal) return;
     this.closeSearchPromptAutocomplete();
@@ -351,14 +400,17 @@ class PTPatientSearchDialog {
     if (!q) return;
     this.searchPromptSubmitting = true;
     const requestId = this.searchPromptRequestId || 0;
+    const submission = {};
+    const cancelled = new Promise(resolve => { submission.cancel = resolve; });
+    this.searchPromptSubmission = submission;
     const button = this.elBtnSearchPromptSubmit;
-    const buttonLabel = button?.innerHTML;
+    if (button && this.searchPromptSubmitLabel === undefined) this.searchPromptSubmitLabel = button.innerHTML;
     if (button) { button.disabled = true; button.textContent = "검색 중"; }
     this.elSearchPromptInput.setAttribute?.("aria-busy", "true");
     try {
-      if (this.supabaseClient) await this.loadSearchHistory();
+      if (this.supabaseClient) await Promise.race([this.loadSearchHistory(), cancelled]);
       // Closing or reopening the dialog must invalidate its old async result.
-      if ((this.searchPromptRequestId || 0) !== requestId) return;
+      if (this.searchPromptSubmission !== submission || (this.searchPromptRequestId || 0) !== requestId) return;
       // Ignore the active draft row: typing a new name does not establish history.
       const normalized = q.toLowerCase();
       const searchByChart = this.isChartNumberQuery(q);
@@ -380,11 +432,12 @@ class PTPatientSearchDialog {
       const focusCurrentTarget = String(targetRow?.[field] ?? "").trim().toLowerCase() === normalized;
       this.searchAllDates(q, targetIdx, { focusCurrentTarget });
     } catch (error) {
-      this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
+      if (!this.searchPromptSubmission || this.searchPromptSubmission === submission) this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
     } finally {
-      this.searchPromptSubmitting = false;
-      this.elSearchPromptInput.removeAttribute?.("aria-busy");
-      if (button) { button.disabled = false; button.innerHTML = buttonLabel; }
+      if (this.searchPromptSubmission === submission) {
+        this.cancelSearchPromptSubmission();
+        if (this.elSearchPromptModal?.style.display === "flex") this.elSearchPromptInput.focus?.({ preventScroll: true });
+      }
     }
   }
 

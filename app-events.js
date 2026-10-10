@@ -315,26 +315,7 @@ class PTAppEvents {
     }
     if (this.elSearchPromptInput) {
       this.elSearchPromptInput.addEventListener("input", () => this.updateSearchPromptAutocomplete());
-      this.elSearchPromptInput.addEventListener("keydown", (e) => {
-        if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) e.stopPropagation();
-        if (e.isComposing || e.keyCode === 229) return;
-        if (["ArrowDown", "ArrowUp"].includes(e.key) && this._searchPromptACMenu) {
-          e.preventDefault();
-          this.moveSearchPromptAutocompleteSelection(e.key === "ArrowDown" ? 1 : -1);
-          return;
-        }
-        if (e.key === "Enter") {
-          e.preventDefault();
-          if (!e.repeat) {
-            this.historyApplyBlockedKey = "enter";
-            this.historySearchEnterAt = Date.now();
-            this.submitSearchPrompt();
-          }
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          this.closeSearchPromptModal();
-        }
-      });
+      this.elSearchPromptInput.addEventListener("keydown", e => this.handleSearchPromptKeyDown(e));
     }
     if (this.elSearchPromptModal) {
       this.initSearchPromptDrag();
