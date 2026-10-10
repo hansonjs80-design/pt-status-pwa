@@ -2994,3 +2994,11 @@ body {
 .history-search-active #cornerHeader { cursor: default; }
 .history-search-close:hover { background: #d8dee4; color: #111; }
 .history-search-close:focus-visible { outline: 2px solid #495057; outline-offset: -2px; }
+
+/* Scheduler-managed holidays take precedence over Saturday styling. */
+.date-calendar .calendar-grid button.is-holiday { --calendar-day-color: #b91c1c; --calendar-day-hover: #fee2e2; color: #b91c1c; }
+.date-calendar .calendar-grid button.is-selected.is-holiday,
+.date-calendar .calendar-grid button.is-selected.is-holiday:hover { background: #b91c1c !important; color: #fff !important; }
+.calendar-footer button.is-holiday { --calendar-today-color: #b91c1c; }
+.quick-inputs .date-label.is-holiday, .quick-inputs .btn-nav.is-holiday { color: #b91c1c; }
+.quick-inputs .btn-today-pill.is-holiday { --date-day-color: #b91c1c; }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v314';
+const CACHE_NAME = 'pt-status-pwa-v315';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const ASSETS_TO_CACHE = [
   './column-settings.js',
   './app-events.js',
   './date-navigation.js',
+  './holiday-calendar.js',
   './table-view.js',
   './cell-pickers.js',
   './patient-search-dialog.js',

@@ -17,6 +17,7 @@ class PTDateNavigation {
     popup.setAttribute("role", "dialog"); popup.setAttribute("aria-label", "날짜 선택");
     const choose = value => { this.closeDateCalendar(); this.setDate(value, true); };
     const render = () => {
+      popup.dataset.year = year;
       popup.replaceChildren();
       const header = document.createElement("div"); header.className = "calendar-heading";
       const nav = (label, delta) => {
@@ -48,16 +49,20 @@ class PTDateNavigation {
         if (date.getMonth() + 1 !== month) button.classList.add("outside-month");
         if (value === today) { button.classList.add("is-today"); button.setAttribute("aria-current", "date"); }
         if (value === selected) { button.classList.add("is-selected"); button.setAttribute("aria-pressed", "true"); }
+        const holiday = this.getCalendarHolidayName(value, year);
+        if (holiday) { button.classList.add("is-holiday"); button.title = holiday; button.setAttribute("aria-label", `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 · ${holiday}`); }
         button.onclick = () => choose(value); grid.append(button);
       }
       popup.append(grid);
       const footer = document.createElement("div"); footer.className = "calendar-footer";
-      const hint = document.createElement("span"); hint.textContent = "원하는 날짜를 선택하세요";
+      const hint = document.createElement("span"); hint.className = "calendar-holiday-status"; hint.textContent = "원하는 날짜를 선택하세요";
       const todayButton = document.createElement("button"); todayButton.textContent = "오늘"; todayButton.onclick = () => choose(today);
       const selectedDay = new Date(`${selected}T00:00:00`).getDay();
       todayButton.classList.toggle("is-saturday", selectedDay === 6);
       todayButton.classList.toggle("is-sunday", selectedDay === 0);
+      todayButton.classList.toggle("is-holiday", Boolean(this.getCalendarHolidayName(selected, year)));
       footer.append(hint, todayButton); popup.append(footer);
+      void this.loadCalendarHolidays(year);
     };
     render(); document.body.append(popup); this.elDateLabel.setAttribute("aria-expanded", "true");
     const rect = this.elDateLabel.getBoundingClientRect();
@@ -115,6 +120,8 @@ class PTDateNavigation {
     }
     this.elSidebarDateTag.textContent = dateFormatted;
     this.elSheetTabTitle.textContent = dateFormatted;
+    this.refreshCalendarHolidayAppearance();
+    void this.loadCalendarHolidays(y);
 
     this.getCurrentRows();
     this.getEditHistory();

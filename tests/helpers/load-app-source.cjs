@@ -19,6 +19,7 @@ module.exports = [
   'sheet-keyboard.js',
   'column-settings.js',
   'app-events.js',
+  'holiday-calendar.js',
   'date-navigation.js',
   'table-view.js',
   'cell-pickers.js',
