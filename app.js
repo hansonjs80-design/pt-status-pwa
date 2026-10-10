@@ -138,7 +138,9 @@ class PTApp {
     this.pendingSyncDates = new Set();
     this.syncTimers = new Map();
     this.syncBaselines = new Map();
-    try { for (const [date, rows] of Object.entries(JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"))) this.syncBaselines.set(date, rows); } catch (_) {}
+    try { const saved = JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"); if (saved && typeof saved === 'object') for (const [date, rows] of Object.entries(saved)) this.syncBaselines.set(date, rows); } catch (_) {}
+    this.syncBaselinesReady = this.restoreSyncBaselines();
+    this.syncBaselinesReady.catch(() => this.showSaveIndicator('동기화 기준 복원 실패 · 동기화 보류', true));
     this.activePushes = new Map();
     this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
     try { this.pendingSyncDates = new Set(JSON.parse(localStorage.getItem("PT_PENDING_DATES") || "[]")); } catch (_) {}

@@ -155,6 +155,7 @@ class PTDocumentTools {
       console.warn("복원 전 안전 보관 백업 참고:", safeErr);
     }
 
+    await this.syncBaselinesReady;
     const restored = Object.fromEntries(validEntries);
     this.dataStore = { ...this.dataStore, ...restored };
     this.editHistory.clear();
@@ -166,7 +167,7 @@ class PTDocumentTools {
       this.syncBaselines.delete(date);
       this.pendingSyncDates.add(date);
     }
-    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
+    await this.persistSyncBaselines();
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
 
     this.saveDataStore();

@@ -136,6 +136,63 @@ test('bulk rename refreshes cloud history and preserves all pending merge baseli
   assert.equal(app.syncBaselines.size, 20);
 });
 
+test('bulk history rename survives baseline quota and restores every pending date after restart', async () => {
+  const {app, storage, context} = createApp();
+  const disk = new Map();
+  const diskStore = async value => { if (value !== undefined) disk.set('baselines', value); return disk.get('baselines'); };
+  app.syncBaselineDisk = diskStore;
+  const originalSet = context.localStorage.setItem;
+  context.localStorage.setItem = (key, value) => {
+    if (key === 'PT_SYNC_BASELINES' && value.length > 100) {
+      const error = new Error('quota'); error.name = 'QuotaExceededError'; throw error;
+    }
+    originalSet(key, value);
+  };
+  let backups = 0;
+  app.persistTextEditBackup = async (_, backup) => { assert.ok(JSON.parse(backup).cloudSearchHistory); backups++; };
+  app.supabaseClient = {};
+  app.loadSearchHistory = async () => {
+    app.cloudSearchHistory = Object.fromEntries(Array.from({length: 24}, (_, i) =>
+      [`2026-09-${String(i + 1).padStart(2, '0')}`, [{memo: '기존', chartNo: `T${i}`}]]));
+    return true;
+  };
+  assert.equal(await app.renameAutocompleteValue('memo', '기존', '수정'), 24);
+  assert.equal(storage.get('PT_SYNC_BASELINES'), '"indexedDB"');
+  assert.equal(app.pendingSyncDates.size, 24);
+  assert.equal(backups, 1);
+  const restored = Object.create(Object.getPrototypeOf(app));
+  restored.syncBaselines = new Map(); restored.syncBaselineDisk = diskStore;
+  await restored.restoreSyncBaselines();
+  assert.equal(restored.syncBaselines.size, 24);
+  for (const [date, rows] of restored.syncBaselines) {
+    assert.equal(rows[0].memo, '기존');
+    assert.equal(app.dataStore[date][0].memo, '수정');
+    assert.equal(app.mergeCloudRows(rows, app.dataStore[date], [{...rows[0], name:'다른 기기'}])[0].name, '다른 기기');
+  }
+  assert.equal(await app.renameAutocompleteValue('memo', '수정', '다시 수정'), 24);
+  assert.equal(backups, 2);
+});
+
+test('baseline disk failure leaves history records unchanged and next save can retry', async () => {
+  const {app, storage, context} = createApp({'2026-10-04':[{memo:'기존'}]});
+  const originalSet = context.localStorage.setItem;
+  context.localStorage.setItem = (key, value) => {
+    if (key === 'PT_SYNC_BASELINES' && value !== '"indexedDB"') {
+      const error = new Error('quota'); error.name='QuotaExceededError'; throw error;
+    }
+    originalSet(key, value);
+  };
+  app.persistTextEditBackup = async () => {};
+  app.syncBaselineDisk = async () => { throw new Error('disk unavailable'); };
+  await assert.rejects(app.renameAutocompleteValue('memo','기존','수정'), /disk unavailable/);
+  assert.equal(app.dataStore['2026-10-04'][0].memo, '기존');
+  assert.equal(app.pendingSyncDates.size, 0);
+  let disk;
+  app.syncBaselineDisk = async value => { if (value !== undefined) disk=value; return disk; };
+  assert.equal(await app.renameAutocompleteValue('memo','기존','수정'), 1);
+  assert.equal(storage.get('PT_SYNC_BASELINES'), '"indexedDB"');
+});
+
 test('Ctrl/Cmd horizontal navigation reaches filled runs, gaps and table boundaries', () => {
   const { app } = createApp();
   const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime'];

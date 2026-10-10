@@ -329,6 +329,7 @@ class PTAutocomplete {
   }
 
   async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined) {
+    await this.syncBaselinesReady;
     const allowed = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
     const client = this.supabaseClient;
@@ -390,7 +391,7 @@ class PTAutocomplete {
     const nextStore = { ...this.dataStore, ...changed };
     const pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
     // Persist the retry queue before the records, so a reload cannot lose bulk edits.
-    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(baselines)));
+    await this.persistSyncBaselines(baselines);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore));
     this.dataStore = nextStore;
@@ -400,7 +401,7 @@ class PTAutocomplete {
       this.cloudSearchHistory ||= {};
       this.cloudSearchHistory[date] = JSON.parse(JSON.stringify(changed[date]));
       this.editHistory?.delete(date);
-      this.scheduleSupabaseSync(date);
+      this.scheduleSupabaseSync(date, false);
     }
     if (presetChanged || color !== undefined || richText !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
     return count;

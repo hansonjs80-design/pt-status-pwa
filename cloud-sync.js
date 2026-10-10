@@ -1,5 +1,54 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCloudSync {
+  async syncBaselineDisk(value) {
+    this._baselineDatabase ||= new Promise((resolve, reject) => {
+      const request = indexedDB.open('PT_SYNC_STATE', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('state');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    let db;
+    try { db = await this._baselineDatabase; }
+    catch (error) { this._baselineDatabase = null; throw error; }
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('state', value === undefined ? 'readonly' : 'readwrite');
+      const request = value === undefined ? tx.objectStore('state').get('baselines') : tx.objectStore('state').put(value, 'baselines');
+      tx.oncomplete = () => resolve(request.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || Error('동기화 기준 저장이 중단되었습니다.'));
+    });
+  }
+
+  async restoreSyncBaselines() {
+    if (localStorage.getItem('PT_SYNC_BASELINES') !== '"indexedDB"') return;
+    this._baselinesOnDisk = true;
+    const saved = await this.syncBaselineDisk();
+    if (typeof saved !== 'string') throw new Error('동기화 기준 데이터를 복원하지 못했습니다.');
+    this.syncBaselines = new Map(Object.entries(JSON.parse(saved)));
+  }
+
+  persistSyncBaselines(baselines = this.syncBaselines) {
+    const snapshot = JSON.stringify(Object.fromEntries(baselines));
+    const save = async () => {
+      if (!this._baselinesOnDisk) {
+        try { localStorage.setItem('PT_SYNC_BASELINES', snapshot); return; }
+        catch (error) {
+          if (error.name !== 'QuotaExceededError' && error.code !== 22 && error.code !== 1014) throw error;
+        }
+      }
+      await this.syncBaselineDisk(snapshot);
+      if (await this.syncBaselineDisk() !== snapshot) throw new Error('동기화 기준 저장 검증에 실패했습니다.');
+      // Replace the large cache only after the complete disk snapshot is verified.
+      localStorage.setItem('PT_SYNC_BASELINES', '"indexedDB"');
+      this._baselinesOnDisk = true;
+    };
+    const pending = (this._baselineWrite || Promise.resolve()).catch(() => {}).then(save);
+    this._baselineWrite = pending;
+    // Callers still receive the rejection; avoid an unhandled background rejection.
+    pending.catch(() => {});
+    return pending;
+  }
+
   // --- Supabase Cloud Sync Methods ---
   initSupabase() {
     try {
@@ -249,7 +298,7 @@ class PTCloudSync {
     finally { this.presetsPushing = false; }
   }
 
-  scheduleSupabaseSync(date = this.currentDate) {
+  scheduleSupabaseSync(date = this.currentDate, persistBaseline = true) {
     this.pendingSyncDates.add(date);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
     // Pending dates keep their merge baseline until every bulk edit is synced.
@@ -257,7 +306,10 @@ class PTCloudSync {
     while (baselineDates.length > 14) {
       this.syncBaselines.delete(baselineDates.shift());
     }
-    localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
+    if (persistBaseline) {
+      void Promise.resolve(this.syncBaselinesReady).then(() => this.persistSyncBaselines())
+        .catch(() => this.showSaveIndicator('동기화 기준 저장 재시도 필요', true));
+    }
     if (!this.supabaseClient) return;
     clearTimeout(this.syncTimers.get(date));
     this.syncTimers.set(date, setTimeout(() => { this.syncTimers.delete(date); void this.pushToCloud(date); }, 400));
@@ -298,6 +350,8 @@ class PTCloudSync {
   }
 
   async pushToCloud(dateStr, showNotice = false) {
+    try { await this.syncBaselinesReady; await this._baselineWrite; }
+    catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     const client = this.supabaseClient;
     if (!client || this.activePushes.has(dateStr)) return;
     const snapshot = JSON.stringify(this.dataStore[dateStr] || []);
@@ -332,8 +386,9 @@ class PTCloudSync {
         this.dataStore[dateStr] = latest;
         if (JSON.stringify(latest) !== latestText) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(latestText));
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
-        localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
-        if (latestText === snapshot) this.pendingSyncDates.delete(dateStr);
+        const mergedSnapshot = JSON.stringify(latest);
+        await this.persistSyncBaselines();
+        if (latestText === snapshot && JSON.stringify(this.dataStore[dateStr] || []) === mergedSnapshot) this.pendingSyncDates.delete(dateStr);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.dataStore));
         if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
           this.renderTable(); this.updateSidebarStats();
@@ -354,6 +409,8 @@ class PTCloudSync {
   }
 
   async pullFromCloud(dateStr, showNotice = false) {
+    try { await this.syncBaselinesReady; await this._baselineWrite; }
+    catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
         (dateStr === this.currentDate && this.isEditingCell())) return;
     const localAtRequest = JSON.stringify(this.dataStore[dateStr] || []);
@@ -388,7 +445,10 @@ class PTCloudSync {
       }
       if (data && Array.isArray(data.rows_data)) {
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
-        localStorage.setItem("PT_SYNC_BASELINES", JSON.stringify(Object.fromEntries(this.syncBaselines)));
+        await this.persistSyncBaselines();
+        if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
+            localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
+            (dateStr === this.currentDate && this.isEditingCell())) return;
         const padded = data.rows_data.slice();
         if (dateStr === this.currentDate) this.normalizeRowAllocation(padded, dateStr);
         if (localAtRequest === JSON.stringify(padded)) return;

@@ -41,9 +41,10 @@ test('two computers concurrently editing different cells retain both changes', a
   await a.pullFromCloud(date);
   assert.equal(a.dataStore[date][0].memo, '메모');
 });
-test('offline edits retain their date and baseline for retry after restart', () => {
+test('offline edits retain their date and baseline for retry after restart', async () => {
   const {app, storage}=createApp(); app.supabaseClient=null;
   app.syncBaselines.set(app.currentDate,[{name:'이전'}]); app.scheduleSupabaseSync(); app.currentDate='2026-10-01';
+  await Promise.resolve(); await app._baselineWrite;
   assert.deepEqual(JSON.parse(storage.get('PT_PENDING_DATES')), ['2026-09-30']);
   assert.equal(JSON.parse(storage.get('PT_SYNC_BASELINES'))['2026-09-30'][0].name, '이전');
 });
@@ -56,6 +57,26 @@ test('preset edits and deletions propagate to another computer', async () => {
   a.app.presetsDirty=true; await a.app.pushSharedPresets(); await b.app.pullSharedPresets();
   assert.deepEqual(clone(vm.runInContext('COLUMN_PRESETS.extra',b.context)), []);
   assert.equal(a.app.presetsDirty,false);
+});
+
+test('typing during asynchronous baseline persistence stays pending and is not overwritten', async () => {
+  const date='2026-09-30', db=new Map([[date,{date,rows_data:[{name:'가상',memo:'서버'}],updated_at:null}]]);
+  const {app}=createApp(db);
+  app.dataStore[date]=[{name:'가상',memo:'로컬'}];
+  app.syncBaselines.set(date,[{name:'가상',memo:''}]);
+  app.pendingSyncDates.add(date);
+  let release,started;
+  let saving=new Promise(resolve=>{started=resolve;});
+  app.persistSyncBaselines=()=>{started();return new Promise(resolve=>{release=resolve;});};
+  const push=app.pushToCloud(date);
+  await saving;app.dataStore[date][0].memo='저장 도중 입력';release();await push;
+  assert.equal(app.pendingSyncDates.has(date),true);
+  assert.equal(app.dataStore[date][0].memo,'저장 도중 입력');
+  app.pendingSyncDates.clear();
+  saving=new Promise(resolve=>{started=resolve;});
+  const pull=app.pullFromCloud(date);
+  await saving;app.dataStore[date][0].memo='수신 도중 입력';release();await pull;
+  assert.equal(app.dataStore[date][0].memo,'수신 도중 입력');
 });
 
 
