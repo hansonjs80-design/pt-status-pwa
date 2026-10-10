@@ -2211,7 +2211,8 @@ body {
 .calendar-heading { display: flex; align-items: center; justify-content: center; gap: 2px; margin-bottom: 12px; }
 .calendar-heading select.calendar-year-select { width: 76px; }
 .calendar-heading select { width: 48px; height: 30px; flex-shrink: 0; box-sizing: border-box; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; cursor: pointer; }
-.calendar-heading input, .calendar-heading select { font-family: inherit; font-size: 17px; font-weight: 700; border: 0; border-radius: 7px; padding: 0; margin: 0; line-height: normal; color: #171717; background: #f7faf8; }
+.calendar-heading input, .calendar-heading select { font-family: inherit; font-size: 17px; font-weight: 700; border: 0; border-radius: 7px; padding: 0; margin: 0; line-height: normal; color: #171717; background: #f0f5f2; transition: background-color 150ms ease; }
+.calendar-heading select:hover { background: #e2ebe5; }
 .date-calendar button { border: 0; cursor: pointer; background: transparent; color: inherit; border-radius: 9px; font-family: inherit; }
 .calendar-heading button { display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; color: #171717; width: 30px; height: 32px; flex-shrink: 0; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; }
