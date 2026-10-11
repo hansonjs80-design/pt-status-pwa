@@ -158,6 +158,29 @@ test('unfinished final syllable narrows Korean autocomplete before the final con
   assert.ok(suggestions(app, 'extra', 'ㅊ').includes('충격파'));
 });
 
+test('initial-specific special notes survive syllable composition and honor explicit edits', () => {
+  const presets = {
+    specialNote: ['아토피 > MW'],
+    '__query:specialNote:ㅇ': ['여자T', '안 들리심', '올인원'],
+  };
+  const app = createApp({}, presets);
+  for (const composing of [false, true]) {
+    for (const query of ['ㅇ', '아', '안', '안 ㄷ', '안 드', '안 들']) {
+      assert.ok(Array.from(app.getAutocompleteSuggestions('specialNote', query, composing)).includes('안 들리심'), query);
+    }
+    for (const query of ['어', '오', '앗', '김']) {
+      assert.equal(Array.from(app.getAutocompleteSuggestions('specialNote', query, composing)).includes('안 들리심'), false, query);
+    }
+  }
+  presets['__hidden:specialNote:ㅇ'] = ['안 들리심'];
+  assert.equal(suggestions(app, 'specialNote', '아').includes('안 들리심'), false);
+  delete presets['__hidden:specialNote:ㅇ'];
+  presets['__query:specialNote:아'] = ['아토피 > MW'];
+  assert.deepEqual(suggestions(app, 'specialNote', '아'), ['아토피 > MW']);
+  presets['__query:specialNote:아'] = [];
+  assert.deepEqual(suggestions(app, 'specialNote', '아'), []);
+});
+
 
 test('autocomplete refresh preserves the selected value until the query or editor changes', () => {
   let menu = null;

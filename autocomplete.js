@@ -17,6 +17,18 @@ class PTAutocomplete {
       return values;
     }
     const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
+    // An initial-specific list also supplies candidates as its syllable grows
+    // (ㅇ → 아 → 안). An explicitly edited list for the exact query above wins.
+    const rulePrefix = `__query:${colKey}:`;
+    for (const [key, values] of Object.entries(COLUMN_PRESETS)) {
+      if (!key.startsWith(rulePrefix) || !Array.isArray(values)) continue;
+      const sourceQuery = key.slice(rulePrefix.length);
+      if (!sourceQuery || !this.matchesHangulPrefix(query, sourceQuery, true)) continue;
+      const hidden = new Set(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || []);
+      for (const value of values) {
+        if (!hidden.has(value) && !presets.includes(value)) presets.push(value);
+      }
+    }
     const presetSet = new Set(presets.map((p) => p.toLowerCase()));
 
     // 현재 날짜뿐 아니라 저장된 모든 날짜의 같은 열에서 후보를 수집한다.
