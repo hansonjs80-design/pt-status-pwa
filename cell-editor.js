@@ -104,8 +104,11 @@ class PTCellEditor {
       this.renderColoredText(cellElement, rows[rowIdx], colKey);
       this.saveDataStore();
       this.refreshNewPatientRows();
-      this.selectCell(rowIdx, 'name', nameCell, false);
-      this.startInlineEdit(rowIdx, 'name', nameCell);
+      // The OS may deliver the source IME's final input after focus has moved.
+      // Arm the destination guard before creating/focusing its editor; a new
+      // physical typing key releases it so intentional repeated letters work.
+      this.guardNextCellInput = true;
+      this.selectCell(rowIdx, 'name', nameCell, true);
       const nameInput = nameCell.querySelector('input');
       if (nameInput) {
         const suggestions = this.getAutocompleteSuggestions('name', nameInput.value);

@@ -807,6 +807,20 @@ test('ending native cell editing blurs the original composing input before desti
   assert.equal(blurred,1);
 });
 
+test('name handoff rejects a delayed IME final syllable but permits intentional repeated syllables', () => {
+  const {app}=createApp();
+  const input={value:'맹동주주',dataset:{navigationInputGuard:'true'}};
+  assert.equal(app.blockInheritedNavigationInput(input,{type:'input',inputType:'insertCompositionText'},'맹동주'),true);
+  assert.equal(input.value,'맹동주');
+  input.value='맹동주주';
+  assert.equal(app.blockInheritedNavigationInput(input,{type:'compositionend'},'맹동주'),true);
+  assert.equal(input.value,'맹동주');
+  app.releaseNavigationInputGuard(input,{key:'Process',code:'KeyW'});
+  input.value='맹동주주';
+  assert.equal(app.blockInheritedNavigationInput(input,{type:'input',inputType:'insertCompositionText'},'맹동주'),false);
+  assert.equal(input.value,'맹동주주');
+});
+
 
 test('untyped final consonant strokes stay entirely gray even when their edge crosses the upper boundary', () => {
   const {app}=createApp();
