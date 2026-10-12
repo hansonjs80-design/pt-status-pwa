@@ -216,7 +216,9 @@ class PTDocumentTools {
 
   clearCurrentDayData() {
     if (confirm(`정말로 ${this.currentDate} 날짜의 데이터를 모두 초기화하시겠습니까?`)) {
+      const previousPatients = this.getPatientIdentitySnapshot(this.getCurrentRows());
       this.dataStore[this.currentDate] = this.createDefaultEmptyRows();
+      this.recordManualDateDeletion(previousPatients);
       this.saveDataStore();
       this.renderTable();
       this.closeBackupModal();

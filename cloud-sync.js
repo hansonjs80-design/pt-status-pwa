@@ -382,6 +382,45 @@ class PTCloudSync {
     return merged;
   }
 
+  getPatientIdentitySnapshot(rows) {
+    return JSON.stringify((rows || []).map(row => [String(row?.name || '').trim(), String(row?.chartNo || '').trim()])
+      .filter(([name, chartNo]) => name || chartNo));
+  }
+
+  async restoreManualDateDeletions() {
+    this.manualDateDeletions ||= new Map();
+    try {
+      const saved = JSON.parse(await this.syncStateDisk('manual-date-deletions') || '{}');
+      for (const [date, entry] of Object.entries(saved)) {
+        if (typeof entry?.patients === 'string' && entry.patients !== '[]' && !this.manualDateDeletions.has(date)) {
+          this.manualDateDeletions.set(date, entry);
+        }
+      }
+    } catch (_) { /* Without verified intent, the empty-date protection remains active. */ }
+  }
+
+  persistManualDateDeletions() {
+    const previous = this._manualDeletionWrite || Promise.resolve();
+    this._manualDeletionWrite = previous.catch(() => {}).then(async () => {
+      await this.manualDateDeletionsReady;
+      const text = JSON.stringify(Object.fromEntries(this.manualDateDeletions || []));
+      await this.syncStateDisk('manual-date-deletions', text);
+      if (await this.syncStateDisk('manual-date-deletions') !== text) throw new Error('수동 삭제 상태 저장 검증 실패');
+    });
+    this._manualDeletionWrite.catch(() => this.showSaveIndicator('수동 삭제 저장 확인 필요 · 동기화 보류', true));
+  }
+
+  recordManualDateDeletion(previousPatients) {
+    if (previousPatients === '[]' || this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]) !== '[]') return;
+    this.manualDateDeletions ||= new Map();
+    this.manualDateDeletions.set(this.currentDate, { patients: previousPatients });
+    this.persistManualDateDeletions();
+  }
+
+  invalidateManualDateDeletion(date) {
+    if (this.manualDateDeletions?.delete(date)) this.persistManualDateDeletions();
+  }
+
   async restoreProtectedCloudDate(date, record) {
     // Preserve the suspect local cache separately before adopting the intact server day.
     const backup = JSON.stringify({date, local: this.dataStore[date] || null,
@@ -390,6 +429,7 @@ class PTCloudSync {
     await this.syncStateDisk(key, backup);
     if (await this.syncStateDisk(key) !== backup) throw new Error('로컬 기록 보존 검증 실패');
     this.dataStore[date] = JSON.parse(JSON.stringify(record.rows_data));
+    this.invalidateManualDateDeletion(date);
     this.syncBaselines.set(date, JSON.parse(JSON.stringify(record.rows_data)));
     await this.persistDataStore();
     await this.persistSyncBaselines();
@@ -400,7 +440,7 @@ class PTCloudSync {
   }
 
   async pushToCloud(dateStr, showNotice = false) {
-    try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
+    try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; await this._manualDeletionWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     const client = this.supabaseClient;
     if (!client || this.activePushes.has(dateStr)) return;
@@ -409,6 +449,7 @@ class PTCloudSync {
     const missingLocal = !Object.hasOwn(this.dataStore, dateStr) || !Array.isArray(this.dataStore[dateStr]);
     const snapshot = JSON.stringify(this.dataStore[dateStr] || []);
     const local = JSON.parse(snapshot), base = this.syncBaselines.get(dateStr) || [];
+    const manualDeletion = this.manualDateDeletions?.get(dateStr);
     this.activePushes.set(dateStr, true);
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -424,7 +465,9 @@ class PTCloudSync {
         // the full local snapshot, including unchanged records from older dates.
         const rows = data ? this.mergeCloudRows(base, local, data.rows_data || []) : local;
         const hasPatients = values => values.some(row => String(row?.name || '').trim() || String(row?.chartNo || '').trim());
-        if (data && hasPatients(data.rows_data || []) && !hasPatients(rows)) {
+        const deliberateDeletion = manualDeletion && !hasPatients(local) &&
+          manualDeletion.patients === this.getPatientIdentitySnapshot(data?.rows_data);
+        if (data && hasPatients(data.rows_data || []) && !hasPatients(rows) && !deliberateDeletion) {
           // Full-day removal must be deliberate; stale/partial caches cannot erase
           // a populated date. Keep both the retry state and server data intact.
           this.showSaveIndicator(`${dateStr} 전체 기록 삭제 감지 · 클라우드 기록 보존`, true);
@@ -457,6 +500,10 @@ class PTCloudSync {
         await this.persistSyncBaselines();
         if (latestText === snapshot && JSON.stringify(this.dataStore[dateStr] || []) === mergedSnapshot) this.pendingSyncDates.delete(dateStr);
         await this.persistDataStore();
+        if (manualDeletion && this.manualDateDeletions?.get(dateStr) === manualDeletion) {
+          this.invalidateManualDateDeletion(dateStr);
+          await this._manualDeletionWrite;
+        }
         if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
           this.renderTable(); this.updateSidebarStats();
         }

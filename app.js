@@ -139,7 +139,8 @@ class PTApp {
     this.syncTimers = new Map();
     this.syncBaselines = new Map();
     try { const saved = JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"); if (saved && typeof saved === 'object') for (const [date, rows] of Object.entries(saved)) this.syncBaselines.set(date, rows); } catch (_) {}
-    this.syncBaselinesReady = Promise.all([this.restoreSyncBaselines(), this.restoreDiskRecords()]);
+    this.manualDateDeletionsReady = this.restoreManualDateDeletions();
+    this.syncBaselinesReady = Promise.all([this.restoreSyncBaselines(), this.restoreDiskRecords(), this.manualDateDeletionsReady]);
     this.syncBaselinesReady.catch(() => this.showSaveIndicator('동기화 기준 복원 실패 · 동기화 보류', true));
     this.activePushes = new Map();
     this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
@@ -217,6 +218,7 @@ class PTApp {
   }
 
   saveDataStore(recordHistory = true) {
+    if (this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]) !== '[]') this.invalidateManualDateDeletion(this.currentDate);
     this.visitNameState ||= new WeakMap();
     this.visitTimeState ||= new WeakMap();
     for (const row of this.dataStore[this.currentDate] || []) {
@@ -309,7 +311,9 @@ class PTApp {
     this.clearHeaderSelections();
     this.closeAutocompleteMenu();
     this.closeGenderDropdown();
+    const previousPatients = this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]);
     this.dataStore[this.currentDate] = JSON.parse(history.current);
+    this.recordManualDateDeletion(previousPatients);
     this.activeCell = null;
     this.selectedRowIdx = null;
     this.selectedColKey = null;

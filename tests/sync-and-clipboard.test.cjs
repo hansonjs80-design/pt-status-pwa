@@ -350,3 +350,48 @@ test('saving an open manager only publishes edited fields and preserves newly re
   assert.equal(app.columnFormatting.memo.color.value,'#ff0000');
   assert.equal(app.columnFormatting.name.fontSize.value,21.5);
 });
+
+test('manual last-row deletion syncs once and remains deleted after an offline restart', async () => {
+  for (const restart of [false, true]) {
+    const date='2026-09-30', original=[{name:'가상 삭제',chartNo:'TEST',memo:'기록'},{}];
+    const db=new Map([[date,{date,rows_data:clone(original),updated_at:null}]]), disk=new Map();
+    let {app}=createApp(db);
+    const store=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+    app.syncStateDisk=store;
+    app.dataStore[date]=clone(original);app.syncBaselines.set(date,clone(original));
+    app.getDefaultRowCount=()=>2;app.clearHeaderSelections=()=>{};
+    app.elTableBody={querySelector:()=>null};app.saveDataStore=()=>{};
+    app.deleteRowAt(0);
+    assert.equal(app.getPatientIdentitySnapshot(app.dataStore[date]),'[]');
+    await app._manualDeletionWrite;
+    if(restart) {
+      const rows=clone(app.dataStore[date]);
+      app=createApp(db).app;app.syncStateDisk=store;
+      app.dataStore[date]=rows;app.syncBaselines.set(date,clone(original));
+      await app.restoreManualDateDeletions();
+    }
+    await app.pushToCloud(date);
+    assert.equal(app.getPatientIdentitySnapshot(db.get(date).rows_data),'[]');
+    assert.equal(app.getPatientIdentitySnapshot(app.dataStore[date]),'[]');
+    assert.equal(app.manualDateDeletions.has(date),false,'successful sync consumes the intent');
+    await app.pushToCloud(date);
+    assert.equal(app.getPatientIdentitySnapshot(db.get(date).rows_data),'[]');
+  }
+});
+
+test('manual deletion cannot authorize removal of a newly added remote patient or a missing cache', async () => {
+  for(const local of [[{}],undefined]) {
+    const date='2026-09-30', original=[{name:'원래 가상',chartNo:'A'}];
+    const remote=local ? [{name:'추가 가상',chartNo:'B'}] : original;
+    const db=new Map([[date,{date,rows_data:clone(remote),updated_at:null}]]),{app}=createApp(db),disk=new Map();
+    app.syncStateDisk=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+    app.syncBaselines.set(date,clone(original));app.dataStore[date]=[{}];
+    app.recordManualDateDeletion(app.getPatientIdentitySnapshot(original));
+    await app._manualDeletionWrite;
+    if(local===undefined)delete app.dataStore[date];
+    await app.pushToCloud(date);
+    assert.deepEqual(db.get(date).rows_data,remote);
+    assert.deepEqual(clone(app.dataStore[date]),remote);
+    assert.equal(app.manualDateDeletions.has(date),false);
+  }
+});

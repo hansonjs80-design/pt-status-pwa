@@ -32,6 +32,7 @@ class PTSheetActions {
 
   deleteRow(rowIdx) {
     const rows = this.getCurrentRows();
+    const previousPatients = this.getPatientIdentitySnapshot(rows);
     if (rows.length <= 1) {
       // Just clear
       rows[0] = {
@@ -42,6 +43,7 @@ class PTSheetActions {
     } else {
       rows.splice(rowIdx, 1);
     }
+    this.recordManualDateDeletion(previousPatients);
     this.saveDataStore();
     this.renderTable();
   }
@@ -381,6 +383,7 @@ class PTSheetActions {
   clearSelection() {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const rows = this.getCurrentRows();
+    const previousPatients = this.getPatientIdentitySnapshot(rows);
 
     if (this.selectedRange) {
       const { minRow, maxRow, minCol, maxCol } = this.selectedRange;
@@ -406,6 +409,7 @@ class PTSheetActions {
       return;
     }
 
+    this.recordManualDateDeletion(previousPatients);
     this.saveDataStore();
     this.renderTable();
     this.showSaveIndicator("내용 지우기 완료");
@@ -468,6 +472,7 @@ class PTSheetActions {
 
   clearRowData(targetRowIdx) {
     const rows = this.getCurrentRows();
+    const previousPatients = this.getPatientIdentitySnapshot(rows);
     let minRow = targetRowIdx;
     let maxRow = targetRowIdx;
 
@@ -495,6 +500,7 @@ class PTSheetActions {
       }
     }
 
+    this.recordManualDateDeletion(previousPatients);
     this.saveDataStore();
     this.renderTable();
     const count = maxRow - minRow + 1;
@@ -525,6 +531,7 @@ class PTSheetActions {
 
   deleteRowAt(targetRowIdx, nextColKey = "no") {
     const rows = this.getCurrentRows();
+    const previousPatients = this.getPatientIdentitySnapshot(rows);
     let minRow = targetRowIdx;
     let deleteCount = 1;
 
@@ -559,6 +566,7 @@ class PTSheetActions {
       this.selectedRowIdx = null;
       this.selectedRowRange = null;
       this.clipboardSelection = null;
+      this.recordManualDateDeletion(previousPatients);
       this.saveDataStore();
       this.renderTable();
       const nextRowIdx = Math.min(minRow, rows.length - 1);
@@ -574,9 +582,11 @@ class PTSheetActions {
   clearColData(colKey) {
     if (!colKey) return;
     const rows = this.getCurrentRows();
+    const previousPatients = this.getPatientIdentitySnapshot(rows);
     rows.forEach((r) => {
       r[colKey] = "";
     });
+    this.recordManualDateDeletion(previousPatients);
     this.saveDataStore();
     this.renderTable();
     this.showSaveIndicator(`${colKey} 열 데이터 비우기 완료`);
