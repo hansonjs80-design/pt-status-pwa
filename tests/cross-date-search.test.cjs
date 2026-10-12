@@ -472,6 +472,22 @@ test('search period setting defaults to 6months, persists in localStorage, and f
   assert.equal(app.crossDateResults[0].name, '일년전환자');
 });
 
+test('one-year search persists and includes its boundary while excluding older history', () => {
+  const {app,context}=createCrossDateTestApp();
+  context.Date=class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-10-12T12:00:00+09:00'])); } };
+  app.dataStore['2025-10-11']=[{name:'기간가상',chartNo:'OLD'}];
+  app.dataStore['2025-10-12']=[{name:'기간가상',chartNo:'EDGE'}];
+  app.dataStore['2026-01-01']=[{name:'기간가상',chartNo:'NEW'}];
+  app.setSearchPeriod('1year');
+  assert.equal(app.getSearchPeriod(),'1year');
+  assert.equal(context.localStorage.getItem('PT_SEARCH_PERIOD'),'1year');
+  assert.equal(app.getSearchCutoffDate(),'2025-10-12');
+  app.searchAllDates('기간가상',0);
+  assert.deepEqual(Array.from(app.allCrossDateMatchedRows,row=>row.chartNo).sort(),['EDGE','NEW']);
+  app.setSearchPeriod('1year_plus');app.searchAllDates('기간가상',0);
+  assert.deepEqual(Array.from(app.allCrossDateMatchedRows,row=>row.chartNo).sort(),['EDGE','NEW','OLD']);
+});
+
 test('one-year-plus search renders September 9 server history despite empty local cached dates', () => {
   const { app } = createCrossDateTestApp();
   delete app.getSearchDataStore;
@@ -639,4 +655,3 @@ test('pasting history keeps source scroll but activates the current destination 
     assert.equal(updatedWrap.scrollTop, 220);
   }
 });
-

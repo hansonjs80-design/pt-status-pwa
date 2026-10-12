@@ -562,13 +562,13 @@ class PTApp {
   getSearchPeriod() {
     try {
       const saved = localStorage.getItem(SEARCH_PERIOD_STORAGE_KEY);
-      if (saved && ["1year_plus", "6months", "3months"].includes(saved)) return saved;
+      if (saved && ["1year_plus", "1year", "6months", "3months"].includes(saved)) return saved;
     } catch (e) {}
     return "6months";
   }
 
   setSearchPeriod(period) {
-    if (!["1year_plus", "6months", "3months"].includes(period)) period = "6months";
+    if (!["1year_plus", "1year", "6months", "3months"].includes(period)) period = "6months";
     try {
       localStorage.setItem(SEARCH_PERIOD_STORAGE_KEY, period);
     } catch (e) {}
@@ -586,7 +586,7 @@ class PTApp {
   getSearchCutoffDate(period = this.getSearchPeriod()) {
     if (period === "1year_plus" || period === "all") return null;
     const d = new Date();
-    const monthsToSubtract = period === "3months" ? 3 : 6;
+    const monthsToSubtract = period === "1year" ? 12 : period === "3months" ? 3 : 6;
     const targetMonth = d.getMonth() - monthsToSubtract;
     d.setMonth(targetMonth);
     if (d.getMonth() !== ((targetMonth % 12) + 12) % 12) {
@@ -632,7 +632,7 @@ class PTApp {
       this.searchHistoryLoadedPeriod = null;
     }
     const currentPeriod = this.getSearchPeriod();
-    const periodWeight = { "3months": 1, "6months": 2, "1year_plus": 3 };
+    const periodWeight = { "3months": 1, "6months": 2, "1year": 3, "1year_plus": 4 };
     const neededForce = force || (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryLoadedPeriod] || 0);
     // A valid cached range can answer immediately during a background refresh.
     // Initial loads, expanded ranges and explicit refreshes still await data.
