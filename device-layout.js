@@ -62,14 +62,33 @@ class PTDeviceLayout {
     return true;
   }
 
-  readDeviceSummaryState() {
+  readDevicePanelState(key, legacyClosed) {
+    let snapshot = null;
     try {
-      const snapshot = JSON.parse(localStorage.getItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`) || "null");
-      if (typeof snapshot?.closed === "boolean" && Number.isFinite(snapshot.updatedAt)) return snapshot;
-      return { closed: localStorage.getItem(SUMMARY_CLOSED_STORAGE_KEY) === "1", updatedAt: 0 };
-    } catch (_) {
-      return { closed: false, updatedAt: 0 };
-    }
+      const saved = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null');
+      if (typeof saved?.closed === 'boolean' && Number.isFinite(saved.updatedAt)) snapshot = saved;
+    } catch (_) {}
+    // These tiny, device-local settings need a synchronous fallback when record
+    // storage is full and the app closes before an IndexedDB write can finish.
+    try {
+      const cookieKey = `${key}_STATE=`;
+      const raw = String(document.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(cookieKey));
+      const saved = raw ? JSON.parse(decodeURIComponent(raw.slice(cookieKey.length))) : null;
+      if (typeof saved?.closed === 'boolean' && Number.isFinite(saved.updatedAt) && (!snapshot || saved.updatedAt >= snapshot.updatedAt)) snapshot = saved;
+    } catch (_) {}
+    if (snapshot) return snapshot;
+    try { return { closed: localStorage.getItem(key) === legacyClosed, updatedAt: 0 }; }
+    catch (_) { return { closed: false, updatedAt: 0 }; }
+  }
+
+  persistDevicePanelCookie(key, snapshot) {
+    try {
+      document.cookie = `${key}_STATE=${encodeURIComponent(JSON.stringify(snapshot))}; Path=/; Max-Age=31536000; SameSite=Strict`;
+    } catch (_) {}
+  }
+
+  readDeviceSummaryState() {
+    return this.readDevicePanelState(SUMMARY_CLOSED_STORAGE_KEY, '1');
   }
 
   isSummaryClosed() {
@@ -77,6 +96,7 @@ class PTDeviceLayout {
   }
 
   persistLocalSummaryState(snapshot) {
+    this.persistDevicePanelCookie(SUMMARY_CLOSED_STORAGE_KEY, snapshot);
     try { localStorage.setItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
     try {
       if (snapshot.closed) localStorage.setItem(SUMMARY_CLOSED_STORAGE_KEY, "1");
@@ -161,14 +181,11 @@ class PTDeviceLayout {
   }
 
   readDeviceToolbarState() {
-    try {
-      const snapshot = JSON.parse(localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT") || "null");
-      if (typeof snapshot?.closed === "boolean" && Number.isFinite(snapshot.updatedAt)) return snapshot;
-      return { closed: localStorage.getItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1") === "true", updatedAt: 0 };
-    } catch { return { closed: false, updatedAt: 0 }; }
+    return this.readDevicePanelState('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', 'true');
   }
 
   persistLocalToolbarState(snapshot) {
+    this.persistDevicePanelCookie('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', snapshot);
     try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT", JSON.stringify(snapshot)); } catch (_) {}
     try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1", String(snapshot.closed)); } catch (_) {}
   }

@@ -303,9 +303,14 @@ function deviceSummaryHarness() {
     console,
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', ctx);
+  const cookies = new Map();
+  Object.defineProperty(ctx.document, 'cookie', {
+    get: () => [...cookies].map(([key,value]) => `${key}=${value}`).join('; '),
+    set: value => { const pair=value.split(';')[0], at=pair.indexOf('='); cookies.set(pair.slice(0,at),pair.slice(at+1)); },
+  });
   const create = () => { const app = Object.create(ctx.App.prototype); app.syncMainColumnWidths = () => {}; return app; };
   const store = async (key, value) => { if (value !== undefined) disk.set(key, structuredClone(value)); return disk.get(key); };
-  return { storage, disk, sidebar, toolbar, create, store, failLocal() { failLocal = true; } };
+  return { storage, disk, sidebar, toolbar, cookies, create, store, failLocal() { failLocal = true; } };
 }
 
 test('summary closed state survives restart with full localStorage and remains device-local', async () => {
@@ -417,4 +422,30 @@ test('rapid panel toggles serialize slow disk writes and restore the last state 
     await h.create()[restore](h.store);
     assert.equal(h[kind === 'summary' ? 'sidebar' : 'toolbar'].classList.closed, false);
   }
+});
+
+test('panel state survives immediate app closure before disk writes finish with full localStorage', async () => {
+  const h=deviceSummaryHarness(), first=h.create();
+  await first.restoreDeviceSummaryState(h.store);
+  await first.restoreDeviceToolbarState(h.store);
+  h.failLocal();
+  const pendingDisk=()=>new Promise(()=>{});
+  first.summaryStateStore=pendingDisk;
+  first.toolbarStateStore=pendingDisk;
+  first.setSummaryClosed(true);
+  first.setToolbarActionsClosed(true);
+  // Simulate a fresh app before either asynchronous write can complete.
+  const reopened=h.create();
+  reopened.initSummaryToggle();reopened.initToolbarActionsToggle();
+  assert.equal(h.sidebar.classList.closed,true);
+  assert.equal(h.toolbar.classList.closed,true);
+  await reopened.restoreDeviceSummaryState(h.store);
+  await reopened.restoreDeviceToolbarState(h.store);
+  assert.equal(h.sidebar.classList.closed,true,'older disk state must not reopen the summary');
+  assert.equal(h.toolbar.classList.closed,true,'older disk state must not reopen the tools');
+  reopened.summaryStateStore=pendingDisk;reopened.toolbarStateStore=pendingDisk;
+  reopened.setSummaryClosed(false);reopened.setToolbarActionsClosed(false);
+  const again=h.create();again.initSummaryToggle();again.initToolbarActionsToggle();
+  assert.equal(h.sidebar.classList.closed,false);
+  assert.equal(h.toolbar.classList.closed,false);
 });
