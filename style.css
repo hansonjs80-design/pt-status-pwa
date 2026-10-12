@@ -731,6 +731,7 @@ body {
 @media print { .sheet-digital-clock { display: none !important; } }
 
 .modal-card.search-prompt-card, .modal-card.search-not-found-card { width: calc(100% - 32px); max-width: 240px; border-radius: 10px; box-shadow: 0 12px 32px #183a2926; }
+.modal-card.search-prompt-card { max-width: 280px; }
 #searchPromptModal { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .search-prompt-card .modal-header { cursor: grab; user-select: none; touch-action: pinch-zoom; }
 .search-prompt-card .modal-header.is-dragging { cursor: grabbing; }
@@ -738,14 +739,14 @@ body {
 .search-prompt-card .modal-header h2 { margin: 0; color: #171717; font-size: 14px; font-weight: 700; }
 .search-prompt-card .btn-close-modal { width: 24px; height: 24px; padding: 0; color: #6b8272; font-size: 16px; }
 .search-prompt-card .modal-body { padding: 7px 14px; background: #fff; }
-.search-prompt-label { display: block; margin-bottom: 3px; color: #6b8272; font-size: 12px; }
+.search-prompt-label { display: block; margin-bottom: 3px; color: #6b8272; font-size: 12px; white-space: nowrap; }
 .search-prompt-field { position: relative; display: flex; align-items: center; gap: 8px; }
 #searchPromptInput { flex: 1; min-width: 0; width: 100%; height: 34px; box-sizing: border-box; padding: 6px 10px; font: inherit; font-size: 14px; border: 1px solid #c5dccb; border-radius: 6px; outline: none; }
 #searchPromptInput:focus { border-color: #107c41; box-shadow: 0 0 0 2px #107c411a; }
 .cell-autocomplete-menu.search-prompt-autocomplete { padding: 4px; background: #ffffff; border-color: #7bae8e; border-radius: 8px; box-shadow: 0 4px 14px rgba(16, 80, 42, 0.14); }
 .search-prompt-autocomplete .autocomplete-item { padding: 7px 8px; gap: 6px; color: #171717; border-radius: 4px; }
 .search-prompt-autocomplete .autocomplete-item-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #171717; }
-.search-prompt-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.search-prompt-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
 .search-current-date-option { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; cursor: pointer; }
 .search-current-date-option input { margin: 0; accent-color: #107c41; }
 .search-prompt-autocomplete .autocomplete-item:hover { background: #eef8f2; color: #171717; }
