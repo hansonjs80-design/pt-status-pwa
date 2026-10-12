@@ -924,8 +924,19 @@ body {
   background-color: var(--excel-row-active);
 }
 
+/* Row tints cover saved cell colors; stronger cell selection rules still win. */
+:where(.excel-row:hover) > .excel-cell {
+  background-color: var(--excel-row-hover) !important;
+}
+:where(.excel-row.active-row) > .excel-cell {
+  background-color: var(--excel-row-active) !important;
+}
+
 /* Ctrl+F를 누른 원점 행 하이라이트 (더 진한 색상) */
 .excel-row.search-origin-row {
+  background-color: #c6e6d0 !important;
+}
+:where(.excel-row.search-origin-row) > .excel-cell {
   background-color: #c6e6d0 !important;
 }
 .excel-row.search-origin-row .row-num {
@@ -2418,13 +2429,13 @@ body {
 .gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #0c5b30; color: #ffffff; padding: 2px 5px; border-radius: 3px; font-weight: 600; font-size: 10px; }
 
 /* Search apply/paste destination: tint the full data row, including empty cells. */
-.history-search-active .excel-row.history-destination-row > .excel-cell,
-.history-search-active .excel-row.history-destination-row > .row-num {
-  background-color: #cce6d5;
+:where(.history-search-active .excel-row.history-destination-row) > .excel-cell,
+:where(.history-search-active .excel-row.history-destination-row) > .row-num {
+  background-color: #cce6d5 !important;
 }
-.history-search-active .excel-row.history-destination-row.active-row > .excel-cell,
-.history-search-active .excel-row.history-destination-row.active-row > .row-num {
-  background-color: #bdddc9;
+:where(.history-search-active .excel-row.history-destination-row.active-row) > .excel-cell,
+:where(.history-search-active .excel-row.history-destination-row.active-row) > .row-num {
+  background-color: #bdddc9 !important;
 }
 
 .history-search-active .excel-cell.history-destination-cell {

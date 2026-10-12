@@ -325,7 +325,8 @@ class PTTableFormatting {
       const value = this.getCellFormatting(row, key, property);
       if (property === "backgroundColor") {
         if (value != null || element.style.backgroundColor) {
-          if (element.style.setProperty) element.style.setProperty("background-color", value || "", value ? "important" : "");
+          // Saved colors are the base layer; transient row/cell highlights win.
+          if (element.style.setProperty) element.style.setProperty("background-color", value || "", "");
           else element.style.backgroundColor = value || "";
         }
       } else if (property !== "textAlign") element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
