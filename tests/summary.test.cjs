@@ -381,3 +381,40 @@ test('toolbar migrates existing local setting and startup toggles win over delay
   assert.equal(h.toolbar.classList.closed,false);
   assert.equal(h.disk.get('device-toolbar-state-v1').closed,false);
 });
+
+test('rapid panel toggles serialize slow disk writes and restore the last state with full localStorage', async () => {
+  for (const kind of ['summary', 'toolbar']) {
+    const h = deviceSummaryHarness();
+    const app = h.create();
+    const restore = kind === 'summary' ? 'restoreDeviceSummaryState' : 'restoreDeviceToolbarState';
+    const toggle = kind === 'summary' ? 'setSummaryClosed' : 'setToolbarActionsClosed';
+    const queue = kind === 'summary' ? 'summaryStateWrite' : 'toolbarStateWrite';
+    const key = `device-${kind}-state-v1`;
+    await app[restore](h.store);
+    h.failLocal();
+    let release, writes = 0;
+    const slowStore = async (storeKey, value) => {
+      if (value !== undefined) {
+        writes++;
+        if (writes === 1) await new Promise(resolve => { release = resolve; });
+      }
+      return h.store(storeKey, value);
+    };
+    app[kind === 'summary' ? 'summaryStateStore' : 'toolbarStateStore'] = slowStore;
+    app[toggle](false);
+    await Promise.resolve();
+    app[toggle](true);
+    await Promise.resolve();
+    assert.equal(writes, 1, 'newer writes must wait for the older transaction');
+    release();
+    await app[queue];
+    assert.equal(h.disk.get(key).closed, true);
+    const reopened = h.create();
+    await reopened[restore](h.store);
+    assert.equal(h[kind === 'summary' ? 'sidebar' : 'toolbar'].classList.closed, true);
+    reopened[toggle](false);
+    await reopened[queue];
+    await h.create()[restore](h.store);
+    assert.equal(h[kind === 'summary' ? 'sidebar' : 'toolbar'].classList.closed, false);
+  }
+});

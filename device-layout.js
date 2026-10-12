@@ -87,12 +87,11 @@ class PTDeviceLayout {
   queueDeviceSummaryState(snapshot) {
     if (!this.summaryStateStore) return;
     const previous = this.summaryStateWrite || Promise.resolve();
-    const write = (async () => {
+    this.summaryStateWrite = previous.then(async () => {
       await this.summaryStateStore("device-summary-state-v1", snapshot);
       const saved = await this.summaryStateStore("device-summary-state-v1");
-      if (!saved || saved.updatedAt < snapshot.updatedAt) throw new Error("현황창 설정 저장 검증 실패");
-    })();
-    this.summaryStateWrite = Promise.all([previous, write]).catch(error => {
+      if (!saved || saved.updatedAt !== snapshot.updatedAt || saved.closed !== snapshot.closed) throw new Error("현황창 설정 저장 검증 실패");
+    }).catch(error => {
       console.error("Failed to persist device summary state:", error);
       this.showSaveIndicator?.("현황창 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
     });
@@ -110,6 +109,7 @@ class PTDeviceLayout {
       this.setSummaryClosed(persisted.closed, false);
     } else {
       this.deviceSummaryState = local;
+      this.setSummaryClosed(local.closed, false);
       this.queueDeviceSummaryState(local);
       await this.summaryStateWrite;
     }
@@ -176,12 +176,11 @@ class PTDeviceLayout {
   queueDeviceToolbarState(snapshot) {
     if (!this.toolbarStateStore) return;
     const previous = this.toolbarStateWrite || Promise.resolve();
-    const write = (async () => {
+    this.toolbarStateWrite = previous.then(async () => {
       await this.toolbarStateStore("device-toolbar-state-v1", snapshot);
       const saved = await this.toolbarStateStore("device-toolbar-state-v1");
-      if (!saved || saved.updatedAt < snapshot.updatedAt) throw new Error("도구 설정 저장 검증 실패");
-    })();
-    this.toolbarStateWrite = Promise.all([previous, write]).catch(error => {
+      if (!saved || saved.updatedAt !== snapshot.updatedAt || saved.closed !== snapshot.closed) throw new Error("도구 설정 저장 검증 실패");
+    }).catch(error => {
       console.error("Failed to persist device toolbar state:", error);
       this.showSaveIndicator?.("도구 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
     });
@@ -198,6 +197,7 @@ class PTDeviceLayout {
       this.setToolbarActionsClosed(persisted.closed, false);
     } else {
       this.deviceToolbarState = local;
+      this.setToolbarActionsClosed(local.closed, false);
       this.queueDeviceToolbarState(local);
       await this.toolbarStateWrite;
     }
