@@ -1,5 +1,17 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCellEditor {
+  getChartNameRedirect(value, previousChart = '') {
+    const text = this.assembleHangul(String(value ?? '')).trim();
+    if (!/\p{L}/u.test(text)) return null;
+    const compound = {};
+    if (this.applyCompoundPatientInput(compound, 'chartNo', text)) return compound;
+    const leadingNumber = text.match(/^(\d+)\s*/);
+    return {
+      chartNo: leadingNumber?.[1] || (/^\d+$/.test(String(previousChart)) ? String(previousChart) : ''),
+      name: text.replace(/^\d+\s*\/?\s*/, '').trim(),
+    };
+  }
+
   activateNativeEditor(input) {
     if (!input.classList.contains("is-armed")) return;
     for (const child of [...input.parentElement.childNodes]) {
@@ -72,6 +84,35 @@ class PTCellEditor {
     let _hangulRepairTimer = null;
     let isCommitted = false;
     let composing = false;
+    const redirectChartName = () => {
+      if (isCommitted || colKey !== 'chartNo' || composing || input.dataset.nativeComposing === 'true') return false;
+      const redirect = this.getChartNameRedirect(input.value, initialVal);
+      if (!redirect) return false;
+      const nameCell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="name"]`);
+      if (!nameCell) return false;
+      isCommitted = true;
+      clearTimeout(_hangulRepairTimer);
+      clearTimeout(_acDebounceTimer);
+      this.closeAutocompleteMenu();
+      this.endNativeCellEditing(input);
+      Object.assign(rows[rowIdx], redirect);
+      if (rows[rowIdx]._richText) {
+        delete rows[rowIdx]._richText.chartNo;
+        delete rows[rowIdx]._richText.name;
+      }
+      this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
+      this.renderColoredText(cellElement, rows[rowIdx], colKey);
+      this.saveDataStore();
+      this.refreshNewPatientRows();
+      this.selectCell(rowIdx, 'name', nameCell, false);
+      this.startInlineEdit(rowIdx, 'name', nameCell);
+      const nameInput = nameCell.querySelector('input');
+      if (nameInput) {
+        const suggestions = this.getAutocompleteSuggestions('name', nameInput.value);
+        if (suggestions.length) this.showAutocompleteMenu(rowIdx, 'name', nameCell, nameInput, suggestions);
+      }
+      return true;
+    };
     const repairCompletedInput = () => {
       clearTimeout(_hangulRepairTimer);
       _hangulRepairTimer = setTimeout(() => {
@@ -111,6 +152,7 @@ class PTCellEditor {
       this.rememberPatientSearchDraft(rowIdx, colKey, input);
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
+      if (redirectChartName()) return;
       this.clearInlineAutocompletePreview();
       const val = input.value;
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
@@ -150,6 +192,7 @@ class PTCellEditor {
       composing = false;
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
+      if (redirectChartName()) return;
       repairCompletedInput();
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함

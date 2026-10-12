@@ -2,6 +2,16 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
+test('chart text redirects to the name while preserving numeric identifiers and compound entries', () => {
+  const {app}=createApp();
+  for (const number of ['', '123', '00123']) assert.equal(app.getChartNameRedirect(number), null);
+  for (const [text, previous, chartNo, name] of [
+    ['가상환자', '', '', '가상환자'], ['가상환자', '00123', '00123', '가상환자'],
+    ['123가상환자', '', '123', '가상환자'], ['00123/가상환자(3)', '', '00123', '가상환자'],
+    ['Alice', '', '', 'Alice'], ['ㄱ', '', '', 'ㄱ'],
+  ]) assert.deepEqual(JSON.parse(JSON.stringify(app.getChartNameRedirect(text, previous))), {chartNo,name});
+});
+
 function createApp(dataStore = {}, presets = {}) {
   const storage = new Map();
   const context = vm.createContext({
