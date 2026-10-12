@@ -152,7 +152,6 @@ class PTCellEditor {
       this.rememberPatientSearchDraft(rowIdx, colKey, input);
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
-      if (redirectChartName()) return;
       this.clearInlineAutocompletePreview();
       const val = input.value;
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
@@ -192,7 +191,6 @@ class PTCellEditor {
       composing = false;
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
-      if (redirectChartName()) return;
       repairCompletedInput();
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
@@ -289,6 +287,19 @@ class PTCellEditor {
 
     input.addEventListener("keydown", (e) => {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      // Wait for explicit Enter; typing/composition must stay in the chart editor.
+      // Handle physical Enter before the generic IME guard so one press can
+      // confirm the composed name and move to its proper cell.
+      if (colKey === 'chartNo' && !input.classList.contains('is-armed') &&
+          !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+          (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) &&
+          this.getChartNameRedirect(input.value, initialVal)) {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        composing = false;
+        input.dataset.composing = 'false';
+        input.dataset.nativeComposing = 'false';
+        if (redirectChartName()) return;
+      }
       if (["chartNo", "name", "part", "memo", "specialNote"].includes(colKey) && !input.classList.contains("is-armed") &&
           !this.isAutocompleteOpen() && (e.key === "ArrowLeft" || e.code === "ArrowLeft") &&
           (input.selectionStart !== 0 || input.selectionEnd !== 0)) {
