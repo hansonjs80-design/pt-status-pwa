@@ -1187,7 +1187,7 @@ body {
   padding: 0.6px 6px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   vertical-align: middle;
   cursor: cell;
   position: relative;
