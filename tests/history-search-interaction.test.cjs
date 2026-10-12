@@ -1830,3 +1830,16 @@ test('closing search invalidates a queued IME Enter before it can submit another
   app.handleSearchPromptKeyDown({key:'Process',code:'Enter',keyCode:229,isComposing:true,stopPropagation(){}});
   app.closeSearchPromptModal();queued();assert.equal(app.searchPromptEnterPending,false);
 });
+
+test('current-date search highlights all matching name rows instead of the empty Apply destination', () => {
+  const {app}=createApp([{name:'다른가상'}, {name:'일치가상',chartNo:'123'}, {name:'일치가상',chartNo:'456'}, {}]);
+  app.includeCurrentDateSearch=true;app.elSearchInput.value='일치가상';
+  const marks=Array.from({length:4},()=>new Set());
+  const rows=marks.map(classes=>({classList:{add:k=>classes.add(k),remove:k=>classes.delete(k)},querySelector:()=>null}));
+  app.elTableBody={querySelectorAll:()=>rows,querySelector:selector=>rows[Number(selector.match(/data-row-idx="(\d+)"/)?.[1])]};
+  app.updateHistoryDestinationHighlight({name:'일치가상'});
+  assert.deepEqual(marks.map((m,i)=>m.has('history-destination-row')?i:null).filter(i=>i!==null),[1,2]);
+  app.includeCurrentDateSearch=false;
+  app.updateHistoryDestinationHighlight();
+  assert.deepEqual(marks.map((m,i)=>m.has('history-destination-row')?i:null).filter(i=>i!==null),[0]);
+});

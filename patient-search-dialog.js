@@ -280,8 +280,8 @@ class PTPatientSearchDialog {
     const normalized = String(query).trim().toLowerCase();
     const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     return Object.entries(this.getSearchDataStore()).some(([date, rows]) =>
-      date <= this.currentDate && (!cutoffDate || date >= cutoffDate) && Array.isArray(rows) && rows.some((row, index) =>
-        !(date === this.currentDate && index === targetRowIdx) &&
+      date <= this.currentDate && (!cutoffDate || date >= cutoffDate || (this.includeCurrentDateSearch && date === this.currentDate)) && Array.isArray(rows) && rows.some((row, index) =>
+        ((this.includeCurrentDateSearch && date === this.currentDate) || !(date === this.currentDate && index === targetRowIdx)) &&
         String(row?.[field] ?? "").trim().toLowerCase() === normalized));
   }
 
@@ -296,7 +296,7 @@ class PTPatientSearchDialog {
       rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
 
     for (const [date, rows] of Object.entries(searchStore)) {
-      if (cutoffDate && date < cutoffDate) continue;
+      if (cutoffDate && date < cutoffDate && !(this.includeCurrentDateSearch && date === this.currentDate)) continue;
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
         if (!row || (!row.name && !row.chartNo && !row.part && !row.prescription)) continue;

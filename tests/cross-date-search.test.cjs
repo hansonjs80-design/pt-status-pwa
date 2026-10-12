@@ -655,3 +655,39 @@ test('pasting history keeps source scroll but activates the current destination 
     assert.equal(updatedWrap.scrollTop, 220);
   }
 });
+
+test('including the displayed date keeps its records separate at the bottom and restores the original Apply target when unchecked', () => {
+  const {app}=createCrossDateTestApp();
+  app.currentDate='2026-09-30';app.getTodayString=()=> '2026-10-13';
+  app.getSearchCutoffDate=()=>null;
+  app.dataStore={
+    '2026-09-29':[{name:'가상동일',chartNo:'12345',prescription:'동일 처방'}],
+    '2026-09-30':[{name:'다른가상',chartNo:'OTHER'}, {}, {name:'가상동일',chartNo:'12345',prescription:'동일 처방'}],
+    '2026-10-13':[{name:'가상동일',chartNo:'12345'}],
+  };
+  app.renderTable();app.searchAllDates('가상동일',1);
+  assert.deepEqual(Array.from(app.crossDateResults,row=>row._sourceDate),['2026-09-29']);
+  app.setIncludeCurrentDateSearch(true);
+  assert.deepEqual(Array.from(app.crossDateResults,row=>row._sourceDate),['2026-09-29','2026-09-30']);
+  assert.equal(app.historyApplyTarget.rowIdx,2);
+  assert.deepEqual(Array.from(app.getCurrentDateSearchRowIndices('12345')),[2]);
+  app.setIncludeCurrentDateSearch(false);
+  assert.deepEqual(Array.from(app.crossDateResults,row=>row._sourceDate),['2026-09-29']);
+  assert.equal(app.historyApplyTarget.rowIdx,1);
+});
+
+test('current-date-only patient searches succeed when checked even on an old displayed date', () => {
+  const {app}=createCrossDateTestApp();
+  app.currentDate='2024-01-02';app.getSearchCutoffDate=()=> '2026-04-13';
+  app.dataStore={'2024-01-02':[{name:'가상현재',chartNo:'12345'}]};app.renderTable();
+  assert.equal(app.hasRecordedPatientValue('가상현재',0,'name'),false);
+  app.setIncludeCurrentDateSearch(true);
+  assert.equal(app.hasRecordedPatientValue('가상현재',0,'name'),true);
+  assert.equal(app.hasRecordedPatientValue('12345',0,'chartNo'),true);
+  assert.equal(app.hasAnySearchMatches('가상현재'),true);
+  app.searchAllDates('12345',0);
+  assert.equal(app.crossDateResults.length,1);
+  assert.equal(app.crossDateResults[0]._sourceDate,'2024-01-02');
+  app.setIncludeCurrentDateSearch(false);
+  assert.equal(app.crossDateResults.length,0);
+});

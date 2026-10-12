@@ -317,6 +317,9 @@ class PTAppEvents {
       this.elSearchPromptInput.addEventListener("input", () => this.updateSearchPromptAutocomplete());
       this.elSearchPromptInput.addEventListener("keydown", e => this.handleSearchPromptKeyDown(e));
     }
+    document.getElementById('searchIncludeCurrentDate')?.addEventListener('change', event => {
+      this.setIncludeCurrentDateSearch(event.target.checked);
+    });
     if (this.elSearchPromptModal) {
       this.initSearchPromptDrag();
       this.elSearchPromptModal.addEventListener("click", (e) => {

@@ -357,7 +357,7 @@ class PTHistoryTable {
     const dividerTd = document.createElement("td");
     dividerTd.colSpan = 14;
     const modeText = this.isCrossDateExpanded ? "전체 보기" : "대표 행 보기";
-    dividerTd.innerHTML = `<span>📋 이전 날짜 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · 날짜 ▼ 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
+    dividerTd.innerHTML = `<span>📋 ${this.includeCurrentDateSearch ? '현재 날짜 포함 검색' : '이전 날짜'} 기록 ${allMatchedRows.length}건 중 ${renderRows.length}건 표시 (${modeText} · 날짜 ▼ 클릭 시 토글) ↑ │ 현재 날짜 (${this.currentDate.replace(/-/g, ".")}) ↓</span>`;
     dividerTr.appendChild(dividerTd);
     this.elTableBody.insertBefore(dividerTr, firstCurrentRow);
     const currentHeader = document.querySelector(".business-headers-row");

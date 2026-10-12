@@ -1,6 +1,24 @@
 // Search, previous-date records, and Apply destination presentation.
 // Methods run with the PTApp instance as `this`; no separate state is created.
 class PTHistorySearch {
+  setIncludeCurrentDateSearch(enabled) {
+    this.includeCurrentDateSearch = Boolean(enabled);
+    if (!enabled && this.currentDateSearchOriginalTarget) {
+      if (this.currentDateSearchOriginalTarget.date === this.currentDate) this.historyApplyTarget = this.currentDateSearchOriginalTarget;
+      this.currentDateSearchOriginalTarget = null;
+    }
+    const query = this.elSearchInput?.value?.trim();
+    if (query) this.searchAllDates(query, undefined, { preserveCurrentSelection: true });
+  }
+
+  getCurrentDateSearchRowIndices(query) {
+    if (!this.includeCurrentDateSearch) return [];
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return [];
+    const field = this.isChartNumberQuery(q) ? 'chartNo' : 'name';
+    return this.getCurrentRows().flatMap((row, index) => String(row?.[field] ?? '').trim().toLowerCase() === q ? [index] : []);
+  }
+
   copyHistoryFields(destination, source, keys) {
     const sourceIndex = this.crossDateResults?.indexOf(source) ?? -1;
     for (const key of keys) {
@@ -14,7 +32,8 @@ class PTHistorySearch {
     const previewButton = Boolean(source);
     const indices = new Set();
     if (this.elSearchInput?.value?.trim()) {
-      if (!source && !this.crossDateSelection) {
+      for (const index of this.getCurrentDateSearchRowIndices(this.elSearchInput.value)) indices.add(index);
+      if (!indices.size && !source && !this.crossDateSelection) {
         if (this.activeCell) indices.add(this.activeCell.rowIdx);
         else if (this.selectedRange) {
           for (let row = this.selectedRange.minRow; row <= this.selectedRange.maxRow; row++) indices.add(row);
@@ -512,10 +531,14 @@ class PTHistorySearch {
   getHistoryDedupeKey(row) {
     const compareCols = ["gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     // Keep older years visible even when the patient and treatment are identical.
-    return JSON.stringify([row._sourceDate.slice(0, 4), ...compareCols.map(k => String(row[k] || "").trim().toLowerCase())]);
+    const dateKey = this.includeCurrentDateSearch && row._sourceDate === this.currentDate ? `current:${row._sourceRowIdx}` : row._sourceDate.slice(0, 4);
+    return JSON.stringify([dateKey, ...compareCols.map(k => String(row[k] || "").trim().toLowerCase())]);
   }
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
+    if (this.includeCurrentDateSearch && this.currentDateSearchOriginalTarget?.date === this.currentDate) {
+      this.historyApplyTarget = this.currentDateSearchOriginalTarget;
+    }
     clearTimeout(this.historyCurrentScrollTimer);
     const historySelection = preserveCurrentSelection
       ? this.captureHistorySearchSelection() || this.pendingHistorySearchSelection : null;
@@ -573,13 +596,14 @@ class PTHistorySearch {
       rows.some(row => String(row?.name ?? "").trim().toLowerCase().includes(q)));
     const allDates = Object.keys(searchStore).sort(); // 오름차순: 하단에 최근월일
     allDates.forEach((dateKey) => {
-      if (dateKey >= this.currentDate) return; // 이전 날짜만 대상
-      if (cutoffDate && dateKey < cutoffDate) return; // 검색 기간 이전 날짜 제외
+      const includeCurrent = this.includeCurrentDateSearch && dateKey === this.currentDate;
+      if (dateKey >= this.currentDate && !includeCurrent) return;
+      if (cutoffDate && dateKey < cutoffDate && !includeCurrent) return;
       const dateRows = searchStore[dateKey] || [];
       dateRows.forEach((row, sourceRowIdx) => {
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
         const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
-        const matches = isChartQuery ? String(row.chartNo ?? "").trim().toLowerCase() === q : isNameQuery
+        const matches = isChartQuery ? String(row.chartNo ?? "").trim().toLowerCase() === q : (isNameQuery || includeCurrent)
           ? String(row.name ?? "").trim().toLowerCase() === q
           : rowText.includes(q);
         if (matches) {
@@ -612,6 +636,13 @@ class PTHistorySearch {
     this.crossDateGroups = groupMap;
     this.allCrossDateMatchedRows = allMatchedRows;
     this.isCrossDateExpanded = false; // 기본값: 대표 행만 표시
+
+    const currentIndices = this.getCurrentDateSearchRowIndices(q);
+    if (currentIndices.length) {
+      this.currentDateSearchOriginalTarget ||= this.historyApplyTarget && { ...this.historyApplyTarget };
+      const index = currentIndices.includes(originIdx) ? originIdx : currentIndices[0];
+      this.historyApplyTarget = { date: this.currentDate, rowIdx: index, rows: rowsData, row: rowsData[index], colKey: 'name' };
+    }
 
     // 5) 이전 날짜 섹션 렌더링
     if (focusCurrentTarget && originIdx >= 0) this.historyApplyTarget.colKey = "no";
