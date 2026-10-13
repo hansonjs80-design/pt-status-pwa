@@ -240,6 +240,9 @@ class PTHistoryTable {
 
       const dateSpan = document.createElement("span");
       dateSpan.className = "cross-date-day";
+      if (row._sourceDate === this.currentDate) {
+        dateSpan.classList.add('cross-date-day-current-date');
+      }
       if (row._sourceDate.slice(0, 4) < this.currentDate.slice(0, 4)) {
         dateSpan.classList.add("cross-date-day-previous-year");
       }
