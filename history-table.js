@@ -393,7 +393,7 @@ class PTHistoryTable {
       }
     });
 
-    // 4) 기본적으로 가장 아래(최신 날짜) 마지막 행을 셀 선택 상태로 설정
+    // 4) 현재 날짜 포함 검색에서는 가장 최근의 이전 날짜 내역을 우선 선택
     const restoreHistoryScroll = () => {
       const wrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
       if (wrap && preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {
@@ -404,12 +404,17 @@ class PTHistoryTable {
     if (renderRows.length > 0 && !preserveCurrentSelection && !this._isPasting &&
         (selectLatestHistory || preservedHistoryScrollTop === undefined || preservedHistoryScrollTop === null)) {
       const lastIdx = renderRows.length - 1;
-      this.selectCrossDateRow(lastIdx);
+      const previousIdx = this.includeCurrentDateSearch
+        ? renderRows.findLastIndex(row => row._sourceDate < this.currentDate) : -1;
+      this.selectCrossDateRow(previousIdx >= 0 ? previousIdx : lastIdx);
       this.isSelectingCrossDate = false;
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
           const scrollWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
-          if (scrollWrap && !this._isPasting) scrollWrap.scrollTop = scrollWrap.scrollHeight;
+          if (scrollWrap && !this._isPasting) {
+            if (previousIdx >= 0) this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${previousIdx}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            else scrollWrap.scrollTop = scrollWrap.scrollHeight;
+          }
         });
       }
     } else if (preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {

@@ -688,6 +688,27 @@ test('current-date-only patient searches succeed when checked even on an old dis
   app.searchAllDates('12345',0);
   assert.equal(app.crossDateResults.length,1);
   assert.equal(app.crossDateResults[0]._sourceDate,'2024-01-02');
+  assert.equal(app.crossDateSelection.minRow,0);
   app.setIncludeCurrentDateSearch(false);
   assert.equal(app.crossDateResults.length,0);
+});
+
+test('current-date-inclusive search selects the last previous-date row across all columns', () => {
+  const {app}=createCrossDateTestApp();
+  app.currentDate='2026-10-12';app.getSearchCutoffDate=()=>null;
+  app.includeCurrentDateSearch=true;
+  app.dataStore={
+    '2026-09-01':[{name:'가상선택',chartNo:'123',part:'목'}],
+    '2026-09-30':[{name:'가상선택',chartNo:'123',part:'허리'}],
+    '2026-10-12':[{name:'가상선택',chartNo:'123',part:'허리'}, {name:'가상선택',chartNo:'123',part:'발'}],
+  };
+  app.renderTable();app.searchAllDates('가상선택',0);
+  assert.deepEqual(Array.from(app.crossDateResults,row=>row._sourceDate),['2026-09-01','2026-09-30','2026-10-12','2026-10-12']);
+  assert.equal(app.crossDateSelection.minRow,1);
+  assert.equal(app.crossDateSelection.maxRow,1);
+  assert.equal(app.crossDateSelection.minCol,0);
+  assert.equal(app.crossDateSelection.maxCol,9);
+  delete app.dataStore['2026-09-01'];delete app.dataStore['2026-09-30'];
+  app.searchAllDates('123',0);
+  assert.equal(app.crossDateSelection.minRow,1,'without previous history, select the last current-date row');
 });
