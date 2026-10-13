@@ -1843,3 +1843,31 @@ test('current-date search highlights all matching name rows instead of the empty
   app.updateHistoryDestinationHighlight();
   assert.deepEqual(marks.map((m,i)=>m.has('history-destination-row')?i:null).filter(i=>i!==null),[0]);
 });
+
+test('table refresh restores patient search focus and its exact text selection without resetting live input', () => {
+  const {app,context}=createApp();let focuses=0,selections=0;
+  const input={value:'가상대기',selectionStart:0,selectionEnd:4,selectionDirection:'backward',
+    focus(){focuses++;context.document.activeElement=this;},
+    setSelectionRange(start,end,direction){selections++;this.selectionStart=start;this.selectionEnd=end;this.selectionDirection=direction;}};
+  app.elSearchPromptInput=input;app.elSearchPromptModal={style:{display:'flex'},contains:element=>element===input};
+  context.document.activeElement=input;app.searchPromptRequestId=5;
+  const snapshot=app.captureSearchPromptFocus();
+  app.restoreSearchPromptFocus(snapshot);
+  assert.equal(focuses,0);assert.equal(selections,0,'unchanged native selection must not be rewritten');
+  context.document.activeElement={};input.selectionStart=input.selectionEnd=4;
+  app.restoreSearchPromptFocus(snapshot);
+  assert.equal(context.document.activeElement,input);
+  assert.equal(input.selectionStart,0);assert.equal(input.selectionEnd,4);assert.equal(input.selectionDirection,'backward');
+  input.value='수정된가상';input.selectionStart=input.selectionEnd=5;
+  app.restoreSearchPromptFocus(snapshot);
+  assert.equal(input.selectionStart,5,'do not restore a stale selection after the query changes');
+  app.elSearchPromptModal.style.display='none';context.document.activeElement={};
+  app.restoreSearchPromptFocus(snapshot);assert.equal(focuses,1,'closed prompts cannot reclaim focus');
+});
+
+test('background armed cell restoration does not focus or open an editor while the search prompt is visible', () => {
+  const {app}=createApp([{name:'가상대기'}]);
+  app.elSearchPromptModal={style:{display:'flex'}};
+  app.loadSearchHistory=()=>assert.fail('must not start a background editor');
+  app.startInlineEdit(0,'name',{},true);
+});

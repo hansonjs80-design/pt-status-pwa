@@ -1,5 +1,27 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTPatientSearchDialog {
+  captureSearchPromptFocus() {
+    if (this.elSearchPromptModal?.style.display !== 'flex') return null;
+    const element = document.activeElement;
+    if (element !== this.elSearchPromptInput && !this.elSearchPromptModal.contains?.(element)) return null;
+    return {
+      element, requestId: this.searchPromptRequestId,
+      value: element.value, start: element.selectionStart, end: element.selectionEnd, direction: element.selectionDirection,
+    };
+  }
+
+  restoreSearchPromptFocus(snapshot) {
+    if (!snapshot || this.elSearchPromptModal?.style.display !== 'flex' ||
+        snapshot.requestId !== this.searchPromptRequestId || snapshot.element.isConnected === false) return;
+    const {element, value, start, end, direction} = snapshot;
+    if (document.activeElement !== element) element.focus({ preventScroll: true });
+    // Leave live IME/caret state untouched when it has not actually changed.
+    if (element === this.elSearchPromptInput && element.value === value && Number.isInteger(start) && Number.isInteger(end) &&
+        (element.selectionStart !== start || element.selectionEnd !== end || element.selectionDirection !== direction)) {
+      element.setSelectionRange(start, end, direction);
+    }
+  }
+
   handleSearchPromptKeyDown(e) {
     const enter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
     if (enter || ["ArrowDown", "ArrowUp", "Escape"].includes(e.key)) e.stopPropagation();

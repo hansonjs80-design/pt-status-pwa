@@ -23,6 +23,8 @@ class PTCellEditor {
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
+    // Background selection restoration must not take focus from patient search.
+    if (armed && this.elSearchPromptModal?.style.display === 'flex') return;
     void this.loadSearchHistory();
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");

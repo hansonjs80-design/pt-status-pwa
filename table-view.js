@@ -2,6 +2,7 @@
 class PTTableView {
   // Render main Excel table
   renderTable() {
+    const searchPromptFocus = this.captureSearchPromptFocus();
     this.pendingHistorySearchSelection = this.captureHistorySearchSelection();
     const existingHistoryWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
     if (existingHistoryWrap) {
@@ -203,7 +204,7 @@ class PTTableView {
     }
     this.paintCellSet();
     this.renderClipboardSelection();
-    if (this.activeCell && this.activeCell.colKey !== "gender") {
+    if (this.activeCell && this.activeCell.colKey !== "gender" && this.elSearchPromptModal?.style.display !== 'flex') {
       const { rowIdx, colKey } = this.activeCell;
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
       if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
@@ -211,6 +212,7 @@ class PTTableView {
     if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
     this.updateFontColorIndicator();
     this.updateBackgroundColorIndicator();
+    this.restoreSearchPromptFocus(searchPromptFocus);
   }
 
   // Select and focus cell like Excel
