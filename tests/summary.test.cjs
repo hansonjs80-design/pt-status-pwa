@@ -449,3 +449,35 @@ test('panel state survives immediate app closure before disk writes finish with 
   assert.equal(h.sidebar.classList.closed,false);
   assert.equal(h.toolbar.classList.closed,false);
 });
+
+test('current-date search checkbox remembers both states per device including immediate closure with full storage', async () => {
+  const h=deviceSummaryHarness(), first=h.create();
+  first.initCurrentDateSearchPreference();
+  assert.equal(first.includeCurrentDateSearch,false);
+  await first.restoreCurrentDateSearchPreference(h.store);
+  h.failLocal();first.setIncludeCurrentDateSearch(true);
+  await first.currentDateSearchPreferenceWrite;
+  const reopened=h.create();reopened.initCurrentDateSearchPreference();
+  await reopened.restoreCurrentDateSearchPreference(h.store);
+  assert.equal(reopened.includeCurrentDateSearch,true);
+  reopened.currentDateSearchPreferenceStore=()=>new Promise(()=>{});
+  reopened.setIncludeCurrentDateSearch(false);
+  const again=h.create();again.initCurrentDateSearchPreference();
+  assert.equal(again.includeCurrentDateSearch,false,'unchecked is saved synchronously before app closure');
+  await again.restoreCurrentDateSearchPreference(h.store);
+  assert.equal(again.includeCurrentDateSearch,false,'older checked disk snapshot must not override unchecked');
+  const anotherDevice=deviceSummaryHarness(), other=anotherDevice.create();
+  other.initCurrentDateSearchPreference();await other.restoreCurrentDateSearchPreference(anotherDevice.store);
+  assert.equal(other.includeCurrentDateSearch,false);
+});
+
+test('changing current-date search during startup wins over delayed stored preference', async () => {
+  const h=deviceSummaryHarness(),app=h.create();let release;
+  app.initCurrentDateSearchPreference();
+  const loading=app.restoreCurrentDateSearchPreference((key,value)=>value!==undefined||release?h.store(key,value):new Promise(resolve=>{release=resolve;}));
+  app.setIncludeCurrentDateSearch(true);
+  release({enabled:false,updatedAt:Date.now()+10000});
+  await loading;await app.currentDateSearchPreferenceWrite;
+  assert.equal(app.includeCurrentDateSearch,true);
+  assert.equal(h.disk.get('device-current-date-search-v1').enabled,true);
+});

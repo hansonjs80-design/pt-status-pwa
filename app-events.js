@@ -1,6 +1,7 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTAppEvents {
   bindEvents() {
+    this.initCurrentDateSearchPreference();
     this.initToolbarActionsToggle();
     this.elSummaryPeriodTabs.forEach(button => {
       button.addEventListener("click", () => this.setSummaryPeriod(button.dataset.summaryPeriod));

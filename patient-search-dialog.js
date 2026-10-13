@@ -57,6 +57,8 @@ class PTPatientSearchDialog {
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
+    const includeCurrentDate = document.getElementById('searchIncludeCurrentDate');
+    if (includeCurrentDate) includeCurrentDate.checked = Boolean(this.includeCurrentDateSearch);
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;

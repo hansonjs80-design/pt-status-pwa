@@ -149,6 +149,7 @@
         this.app.restoreDeviceColumnWidths(this.store.bind(this)),
         this.app.restoreDeviceSummaryState(this.store.bind(this)),
         this.app.restoreDeviceToolbarState(this.store.bind(this)),
+        this.app.restoreCurrentDateSearchPreference(this.store.bind(this)),
         window.ptSheetClock?.restore(this.store.bind(this)),
       ]);
       this.folder = await this.store('folder');

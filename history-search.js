@@ -1,8 +1,57 @@
 // Search, previous-date records, and Apply destination presentation.
 // Methods run with the PTApp instance as `this`; no separate state is created.
 class PTHistorySearch {
-  setIncludeCurrentDateSearch(enabled) {
+  initCurrentDateSearchPreference() {
+    this.currentDateSearchPreference = this.readDevicePanelState('PT_INCLUDE_CURRENT_DATE_SEARCH_V1', 'true', 'enabled');
+    this.setIncludeCurrentDateSearch(this.currentDateSearchPreference.enabled, false);
+  }
+
+  persistLocalCurrentDateSearchPreference(snapshot) {
+    const key = 'PT_INCLUDE_CURRENT_DATE_SEARCH_V1';
+    this.persistDevicePanelCookie(key, snapshot);
+    try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
+    try { localStorage.setItem(key, String(snapshot.enabled)); } catch (_) {}
+  }
+
+  queueCurrentDateSearchPreference(snapshot) {
+    if (!this.currentDateSearchPreferenceStore) return;
+    const previous = this.currentDateSearchPreferenceWrite || Promise.resolve();
+    this.currentDateSearchPreferenceWrite = previous.then(async () => {
+      await this.currentDateSearchPreferenceStore('device-current-date-search-v1', snapshot);
+      const saved = await this.currentDateSearchPreferenceStore('device-current-date-search-v1');
+      if (saved?.enabled !== snapshot.enabled || saved.updatedAt !== snapshot.updatedAt) throw new Error('검색 설정 저장 검증 실패');
+    }).catch(() => this.showSaveIndicator?.('검색 설정 저장 실패 · 기기 저장 공간을 확인해 주세요', true));
+  }
+
+  async restoreCurrentDateSearchPreference(store) {
+    this.currentDateSearchPreferenceStore = store;
+    const saved = await store('device-current-date-search-v1');
+    const local = this.currentDateSearchPreference || this.readDevicePanelState('PT_INCLUDE_CURRENT_DATE_SEARCH_V1', 'true', 'enabled');
+    if (!this.currentDateSearchPreferenceChanged && typeof saved?.enabled === 'boolean' &&
+        Number.isFinite(saved.updatedAt) && saved.updatedAt >= local.updatedAt) {
+      this.currentDateSearchPreference = saved;
+      this.persistLocalCurrentDateSearchPreference(saved);
+      this.setIncludeCurrentDateSearch(saved.enabled, false);
+    } else {
+      this.currentDateSearchPreference = local;
+      this.setIncludeCurrentDateSearch(local.enabled, false);
+      this.queueCurrentDateSearchPreference(local);
+      await this.currentDateSearchPreferenceWrite;
+    }
+  }
+
+  setIncludeCurrentDateSearch(enabled, save = true) {
     this.includeCurrentDateSearch = Boolean(enabled);
+    const checkbox = document.getElementById('searchIncludeCurrentDate');
+    if (checkbox) checkbox.checked = this.includeCurrentDateSearch;
+    if (save) {
+      const previous = this.currentDateSearchPreference || this.readDevicePanelState('PT_INCLUDE_CURRENT_DATE_SEARCH_V1', 'true', 'enabled');
+      const snapshot = { enabled: this.includeCurrentDateSearch, updatedAt: Math.max(Date.now(), previous.updatedAt + 1) };
+      this.currentDateSearchPreference = snapshot;
+      this.currentDateSearchPreferenceChanged = true;
+      this.persistLocalCurrentDateSearchPreference(snapshot);
+      this.queueCurrentDateSearchPreference(snapshot);
+    }
     if (!enabled && this.currentDateSearchOriginalTarget) {
       if (this.currentDateSearchOriginalTarget.date === this.currentDate) this.historyApplyTarget = this.currentDateSearchOriginalTarget;
       this.currentDateSearchOriginalTarget = null;

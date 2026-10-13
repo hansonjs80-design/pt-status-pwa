@@ -62,11 +62,11 @@ class PTDeviceLayout {
     return true;
   }
 
-  readDevicePanelState(key, legacyClosed) {
+  readDevicePanelState(key, legacyClosed, property = 'closed') {
     let snapshot = null;
     try {
       const saved = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      if (typeof saved?.closed === 'boolean' && Number.isFinite(saved.updatedAt)) snapshot = saved;
+      if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt)) snapshot = saved;
     } catch (_) {}
     // These tiny, device-local settings need a synchronous fallback when record
     // storage is full and the app closes before an IndexedDB write can finish.
@@ -74,11 +74,11 @@ class PTDeviceLayout {
       const cookieKey = `${key}_STATE=`;
       const raw = String(document.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(cookieKey));
       const saved = raw ? JSON.parse(decodeURIComponent(raw.slice(cookieKey.length))) : null;
-      if (typeof saved?.closed === 'boolean' && Number.isFinite(saved.updatedAt) && (!snapshot || saved.updatedAt >= snapshot.updatedAt)) snapshot = saved;
+      if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt) && (!snapshot || saved.updatedAt >= snapshot.updatedAt)) snapshot = saved;
     } catch (_) {}
     if (snapshot) return snapshot;
-    try { return { closed: localStorage.getItem(key) === legacyClosed, updatedAt: 0 }; }
-    catch (_) { return { closed: false, updatedAt: 0 }; }
+    try { return { [property]: localStorage.getItem(key) === legacyClosed, updatedAt: 0 }; }
+    catch (_) { return { [property]: false, updatedAt: 0 }; }
   }
 
   persistDevicePanelCookie(key, snapshot) {
