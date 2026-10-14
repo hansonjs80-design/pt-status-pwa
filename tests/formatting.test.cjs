@@ -852,6 +852,7 @@ test('format shortcuts target the cell or selected text and leave unrelated inpu
   const sheet={contains:t=>t===input};instance.elSheetContainer=sheet;
   instance.getFormattingRange=()=>({minRow:0,maxRow:0,minCol:8,maxCol:8});
   instance.captureTextColorSelection=()=>calls.push('capture');
+  instance.isShortcutFormattingApplied=()=>false;
   instance.applyTextColor=color=>calls.push(color);
   instance.applyColumnTypography=(property,value)=>calls.push([property,value]);
   const event={target:input,ctrlKey:true,key:' ',code:'Space',preventDefault(){calls.push('prevent');},stopPropagation(){}};
@@ -865,4 +866,50 @@ test('format shortcuts target the cell or selected text and leave unrelated inpu
     assert.equal(instance.handleTextFormattingShortcut({...event,...extra}),false);
   }
   assert.equal(calls.length,count);
+});
+
+
+test('format shortcuts detect matching selected characters, mixed ranges and reset only the requested style', () => {
+  const instance=Object.create(context.App.prototype);
+  const row={memo:'가나다',_textStyles:{memo:{backgroundColor:'#eeeeee'}}};
+  instance.getCurrentRows=()=>[row];
+  instance.getFormattingRange=()=>({minRow:0,maxRow:0,minCol:8,maxCol:8});
+  instance.isSelectedCoordinate=()=>true;
+  instance.textColorSelection={rowIdx:0,colKey:'memo',start:1,end:3};
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),false);
+  instance.setPartialTextColor(row,'memo',1,3,'#ff0000');
+  instance.setPartialTextStyle(row,'memo',1,3,'fontWeight',600);
+  instance.setPartialTextStyle(row,'memo',1,3,'fontSize',22);
+  instance.setPartialTextStyle(row,'memo',1,3,'highlight','#ffff00');
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),true);
+  assert.equal(instance.isShortcutFormattingApplied('fontWeight',600),true);
+  instance.textColorSelection.start=0;
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),false,'mixed selection is first applied uniformly');
+  instance.textColorSelection.start=1;
+  instance.setPartialTextColor(row,'memo',1,3,null);
+  instance.setPartialTextStyle(row,'memo',1,3,'fontWeight',null);
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),false);
+  assert.equal(instance.isShortcutFormattingApplied('fontWeight',600),false);
+  assert.equal(row._richText.memo.styles[1].fontSize,22);
+  assert.equal(row._richText.memo.styles[1].highlight,'#ffff00');
+  assert.equal(row._textStyles.memo.backgroundColor,'#eeeeee');
+  instance.textColorSelection=null;
+  row._textColors={memo:'#ff0000'};row._textStyles.memo.fontWeight=600;
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),true);
+  assert.equal(instance.isShortcutFormattingApplied('fontWeight',600),true);
+  delete row._textColors.memo;delete row._textStyles.memo.fontWeight;
+  assert.equal(instance.isShortcutFormattingApplied('color','#ff0000'),false);
+  assert.equal(instance.isShortcutFormattingApplied('fontWeight',600),false);
+});
+
+test('repeating either formatting shortcut dispatches reset instead of applying again', () => {
+  const instance=Object.create(context.App.prototype);const calls=[];const sheet={};
+  instance.elSheetContainer=sheet;instance.getFormattingRange=()=>({});
+  instance.captureTextColorSelection=()=>{};instance.isShortcutFormattingApplied=()=>true;
+  instance.applyTextColor=value=>calls.push(['color',value]);
+  instance.applyColumnTypography=(property,value)=>calls.push([property,value]);
+  const event={target:sheet,ctrlKey:true,key:' ',preventDefault(){},stopPropagation(){}};
+  assert.equal(instance.handleTextFormattingShortcut(event),true);
+  assert.equal(instance.handleTextFormattingShortcut({...event,key:'b'}),true);
+  assert.deepEqual(calls,[['color',null],['fontWeight',null]]);
 });

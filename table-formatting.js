@@ -596,9 +596,44 @@ class PTTableFormatting {
     event.preventDefault(); event.stopPropagation();
     if (event.repeat) return true;
     this.captureTextColorSelection();
-    if (red) this.applyTextColor('#ff0000');
-    else this.applyColumnTypography('fontWeight', 600);
+    const property = red ? 'color' : 'fontWeight';
+    const value = red ? '#ff0000' : 600;
+    const reset = this.isShortcutFormattingApplied(property, value);
+    if (red) this.applyTextColor(reset ? null : value);
+    else this.applyColumnTypography(property, reset ? null : value);
     return true;
+  }
+
+  isShortcutFormattingApplied(property, value) {
+    const rows = this.getCurrentRows();
+    const matches = current => property === 'color'
+      ? this.normalizeColumnColor(current) === value : Number(current) === value;
+    const selected = this.textColorSelection;
+    const cellMatches = (row, key, start = 0, end = String(row?.[key] ?? '').length) => {
+      if (!row) return false;
+      // Reset the local override, leaving column defaults and unrelated styles intact.
+      const local = this.isCellFormattingCurrent(row, key, property)
+        ? property === 'color' ? row._textColors?.[key] : row._textStyles?.[key]?.[property] : null;
+      const rich = this.getEffectiveCellRichText(row, key);
+      if (start === end) return matches(local);
+      for (let i = start; i < end; i++) {
+        const current = rich?.text === String(row[key] ?? '')
+          ? property === 'color' ? rich.colors?.[i] : rich.styles?.[i]?.[property] : null;
+        if (!matches(current ?? local)) return false;
+      }
+      return true;
+    };
+    if (selected) return cellMatches(rows[selected.rowIdx], selected.colKey, selected.start, selected.end);
+    const range = this.getFormattingRange();
+    if (!range) return false;
+    const keys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+    let found = false;
+    for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (!this.isSelectedCoordinate(r, c)) continue;
+      found = true;
+      if (!cellMatches(rows[r], keys[c])) return false;
+    }
+    return found;
   }
 
   // Character metadata shares the existing rich-text snapshot, clipboard and sync path.
