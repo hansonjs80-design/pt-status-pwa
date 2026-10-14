@@ -1,6 +1,7 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTAppEvents {
   bindEvents() {
+    this.initHighlightBrush();
     this.initCurrentDateSearchPreference();
     this.initToolbarActionsToggle();
     this.elSummaryPeriodTabs.forEach(button => {
@@ -488,6 +489,7 @@ class PTAppEvents {
   }
 
   cancelSheetPointerInteraction() {
+    this.cancelHighlightStroke?.();
     this.cancelFillDrag();
     this.isSelectingCrossDate = false;
     this.isSelectingRange = false;

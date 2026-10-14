@@ -3054,3 +3054,15 @@ body {
 .rich-editor-selection { position: absolute; top: 0; bottom: 0; background: #779bdc55; pointer-events: none; }
 .rich-editor-caret { position: absolute; top: 15%; bottom: 15%; width: 1px; background: currentColor; animation: rich-caret-blink 1s step-end infinite; }
 @keyframes rich-caret-blink { 50% { opacity: 0; } }
+
+.sheet-container.is-highlight-brush,
+.sheet-container.is-highlight-brush .excel-cell,
+.sheet-container.is-highlight-brush .excel-cell * {
+  cursor: var(--highlight-brush-cursor) !important;
+  user-select: none !important;
+}
+.highlight-brush-selection {
+  position: absolute; top: 2px; bottom: 2px;
+  background: rgba(36, 112, 220, .2); pointer-events: none; z-index: 6;
+}
+#btnTextHighlight[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }

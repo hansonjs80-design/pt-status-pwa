@@ -1019,3 +1019,44 @@ test('applying black to writer overrides historical blue text and prevents picke
   assert.equal(instance.getCellFormatting(next,'writer','color'),'#000000');
   vm.runInContext('delete COLUMN_PRESETS['+JSON.stringify(preset)+']',context);
 });
+
+test('highlight palette activates brush only for one empty cell, preserving occupied-cell formatting', () => {
+  const a = Object.create(context.App.prototype), calls = [];
+  a.activeCell = { rowIdx: 1, colKey: 'memo' };
+  a.getFormattingRange = () => ({ minRow: 1, maxRow: 1, minCol: 8, maxCol: 8 });
+  a.getCurrentRows = () => [{}, { memo: '' }];
+  a.isEditingCell = () => false;
+  a.setHighlightBrush = color => calls.push(['brush', color]);
+  a.applyTextHighlight = color => calls.push(['apply', color]);
+  a.chooseTextHighlight('#ffff00');
+  assert.deepEqual(calls, [['brush', '#ffff00']]);
+  calls.length = 0;
+  a.getCurrentRows = () => [{}, { memo: '기록' }];
+  a.chooseTextHighlight('#ffff00');
+  assert.deepEqual(calls, [['brush', null], ['apply', '#ffff00']]);
+});
+
+test('highlight brush toggles only dragged characters, preserves other styles, and records one undo action', () => {
+  const a = Object.create(context.App.prototype), row = { memo: '가나다라마' };
+  a.currentDate = '2026-10-14'; a.getCurrentRows = () => [row];
+  a.getEffectiveCellRichText = (r, key) => r._richText?.[key];
+  a.markCellFormatting = () => {};
+  let captures = 0, saves = 0, renders = 0;
+  a.captureHistory = () => captures++;
+  a.saveDataStore = () => saves++;
+  a.renderTable = () => renders++;
+  const stroke = { row, rowIndex: 0, key: 'memo', text: row.memo, date: a.currentDate, start: 1, color: '#ffff00' };
+  assert.equal(a.commitHighlightStroke(stroke, 4), true);
+  assert.deepEqual(plain(row._richText.memo.styles), [null, { highlight: '#ffff00' }, { highlight: '#ffff00' }, { highlight: '#ffff00' }, null]);
+  row._richText.memo.styles[2].fontWeight = 600;
+  assert.equal(a.commitHighlightStroke(stroke, 4), true);
+  assert.deepEqual(plain(row._richText.memo.styles), [null, null, { fontWeight: 600 }, null, null]);
+  assert.equal(row.memo, '가나다라마');
+  assert.deepEqual([captures, saves, renders], [4, 2, 2]);
+  assert.equal(a.commitHighlightStroke(stroke, 1), false);
+  a.currentDate = '2026-10-15';
+  assert.equal(a.commitHighlightStroke(stroke, 3), false);
+  a.currentDate = stroke.date; row.memo = '수정';
+  assert.equal(a.commitHighlightStroke(stroke, 3), false);
+  assert.equal(saves, 2, 'cancelled, stale or zero-length strokes never save');
+});

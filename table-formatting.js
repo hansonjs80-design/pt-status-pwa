@@ -792,13 +792,125 @@ class PTTableFormatting {
     document.getElementById("fontColorMenu")?.remove();
   }
 
+  setHighlightBrush(color) {
+    this.cancelHighlightStroke?.();
+    this.highlightBrushColor = color ? (this.normalizeColumnColor(color) || color) : null;
+    if (color) this.textHighlightColor = this.highlightBrushColor;
+    const sheet = this.elSheetContainer;
+    sheet?.classList.toggle('is-highlight-brush', !!color);
+    if (color) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="${this.highlightBrushColor}" stroke="black" stroke-width="2" d="m7 20 12-15 8 7-12 15z"/><path fill="black" d="m7 20 8 7-12 3z"/></svg>`;
+      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 3 29, crosshair`);
+    } else sheet?.style.removeProperty('--highlight-brush-cursor');
+    this.updateTextHighlightIndicator();
+  }
+
+  chooseTextHighlight(color) {
+    const range = this.getFormattingRange();
+    const cell = this.activeCell;
+    const empty = cell && range && range.minRow === range.maxRow && range.minCol === range.maxCol &&
+      !String(this.getCurrentRows()[cell.rowIdx]?.[cell.colKey] ?? '').length;
+    if (color && !this.crossDateSelection && (empty || this.highlightBrushColor)) {
+      if (this.isEditingCell()) document.activeElement.blur();
+      this.textColorSelection = null;
+      this.setHighlightBrush(color);
+    } else {
+      this.setHighlightBrush(null);
+      this.applyTextHighlight(color);
+    }
+  }
+
+  commitHighlightStroke(stroke, end) {
+    const { row, key, text, date, start, color } = stroke;
+    if (this.currentDate !== date || this.getCurrentRows()[stroke.rowIndex] !== row || String(row[key] ?? '') !== text) return false;
+    const lo = Math.min(start, end), hi = Math.max(start, end);
+    if (lo === hi) return false;
+    const rich = this.getEffectiveCellRichText(row, key);
+    const reset = Array.from({ length: hi - lo }, (_, i) =>
+      this.normalizeColumnColor(rich?.styles?.[lo + i]?.highlight) === this.normalizeColumnColor(color)).every(Boolean);
+    this.captureHistory?.();
+    this.setPartialTextStyle(row, key, lo, hi, 'highlight', reset ? null : color);
+    this.captureHistory?.();
+    this.saveDataStore();
+    this.renderTable();
+    return true;
+  }
+
+  initHighlightBrush() {
+    const sheet = this.elSheetContainer;
+    if (!sheet || this.highlightBrushBound) return;
+    this.highlightBrushBound = true;
+    const suppress = event => {
+      if (!this.highlightBrushColor) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+    };
+    for (const type of ['mousedown', 'click', 'dblclick']) sheet.addEventListener(type, suppress, true);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this.highlightBrushColor) {
+        event.preventDefault(); event.stopImmediatePropagation(); this.setHighlightBrush(null);
+      }
+    }, true);
+    sheet.addEventListener('pointerdown', event => {
+      if (!this.highlightBrushColor || event.button !== 0) return;
+      suppress(event);
+      const cell = event.target.closest('td.excel-cell[data-row][data-col]');
+      if (!cell || !this.elTableBody.contains(cell)) return;
+      const rowIndex = Number(cell.dataset.row), key = cell.dataset.col;
+      const row = this.getCurrentRows()[rowIndex], text = String(row?.[key] ?? '');
+      if (!text || key === 'visitTime') return;
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      const chars = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node.parentElement.closest('button,input,.cell-fill-handle,.inline-editor-color-preview')) continue;
+        for (let i = 0; i < node.length; i++) {
+          const range = document.createRange(); range.setStart(node, i); range.setEnd(node, i + 1);
+          const rect = range.getBoundingClientRect();
+          chars.push({ left: rect.left, right: rect.right });
+        }
+      }
+      if (!chars.length) return;
+      const offset = this.getCellFormatting(row, key, 'textAlign') === 'left' ? text.length - text.trimStart().length : 0;
+      const indexAt = x => {
+        let index = chars.findIndex(rect => x < (rect.left + rect.right) / 2);
+        if (index < 0) index = chars.length;
+        index += offset;
+        if (index > 0 && /[\uDC00-\uDFFF]/.test(text[index] || '')) index++;
+        return Math.min(index, text.length);
+      };
+      const stroke = { row, rowIndex, key, text, date: this.currentDate, start: indexAt(event.clientX), color: this.highlightBrushColor };
+      let end = stroke.start;
+      const selection = document.createElement('div'); selection.className = 'highlight-brush-selection';
+      cell.append(selection);
+      const move = e => {
+        if (e.pointerId !== event.pointerId) return;
+        end = indexAt(e.clientX);
+        const lo = Math.min(stroke.start, end) - offset, hi = Math.max(stroke.start, end) - offset;
+        const rect = cell.getBoundingClientRect();
+        selection.style.left = `${Math.max(0, (chars[lo]?.left ?? e.clientX) - rect.left)}px`;
+        selection.style.width = `${hi > lo ? Math.max(0, chars[hi - 1].right - chars[lo].left) : 0}px`;
+      };
+      const cleanup = () => {
+        document.removeEventListener('pointermove', move, true); document.removeEventListener('pointerup', finish, true);
+        selection.remove(); this.cancelHighlightStroke = null;
+      };
+      const finish = e => {
+        if (e.pointerId !== event.pointerId) return;
+        move(e); cleanup(); this.commitHighlightStroke(stroke, end);
+      };
+      this.cancelHighlightStroke?.(); this.cancelHighlightStroke = cleanup;
+      document.addEventListener('pointermove', move, true); document.addEventListener('pointerup', finish, true);
+    }, true);
+  }
+
   updateTextHighlightIndicator() {
     if (typeof document === 'undefined') return;
     const button = document.getElementById?.('btnTextHighlight');
     if (!button) return;
     const color = this.textHighlightColor || '#ffff00';
     button.querySelectorAll?.('.highlight-color-paint').forEach(part => { part.style.fill = color; });
-    button.title = `글자 형광펜: ${color} · 적용/해제 (Ctrl/Cmd+E)`;
+    button.title = this.highlightBrushColor ? `형광펜 모드: ${color} · 드래그로 적용/해제 · Esc로 종료` : `글자 형광펜: ${color} · 적용/해제 (Ctrl/Cmd+E)`;
+    button.setAttribute?.('aria-pressed', String(!!this.highlightBrushColor));
     button.setAttribute?.('aria-label', button.title);
   }
 
@@ -847,7 +959,7 @@ class PTTableFormatting {
     const isBackground = property === "backgroundColor";
     const isHighlight = property === 'highlight';
     const apply = color => {
-      if (isHighlight) { this.applyTextHighlight(color); this.closeFontColorMenu(); }
+      if (isHighlight) { this.chooseTextHighlight(color); this.closeFontColorMenu(); }
       else if (isBackground) this.applyBackgroundColor(color); else this.applyTextColor(color);
     };
     menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isHighlight ? "글자 형광펜 선택" : isBackground ? "셀 배경색 선택" : "글자색 선택");
