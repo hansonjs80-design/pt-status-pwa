@@ -1871,3 +1871,45 @@ test('background armed cell restoration does not focus or open an editor while t
   app.loadSearchHistory=()=>assert.fail('must not start a background editor');
   app.startInlineEdit(0,'name',{},true);
 });
+
+test('cloud search refresh waits for native editing to end and coalesces focus transitions', () => {
+  const {app,context}=createApp([{}]);const events=new Map(),tasks=[];let editing=true,refreshes=0;
+  context.document.addEventListener=(type,fn)=>events.set(type,fn);
+  context.document.removeEventListener=(type,fn)=>{if(events.get(type)===fn)events.delete(type);};
+  context.setTimeout=fn=>{tasks.push(fn);};
+  app.elSearchInput.value='가상환자';app.isEditingCell=()=>editing;
+  app.searchAllDates=query=>{assert.equal(query,'새가상환자');refreshes++;};
+  app.refreshLoadedSearchResults();app.refreshLoadedSearchResults();
+  assert.equal(events.size,2);assert.equal(refreshes,0);
+  events.get('focusout')();tasks.shift()();
+  assert.equal(refreshes,0,'moving directly to another editor must not replace it');
+  assert.equal(events.size,2);
+  editing=false;app.elSearchInput.value='새가상환자';
+  events.get('focusin')();tasks.shift()();
+  assert.equal(events.size,0);assert.equal(refreshes,1);
+});
+
+test('clearing search cancels a deferred table refresh without rendering old results', () => {
+  const {app,context}=createApp([{}]);const events=new Map();
+  context.document.addEventListener=(type,fn)=>events.set(type,fn);
+  context.document.removeEventListener=type=>events.delete(type);
+  app.elSearchInput.value='가상환자';app.isEditingCell=()=>true;
+  app.searchAllDates=()=>assert.fail('cleared search must stay closed');
+  app.refreshLoadedSearchResults();assert.equal(events.size,2);
+  app.elSearchInput.value='';app.refreshLoadedSearchResults();
+  assert.equal(events.size,0);assert.equal(app.searchHistoryFocusCleanup,null);
+});
+
+
+test('interrupted pointer selection releases all drag guards without changing data or the selected range', () => {
+  const {app}=createApp([{name:'가상환자'}]);const range={minRow:0,maxRow:0,minCol:0,maxCol:3};
+  app.selectedRange=range;const before=JSON.stringify(app.dataStore);let cancelled=0;
+  const classes=new Set(['is-selecting','is-fill-dragging']);
+  app.elSheetContainer.classList={remove(...names){names.forEach(name=>classes.delete(name));}};
+  app.cancelFillDrag=()=>{cancelled++;app.fillDrag=null;};
+  Object.assign(app,{fillDrag:{},isSelectingCrossDate:true,isSelectingRange:true,isSelectingRows:true,_isRowDragging:true,_rowDragAnchor:0});
+  app.cancelSheetPointerInteraction();
+  for(const key of ['isSelectingCrossDate','isSelectingRange','isSelectingRows','_isRowDragging'])assert.equal(app[key],false);
+  assert.equal(app._rowDragAnchor,undefined);assert.equal(classes.size,0);assert.equal(cancelled,1);
+  assert.equal(app.selectedRange,range);assert.equal(JSON.stringify(app.dataStore),before);
+});

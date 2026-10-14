@@ -979,3 +979,43 @@ test('highlight toggle detects selected characters and ignores empty cells in a 
   instance.setPartialTextStyle(rows[0],'memo',0,3,'highlight',null);
   assert.equal(instance.isShortcutFormattingApplied('highlight','#ffff00'),false);
 });
+
+test('highlight icon paints the chosen color and keeps it on reset while Ctrl/Cmd+E always uses yellow', () => {
+  const instance=Object.create(context.App.prototype),paint={style:{}},button={querySelectorAll:()=>[paint],setAttribute(){}};
+  context.document={getElementById:()=>button};
+  instance.normalizeColumnColor=color=>color;instance.applySelectedTextStyle=()=>true;
+  try {
+    instance.applyTextHighlight('#ff9900');
+    assert.equal(paint.style.fill,'#ff9900');assert.match(button.title,/#ff9900/);
+    instance.applyTextHighlight(null);
+    assert.equal(paint.style.fill,'#ff9900','reset keeps the next-use color visible');
+    const sheet={};instance.elSheetContainer=sheet;instance.getFormattingRange=()=>({});
+    instance.captureTextColorSelection=()=>{};let applied;
+    instance.isShortcutFormattingApplied=(property,value)=>{assert.equal(property,'highlight');assert.equal(value,'#ffff00');return false;};
+    instance.applyTextHighlight=color=>{applied=color;};
+    instance.handleTextFormattingShortcut({target:sheet,ctrlKey:true,key:'e',preventDefault(){},stopPropagation(){}});
+    assert.equal(applied,'#ffff00');
+  } finally {delete context.document;}
+});
+
+
+test('applying black to writer overrides historical blue text and prevents picker presets from reviving blue', () => {
+  const instance=Object.create(context.App.prototype);instance.columnFormatting={};
+  instance.renderTable=instance.showSaveIndicator=()=>{};
+  const rows=[{writer:'S',_textColors:{writer:'#0000ff'},_richText:{writer:{text:'S',colors:['#0000ff']}}},
+    {writer:'J',_textColors:{writer:'#0000ff'}}];
+  const saved=JSON.stringify(rows);
+  const preset=instance.getAutocompleteColorKey('writer','S');
+  vm.runInContext('COLUMN_PRESETS['+JSON.stringify(preset)+']=["#0000ff"]',context);
+  assert.equal(instance.getAutocompleteValueFormatting('writer','S').color,'#0000ff');
+  assert.equal(instance.applyColumnFontSettings([{...instance.getColumnFontSettings()[7],color:'#000000'}]),true);
+  for(const row of rows) {
+    assert.equal(instance.getCellFormatting(row,'writer','color'),'#000000');
+    assert.equal(instance.getEffectiveCellRichText(row,'writer'),undefined);
+  }
+  assert.equal(JSON.stringify(rows),saved,'reset revisions preserve saved historical patient data');
+  assert.equal(instance.getAutocompleteValueFormatting('writer','S').color,'#000000');
+  const next={writer:'S'};instance.applyAutocompleteColor(next,'writer','S');
+  assert.equal(instance.getCellFormatting(next,'writer','color'),'#000000');
+  vm.runInContext('delete COLUMN_PRESETS['+JSON.stringify(preset)+']',context);
+});

@@ -69,6 +69,7 @@ class PTAppEvents {
       document.getElementById("btnFontSize").textContent = parseFloat(status.value) || (status.label === "여러 값" ? "—" : "14");
       this.updateFontColorIndicator();
       this.updateBackgroundColorIndicator();
+      this.updateTextHighlightIndicator();
       this.updateAlignmentIndicator();
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
@@ -440,6 +441,10 @@ class PTAppEvents {
 
     // Global mouseup to finish drag selection (cells or rows)
     document.addEventListener("mousemove", (event) => {
+      if (event.buttons === 0 && (this.fillDrag || this.isSelectingRange || this.isSelectingRows || this.isSelectingCrossDate || this._isRowDragging)) {
+        this.cancelSheetPointerInteraction();
+        return;
+      }
       this.updateFillDrag(event);
       if (this._isRowDragging && event.buttons === 1 && this._rowDragAnchor !== undefined) {
         const tr = event.target.closest("tr.excel-row");
@@ -451,7 +456,11 @@ class PTAppEvents {
         }
       }
     });
-    window.addEventListener("blur", () => this.cancelFillDrag());
+    window.addEventListener("blur", () => this.cancelSheetPointerInteraction());
+    document.addEventListener('pointercancel', () => this.cancelSheetPointerInteraction());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.cancelSheetPointerInteraction();
+    });
     document.addEventListener("mouseup", (event) => {
       this.isSelectingCrossDate = false;
       this._isRowDragging = false;
@@ -476,6 +485,16 @@ class PTAppEvents {
         this.syncCrossDateColWidths();
       }
     });
+  }
+
+  cancelSheetPointerInteraction() {
+    this.cancelFillDrag();
+    this.isSelectingCrossDate = false;
+    this.isSelectingRange = false;
+    this.isSelectingRows = false;
+    this._isRowDragging = false;
+    this._rowDragAnchor = undefined;
+    this.elSheetContainer?.classList.remove('is-selecting', 'is-fill-dragging');
   }
 
   // Keep the default row count and fifteen empty rows below the last entered record.

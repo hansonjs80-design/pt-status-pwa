@@ -105,6 +105,10 @@ class PTTableFormatting {
   }
 
   getAutocompleteValueFormatting(colKey, value, query = null, excludedRow = null) {
+    // Applying the writer column color also governs future initials selected
+    // from its picker, rather than reviving a legacy per-initial preset color.
+    const writerColor = colKey === 'writer' && this.columnFormatting?.writer?.color;
+    if (writerColor?.resetRevision) return { color: writerColor.value || null, richText: null };
     const scopes = query ? [this.getAutocompleteRuleKey(colKey, query), colKey] : [colKey];
     for (const scope of scopes) {
       const entry = COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)];
@@ -789,8 +793,20 @@ class PTTableFormatting {
     document.getElementById("fontColorMenu")?.remove();
   }
 
+  updateTextHighlightIndicator() {
+    if (typeof document === 'undefined') return;
+    const button = document.getElementById?.('btnTextHighlight');
+    if (!button) return;
+    const color = this.textHighlightColor || '#ffff00';
+    button.querySelectorAll?.('.highlight-color-paint').forEach(part => { part.style.fill = color; });
+    button.title = `글자 형광펜: ${color} · 적용/해제 (Ctrl/Cmd+E)`;
+    button.setAttribute?.('aria-label', button.title);
+  }
+
   applyTextHighlight(color) {
     if (this.crossDateSelection) return;
+    if (color) this.textHighlightColor = this.normalizeColumnColor(color) || color;
+    this.updateTextHighlightIndicator();
     if (this.applySelectedTextStyle('highlight', color)) return;
     const range = this.getFormattingRange();
     if (!range) return;

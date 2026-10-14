@@ -78,7 +78,7 @@ test('cloud history loads every page without modifying local records and reuses 
     from(table) {
       assert.equal(table, 'pt_daily_records');
       return {
-        select(columns) { assert.equal(columns, 'date, rows_data'); return this; },
+        select(columns) { assert.equal(columns, 'date, rows_data, updated_at'); return this; },
         order() { return this; },
         async range(start, end) { calls.push([start, end]); return { data: start === 0 ? page : start === 200 ? [{ date: '2024-01-01', rows_data: [{ chartNo: '9876' }] }] : [] }; },
       };
@@ -548,4 +548,90 @@ test('stalled cloud history pages time out, release their request and retry succ
   assert.equal(await app.loadSearchHistory(), true);
   assert.equal(app.searchHistoryLoadError, null);
   assert.equal(cleared, 2);
+});
+
+function createVersionedHistoryFixture(cap = 200) {
+  const app=createApp({});const requests=[];
+  app.getSearchPeriod=()=> '1year_plus';app.refreshSearchSuggestions=()=>{};
+  let records=[{date:'2026-09-01',updated_at:'v1',rows_data:[{name:'가상환자',chartNo:'100'}]}];
+  let fail=false;
+  app.supabaseClient={from(){let columns,dates;return {
+    select(value){columns=value;return this;},order(){return this;},
+    in(key,value){dates=value;return this;},
+    async range(start,end){
+      requests.push({columns,dates,start,end});
+      if(fail)return {error:new Error('offline')};
+      const selected=records.filter(row=>!dates||dates.includes(row.date));
+      const data=selected.slice(start,Math.min(end+1,start+cap)).map(row=>columns==='date, updated_at'?{date:row.date,updated_at:row.updated_at}:row);
+      return {data,count:selected.length};
+    }
+  };}};
+  return {app,requests,setRecords(value){records=value;},fail(value){fail=value;}};
+}
+
+test('expired unchanged history validates only timestamps without reloading patient details or an empty last page', async () => {
+  const {app,requests}=createVersionedHistoryFixture();
+  assert.equal(await app.loadSearchHistory(),true);
+  assert.equal(requests.length,1,'exact total avoids an empty final request');
+  const before=app.cloudSearchHistory['2026-09-01'];
+  app.searchHistoryLoadedAt=0;
+  assert.equal(await app.loadSearchHistory(),true);
+  assert.equal(requests.length,2);
+  assert.equal(requests[1].columns,'date, updated_at');
+  assert.equal(app.cloudSearchHistory['2026-09-01'],before);
+  assert.equal(app.hasRecordedPatientValue('없는환자',0,'name'),false);
+});
+
+test('version validation fetches new, changed and null-timestamp dates and honors server caps', async () => {
+  const {app,requests,setRecords}=createVersionedHistoryFixture(1);
+  await app.loadSearchHistory();
+  setRecords([
+    {date:'2026-09-01',updated_at:'v2',rows_data:[{name:'변경가상환자'}]},
+    {date:'2026-08-31',updated_at:null,rows_data:[{name:'이전가상환자'}]},
+    {date:'2025-01-01',updated_at:'old',rows_data:[{name:'옛가상환자'}]},
+  ]);
+  app.searchHistoryLoadedAt=0;
+  assert.equal(await app.loadSearchHistory(),true);
+  assert.equal(app.cloudSearchHistory['2026-09-01'][0].name,'변경가상환자');
+  assert.equal(app.cloudSearchHistory['2025-01-01'][0].name,'옛가상환자');
+  const changed=requests.filter(r=>r.dates);
+  assert.equal(changed.length,3,'server caps must not truncate changed-date downloads');
+  assert.equal(changed[2].start,2);
+  requests.length=0;app.searchHistoryLoadedAt=0;
+  await app.loadSearchHistory();
+  const nullRefresh=requests.filter(r=>r.dates);
+  assert.equal(nullRefresh.length,1);
+  assert.deepEqual(Array.from(nullRefresh[0].dates),['2026-08-31'],'null timestamp is never treated as safely unchanged');
+});
+
+test('failed timestamp validation retains records and does not mark an expired cache fresh', async () => {
+  const {app,fail}=createVersionedHistoryFixture();await app.loadSearchHistory();
+  app.searchHistoryLoadedAt=0;fail(true);
+  assert.equal(await app.loadSearchHistory(),false);
+  assert.equal(app.searchHistoryLoadedAt,0);
+  assert.equal(app.cloudSearchHistory['2026-09-01'][0].name,'가상환자');
+  assert.match(app.searchHistoryLoadError.message,/offline/);
+});
+
+test('explicit forced history reload still downloads complete records for backup and bulk-edit checks', async () => {
+  const {app,requests}=createVersionedHistoryFixture();await app.loadSearchHistory();
+  requests.length=0;
+  await app.loadSearchHistory(true);
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].columns,'date, rows_data, updated_at');
+  assert.equal(requests[0].dates,undefined);
+});
+
+test('a forced reload during lightweight validation waits then performs its own complete download', async () => {
+  const {app,requests}=createVersionedHistoryFixture();await app.loadSearchHistory();
+  requests.length=0;app.searchHistoryLoadedAt=0;
+  const original=app.readSearchHistoryPages;let finish;
+  app.readSearchHistoryPages=function(client,columns,...rest){
+    if(columns==='date, updated_at')return new Promise(resolve=>{finish=resolve;});
+    return original.call(this,client,columns,...rest);
+  };
+  const background=app.loadSearchHistory();const forced=app.loadSearchHistory(true);
+  finish([{date:'2026-09-01',updated_at:'v1'}]);
+  await Promise.all([background,forced]);
+  assert.equal(requests.length,1);assert.equal(requests[0].columns,'date, rows_data, updated_at');
 });

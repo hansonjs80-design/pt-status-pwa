@@ -621,6 +621,39 @@ class PTApp {
     return history;
   }
 
+  async readSearchHistoryPages(client, columns, cutoffDate, dates = null) {
+    const entries = [], pageSize = 200;
+    for (let offset = 0; ;) {
+      let query = client.from('pt_daily_records').select(columns, { count: 'exact' }).order('date', { ascending: false });
+      this.searchHistoryCanFilter = typeof query.in === 'function';
+      if (cutoffDate && typeof query.gte === 'function') query = query.gte('date', cutoffDate);
+      if (dates) query = query.in('date', dates);
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      let timeout, result;
+      try {
+        if (controller) {
+          if (typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
+          result = await Promise.race([
+            query.range(offset, offset + pageSize - 1),
+            new Promise((_, reject) => {
+              timeout = setTimeout(() => {
+                controller.abort(); reject(new Error('검색 기록 연결 시간이 초과되었습니다.'));
+              }, 15000);
+            }),
+          ]);
+        } else result = await query.range(offset, offset + pageSize - 1);
+      } finally { if (timeout !== undefined) clearTimeout(timeout); }
+      if (result.error) throw result.error;
+      if (this.supabaseClient !== client) return null;
+      const page = result.data || [];
+      entries.push(...page);
+      offset += page.length;
+      // Honor server response caps; an exact total avoids the final empty request.
+      if (!page.length || (Number.isInteger(result.count) && offset >= result.count)) break;
+    }
+    return entries;
+  }
+
   async loadSearchHistory(force = false) {
     const client = this.supabaseClient;
     if (!client) return false;
@@ -630,6 +663,8 @@ class PTApp {
       this.searchHistoryLoadedAt = 0;
       this.searchHistoryRequest = null;
       this.searchHistoryLoadedPeriod = null;
+      this.searchHistoryVersions = null;
+      this.searchHistoryCanFilter = false;
     }
     const currentPeriod = this.getSearchPeriod();
     const periodWeight = { "3months": 1, "6months": 2, "1year": 3, "1year_plus": 4 };
@@ -639,7 +674,7 @@ class PTApp {
     if (!neededForce && Date.now() - (this.searchHistoryLoadedAt || 0) < 300000) return false;
 
     if (this.searchHistoryRequest) {
-      if (neededForce && (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryRequestPeriod] || 0)) {
+      if ((force && this.searchHistoryRequestFull === false) || (neededForce && (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryRequestPeriod] || 0))) {
         try { await this.searchHistoryRequest; } catch (e) {}
         return this.loadSearchHistory(true);
       }
@@ -647,57 +682,46 @@ class PTApp {
     }
     const requestPeriod = currentPeriod;
     this.searchHistoryRequestPeriod = requestPeriod;
+    this.searchHistoryRequestFull = force || !this.searchHistoryVersions || !this.searchHistoryCanFilter;
     const request = (async () => {
       this.searchHistoryLoadError = null;
       this.cloudSearchHistory ||= {};
       const history = {};
-      const pageSize = 200;
       const cutoffDate = (this.summaryPeriod === "year" || requestPeriod === "1year_plus") ? null : this.getSearchCutoffDate(requestPeriod);
       try {
-        for (let offset = 0; ;) {
-          let query = client.from("pt_daily_records")
-            .select("date, rows_data")
-            .order("date", { ascending: false });
-          if (cutoffDate && typeof query.gte === "function") {
-            query = query.gte("date", cutoffDate);
+        let entries, versions = {};
+        if (!force && this.searchHistoryVersions && this.searchHistoryCanFilter) {
+          // Validate the whole requested range without downloading patient details again.
+          const manifest = await this.readSearchHistoryPages(client, 'date, updated_at', cutoffDate);
+          if (!manifest) return false;
+          const changed = manifest.filter(entry => /^\d{4}-\d{2}-\d{2}$/.test(entry.date) &&
+            (!entry.updated_at || this.searchHistoryVersions[entry.date] !== entry.updated_at || !Array.isArray(this.cloudSearchHistory[entry.date])))
+            .map(entry => entry.date);
+          versions = { ...this.searchHistoryVersions };
+          entries = [];
+          // Bound URL length and preserve paging even when the server caps a batch.
+          for (let i = 0; i < changed.length; i += 100) {
+            const batch = await this.readSearchHistoryPages(client, 'date, rows_data, updated_at', cutoffDate, changed.slice(i, i + 100));
+            if (!batch) return false;
+            entries.push(...batch);
           }
-          // Bound each page so a stalled connection cannot lock the search dialog.
-          const controller = typeof AbortController === "function" ? new AbortController() : null;
-          let timeout;
-          let result;
-          try {
-            if (controller) {
-              if (typeof query.abortSignal === "function") query = query.abortSignal(controller.signal);
-              result = await Promise.race([
-                query.range(offset, offset + pageSize - 1),
-                new Promise((_, reject) => {
-                  timeout = setTimeout(() => {
-                    controller.abort();
-                    reject(new Error("검색 기록 연결 시간이 초과되었습니다."));
-                  }, 15000);
-                }),
-              ]);
-            } else result = await query.range(offset, offset + pageSize - 1);
-          } finally { if (timeout !== undefined) clearTimeout(timeout); }
-          const { data, error } = result;
-          if (error) throw error;
-          if (this.supabaseClient !== client) return false;
-          for (const entry of data || []) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) {
-              history[entry.date] = entry.rows_data;
-              this.cloudSearchHistory[entry.date] = entry.rows_data;
-            }
+        } else {
+          entries = await this.readSearchHistoryPages(client, 'date, rows_data, updated_at', cutoffDate);
+          if (!entries) return false;
+        }
+        for (const entry of entries) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) {
+            history[entry.date] = entry.rows_data;
+            versions[entry.date] = entry.updated_at || null;
           }
-          // The server may cap responses below our requested page size.
-          if (!data?.length) break;
-          offset += data.length;
         }
         this.cloudSearchHistory = { ...this.cloudSearchHistory, ...history };
+        this.searchHistoryVersions = versions;
         this.searchHistoryLoadedAt = Date.now();
         this.searchHistoryLoadedPeriod = requestPeriod;
         if (this.elStatTotalCount) this.updateSidebarStats();
         this.refreshSearchSuggestions();
-        if (this.elSearchInput?.value?.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
+        this.refreshLoadedSearchResults();
         return true;
       } catch (error) {
         if (this.supabaseClient === client) this.searchHistoryLoadError = error;
@@ -711,8 +735,37 @@ class PTApp {
       if (this.searchHistoryRequest === request) {
         this.searchHistoryRequest = null;
         this.searchHistoryRequestPeriod = null;
+        this.searchHistoryRequestFull = null;
       }
     }
+  }
+
+  refreshLoadedSearchResults() {
+    if (!this.elSearchInput?.value?.trim()) {
+      this.searchHistoryFocusCleanup?.();
+      return;
+    }
+    if (typeof document !== 'undefined' && this.isEditingCell()) {
+      // Replacing the table while IME/native editing owns focus destroys its input.
+      // Coalesce refreshes until a focus transition, then recheck the live editor.
+      if (!this.searchHistoryFocusCleanup) {
+        const cleanup = () => {
+          document.removeEventListener('focusout', resume, true);
+          document.removeEventListener('focusin', resume, true);
+          if (this.searchHistoryFocusCleanup === cleanup) this.searchHistoryFocusCleanup = null;
+        };
+        const resume = () => {
+          cleanup();
+          setTimeout(() => this.refreshLoadedSearchResults(), 0);
+        };
+        this.searchHistoryFocusCleanup = cleanup;
+        document.addEventListener('focusout', resume, true);
+        document.addEventListener('focusin', resume, true);
+      }
+      return;
+    }
+    this.searchHistoryFocusCleanup?.();
+    this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
   }
 
   refreshSearchSuggestions() {
