@@ -1070,7 +1070,7 @@ test('underline previews distinguish all six styles and default ink follows text
   });
   assert.equal(previews.length, 6);
   assert.equal(previews[0].textDecorationStyle, 'solid');
-  assert.equal(previews[0].textDecorationColor, 'currentColor');
+  assert.equal(previews[0].textDecorationColor, '#ff0000');
   const double = decodeURIComponent(previews[1].backgroundImage);
   assert.ok(double.includes('M0 0.5h8M0 3.5h8'), 'two 1px strokes have a clear 2px gap');
   assert.equal(previews[2].textDecorationStyle, 'dotted');
@@ -1165,4 +1165,26 @@ test('underline weight adjustments reapply rather than toggling an existing unde
   assert.ok(row._richText.memo.styles.every(style => style.underline.thickness === 2));
   a.toggleUnderline(value);
   assert.ok(row._richText.memo.styles.every(style => !style?.underline));
+});
+
+test('mixed-color text uses one cell-base underline color for all six line styles', () => {
+  const a = Object.create(context.App.prototype), row = { memo: 'HP X (ICT)' };
+  a.getCellFormatting = () => '#000000';
+  a.getEffectiveCellRichText = () => row._richText.memo;
+  const spans = [];
+  context.document = { createElement() { return { style: {} }; } };
+  try {
+    for (const [style] of a.getUnderlineOptions()) {
+      row._richText = { memo: { text: row.memo, colors: [...row.memo].map((_, i) => i === 3 ? '#ff0000' : null),
+        styles: [...row.memo].map(() => ({ underline: { style, color: null } })) } };
+      spans.length = 0;
+      const cell = { classList: { contains: () => false }, append(span) { spans.push(span); } };
+      a.renderColoredText(cell, row, 'memo');
+      assert.ok(spans.some(span => span.style.color === '#ff0000'), 'red X remains red');
+      for (const span of spans) {
+        assert.equal(span.style.textDecorationColor, '#000000');
+        if (span.style.backgroundImage) assert.ok(decodeURIComponent(span.style.backgroundImage).includes('stroke="#000000"'));
+      }
+    }
+  } finally { delete context.document; }
 });

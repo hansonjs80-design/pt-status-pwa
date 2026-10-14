@@ -731,7 +731,7 @@ class PTTableFormatting {
       if (style?.fontSize != null) span.style.fontSize = `${style.fontSize}px`;
       if (style?.fontWeight != null) span.style.fontWeight = style.fontWeight;
       if (style?.highlight) span.style.backgroundColor = style.highlight;
-      if (style?.underline) this.paintUnderline(span, style.underline, color || this.getCellFormatting(row, key, 'color'));
+      if (style?.underline) this.paintUnderline(span, style.underline, this.getCellFormatting(row, key, 'color'));
       element.append(span); start = end;
     }
     if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
@@ -806,7 +806,7 @@ class PTTableFormatting {
 
   paintUnderline(element, value, textColor = '#000000') {
     if (!value || !this.getUnderlineOptions().some(([style]) => style === value.style)) return;
-    const color = value.color || 'currentColor';
+    const color = value.color || textColor || '#000000';
     element.style.textDecorationLine = 'underline';
     element.style.textDecorationColor = color;
     element.style.textUnderlineOffset = '0.16em';
