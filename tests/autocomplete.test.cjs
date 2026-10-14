@@ -635,3 +635,44 @@ test('a forced reload during lightweight validation waits then performs its own 
   await Promise.all([background,forced]);
   assert.equal(requests.length,1);assert.equal(requests[0].columns,'date, rows_data, updated_at');
 });
+
+test('native editor reuses historical candidates and formatting while current-day edits remain live', () => {
+  const input={isConnected:true,matches:()=>true};const document={activeElement:input};
+  const app=createApp({'2026-09-30':[{name:'김오늘'}],'2026-09-29':[{name:'김과거',_textColors:{name:'#ff0000'}}]}, {}, {document});
+  const original=app.getSearchDataStore;let reads=0;app.getSearchDataStore=function(){reads++;return original.call(this);};
+  assert.deepEqual(suggestions(app,'name','김'),['김오늘','김과거']);
+  assert.deepEqual(suggestions(app,'name','김과'),['김과거']);
+  assert.equal(app.getAutocompleteValueFormatting('name','김과거').color,'#ff0000');
+  assert.equal(app.getAutocompleteValueFormatting('name','김과거').color,'#ff0000');
+  assert.equal(reads,1,'each keystroke and candidate color share one history snapshot');
+  app.dataStore['2026-09-30'][0].name='김변경';
+  assert.deepEqual(suggestions(app,'name','김'),['김변경','김과거']);
+  assert.equal(reads,1,'current-day changes must not rebuild every historical row');
+  document.activeElement={isConnected:true,matches:()=>true};suggestions(app,'name','김');
+  assert.equal(reads,2,'a new editor gets a new snapshot');
+});
+
+test('history snapshots refresh for cloud changes, same-array sync edits, date changes and undo row replacement', () => {
+  const document={activeElement:{isConnected:true,matches:()=>true}};
+  const app=createApp({'2026-09-30':[],'2026-09-29':[{name:'김옛값'}]}, {}, {document});
+  assert.ok(suggestions(app,'name','김').includes('김옛값'));
+  app.dataStore['2026-09-29'][0].name='김동기화';app.invalidateAutocompleteHistory();
+  assert.deepEqual(suggestions(app,'name','김'),['김동기화']);
+  app.cloudSearchHistory={'2026-09-28':[{name:'김클라우드'}]};
+  assert.ok(suggestions(app,'name','김').includes('김클라우드'));
+  app.dataStore['2026-09-30']=[{name:'김복원'}];
+  assert.ok(suggestions(app,'name','김').includes('김복원'));
+  app.currentDate='2026-09-29';assert.ok(suggestions(app,'name','김').includes('김동기화'));
+  assert.equal(app.getAutocompleteSearchSnapshot().date,'2026-09-29');
+});
+
+test('cached formatting chooses the latest matching date and skips the excluded row without caching current-day color', () => {
+  const document={activeElement:{isConnected:true,matches:()=>true}};
+  const latest={name:'동일',_textColors:{name:'#ff0000'}},second={name:'동일',_textColors:{name:'#00ff00'}};
+  const app=createApp({'2026-09-30':[latest,second],'2026-09-29':[{name:'동일',_textColors:{name:'#0000ff'}}]}, {}, {document});
+  assert.equal(app.getAutocompleteValueFormatting('name','동일',null,latest).color,'#00ff00');
+  second._textColors.name='#123456';
+  assert.equal(app.getAutocompleteValueFormatting('name','동일',null,latest).color,'#123456');
+  app.cloudSearchHistory={'2026-10-01':[{name:'동일',_textColors:{name:'#abcdef'}}]};
+  assert.equal(app.getAutocompleteValueFormatting('name','동일',null,latest).color,'#abcdef','future-date ranking is unchanged');
+});

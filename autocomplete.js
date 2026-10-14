@@ -1,5 +1,61 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTAutocomplete {
+  invalidateAutocompleteHistory() {
+    this.autocompleteHistoryGeneration = (this.autocompleteHistoryGeneration || 0) + 1;
+  }
+
+  getAutocompleteSearchSnapshot() {
+    const input = typeof document !== 'undefined' ? document.activeElement : null;
+    const editing = input?.isConnected !== false && input?.matches?.('.cell-input-element:not(.is-armed)');
+    const previous = editing && input.autocompleteSearchSnapshot;
+    const rows = this.dataStore?.[this.currentDate];
+    const generation = this.autocompleteHistoryGeneration || 0;
+    if (previous && previous.local === this.dataStore && previous.remote === this.cloudSearchHistory &&
+        previous.date === this.currentDate && previous.rows === rows && previous.generation === generation) return previous;
+    const store = this.getSearchDataStore();
+    const snapshot = { store, dates: Object.keys(store).sort().reverse(), values: new Map(), sources: new Map(),
+      local: this.dataStore, remote: this.cloudSearchHistory, date: this.currentDate, rows, generation };
+    if (editing) input.autocompleteSearchSnapshot = snapshot;
+    return snapshot;
+  }
+
+  getAutocompleteHistoryValues(snapshot, colKey) {
+    if (!snapshot.values.has(colKey)) {
+      const values = [], seen = new Set();
+      for (const date of snapshot.dates) {
+        if (date === this.currentDate || !Array.isArray(snapshot.store[date])) continue;
+        for (const row of snapshot.store[date]) {
+          const value = String(row?.[colKey] ?? '').trim(), normalized = value.toLowerCase();
+          if (value && !seen.has(normalized)) { seen.add(normalized); values.push(value); }
+        }
+      }
+      snapshot.values.set(colKey, values);
+    }
+    return snapshot.values.get(colKey);
+  }
+
+  getAutocompleteFormattingSource(snapshot, colKey, value, excludedRow) {
+    if (!snapshot.sources.has(colKey)) {
+      const sources = new Map();
+      for (const date of snapshot.dates) {
+        if (date === this.currentDate || !Array.isArray(snapshot.store[date])) continue;
+        for (const row of snapshot.store[date]) {
+          const text = String(row?.[colKey] ?? '').trim();
+          if (!sources.has(text)) sources.set(text, []);
+          const candidates = sources.get(text);
+          // One excluded row can be skipped without scanning all old records again.
+          if (candidates.length < 2) candidates.push({date, row});
+        }
+      }
+      snapshot.sources.set(colKey, sources);
+    }
+    const text = String(value).trim();
+    const historical = snapshot.sources.get(colKey).get(text)?.find(entry => entry.row !== excludedRow);
+    const current = (this.dataStore?.[this.currentDate] || snapshot.store[this.currentDate] || [])
+      .find(row => row !== excludedRow && String(row?.[colKey] ?? '').trim() === text);
+    return current && (!historical || this.currentDate >= historical.date) ? current : historical?.row;
+  }
+
   getAutocompleteSuggestions(colKey, rawQuery, isComposing = false) {
     if (!rawQuery) return [];
     const query = String(rawQuery).trim().toLowerCase();
@@ -33,22 +89,17 @@ class PTAutocomplete {
 
     // 현재 날짜뿐 아니라 저장된 모든 날짜의 같은 열에서 후보를 수집한다.
     // 현재 날짜, 최근 날짜 순으로 수집하되 같은 값은 한 번만 표시한다.
-    const searchStore = this.getSearchDataStore();
-    const dateKeys = [this.currentDate, ...Object.keys(searchStore)
-      .filter(date => date !== this.currentDate).sort().reverse()];
+    const snapshot = this.getAutocompleteSearchSnapshot();
     const existingValues = new Set();
     const seenValues = new Set(presetSet);
-    for (const dateKey of dateKeys) {
-      const rows = searchStore[dateKey];
-      if (!Array.isArray(rows)) continue;
-      for (const row of rows) {
-        const value = String(row?.[colKey] ?? "").trim();
-        const normalized = value.toLowerCase();
-        if (!value || seenValues.has(normalized)) continue;
-        seenValues.add(normalized);
-        existingValues.add(value);
-      }
-    }
+    const addValue = raw => {
+      const value = String(raw ?? '').trim(), normalized = value.toLowerCase();
+      if (!value || seenValues.has(normalized)) return;
+      seenValues.add(normalized); existingValues.add(value);
+    };
+    // Current-day rows remain live: new input, paste and deletion take effect now.
+    for (const row of this.dataStore?.[this.currentDate] || snapshot.store[this.currentDate] || []) addValue(row?.[colKey]);
+    for (const value of this.getAutocompleteHistoryValues(snapshot, colKey)) addValue(value);
 
     // Only explicit initials are fuzzy; completed syllables must match literally.
     const queryChars = [...query];

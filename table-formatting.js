@@ -116,10 +116,9 @@ class PTTableFormatting {
       if (entry || colors) return { color: entry?.[0] || null,
         richText: colors?.length === value.length ? { text: value, colors: colors.map(color => color || null) } : null };
     }
-    const store = this.getSearchDataStore();
-    for (const date of Object.keys(store).sort().reverse()) {
-      const row = store[date]?.find(row => row !== excludedRow && String(row?.[colKey] ?? '').trim() === String(value).trim());
-      if (!row) continue;
+    const snapshot = this.getAutocompleteSearchSnapshot();
+    const row = this.getAutocompleteFormattingSource(snapshot, colKey, value, excludedRow);
+    if (row) {
       const rich = this.getEffectiveCellRichText(row, colKey);
       const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors);
       const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;

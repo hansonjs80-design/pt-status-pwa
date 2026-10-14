@@ -429,6 +429,7 @@ class PTCloudSync {
     await this.syncStateDisk(key, backup);
     if (await this.syncStateDisk(key) !== backup) throw new Error('로컬 기록 보존 검증 실패');
     this.dataStore[date] = JSON.parse(JSON.stringify(record.rows_data));
+    this.invalidateAutocompleteHistory();
     this.invalidateManualDateDeletion(date);
     this.syncBaselines.set(date, JSON.parse(JSON.stringify(record.rows_data)));
     await this.persistDataStore();
@@ -494,6 +495,7 @@ class PTCloudSync {
         }
         latest.length = rebased.length;
         this.dataStore[dateStr] = latest;
+        if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
         if (JSON.stringify(latest) !== latestText) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(latestText));
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
         const mergedSnapshot = JSON.stringify(latest);
@@ -568,6 +570,7 @@ class PTCloudSync {
         if (localAtRequest === JSON.stringify(padded)) return;
         const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
         this.dataStore[dateStr] = data.rows_data;
+        if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
         // Ensure the current default row count
         this.getCurrentRows();
         if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
