@@ -871,7 +871,15 @@ class PTTableFormatting {
     button.title = this.underlineBrushStyle ? `${label} 드래그 모드 · 다시 칠하면 해제 · Esc로 종료` : `${label} 적용/해제`;
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-pressed', String(!!this.underlineBrushStyle));
-    button.style.textDecorationColor = value.color || 'currentColor';
+    const sample = button.querySelector?.('span');
+    if (sample) {
+      // Reset the previous preview before switching from an SVG double line
+      // back to a native dotted/wavy/single underline.
+      sample.style.cssText = '';
+      const row = this.activeCell && this.getCurrentRows?.()[this.activeCell.rowIdx];
+      const color = row ? this.getCellFormatting(row, this.activeCell.colKey, 'color') : '#484d4c';
+      this.paintUnderline(sample, value, color);
+    }
   }
 
   setUnderlineBrush(value) {

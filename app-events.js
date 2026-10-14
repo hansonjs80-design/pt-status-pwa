@@ -71,6 +71,7 @@ class PTAppEvents {
       this.updateFontColorIndicator();
       this.updateBackgroundColorIndicator();
       this.updateTextHighlightIndicator();
+      this.updateUnderlineIndicator();
       this.updateAlignmentIndicator();
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {

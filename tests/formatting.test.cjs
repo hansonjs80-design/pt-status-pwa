@@ -1188,3 +1188,22 @@ test('mixed-color text uses one cell-base underline color for all six line style
     }
   } finally { delete context.document; }
 });
+
+test('toolbar underline sample reflects kind, color and thickness while the glyph color stays unchanged', () => {
+  const a = Object.create(context.App.prototype), sample = { style: {} }, button = { style: { color: '#484d4c' }, setAttribute() {}, querySelector: () => sample };
+  context.document = { getElementById: () => button };
+  try {
+    a.underlineChoice = { style: 'double', color: '#ff0000', thickness: 1.5 };
+    a.updateUnderlineIndicator();
+    assert.ok(decodeURIComponent(sample.style.backgroundImage).includes('stroke="#ff0000"'));
+    assert.ok(decodeURIComponent(sample.style.backgroundImage).includes('stroke-width="1.5"'));
+    a.underlineChoice = { style: 'solid', color: '#0000ff', thickness: 2 };
+    a.updateUnderlineIndicator();
+    assert.equal(sample.style.cssText, '', 'old preview styles are cleared before repaint');
+    assert.equal(sample.style.textDecorationStyle, 'dotted');
+    assert.equal(sample.style.textDecorationColor, '#0000ff');
+    assert.equal(sample.style.textDecorationThickness, '2px');
+    assert.equal(button.style.color, '#484d4c');
+    assert.equal(sample.style.color, undefined, 'only underline ink changes');
+  } finally { delete context.document; }
+});

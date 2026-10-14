@@ -3068,7 +3068,8 @@ body {
 #btnTextHighlight[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }
 
 .underline-controls { display: inline-flex; align-items: center; gap: 0; flex-shrink: 0; }
-#btnUnderline { font-size: 19px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+#btnUnderline { position: relative; font-size: 19px; font-weight: 600; }
+#btnUnderline > span { position: absolute; top: 1px; left: 50%; transform: translateX(-50%); line-height: 22px; text-decoration: underline; text-underline-offset: 3px; }
 #btnUnderlineMenu { width: 16px; min-width: 16px; padding: 0; font-size: 12px; }
 #btnUnderline[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }
 .underline-menu { min-width: 370px; }
