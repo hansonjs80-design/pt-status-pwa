@@ -595,24 +595,26 @@ class PTTableFormatting {
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.isComposing || event.keyCode === 229) return false;
     const red = event.code === 'Space' || event.key === ' ';
     const bold = event.code === 'KeyB' || event.key?.toLowerCase() === 'b';
-    if ((!red && !bold) || this.crossDateSelection || !this.getFormattingRange()) return false;
+    const highlight = event.code === 'KeyE' || event.key?.toLowerCase() === 'e';
+    if ((!red && !bold && !highlight) || this.crossDateSelection || !this.getFormattingRange()) return false;
     const target = event.target;
     if (!target?.matches?.('.cell-input-element') && target !== this.elSheetContainer && !this.elSheetContainer?.contains?.(target)) return false;
     if (target?.matches?.('input, textarea, [contenteditable="true"]') && !target.matches('.cell-input-element')) return false;
     event.preventDefault(); event.stopPropagation();
     if (event.repeat) return true;
     this.captureTextColorSelection();
-    const property = red ? 'color' : 'fontWeight';
-    const value = red ? '#ff0000' : 600;
+    const property = red ? 'color' : highlight ? 'highlight' : 'fontWeight';
+    const value = red ? '#ff0000' : highlight ? '#ffff00' : 600;
     const reset = this.isShortcutFormattingApplied(property, value);
     if (red) this.applyTextColor(reset ? null : value);
+    else if (highlight) this.applyTextHighlight(reset ? null : value);
     else this.applyColumnTypography(property, reset ? null : value);
     return true;
   }
 
   isShortcutFormattingApplied(property, value) {
     const rows = this.getCurrentRows();
-    const matches = current => property === 'color'
+    const matches = current => ['color', 'highlight'].includes(property)
       ? this.normalizeColumnColor(current) === value : Number(current) === value;
     const selected = this.textColorSelection;
     const cellMatches = (row, key, start = 0, end = String(row?.[key] ?? '').length) => {
@@ -636,6 +638,7 @@ class PTTableFormatting {
     let found = false;
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
+      if (property === 'highlight' && !String(rows[r]?.[keys[c]] ?? '').length) continue;
       found = true;
       if (!cellMatches(rows[r], keys[c])) return false;
     }

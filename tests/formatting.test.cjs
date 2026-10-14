@@ -947,3 +947,35 @@ test('highlighting prioritizes selected characters over the selected cell range'
   instance.applyTextHighlight('#ffff00');instance.applyTextHighlight(null);
   assert.deepEqual(calls,[['highlight','#ffff00'],['highlight',null]]);
 });
+
+
+test('Ctrl/Cmd+E applies yellow highlighting and repeats reset, including the physical key during Korean input', () => {
+  const instance=Object.create(context.App.prototype),sheet={},calls=[];
+  instance.elSheetContainer=sheet;instance.getFormattingRange=()=>({});instance.captureTextColorSelection=()=>{};
+  let applied=false;
+  instance.isShortcutFormattingApplied=(property,value)=>{assert.equal(property,'highlight');assert.equal(value,'#ffff00');return applied;};
+  instance.applyTextHighlight=value=>{calls.push(value);applied=!!value;};
+  const event={target:sheet,ctrlKey:true,key:'e',code:'KeyE',preventDefault(){},stopPropagation(){}};
+  assert.equal(instance.handleTextFormattingShortcut(event),true);
+  assert.equal(instance.handleTextFormattingShortcut({...event,ctrlKey:false,metaKey:true,key:'ㄷ'}),true);
+  assert.deepEqual(calls,['#ffff00',null]);
+  assert.equal(instance.handleTextFormattingShortcut({...event,repeat:true}),true);
+  assert.equal(calls.length,2,'holding E does not toggle repeatedly');
+  assert.equal(instance.handleTextFormattingShortcut({...event,isComposing:true}),false);
+});
+
+test('highlight toggle detects selected characters and ignores empty cells in a selected range', () => {
+  const instance=Object.create(context.App.prototype);
+  const rows=[{memo:'가나다'},{memo:''}];
+  instance.getCurrentRows=()=>rows;instance.isSelectedCoordinate=()=>true;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:1,minCol:8,maxCol:8});
+  instance.setPartialTextStyle(rows[0],'memo',1,3,'highlight','#ffff00');
+  instance.textColorSelection={rowIdx:0,colKey:'memo',start:1,end:3};
+  assert.equal(instance.isShortcutFormattingApplied('highlight','#ffff00'),true);
+  instance.textColorSelection=null;
+  assert.equal(instance.isShortcutFormattingApplied('highlight','#ffff00'),false,'mixed text gets applied uniformly');
+  instance.setPartialTextStyle(rows[0],'memo',0,3,'highlight','#ffff00');
+  assert.equal(instance.isShortcutFormattingApplied('highlight','#ffff00'),true,'blank selected cells do not prevent reset');
+  instance.setPartialTextStyle(rows[0],'memo',0,3,'highlight',null);
+  assert.equal(instance.isShortcutFormattingApplied('highlight','#ffff00'),false);
+});
