@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v365';
+const CACHE_NAME = 'pt-status-pwa-v366';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

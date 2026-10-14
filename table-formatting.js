@@ -799,8 +799,8 @@ class PTTableFormatting {
     const sheet = this.elSheetContainer;
     sheet?.classList.toggle('is-highlight-brush', !!color);
     if (color) {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke="#344039" stroke-width="1.5" stroke-linejoin="round"><path fill="#f7faf8" d="m11 17 12-12q1-1 2 0l4 4q1 1 0 2L17 23z"/><path fill="#dbe5de" d="m23 5 2-2q1-1 2 0l4 4q1 1 0 2l-2 2z"/><path fill="#edf2ee" d="m11 17 6 6-3 3-8-2-1-2z"/><path fill="${this.highlightBrushColor}" d="m6 24 8 2-5 4H2z"/></g><path d="m14 16 9-9" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 2 30, crosshair`);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke="#626765" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path fill="none" d="m23 13 5 5 3-3"/><path fill="${this.highlightBrushColor}" d="M9 18 24 3q1-1 2 0l4 4q1 1 0 2L15 24z"/><path fill="none" d="m21 6 6 6M11 16l6 6"/><path fill="#5a6262" d="m9 18 6 6-5 2-2 3-5-5 3-2z"/><path fill="${this.highlightBrushColor}" d="m3 24 5 5-6 2-1-1z"/></g></svg>`;
+      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 1 30, crosshair`);
     } else sheet?.style.removeProperty('--highlight-brush-cursor');
     this.updateTextHighlightIndicator();
   }
