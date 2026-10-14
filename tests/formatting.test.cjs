@@ -1207,3 +1207,37 @@ test('toolbar underline sample reflects kind, color and thickness while the glyp
     assert.equal(sample.style.color, undefined, 'only underline ink changes');
   } finally { delete context.document; }
 });
+
+test('selected-cell underline takes priority over the last toolbar choice and main click removes it', () => {
+  const a = Object.create(context.App.prototype), value = { style: 'double', color: '#000000', thickness: 1.5 };
+  const row = { memo: '가나다', _richText: { memo: { text: '가나다', colors: [null, null, null], styles: Array.from({length:3}, () => ({underline: value})) } } };
+  a.activeCell = {rowIdx:0, colKey:'memo'}; a.getCurrentRows = () => [row];
+  a.getFormattingRange = () => ({minRow:0,maxRow:0,minCol:8,maxCol:8}); a.isSelectedCoordinate = () => true;
+  a.getEffectiveCellRichText = (r,k) => r._richText?.[k]; a.markCellFormatting = () => {};
+  a.underlineChoice = {style:'wavy', color:'#ff0000'};
+  a.setHighlightBrush = () => {}; a.updateUnderlineIndicator = () => {}; a.captureHistory = () => {};
+  a.renderTable = () => {}; a.saveDataStore = () => {}; a.isEditingCell = () => false;
+  assert.deepEqual(plain(a.getSelectedUnderline().value), value);
+  a.toggleUnderline();
+  assert.ok(row._richText.memo.styles.every(style => !style?.underline));
+  a.toggleUnderline({style:'solid', color:'#0000ff', thickness:2}, false);
+  a.toggleUnderline({style:'solid', color:'#0000ff', thickness:2}, false);
+  assert.ok(row._richText.memo.styles.every(style => style?.underline?.style === 'solid'), 'dropdown selection always applies, even the same option');
+});
+
+test('selected native text reads and removes its own underline while preserving the rest of the cell', () => {
+  const a = Object.create(context.App.prototype), underline = {style:'doubleWavy', color:'#ff0000'};
+  const row = {memo:'가나다라마', _richText:{memo:{text:'가나다라마',colors:Array(5).fill(null),styles:Array.from({length:5},()=>({underline}))}}};
+  a.activeCell = {rowIdx:0,colKey:'memo'}; a.getCurrentRows = () => [row];
+  a.getEffectiveCellRichText = (r,k) => r._richText?.[k]; a.markCellFormatting = () => {};
+  a.underlineChoice = {style:'single',color:null};
+  a.setHighlightBrush = () => {}; a.updateUnderlineIndicator = () => {}; a.captureHistory = () => {}; a.saveDataStore = () => {};
+  const input = {value:row.memo,selectionStart:1,selectionEnd:4,isConnected:true,matches:()=>true,focus(){},setSelectionRange(){},refreshEditorColors(){}};
+  context.document = {activeElement:input};
+  try {
+    assert.equal(a.getSelectedUnderline().value.style,'doubleWavy');
+    a.toggleUnderline();
+    assert.ok(row._richText.memo.styles[0].underline && row._richText.memo.styles[4].underline);
+    assert.ok(row._richText.memo.styles.slice(1,4).every(style=>!style?.underline));
+  } finally {delete context.document;}
+});

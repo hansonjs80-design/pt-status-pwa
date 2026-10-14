@@ -862,15 +862,27 @@ class PTTableFormatting {
       this.getUnderlineThickness(a) === this.getUnderlineThickness(b);
   }
 
+  getSelectedUnderline() {
+    if (!this.activeCell && !this.selectedRange) return { value: null, hasUnderline: false };
+    for (const { row, key, start, end } of this.getUnderlineTargets()) {
+      const rich = this.getEffectiveCellRichText(row, key);
+      for (let i = start; i < end; i++) {
+        if (rich?.styles?.[i]?.underline) return { value: rich.styles[i].underline, hasUnderline: true };
+      }
+    }
+    return { value: null, hasUnderline: false };
+  }
+
   updateUnderlineIndicator() {
     if (typeof document === 'undefined') return;
     const button = document.getElementById?.('btnUnderline');
     if (!button) return;
-    const value = this.underlineChoice || { style: 'single', color: null };
+    const selected = this.getSelectedUnderline();
+    const value = this.underlineBrushStyle || selected.value || this.underlineChoice || { style: 'single', color: null };
     const label = this.getUnderlineOptions().find(([style]) => style === value.style)?.[1] || '밑줄';
     button.title = this.underlineBrushStyle ? `${label} 드래그 모드 · 다시 칠하면 해제 · Esc로 종료` : `${label} 적용/해제`;
     button.setAttribute('aria-label', button.title);
-    button.setAttribute('aria-pressed', String(!!this.underlineBrushStyle));
+    button.setAttribute('aria-pressed', String(!!this.underlineBrushStyle || selected.hasUnderline));
     const sample = button.querySelector?.('span');
     if (sample) {
       // Reset the previous preview before switching from an SVG double line
@@ -894,8 +906,11 @@ class PTTableFormatting {
     this.updateTextHighlightIndicator(); this.updateUnderlineIndicator();
   }
 
-  toggleUnderline(value = this.underlineChoice || { style: 'single', color: null }, allowReset = true) {
+  toggleUnderline(value = null, allowReset = true) {
     if (this.crossDateSelection) return;
+    const mainButton = value === null;
+    const selected = this.getSelectedUnderline();
+    value ||= selected.value || this.underlineChoice || { style: 'single', color: null };
     this.underlineChoice = { ...value };
     const targets = this.getUnderlineTargets();
     if (!targets.length) {
@@ -907,10 +922,10 @@ class PTTableFormatting {
       return;
     }
     this.setHighlightBrush(null);
-    const reset = allowReset && targets.every(({ row, key, start, end }) => {
+    const reset = allowReset && ((mainButton && selected.hasUnderline) || targets.every(({ row, key, start, end }) => {
       const rich = this.getEffectiveCellRichText(row, key);
       return Array.from({ length: end - start }, (_, i) => this.underlineMatches(rich?.styles?.[start + i]?.underline, value)).every(Boolean);
-    });
+    }));
     if (this.applySelectedTextStyle('underline', reset ? null : value)) { this.updateUnderlineIndicator(); return; }
     if (this.isEditingCell()) document.activeElement.blur();
     this.captureHistory?.();
@@ -927,7 +942,7 @@ class PTTableFormatting {
     const heading = document.createElement('strong'); heading.textContent = '밑줄 종류 · 색상 · 굵기'; popup.append(heading);
     const note = document.createElement('small'); note.textContent = '기본: 글자색 · 빈 셀에서 선택하면 드래그 모드'; popup.append(note);
     const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
-    const choice = this.underlineChoice || { style: 'single', color: null };
+    const choice = this.getSelectedUnderline().value || this.underlineChoice || { style: 'single', color: null };
     for (const [style, label] of this.getUnderlineOptions()) {
       const row = document.createElement('div'); row.className = 'underline-option';
       const button = document.createElement('button'); button.type = 'button'; button.dataset.underlineStyle = style;
@@ -937,13 +952,13 @@ class PTTableFormatting {
       const color = choice.style === style ? choice.color : null;
       let thickness = this.getUnderlineThickness(choice.style === style ? choice : { style });
       this.paintUnderline(sample, { style, color, thickness }); button.append(sample);
-      button.onclick = () => { this.toggleUnderline({ style, color, thickness }); close(); };
+      button.onclick = () => { this.toggleUnderline({ style, color, thickness }, false); close(); };
       const picker = document.createElement('input'); picker.type = 'color'; picker.value = color || '#000000';
       picker.className = 'underline-color'; picker.setAttribute('aria-label', `${label} 색상 선택`); picker.title = `${label} 색상 선택`;
-      picker.onchange = () => { this.toggleUnderline({ style, color: picker.value, thickness }); close(); };
+      picker.onchange = () => { this.toggleUnderline({ style, color: picker.value, thickness }, false); close(); };
       const auto = document.createElement('button'); auto.type = 'button'; auto.className = 'underline-auto'; auto.textContent = '자동';
       auto.title = `${label}: 글자색과 같게`; auto.setAttribute('aria-label', auto.title);
-      auto.onclick = () => { this.toggleUnderline({ style, color: null, thickness }); close(); };
+      auto.onclick = () => { this.toggleUnderline({ style, color: null, thickness }, false); close(); };
       const weight = document.createElement('div'); weight.className = 'underline-thickness';
       const output = document.createElement('span'); output.textContent = `${thickness}px`; output.setAttribute('aria-live', 'polite');
       const steps = [];

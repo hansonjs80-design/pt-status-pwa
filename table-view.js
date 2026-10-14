@@ -212,11 +212,13 @@ class PTTableView {
     if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
     this.updateFontColorIndicator();
     this.updateBackgroundColorIndicator();
+    this.updateUnderlineIndicator();
     this.restoreSearchPromptFocus(searchPromptFocus);
   }
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    this.textColorSelection = null;
     this.patientSearchDraft = null;
     if (this.genderPickerState) this.closeGenderDropdown();
     if (colKey === "visitTime") {
@@ -267,6 +269,7 @@ class PTTableView {
     if (!this._isPasting) this.ensureCurrentCellVisible(cellElement);
     this.updateFontColorIndicator();
     this.updateBackgroundColorIndicator();
+    this.updateUnderlineIndicator();
   }
 
   getTopVisibleCurrentRow() {
