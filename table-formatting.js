@@ -280,7 +280,13 @@ class PTTableFormatting {
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
       const cell = this.elTableBody.querySelector(`[data-row="${r}"][data-col="${keys[c]}"]`);
-      if (cell) values.add(property === "backgroundColor"
+      if (cell && property === 'highlight') {
+        const row = this.getCurrentRows()[r] || {};
+        const rich = this.getEffectiveCellRichText(row, keys[c]);
+        const text = String(row[keys[c]] ?? '');
+        if (!text.length) values.add(null);
+        for (let i = 0; i < text.length; i++) values.add(rich?.text === text ? rich.styles?.[i]?.highlight || null : null);
+      } else if (cell) values.add(property === "backgroundColor"
         ? this.getCellFormatting(this.getCurrentRows()[r] || {}, keys[c], property) || "#ffffff"
         : getComputedStyle(cell)[property]);
     }
@@ -288,8 +294,8 @@ class PTTableFormatting {
     const value = [...values][0];
     const weights = { 400: "보통", 500: "중간", 600: "약간 굵게", 700: "굵게", 800: "매우 굵게" };
     let label = property === "fontWeight" ? (weights[value] || value) : value;
-    if (property === "color" || property === "backgroundColor") {
-      label = this.normalizeColumnColor(value) || value;
+    if (property === "color" || property === "backgroundColor" || property === "highlight") {
+      label = this.normalizeColumnColor(value) || value || "없음";
       if (label === "#000000") label = "검정 (#000000)";
     }
     return { value, label };
@@ -780,6 +786,24 @@ class PTTableFormatting {
     document.getElementById("fontColorMenu")?.remove();
   }
 
+  applyTextHighlight(color) {
+    if (this.crossDateSelection) return;
+    if (this.applySelectedTextStyle('highlight', color)) return;
+    const range = this.getFormattingRange();
+    if (!range) return;
+    if (this.isEditingCell()) document.activeElement.blur();
+    const rows = this.getCurrentRows();
+    const keys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+    this.captureHistory?.();
+    for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (!this.isSelectedCoordinate(r, c) || !rows[r]) continue;
+      const key = keys[c], length = String(rows[r][key] ?? '').length;
+      if (length) this.setPartialTextStyle(rows[r], key, 0, length, 'highlight', color);
+    }
+    this.captureHistory?.();
+    this.saveDataStore(); this.renderTable();
+  }
+
   applyBackgroundColor(color) {
     this.applyColumnTypography("backgroundColor", color);
     this.updateBackgroundColorIndicator();
@@ -805,7 +829,7 @@ class PTTableFormatting {
     const isBackground = property === "backgroundColor";
     const isHighlight = property === 'highlight';
     const apply = color => {
-      if (isHighlight) { this.applySelectedTextStyle('highlight', color); this.closeFontColorMenu(); }
+      if (isHighlight) { this.applyTextHighlight(color); this.closeFontColorMenu(); }
       else if (isBackground) this.applyBackgroundColor(color); else this.applyTextColor(color);
     };
     menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isHighlight ? "글자 형광펜 선택" : isBackground ? "셀 배경색 선택" : "글자색 선택");

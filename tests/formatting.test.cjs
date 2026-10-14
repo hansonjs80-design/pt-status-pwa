@@ -913,3 +913,37 @@ test('repeating either formatting shortcut dispatches reset instead of applying 
   assert.equal(instance.handleTextFormattingShortcut({...event,key:'b'}),true);
   assert.deepEqual(calls,[['color',null],['fontWeight',null]]);
 });
+
+
+test('cell-border highlighting paints all text in selected cells, preserves other styles, and resets independently', () => {
+  const instance=Object.create(context.App.prototype);
+  const rows=[{memo:'가나다',name:'보존',_textStyles:{memo:{backgroundColor:'#eeeeee'}}},{memo:'라바'},{memo:''}];
+  instance.currentDate='2026-10-14';instance.dataStore={[instance.currentDate]:rows};
+  instance.getCurrentRows=()=>rows;instance.isEditingCell=()=>false;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:2,minCol:3,maxCol:8});
+  instance.isSelectedCoordinate=(r,c)=>c===8 && r!==1;
+  let saves=0,renders=0;instance.saveDataStore=()=>saves++;instance.renderTable=()=>renders++;
+  instance.setPartialTextColor(rows[0],'memo',1,2,'#ff0000');
+  instance.setPartialTextStyle(rows[0],'memo',1,2,'fontWeight',600);
+  instance.applyTextHighlight('#ffff00');
+  assert.deepEqual(plain(rows[0]._richText.memo.styles.map(s=>s.highlight)),['#ffff00','#ffff00','#ffff00']);
+  assert.equal(rows[0]._richText.memo.colors[1],'#ff0000');
+  assert.equal(rows[0]._richText.memo.styles[1].fontWeight,600);
+  assert.equal(rows[0]._textStyles.memo.backgroundColor,'#eeeeee');
+  assert.equal(rows[0]._richText.name,undefined);
+  assert.equal(rows[1]._richText,undefined,'skip unselected coordinates');
+  assert.equal(rows[2]._richText,undefined,'empty cells do not gain a background fill');
+  instance.applyTextHighlight(null);
+  assert.ok(rows[0]._richText.memo.styles.every(s=>!s?.highlight));
+  assert.equal(rows[0]._richText.memo.styles[1].fontWeight,600);
+  assert.equal(saves,2);assert.equal(renders,2);
+  assert.equal(instance.getEditHistory().undo.length,2,'apply and reset are separate undo steps');
+});
+
+test('highlighting prioritizes selected characters over the selected cell range', () => {
+  const instance=Object.create(context.App.prototype);const calls=[];
+  instance.applySelectedTextStyle=(property,color)=>{calls.push([property,color]);return true;};
+  instance.getFormattingRange=()=>assert.fail('partial selection must not fall through to the entire cell');
+  instance.applyTextHighlight('#ffff00');instance.applyTextHighlight(null);
+  assert.deepEqual(calls,[['highlight','#ffff00'],['highlight',null]]);
+});
