@@ -2433,14 +2433,16 @@ body {
 .gender-picker-hint { display: none; margin-left: auto; }
 .gender-picker-item.is-selected .gender-picker-hint { display: inline-block; background: #0c5b30; color: #ffffff; padding: 2px 5px; border-radius: 3px; font-weight: 600; font-size: 10px; }
 
-/* Search apply/paste destination: tint the full data row, including empty cells. */
-:where(.history-search-active .excel-row.history-destination-row) > .excel-cell,
-:where(.history-search-active .excel-row.history-destination-row) > .row-num {
+/* Search destinations override saved fills; normal hover/selection keeps them visible. */
+.history-search-active .excel-row.history-destination-row > .excel-cell,
+.history-search-active .excel-row.history-destination-row > .row-num {
   background-color: #cce6d5 !important;
+  background-image: none !important;
 }
-:where(.history-search-active .excel-row.history-destination-row.active-row) > .excel-cell,
-:where(.history-search-active .excel-row.history-destination-row.active-row) > .row-num {
+.history-search-active .excel-row.history-destination-row.active-row > .excel-cell,
+.history-search-active .excel-row.history-destination-row.active-row > .row-num {
   background-color: #bdddc9 !important;
+  background-image: none !important;
 }
 
 .history-search-active .excel-cell.history-destination-cell {
