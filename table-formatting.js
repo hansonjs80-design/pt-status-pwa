@@ -794,8 +794,14 @@ class PTTableFormatting {
   }
 
   getUnderlineOptions() {
-    return [['single', '밑줄 1개선'], ['double', '밑줄 2줄'], ['solid', '밑줄 실선'],
-      ['doubleSolid', '밑줄 이중 실선'], ['wavy', '물결 선'], ['doubleWavy', '물결 이중선']];
+    return [['single', '밑줄'], ['double', '밑줄 이중'], ['solid', '밑줄 가는 점선'],
+      ['doubleSolid', '밑줄 굵은 점선'], ['wavy', '물결 선'], ['doubleWavy', '물결 이중선']];
+  }
+
+  getUnderlineThickness(value) {
+    const fallback = value?.style === 'doubleSolid' ? 2 : 1;
+    const thickness = Number(value?.thickness);
+    return Number.isFinite(thickness) && thickness > 0 ? Math.max(0.5, Math.min(4, thickness)) : fallback;
   }
 
   paintUnderline(element, value, textColor = '#000000') {
@@ -805,20 +811,26 @@ class PTTableFormatting {
     element.style.textDecorationColor = color;
     element.style.textUnderlineOffset = '0.16em';
     element.style.textDecorationSkipInk = 'none';
-    element.style.textDecorationThickness = ['solid', 'doubleSolid'].includes(value.style) ? '2px' : '1px';
-    element.style.textDecorationStyle = ['double', 'doubleSolid'].includes(value.style) ? 'double'
+    const thickness = this.getUnderlineThickness(value);
+    element.style.textDecorationThickness = `${thickness}px`;
+    element.style.textDecorationStyle = ['solid', 'doubleSolid'].includes(value.style) ? 'dotted'
       : value.style === 'wavy' ? 'wavy' : 'solid';
-    if (value.style === 'doubleWavy') {
-      // CSS has no double-wavy decoration. Draw two flat waves within the same
-      // text span so colors and selection offsets still follow each character.
+    if (['double', 'doubleWavy'].includes(value.style)) {
+      // Draw both strokes explicitly: native double underlines can collapse
+      // into one apparent line at small font sizes. Keep a clear 2px gap.
       const ink = this.normalizeColumnColor(value.color || textColor) || '#000000';
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="6"><path d="M-2 2Q0 0 2 2T6 2T10 2M-2 5Q0 3 2 5T6 5T10 5" fill="none" stroke="${ink}" stroke-width="1"/></svg>`;
+      const wave = value.style === 'doubleWavy';
+      const y1 = thickness / 2 + (wave ? 1 : 0), y2 = y1 + thickness + (wave ? 3 : 2);
+      const height = Math.ceil(y2 + thickness / 2 + (wave ? 1 : 0));
+      const path = wave ? `M-2 ${y1}q2-2 4 0t4 0t4 0M-2 ${y2}q2-2 4 0t4 0t4 0`
+        : `M0 ${y1}h8M0 ${y2}h8`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="${height}"><path d="${path}" fill="none" stroke="${ink}" stroke-width="${thickness}"/></svg>`;
       element.style.textDecorationLine = 'none';
       element.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
       element.style.backgroundRepeat = 'repeat-x';
       element.style.backgroundPosition = 'left bottom';
-      element.style.backgroundSize = '8px 6px';
-      element.style.paddingBottom = '5px';
+      element.style.backgroundSize = `8px ${height}px`;
+      element.style.paddingBottom = `${height - 1}px`;
     }
   }
 
@@ -846,7 +858,8 @@ class PTTableFormatting {
   }
 
   underlineMatches(a, b) {
-    return !!a && !!b && a.style === b.style && (a.color || null) === (b.color || null);
+    return !!a && !!b && a.style === b.style && (a.color || null) === (b.color || null) &&
+      this.getUnderlineThickness(a) === this.getUnderlineThickness(b);
   }
 
   updateUnderlineIndicator() {
@@ -873,7 +886,7 @@ class PTTableFormatting {
     this.updateTextHighlightIndicator(); this.updateUnderlineIndicator();
   }
 
-  toggleUnderline(value = this.underlineChoice || { style: 'single', color: null }) {
+  toggleUnderline(value = this.underlineChoice || { style: 'single', color: null }, allowReset = true) {
     if (this.crossDateSelection) return;
     this.underlineChoice = { ...value };
     const targets = this.getUnderlineTargets();
@@ -886,7 +899,7 @@ class PTTableFormatting {
       return;
     }
     this.setHighlightBrush(null);
-    const reset = targets.every(({ row, key, start, end }) => {
+    const reset = allowReset && targets.every(({ row, key, start, end }) => {
       const rich = this.getEffectiveCellRichText(row, key);
       return Array.from({ length: end - start }, (_, i) => this.underlineMatches(rich?.styles?.[start + i]?.underline, value)).every(Boolean);
     });
@@ -903,7 +916,7 @@ class PTTableFormatting {
     popup.className = 'column-typography-menu underline-menu';
     popup._formatAnchor = anchor; popup._formatProperty = 'underline';
     popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '밑줄 종류 및 색상');
-    const heading = document.createElement('strong'); heading.textContent = '밑줄 종류 · 색상'; popup.append(heading);
+    const heading = document.createElement('strong'); heading.textContent = '밑줄 종류 · 색상 · 굵기'; popup.append(heading);
     const note = document.createElement('small'); note.textContent = '기본: 글자색 · 빈 셀에서 선택하면 드래그 모드'; popup.append(note);
     const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
     const choice = this.underlineChoice || { style: 'single', color: null };
@@ -914,15 +927,38 @@ class PTTableFormatting {
       button.setAttribute('aria-pressed', String(choice.style === style));
       const sample = document.createElement('span'); sample.textContent = label;
       const color = choice.style === style ? choice.color : null;
-      this.paintUnderline(sample, { style, color }); button.append(sample);
-      button.onclick = () => { this.toggleUnderline({ style, color }); close(); };
+      let thickness = this.getUnderlineThickness(choice.style === style ? choice : { style });
+      this.paintUnderline(sample, { style, color, thickness }); button.append(sample);
+      button.onclick = () => { this.toggleUnderline({ style, color, thickness }); close(); };
       const picker = document.createElement('input'); picker.type = 'color'; picker.value = color || '#000000';
       picker.className = 'underline-color'; picker.setAttribute('aria-label', `${label} 색상 선택`); picker.title = `${label} 색상 선택`;
-      picker.onchange = () => { this.toggleUnderline({ style, color: picker.value }); close(); };
+      picker.onchange = () => { this.toggleUnderline({ style, color: picker.value, thickness }); close(); };
       const auto = document.createElement('button'); auto.type = 'button'; auto.className = 'underline-auto'; auto.textContent = '자동';
       auto.title = `${label}: 글자색과 같게`; auto.setAttribute('aria-label', auto.title);
-      auto.onclick = () => { this.toggleUnderline({ style, color: null }); close(); };
-      row.append(button, picker, auto); popup.append(row);
+      auto.onclick = () => { this.toggleUnderline({ style, color: null, thickness }); close(); };
+      const weight = document.createElement('div'); weight.className = 'underline-thickness';
+      const output = document.createElement('span'); output.textContent = `${thickness}px`; output.setAttribute('aria-live', 'polite');
+      const steps = [];
+      for (const [delta, symbol, action] of [[0.5, '▲', '늘리기'], [-0.5, '▼', '줄이기']]) {
+        const step = document.createElement('button'); step.type = 'button'; step.textContent = symbol;
+        step.setAttribute('aria-label', `${label} 굵기 ${action}`); step.title = `${label} 굵기 0.5px ${action}`;
+        step.dataset.underlineThickness = String(delta); step.dataset.underlineKind = style;
+        step.onclick = () => {
+          thickness = Math.max(0.5, Math.min(4, thickness + delta));
+          output.textContent = `${thickness}px`;
+          this.paintUnderline(sample, { style, color, thickness });
+          this.toggleUnderline({ style, color, thickness }, false);
+          steps.forEach(([node, d]) => { node.disabled = d > 0 ? thickness >= 4 : thickness <= 0.5; });
+          popup.querySelectorAll('[data-underline-style]').forEach(node => {
+            node.classList.toggle('is-current', node.dataset.underlineStyle === style);
+            node.setAttribute('aria-pressed', String(node.dataset.underlineStyle === style));
+          });
+        };
+        step.disabled = delta > 0 ? thickness >= 4 : thickness <= 0.5;
+        steps.push([step, delta]); weight.append(step);
+      }
+      weight.append(output);
+      row.append(button, picker, weight, auto); popup.append(row);
     }
     popup.onmousedown = event => { if (!event.target.matches('input[type="color"]')) event.preventDefault(); };
     popup.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { close(); anchor.focus(); } };

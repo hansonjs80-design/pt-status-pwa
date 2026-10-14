@@ -1071,14 +1071,16 @@ test('underline previews distinguish all six styles and default ink follows text
   assert.equal(previews.length, 6);
   assert.equal(previews[0].textDecorationStyle, 'solid');
   assert.equal(previews[0].textDecorationColor, 'currentColor');
-  assert.equal(previews[1].textDecorationStyle, 'double');
-  assert.equal(previews[2].textDecorationThickness, '2px');
-  assert.equal(previews[3].textDecorationStyle, 'double');
+  const double = decodeURIComponent(previews[1].backgroundImage);
+  assert.ok(double.includes('M0 0.5h8M0 3.5h8'), 'two 1px strokes have a clear 2px gap');
+  assert.equal(previews[2].textDecorationStyle, 'dotted');
+  assert.equal(previews[2].textDecorationThickness, '1px');
+  assert.equal(previews[3].textDecorationStyle, 'dotted');
   assert.equal(previews[3].textDecorationThickness, '2px');
   assert.equal(previews[4].textDecorationStyle, 'wavy');
   const waves = decodeURIComponent(previews[5].backgroundImage);
   assert.ok(waves.includes('stroke="#ff0000"'));
-  assert.ok(waves.includes('M-2 2') && waves.includes('M-2 5'));
+  assert.ok(waves.includes('M-2 1.5') && waves.includes('M-2 5.5'));
   const custom = { style: {} };
   a.paintUnderline(custom, { style: 'wavy', color: '#0000ff' }, '#ff0000');
   assert.equal(custom.style.textDecorationColor, '#0000ff');
@@ -1139,4 +1141,28 @@ test('underline drag toggles just the stroked range and keeps highlight metadata
   assert.equal(a.commitHighlightStroke(stroke, 1), true);
   assert.ok(row._richText.memo.styles.every(style => !style.underline && style.highlight === '#ffff00'));
   a.currentDate = '2026-10-16'; assert.equal(a.commitHighlightStroke(stroke, 1), false);
+});
+
+test('underline thickness preserves legacy defaults and distinguishes explicit weights for toggle', () => {
+  const a = Object.create(context.App.prototype);
+  assert.deepEqual(plain(a.getUnderlineOptions().map(option => option[1])), ['밑줄', '밑줄 이중', '밑줄 가는 점선', '밑줄 굵은 점선', '물결 선', '물결 이중선']);
+  assert.equal(a.getUnderlineThickness({ style: 'single' }), 1);
+  assert.equal(a.getUnderlineThickness({ style: 'doubleSolid' }), 2);
+  assert.equal(a.getUnderlineThickness({ style: 'single', thickness: 9 }), 4);
+  assert.equal(a.getUnderlineThickness({ style: 'single', thickness: 0.1 }), 0.5);
+  assert.equal(a.underlineMatches({ style: 'single', color: null }, { style: 'single', color: null, thickness: 1 }), true);
+  assert.equal(a.underlineMatches({ style: 'single', color: null }, { style: 'single', color: null, thickness: 1.5 }), false);
+});
+
+test('underline weight adjustments reapply rather than toggling an existing underline off', () => {
+  const a = Object.create(context.App.prototype), row = { memo: '가나다' };
+  a.getUnderlineTargets = () => [{ row, key: 'memo', start: 0, end: 3 }];
+  a.getEffectiveCellRichText = (r, key) => r._richText?.[key]; a.markCellFormatting = () => {};
+  a.setHighlightBrush = () => {}; a.updateUnderlineIndicator = () => {};
+  a.captureHistory = () => {}; a.renderTable = () => {}; a.saveDataStore = () => {}; a.isEditingCell = () => false;
+  const value = { style: 'double', color: null, thickness: 2 };
+  a.toggleUnderline(value, false); a.toggleUnderline(value, false);
+  assert.ok(row._richText.memo.styles.every(style => style.underline.thickness === 2));
+  a.toggleUnderline(value);
+  assert.ok(row._richText.memo.styles.every(style => !style?.underline));
 });
