@@ -3066,3 +3066,14 @@ body {
   background: rgba(36, 112, 220, .2); pointer-events: none; z-index: 6;
 }
 #btnTextHighlight[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }
+
+.underline-controls { display: inline-flex; align-items: center; gap: 0; flex-shrink: 0; }
+#btnUnderline { font-size: 19px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+#btnUnderlineMenu { width: 16px; min-width: 16px; padding: 0; font-size: 12px; }
+#btnUnderline[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }
+.underline-menu { min-width: 300px; }
+.underline-menu > small { display: block; color: #64756b; margin-bottom: 8px; font-size: 11px; }
+.underline-option { display: flex; align-items: center; gap: 8px; }
+.underline-option > button:first-child { flex: 1; text-align: left; padding: 10px 8px; }
+.underline-option .underline-color { width: 28px; height: 28px; padding: 2px; border: 1px solid #bccdc2; border-radius: 5px; background: white; cursor: pointer; }
+.underline-option .underline-auto { width: auto; padding: 5px; font-size: 11px; color: #157d46; }

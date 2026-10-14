@@ -1060,3 +1060,83 @@ test('highlight brush toggles only dragged characters, preserves other styles, a
   assert.equal(a.commitHighlightStroke(stroke, 3), false);
   assert.equal(saves, 2, 'cancelled, stale or zero-length strokes never save');
 });
+
+test('underline previews distinguish all six styles and default ink follows text color', () => {
+  const a = Object.create(context.App.prototype);
+  const previews = a.getUnderlineOptions().map(([style]) => {
+    const element = { style: {} };
+    a.paintUnderline(element, { style, color: null }, '#ff0000');
+    return element.style;
+  });
+  assert.equal(previews.length, 6);
+  assert.equal(previews[0].textDecorationStyle, 'solid');
+  assert.equal(previews[0].textDecorationColor, 'currentColor');
+  assert.equal(previews[1].textDecorationStyle, 'double');
+  assert.equal(previews[2].textDecorationThickness, '2px');
+  assert.equal(previews[3].textDecorationStyle, 'double');
+  assert.equal(previews[3].textDecorationThickness, '2px');
+  assert.equal(previews[4].textDecorationStyle, 'wavy');
+  const waves = decodeURIComponent(previews[5].backgroundImage);
+  assert.ok(waves.includes('stroke="#ff0000"'));
+  assert.ok(waves.includes('M-2 2') && waves.includes('M-2 5'));
+  const custom = { style: {} };
+  a.paintUnderline(custom, { style: 'wavy', color: '#0000ff' }, '#ff0000');
+  assert.equal(custom.style.textDecorationColor, '#0000ff');
+});
+
+test('whole-cell underline toggles without changing text, color, highlight or font weight', () => {
+  const a = Object.create(context.App.prototype), row = { memo: '가나다' };
+  a.getCurrentRows = () => [row]; a.activeCell = { rowIdx: 0, colKey: 'memo' };
+  a.getFormattingRange = () => ({ minRow: 0, maxRow: 0, minCol: 8, maxCol: 8 });
+  a.isSelectedCoordinate = () => true; a.isEditingCell = () => false;
+  a.getEffectiveCellRichText = (r, key) => r._richText?.[key]; a.markCellFormatting = () => {};
+  a.setHighlightBrush = () => {}; a.updateUnderlineIndicator = () => {};
+  a.captureHistory = () => {}; a.renderTable = () => {}; let saves = 0; a.saveDataStore = () => saves++;
+  a.setPartialTextStyle(row, 'memo', 0, 3, 'highlight', '#ffff00');
+  a.setPartialTextStyle(row, 'memo', 1, 2, 'fontWeight', 600);
+  a.setPartialTextColor(row, 'memo', 0, 1, '#ff0000');
+  const value = { style: 'doubleSolid', color: '#0000ff' };
+  a.toggleUnderline(value);
+  assert.ok(row._richText.memo.styles.every(style => a.underlineMatches(style.underline, value)));
+  a.toggleUnderline(value);
+  assert.ok(row._richText.memo.styles.every(style => !style.underline && style.highlight === '#ffff00'));
+  assert.equal(row._richText.memo.styles[1].fontWeight, 600);
+  assert.equal(row._richText.memo.colors[0], '#ff0000');
+  assert.equal(row.memo, '가나다'); assert.equal(saves, 2);
+});
+
+test('underline uses captured partial text selection rather than the entire cell', () => {
+  const a = Object.create(context.App.prototype), row = { memo: '가나다라마' };
+  a.activeCell = { rowIdx: 0, colKey: 'memo' }; a.getCurrentRows = () => [row];
+  a.textColorSelection = { ...a.activeCell, text: row.memo, start: 1, end: 4 };
+  const targets = a.getUnderlineTargets();
+  assert.equal(targets.length, 1); assert.equal(targets[0].start, 1); assert.equal(targets[0].end, 4);
+  assert.equal(targets[0].row, row);
+  a.crossDateSelection = {};
+  assert.deepEqual(plain(a.getUnderlineTargets()), [], 'search history stays read-only');
+});
+
+test('empty-cell underline enters brush mode without creating a saved empty record', () => {
+  const a = Object.create(context.App.prototype);
+  a.getUnderlineTargets = () => []; a.getFormattingRange = () => ({ minRow: 2, maxRow: 2, minCol: 8, maxCol: 8 });
+  a.isEditingCell = () => false; let brush;
+  a.setUnderlineBrush = value => { brush = value; };
+  a.saveDataStore = () => assert.fail('empty brush selection must not save');
+  a.toggleUnderline({ style: 'wavy', color: null });
+  assert.deepEqual(plain(brush), { style: 'wavy', color: null });
+});
+
+test('underline drag toggles just the stroked range and keeps highlight metadata', () => {
+  const a = Object.create(context.App.prototype), row = { memo: '가나다라마' };
+  a.currentDate = '2026-10-15'; a.getCurrentRows = () => [row];
+  a.getEffectiveCellRichText = (r, key) => r._richText?.[key]; a.markCellFormatting = () => {};
+  a.captureHistory = () => {}; a.saveDataStore = () => {}; a.renderTable = () => {};
+  a.setPartialTextStyle(row, 'memo', 0, 5, 'highlight', '#ffff00');
+  const underline = { style: 'doubleWavy', color: '#0000ff' };
+  const stroke = { row, rowIndex: 0, key: 'memo', text: row.memo, date: a.currentDate, start: 4, underline };
+  assert.equal(a.commitHighlightStroke(stroke, 1), true);
+  assert.deepEqual(plain(row._richText.memo.styles.map(style => style.underline || null)), [null, underline, underline, underline, null]);
+  assert.equal(a.commitHighlightStroke(stroke, 1), true);
+  assert.ok(row._richText.memo.styles.every(style => !style.underline && style.highlight === '#ffff00'));
+  a.currentDate = '2026-10-16'; assert.equal(a.commitHighlightStroke(stroke, 1), false);
+});

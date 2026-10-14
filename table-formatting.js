@@ -731,6 +731,7 @@ class PTTableFormatting {
       if (style?.fontSize != null) span.style.fontSize = `${style.fontSize}px`;
       if (style?.fontWeight != null) span.style.fontWeight = style.fontWeight;
       if (style?.highlight) span.style.backgroundColor = style.highlight;
+      if (style?.underline) this.paintUnderline(span, style.underline, color || this.getCellFormatting(row, key, 'color'));
       element.append(span); start = end;
     }
     if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
@@ -792,7 +793,152 @@ class PTTableFormatting {
     document.getElementById("fontColorMenu")?.remove();
   }
 
+  getUnderlineOptions() {
+    return [['single', '밑줄 1개선'], ['double', '밑줄 2줄'], ['solid', '밑줄 실선'],
+      ['doubleSolid', '밑줄 이중 실선'], ['wavy', '물결 선'], ['doubleWavy', '물결 이중선']];
+  }
+
+  paintUnderline(element, value, textColor = '#000000') {
+    if (!value || !this.getUnderlineOptions().some(([style]) => style === value.style)) return;
+    const color = value.color || 'currentColor';
+    element.style.textDecorationLine = 'underline';
+    element.style.textDecorationColor = color;
+    element.style.textUnderlineOffset = '0.16em';
+    element.style.textDecorationSkipInk = 'none';
+    element.style.textDecorationThickness = ['solid', 'doubleSolid'].includes(value.style) ? '2px' : '1px';
+    element.style.textDecorationStyle = ['double', 'doubleSolid'].includes(value.style) ? 'double'
+      : value.style === 'wavy' ? 'wavy' : 'solid';
+    if (value.style === 'doubleWavy') {
+      // CSS has no double-wavy decoration. Draw two flat waves within the same
+      // text span so colors and selection offsets still follow each character.
+      const ink = this.normalizeColumnColor(value.color || textColor) || '#000000';
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="6"><path d="M-2 2Q0 0 2 2T6 2T10 2M-2 5Q0 3 2 5T6 5T10 5" fill="none" stroke="${ink}" stroke-width="1"/></svg>`;
+      element.style.textDecorationLine = 'none';
+      element.style.backgroundImage = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+      element.style.backgroundRepeat = 'repeat-x';
+      element.style.backgroundPosition = 'left bottom';
+      element.style.backgroundSize = '8px 6px';
+      element.style.paddingBottom = '5px';
+    }
+  }
+
+  getUnderlineTargets() {
+    if (this.crossDateSelection) return [];
+    const rows = this.getCurrentRows();
+    const input = typeof document !== 'undefined' ? document.activeElement : null;
+    const live = this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)') && input.selectionStart !== input.selectionEnd
+      ? { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd } : null;
+    const selected = live || this.textColorSelection;
+    if (selected && this.activeCell?.rowIdx === selected.rowIdx && this.activeCell?.colKey === selected.colKey &&
+      String(rows[selected.rowIdx]?.[selected.colKey] ?? '') === selected.text) {
+      return [{ row: rows[selected.rowIdx], key: selected.colKey, start: selected.start, end: selected.end }];
+    }
+    const range = this.getFormattingRange();
+    if (!range) return [];
+    const keys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+    const targets = [];
+    for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+      if (!rows[r] || !this.isSelectedCoordinate(r, c)) continue;
+      const key = keys[c], end = String(rows[r][key] ?? '').length;
+      if (end) targets.push({ row: rows[r], key, start: 0, end });
+    }
+    return targets;
+  }
+
+  underlineMatches(a, b) {
+    return !!a && !!b && a.style === b.style && (a.color || null) === (b.color || null);
+  }
+
+  updateUnderlineIndicator() {
+    if (typeof document === 'undefined') return;
+    const button = document.getElementById?.('btnUnderline');
+    if (!button) return;
+    const value = this.underlineChoice || { style: 'single', color: null };
+    const label = this.getUnderlineOptions().find(([style]) => style === value.style)?.[1] || '밑줄';
+    button.title = this.underlineBrushStyle ? `${label} 드래그 모드 · 다시 칠하면 해제 · Esc로 종료` : `${label} 적용/해제`;
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', String(!!this.underlineBrushStyle));
+    button.style.textDecorationColor = value.color || 'currentColor';
+  }
+
+  setUnderlineBrush(value) {
+    const highlightColor = this.textHighlightColor;
+    this.setHighlightBrush(value.color || '#333333');
+    this.textHighlightColor = highlightColor;
+    this.underlineBrushStyle = { ...value };
+    this.elSheetContainer?.classList.add('is-underline-brush');
+    const ink = value.color || '#333333';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="m3 17 12-12 4 4-12 12-5 1z" fill="white" stroke="#414149" stroke-width="1.5"/><path d="m3 17 4 4-5 1zM2 23h16" fill="${ink}" stroke="${ink}" stroke-width="1.5"/></svg>`;
+    this.elSheetContainer?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 2 22, crosshair`);
+    this.updateTextHighlightIndicator(); this.updateUnderlineIndicator();
+  }
+
+  toggleUnderline(value = this.underlineChoice || { style: 'single', color: null }) {
+    if (this.crossDateSelection) return;
+    this.underlineChoice = { ...value };
+    const targets = this.getUnderlineTargets();
+    if (!targets.length) {
+      const range = this.getFormattingRange();
+      if (!range || range.minRow !== range.maxRow || range.minCol !== range.maxCol) return;
+      if (this.isEditingCell()) document.activeElement.blur();
+      this.textColorSelection = null;
+      this.setUnderlineBrush(value);
+      return;
+    }
+    this.setHighlightBrush(null);
+    const reset = targets.every(({ row, key, start, end }) => {
+      const rich = this.getEffectiveCellRichText(row, key);
+      return Array.from({ length: end - start }, (_, i) => this.underlineMatches(rich?.styles?.[start + i]?.underline, value)).every(Boolean);
+    });
+    if (this.applySelectedTextStyle('underline', reset ? null : value)) { this.updateUnderlineIndicator(); return; }
+    if (this.isEditingCell()) document.activeElement.blur();
+    this.captureHistory?.();
+    for (const { row, key, start, end } of targets) this.setPartialTextStyle(row, key, start, end, 'underline', reset ? null : value);
+    this.captureHistory?.(); this.saveDataStore(); this.renderTable(); this.updateUnderlineIndicator();
+  }
+
+  openUnderlineMenu(anchor) {
+    if (!this.prepareFormattingMenu('underline', anchor)) return;
+    const popup = document.createElement('div'); popup.id = 'columnTypographyMenu';
+    popup.className = 'column-typography-menu underline-menu';
+    popup._formatAnchor = anchor; popup._formatProperty = 'underline';
+    popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '밑줄 종류 및 색상');
+    const heading = document.createElement('strong'); heading.textContent = '밑줄 종류 · 색상'; popup.append(heading);
+    const note = document.createElement('small'); note.textContent = '기본: 글자색 · 빈 셀에서 선택하면 드래그 모드'; popup.append(note);
+    const close = () => { popup.remove(); this.typographyCleanup?.(); this.typographyCleanup = null; };
+    const choice = this.underlineChoice || { style: 'single', color: null };
+    for (const [style, label] of this.getUnderlineOptions()) {
+      const row = document.createElement('div'); row.className = 'underline-option';
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.underlineStyle = style;
+      button.classList.toggle('is-current', choice.style === style);
+      button.setAttribute('aria-pressed', String(choice.style === style));
+      const sample = document.createElement('span'); sample.textContent = label;
+      const color = choice.style === style ? choice.color : null;
+      this.paintUnderline(sample, { style, color }); button.append(sample);
+      button.onclick = () => { this.toggleUnderline({ style, color }); close(); };
+      const picker = document.createElement('input'); picker.type = 'color'; picker.value = color || '#000000';
+      picker.className = 'underline-color'; picker.setAttribute('aria-label', `${label} 색상 선택`); picker.title = `${label} 색상 선택`;
+      picker.onchange = () => { this.toggleUnderline({ style, color: picker.value }); close(); };
+      const auto = document.createElement('button'); auto.type = 'button'; auto.className = 'underline-auto'; auto.textContent = '자동';
+      auto.title = `${label}: 글자색과 같게`; auto.setAttribute('aria-label', auto.title);
+      auto.onclick = () => { this.toggleUnderline({ style, color: null }); close(); };
+      row.append(button, picker, auto); popup.append(row);
+    }
+    popup.onmousedown = event => { if (!event.target.matches('input[type="color"]')) event.preventDefault(); };
+    popup.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { close(); anchor.focus(); } };
+    document.body.append(popup);
+    const rect = anchor.getBoundingClientRect();
+    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
+    const outside = event => { if (!popup.contains(event.target) && !anchor.contains(event.target)) close(); };
+    document.addEventListener('mousedown', outside);
+    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+  }
+
   setHighlightBrush(color) {
+    this.underlineBrushStyle = null;
+    this.elSheetContainer?.classList.remove('is-underline-brush');
+    this.updateUnderlineIndicator();
     this.cancelHighlightStroke?.();
     this.highlightBrushColor = color ? (this.normalizeColumnColor(color) || color) : null;
     if (color) this.textHighlightColor = this.highlightBrushColor;
@@ -826,10 +972,13 @@ class PTTableFormatting {
     const lo = Math.min(start, end), hi = Math.max(start, end);
     if (lo === hi) return false;
     const rich = this.getEffectiveCellRichText(row, key);
-    const reset = Array.from({ length: hi - lo }, (_, i) =>
-      this.normalizeColumnColor(rich?.styles?.[lo + i]?.highlight) === this.normalizeColumnColor(color)).every(Boolean);
+    const property = stroke.underline ? 'underline' : 'highlight';
+    const value = stroke.underline || color;
+    const reset = Array.from({ length: hi - lo }, (_, i) => stroke.underline
+      ? this.underlineMatches(rich?.styles?.[lo + i]?.underline, value)
+      : this.normalizeColumnColor(rich?.styles?.[lo + i]?.highlight) === this.normalizeColumnColor(color)).every(Boolean);
     this.captureHistory?.();
-    this.setPartialTextStyle(row, key, lo, hi, 'highlight', reset ? null : color);
+    this.setPartialTextStyle(row, key, lo, hi, property, reset ? null : value);
     this.captureHistory?.();
     this.saveDataStore();
     this.renderTable();
@@ -878,7 +1027,7 @@ class PTTableFormatting {
         if (index > 0 && /[\uDC00-\uDFFF]/.test(text[index] || '')) index++;
         return Math.min(index, text.length);
       };
-      const stroke = { row, rowIndex, key, text, date: this.currentDate, start: indexAt(event.clientX), color: this.highlightBrushColor };
+      const stroke = { row, rowIndex, key, text, date: this.currentDate, start: indexAt(event.clientX), color: this.highlightBrushColor, underline: this.underlineBrushStyle ? { ...this.underlineBrushStyle } : null };
       let end = stroke.start;
       const selection = document.createElement('div'); selection.className = 'highlight-brush-selection';
       cell.append(selection);
@@ -909,8 +1058,8 @@ class PTTableFormatting {
     if (!button) return;
     const color = this.textHighlightColor || '#ffff00';
     button.querySelectorAll?.('.highlight-color-paint').forEach(part => { part.style.fill = color; });
-    button.title = this.highlightBrushColor ? `형광펜 모드: ${color} · 드래그로 적용/해제 · Esc로 종료` : `글자 형광펜: ${color} · 적용/해제 (Ctrl/Cmd+E)`;
-    button.setAttribute?.('aria-pressed', String(!!this.highlightBrushColor));
+    button.title = this.highlightBrushColor && !this.underlineBrushStyle ? `형광펜 모드: ${color} · 드래그로 적용/해제 · Esc로 종료` : `글자 형광펜: ${color} · 적용/해제 (Ctrl/Cmd+E)`;
+    button.setAttribute?.('aria-pressed', String(!!this.highlightBrushColor && !this.underlineBrushStyle));
     button.setAttribute?.('aria-label', button.title);
   }
 
