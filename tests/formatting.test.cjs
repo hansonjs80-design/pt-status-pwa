@@ -784,3 +784,85 @@ test('formatting popup preparation closes repeated anchors and switches other to
     assert.equal(cleans,15);
   } finally { delete context.document; }
 });
+
+test('partial typography and highlighting compose with character colors and survive cell copy', () => {
+  const instance=Object.create(context.App.prototype);
+  const source={memo:'가나다라마'};
+  instance.setPartialTextColor(source,'memo',0,2,'#ff0000');
+  instance.setPartialTextStyle(source,'memo',1,4,'fontWeight',600);
+  instance.setPartialTextStyle(source,'memo',2,4,'fontSize',22);
+  instance.setPartialTextStyle(source,'memo',0,5,'highlight','#ffff00');
+  assert.equal(source._richText.memo.styles[0].fontWeight,undefined);
+  assert.equal(source._richText.memo.styles[1].fontWeight,600);
+  assert.equal(source._richText.memo.styles[2].fontSize,22);
+  instance.setPartialTextColor(source,'memo',3,5,'#0000ff');
+  assert.equal(source._richText.memo.styles[3].fontSize,22,'color changes retain size');
+  instance.setPartialTextStyle(source,'memo',2,3,'highlight',null);
+  assert.equal(source._richText.memo.styles[2].highlight,undefined);
+  assert.equal(source._richText.memo.styles[2].fontWeight,600);
+  const target={name:source.memo};
+  instance.applyCopiedCellFormatting(target,'name',instance.captureCellFormatting(source,'memo'));
+  assert.deepEqual(plain(target._richText.name),plain(source._richText.memo));
+  target._richText.name.styles[1].fontWeight=800;
+  assert.equal(source._richText.memo.styles[1].fontWeight,600,'clipboard owns an independent snapshot');
+});
+
+test('editing mixed fonts preserves prefix/suffix and inherits formatting for inserted text', () => {
+  const row={memo:'가나다'};
+  app.setPartialTextStyle(row,'memo',1,2,'fontSize',24);
+  app.setPartialTextStyle(row,'memo',1,2,'highlight','#ffff00');
+  app.updateEditorTextColors(row,'memo','가새나다');
+  assert.deepEqual(plain(row._richText.memo.styles),[null,{fontSize:24,highlight:'#ffff00'},{fontSize:24,highlight:'#ffff00'},null]);
+  app.updateEditorTextColors(row,'memo','가다');
+  assert.deepEqual(plain(row._richText.memo.styles),[null,null]);
+  assert.equal(row._richText.memo.text,'가다');
+});
+
+test('partial formatting records independent undo/redo snapshots without ending native editing', () => {
+  const instance=Object.create(context.App.prototype);
+  const row={memo:'가나다라'};
+  instance.currentDate='2026-10-14'; instance.dataStore={[instance.currentDate]:[row]};
+  instance.activeCell={rowIdx:0,colKey:'memo'}; instance.getCurrentRows=()=>[row];
+  let refreshes=0;
+  const input={value:row.memo,selectionStart:1,selectionEnd:3,isConnected:true,
+    matches:()=>true,refreshEditorColors:()=>refreshes++,focus(){},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+  context.document={activeElement:input};instance.saveDataStore=()=>{};
+  try {
+    assert.equal(instance.applySelectedTextStyle('fontWeight',600),true);
+    assert.equal(instance.applySelectedTextStyle('fontSize',20),true);
+    assert.equal(instance.applySelectedTextStyle('highlight','#ffff00'),true);
+    assert.equal(instance.applySelectedTextStyle('color','#ff0000'),true);
+    const history=instance.getEditHistory();
+    assert.equal(history.undo.length,4);
+    const beforeRed=JSON.parse(history.undo.at(-1))[0]._richText.memo;
+    assert.deepEqual(plain(beforeRed.colors),[null,null,null,null]);
+    assert.equal(beforeRed.styles[1].fontWeight,600);
+    assert.equal(beforeRed.styles[1].fontSize,20);
+    assert.equal(beforeRed.styles[1].highlight,'#ffff00');
+    assert.equal(row._richText.memo.colors[1],'#ff0000');
+    assert.deepEqual([input.selectionStart,input.selectionEnd],[1,3]);
+    assert.equal(refreshes,4);
+  } finally {delete context.document;}
+});
+
+test('format shortcuts target the cell or selected text and leave unrelated inputs and IME alone', () => {
+  const instance=Object.create(context.App.prototype);
+  const calls=[];
+  const input={matches:selector=>selector.includes('.cell-input-element') || selector.startsWith('input')};
+  const sheet={contains:t=>t===input};instance.elSheetContainer=sheet;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:0,minCol:8,maxCol:8});
+  instance.captureTextColorSelection=()=>calls.push('capture');
+  instance.applyTextColor=color=>calls.push(color);
+  instance.applyColumnTypography=(property,value)=>calls.push([property,value]);
+  const event={target:input,ctrlKey:true,key:' ',code:'Space',preventDefault(){calls.push('prevent');},stopPropagation(){}};
+  assert.equal(instance.handleTextFormattingShortcut(event),true);
+  assert.equal(calls.at(-1),'#ff0000');
+  assert.equal(instance.handleTextFormattingShortcut({...event,ctrlKey:false,metaKey:true,key:'b',code:'KeyB'}),true);
+  assert.deepEqual(calls.at(-1),['fontWeight',600]);
+  assert.equal(instance.handleTextFormattingShortcut({...event,target:sheet,key:'b',code:'KeyB'}),true);
+  const count=calls.length;
+  for(const extra of [{isComposing:true},{altKey:true},{shiftKey:true},{target:{matches:()=>false}},{ctrlKey:false}]) {
+    assert.equal(instance.handleTextFormattingShortcut({...event,...extra}),false);
+  }
+  assert.equal(calls.length,count);
+});

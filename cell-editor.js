@@ -235,6 +235,7 @@ class PTCellEditor {
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
         : colKey === "prescription" ? this.normalizePrescriptionInput(finalVal) : finalVal.trim();
       this.endNativeCellEditing(input);
+      this.updateEditorTextColors(rows[rowIdx], colKey, finalVal);
       rows[rowIdx][colKey] = finalVal;
       if (forcedVal !== undefined) this.applyAutocompleteColor(rows[rowIdx], colKey, finalVal, input.dataset.autocompleteQuery);
       const compound = this.applyCompoundPatientInput(rows[rowIdx], colKey, finalVal);

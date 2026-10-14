@@ -148,10 +148,17 @@ class PTCellInputTools {
     while (suffix < Math.min(old.length, value.length) - start && old[old.length - 1 - suffix] === value[value.length - 1 - suffix]) suffix++;
     const inserted = value.length - start - suffix;
     const color = rich.colors[start] ?? rich.colors[start - 1] ?? null;
-    row._richText[key] = { text: value, colors: [
+    const next = { ...rich, text: value, colors: [
       ...rich.colors.slice(0, start), ...Array(inserted).fill(color),
       ...(suffix ? rich.colors.slice(old.length - suffix) : [])
     ] };
+    if (rich.styles) {
+      const style = rich.styles[start] ?? rich.styles[start - 1] ?? null;
+      next.styles = [...rich.styles.slice(0, start),
+        ...Array.from({length: inserted}, () => style ? {...style} : null),
+        ...(suffix ? rich.styles.slice(old.length - suffix) : [])];
+    }
+    row._richText[key] = next;
   }
 
   getEditorTextLeft(input, font) {
@@ -170,10 +177,10 @@ class PTCellInputTools {
 
   refreshEditorTextColors(input, cellElement, row, key) {
     input.editorColorPreview?.remove();
-    input.classList.remove?.('has-editor-colors');
+    input.classList.remove?.('has-editor-colors', 'has-editor-typography');
     if (!input.isConnected || input.classList.contains('is-armed') || input.classList.contains('has-inline-completion')) return;
     const rich = this.getEffectiveCellRichText(row, key);
-    if (rich?.text !== input.value || !rich.colors?.some(Boolean)) return;
+    if (rich?.text !== input.value || (!rich.colors?.some(Boolean) && !rich.styles?.some(Boolean))) return;
     const font = getComputedStyle(input);
     const preview = document.createElement('span');
     preview.className = 'inline-editor-color-preview';
@@ -185,6 +192,86 @@ class PTCellInputTools {
     input.classList.add('has-editor-colors');
     input.editorColorPreview = preview;
     cellElement.append(preview);
+    if (rich.styles?.some(style => style?.fontSize || style?.fontWeight)) {
+      input.classList.add('has-editor-typography');
+      this.paintRichEditorSelection(input, preview);
+    }
+  }
+
+  // A native input owns typing/IME/clipboard. Its mirror owns variable-width
+  // text, caret and selection geometry, since native inputs have one font only.
+  getRichEditorOffsets(preview) {
+    const rect = preview.getBoundingClientRect();
+    const offsets = [0];
+    const range = document.createRange();
+    for (const span of preview.children) {
+      if (span.classList.contains('inline-completion-suffix')) continue;
+      const node = span.firstChild;
+      if (node?.nodeType !== 3) continue;
+      for (let i = 0; i < node.length; i++) {
+        range.setStart(node, i); range.setEnd(node, i + 1);
+        offsets.push(range.getBoundingClientRect().right - rect.left);
+      }
+    }
+    return offsets;
+  }
+
+  paintRichEditorSelection(input, preview) {
+    const offsets = this.getRichEditorOffsets(preview);
+    const start = Math.min(input.selectionStart, offsets.length - 1);
+    const end = Math.min(input.selectionEnd, offsets.length - 1);
+    const cursor = input.selectionDirection === 'backward' ? start : end;
+    const font = getComputedStyle(input);
+    const left = input.offsetLeft + (parseFloat(font.paddingLeft) || 0);
+    const available = input.clientWidth - (parseFloat(font.paddingLeft) || 0) - (parseFloat(font.paddingRight) || 0);
+    const width = offsets.at(-1);
+    let scroll = input.richScrollLeft || 0;
+    if (offsets[cursor] - scroll > available - 2) scroll = offsets[cursor] - available + 2;
+    if (offsets[cursor] < scroll) scroll = offsets[cursor];
+    scroll = Math.max(0, Math.min(scroll, Math.max(0, width - available + 2)));
+    input.richScrollLeft = scroll;
+    const align = width < available && ['center', 'right'].includes(font.textAlign)
+      ? (available - width) / (font.textAlign === 'center' ? 2 : 1) : 0;
+    preview.style.left = `${left + align - scroll}px`;
+    if (start !== end) {
+      const selection = document.createElement('span'); selection.className = 'rich-editor-selection';
+      selection.style.left = `${offsets[start]}px`; selection.style.width = `${offsets[end] - offsets[start]}px`;
+      preview.append(selection);
+    } else {
+      const caret = document.createElement('span'); caret.className = 'rich-editor-caret';
+      caret.style.left = `${offsets[cursor]}px`; preview.append(caret);
+    }
+    if (input.richPointerBound) return;
+    input.richPointerBound = true;
+    input.addEventListener('pointerdown', event => {
+      if (!input.classList.contains('has-editor-typography') || event.button !== 0) return;
+      event.preventDefault(); input.focus({preventScroll:true});
+      const indexAt = x => {
+        const mirror = input.editorColorPreview;
+        const positions = this.getRichEditorOffsets(mirror);
+        const target = x - mirror.getBoundingClientRect().left;
+        let index = 0;
+        while (index < positions.length - 1 && target > (positions[index] + positions[index + 1]) / 2) index++;
+        // Do not split a surrogate pair when clicking an emoji.
+        if (index && /[\uD800-\uDBFF]/.test(input.value[index - 1]) && /[\uDC00-\uDFFF]/.test(input.value[index] || '')) index++;
+        return index;
+      };
+      const anchor = event.shiftKey ? input.selectionStart : indexAt(event.clientX);
+      const move = e => {
+        const end = indexAt(e.clientX);
+        input.setSelectionRange(Math.min(anchor, end), Math.max(anchor, end), end < anchor ? 'backward' : 'forward');
+        input.refreshEditorColors();
+      };
+      move(event);
+      const stop = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', stop);
+        input.removeEventListener('blur', stop);
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', stop, {once:true});
+      input.addEventListener('blur', stop, {once:true});
+    });
   }
 
   getInlineCompletionParts(query, candidate) {
@@ -368,6 +455,20 @@ class PTCellInputTools {
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
     input.refreshEditorColors?.();
+    if (input.classList?.contains?.('has-editor-typography')) {
+      // Keep completion separate from the saved text and the variable-font caret.
+      if (document.activeElement === input && input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+        const suffix = this.getInlineCompletionSuffix(input.value, this.getSelectedAutocompleteItem());
+        const mirror = input.editorColorPreview;
+        if (suffix && mirror) {
+          const completion = document.createElement('span'); completion.className = 'inline-completion-suffix';
+          completion.textContent = suffix; completion.style.position = 'absolute';
+          completion.style.left = `${this.getRichEditorOffsets(mirror).at(-1)}px`;
+          mirror.append(completion);
+        }
+      }
+      return;
+    }
     // The preview only paints a separate overlay; never rewrite or refocus the IME input.
     if (!input.isConnected || document.activeElement !== input || !input.value ||
         input.selectionStart !== input.value.length || input.selectionEnd !== input.value.length) return;
@@ -396,7 +497,7 @@ class PTCellInputTools {
       offset += block.char.length;
     }
     input.editorColorPreview?.remove();
-    input.classList.remove?.('has-editor-colors');
+    input.classList.remove?.('has-editor-colors', 'has-editor-typography');
     input.classList.add('has-inline-completion');
     preview.style.left = `${this.getEditorTextLeft(input, font)}px`;
     preview.style.top = `${input.offsetTop}px`;

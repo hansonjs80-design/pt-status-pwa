@@ -260,6 +260,19 @@ class PTTableFormatting {
   }
 
   getFormattingStatus(property) {
+    if (typeof document !== 'undefined' && ['fontSize', 'fontWeight', 'highlight'].includes(property)) {
+      const input = document.activeElement;
+      if (this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)') && input.selectionStart !== input.selectionEnd) {
+        const {rowIdx, colKey} = this.activeCell;
+        const row = this.getCurrentRows()[rowIdx];
+        const rich = this.getEffectiveCellRichText(row, colKey);
+        const fallback = this.getCellFormatting(row, colKey, property) ?? getComputedStyle(input)[property];
+        const values = new Set(Array.from({length: input.selectionEnd - input.selectionStart}, (_, i) =>
+          rich?.styles?.[input.selectionStart + i]?.[property] ?? fallback));
+        const value = values.size === 1 ? [...values][0] : null;
+        return { value, label: values.size === 1 ? String(value ?? '없음') : '여러 값' };
+      }
+    }
     const range = this.getFormattingRange();
     if (!range) return { label: "선택 없음", value: null };
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -325,11 +338,16 @@ class PTTableFormatting {
       const value = this.getCellFormatting(row, key, property);
       if (property === "backgroundColor") {
         if (value != null || element.style.backgroundColor) {
-          // Saved colors are the base layer; transient row/cell highlights win.
+          // Preserve the fill beneath translucent interaction tints.
           if (element.style.setProperty) element.style.setProperty("background-color", value || "", "");
           else element.style.backgroundColor = value || "";
         }
       } else if (property !== "textAlign") element.style[property] = value == null ? "" : property === "fontSize" ? value + "px" : value;
+    }
+    if (element.dataset) {
+      const fill = this.getCellFormatting(row, key, 'backgroundColor');
+      if (fill) { element.dataset.hasFill = 'true'; element.style.setProperty('--cell-fill', fill); }
+      else { delete element.dataset.hasFill; element.style.removeProperty?.('--cell-fill'); }
     }
     this.applyCellAlignmentStyle(element, row, key);
   }
@@ -386,6 +404,7 @@ class PTTableFormatting {
   }
 
   applyColumnTypography(property, value) {
+    if (["fontSize", "fontWeight"].includes(property) && this.applySelectedTextStyle(property, value)) return;
     const range = this.getFormattingRange();
     if (!range || !["fontSize", "fontWeight", "backgroundColor", "textAlign"].includes(property)) return;
     const columns = this.getSelectedFormattingColumns();
@@ -406,6 +425,14 @@ class PTTableFormatting {
       if (!this.isSelectedCoordinate(r, col)) continue;
       const row = rows[r]; row._textStyles ||= {}; row._textStyles[keys[col]] ||= {};
       this.markCellFormatting(row, keys[col], property);
+      const rich = row._richText?.[keys[col]];
+      if (rich?.styles && ['fontSize', 'fontWeight'].includes(property)) {
+        rich.styles = rich.styles.map(style => {
+          if (!style) return null;
+          const next = {...style}; delete next[property];
+          return Object.keys(next).length ? next : null;
+        });
+      }
       if (value === null) delete row._textStyles[keys[col]][property];
       else row._textStyles[keys[col]][property] = value;
     }
@@ -532,7 +559,10 @@ class PTTableFormatting {
       button.classList.toggle("is-current", active); button.setAttribute("aria-pressed", String(active));
       if (active) button.textContent = "✓ " + label;
       if (property === "fontWeight" && value) button.style.fontWeight = value;
-      button.onclick = () => { this.applyColumnTypography(property, value); close(); this.elSheetContainer.focus(); };
+      button.onclick = () => {
+        this.applyColumnTypography(property, value); close();
+        if (!document.activeElement?.matches?.('.cell-input-element:not(.is-armed)')) this.elSheetContainer.focus();
+      };
       popup.append(button);
     }
     popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
@@ -544,7 +574,7 @@ class PTTableFormatting {
     document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
     this.typographyCleanup = () => document.removeEventListener("mousedown", outside);
     const initial = popup.querySelector(".is-current") || popup.querySelector("button");
-    initial.focus();
+    if (!document.activeElement?.matches?.('.cell-input-element:not(.is-armed)')) initial.focus();
     initial.scrollIntoView({ block: "nearest" });
   }
 
@@ -553,6 +583,67 @@ class PTTableFormatting {
     const input = document.activeElement;
     if (!this.activeCell || !input?.matches(".cell-input-element:not(.is-armed)") || input.selectionStart === input.selectionEnd) return;
     this.textColorSelection = { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd };
+  }
+
+  handleTextFormattingShortcut(event) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.isComposing || event.keyCode === 229) return false;
+    const red = event.code === 'Space' || event.key === ' ';
+    const bold = event.code === 'KeyB' || event.key?.toLowerCase() === 'b';
+    if ((!red && !bold) || this.crossDateSelection || !this.getFormattingRange()) return false;
+    const target = event.target;
+    if (!target?.matches?.('.cell-input-element') && target !== this.elSheetContainer && !this.elSheetContainer?.contains?.(target)) return false;
+    if (target?.matches?.('input, textarea, [contenteditable="true"]') && !target.matches('.cell-input-element')) return false;
+    event.preventDefault(); event.stopPropagation();
+    if (event.repeat) return true;
+    this.captureTextColorSelection();
+    if (red) this.applyTextColor('#ff0000');
+    else this.applyColumnTypography('fontWeight', 600);
+    return true;
+  }
+
+  // Character metadata shares the existing rich-text snapshot, clipboard and sync path.
+  setPartialTextStyle(row, key, start, end, property, value) {
+    const text = String(row[key] ?? '');
+    const previous = this.getEffectiveCellRichText(row, key);
+    if (!this.isCellFormattingCurrent(row, key, 'color')) {
+      row._textColors ||= {}; row._textColors[key] = this.getCellFormatting(row, key, 'color');
+    }
+    const rich = previous?.text === text ? JSON.parse(JSON.stringify(previous))
+      : { text, colors: Array(text.length).fill(null) };
+    rich.styles ||= Array(text.length).fill(null);
+    for (let i = Math.max(0, start); i < Math.min(text.length, end); i++) {
+      const style = { ...rich.styles[i] };
+      if (value == null) delete style[property]; else style[property] = value;
+      rich.styles[i] = Object.keys(style).length ? style : null;
+    }
+    row._richText ||= {}; row._richText[key] = rich;
+    this.markCellFormatting(row, key, 'color');
+  }
+
+  applySelectedTextStyle(property, value) {
+    if (typeof document === 'undefined') return false;
+    const input = document.activeElement;
+    const selection = this.textColorSelection;
+    const live = this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)')
+      && input.selectionStart !== input.selectionEnd
+      ? { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd } : null;
+    const target = live || selection;
+    this.textColorSelection = null;
+    if (!target || this.crossDateSelection || this.activeCell?.rowIdx !== target.rowIdx || this.activeCell?.colKey !== target.colKey) return false;
+    const row = this.getCurrentRows()[target.rowIdx];
+    if (!row || String(row[target.colKey] ?? '') !== target.text) return false;
+    this.captureHistory?.();
+    if (property === 'color') {
+      this.setPartialTextColor(row, target.colKey, target.start, target.end, value);
+      this.markCellFormatting(row, target.colKey, 'color');
+    } else this.setPartialTextStyle(row, target.colKey, target.start, target.end, property, value);
+    this.captureHistory?.(); this.saveDataStore(false);
+    if (input?.matches?.('.cell-input-element:not(.is-armed)') && input.isConnected) {
+      this.clearInlineAutocompletePreview?.();
+      input.refreshEditorColors?.();
+      input.focus({preventScroll: true}); input.setSelectionRange(target.start, target.end);
+    } else this.renderTable();
+    return true;
   }
 
   setPartialTextColor(row, key, start, end, color) {
@@ -565,7 +656,7 @@ class PTTableFormatting {
     const colors = previous?.text === text ? [...previous.colors] : Array(text.length).fill(null);
     for (let i = Math.max(0, start); i < Math.min(text.length, end); i++) colors[i] = color;
     row._richText ||= {};
-    row._richText[key] = { text, colors };
+    row._richText[key] = { ...(previous?.text === text ? previous : {}), text, colors };
   }
 
   renderColoredText(element, row, key) {
@@ -586,9 +677,13 @@ class PTTableFormatting {
     while (start < text.length) {
       const color = rich.colors[start];
       let end = start + 1;
-      while (end < text.length && rich.colors[end] === color) end++;
+      const style = rich.styles?.[start];
+      while (end < text.length && rich.colors[end] === color && JSON.stringify(rich.styles?.[end]) === JSON.stringify(style)) end++;
       const span = document.createElement("span"); span.textContent = text.slice(start, end);
       if (color) span.style.color = color;
+      if (style?.fontSize != null) span.style.fontSize = `${style.fontSize}px`;
+      if (style?.fontWeight != null) span.style.fontWeight = style.fontWeight;
+      if (style?.highlight) span.style.backgroundColor = style.highlight;
       element.append(span); start = end;
     }
     if (key === "visitTime") this.appendVisitTimeRefresh(element, row);
@@ -596,6 +691,9 @@ class PTTableFormatting {
 
   applyTextColor(color) {
     if (this.crossDateSelection) return;
+    if (this.applySelectedTextStyle('color', color)) {
+      this.updateFontColorIndicator(color); this.closeFontColorMenu(); return;
+    }
     const columns = this.getSelectedFormattingColumns();
     if (columns) {
       this.textColorSelection = null;
@@ -628,7 +726,11 @@ class PTTableFormatting {
     for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
       if (!this.isSelectedCoordinate(r, c)) continue;
       this.markCellFormatting(rows[r], keys[c], "color");
-      if (rows[r]._richText) delete rows[r]._richText[keys[c]];
+      if (rows[r]._richText?.[keys[c]]) {
+        const rich = rows[r]._richText[keys[c]];
+        if (rich.styles?.some(Boolean)) rich.colors = Array(String(rows[r][keys[c]] ?? '').length).fill(null);
+        else delete rows[r]._richText[keys[c]];
+      }
       rows[r]._textColors ||= {};
       if (color) rows[r]._textColors[keys[c]] = color; else delete rows[r]._textColors[keys[c]];
     }
@@ -666,8 +768,12 @@ class PTTableFormatting {
     const menu = document.createElement("div"); menu.id = "fontColorMenu"; menu.className = "font-color-menu";
     menu._formatAnchor = anchor; menu._formatProperty = property;
     const isBackground = property === "backgroundColor";
-    const apply = color => isBackground ? this.applyBackgroundColor(color) : this.applyTextColor(color);
-    menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isBackground ? "셀 배경색 선택" : "글자색 선택");
+    const isHighlight = property === 'highlight';
+    const apply = color => {
+      if (isHighlight) { this.applySelectedTextStyle('highlight', color); this.closeFontColorMenu(); }
+      else if (isBackground) this.applyBackgroundColor(color); else this.applyTextColor(color);
+    };
+    menu.setAttribute("role", "dialog"); menu.setAttribute("aria-label", isHighlight ? "글자 형광펜 선택" : isBackground ? "셀 배경색 선택" : "글자색 선택");
     const current = document.createElement("div"); current.className = "format-current";
     const status = this.getFormattingStatus(property);
     const swatch = document.createElement("span"); swatch.className = "current-color-chip"; swatch.style.backgroundColor = status.value || "transparent";
@@ -687,7 +793,7 @@ class PTTableFormatting {
       button.onclick = () => apply(color); palette.appendChild(button); });
     menu.appendChild(palette);
     const custom = document.createElement("label"); custom.className = "custom-color"; custom.textContent = "맞춤 색상 ";
-    const picker = document.createElement("input"); picker.type = "color"; picker.value = this.normalizeColumnColor(status.value) || "#000000"; picker.setAttribute("aria-label", isBackground ? "맞춤 셀 배경색" : "맞춤 글자색"); picker.oninput = () => apply(picker.value); custom.appendChild(picker); menu.appendChild(custom);
+    const picker = document.createElement("input"); picker.type = "color"; picker.value = this.normalizeColumnColor(status.value) || "#000000"; picker.setAttribute("aria-label", isHighlight ? "맞춤 형광펜 색상" : isBackground ? "맞춤 셀 배경색" : "맞춤 글자색"); picker.oninput = () => apply(picker.value); custom.appendChild(picker); menu.appendChild(custom);
     menu.onmousedown = event => { if (event.target !== picker) event.preventDefault(); };
     document.body.appendChild(menu);
     const rect = anchor.getBoundingClientRect(); menu.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - menu.offsetWidth - 6))}px`;

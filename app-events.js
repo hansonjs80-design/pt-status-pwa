@@ -73,7 +73,7 @@ class PTAppEvents {
     };
     for (const [id, delta] of [["btnFontSmaller", -0.5], ["btnFontLarger", 0.5]]) {
       const button = document.getElementById(id);
-      button.addEventListener("mousedown", e => e.preventDefault());
+      button.addEventListener("mousedown", e => { this.captureTextColorSelection(); e.preventDefault(); });
       button.addEventListener("click", () => {
         const value = parseFloat(this.getFormattingStatus("fontSize").value) || 14;
         this.applyColumnTypography("fontSize", Math.max(8, Math.min(72, value + delta)));
@@ -96,6 +96,9 @@ class PTAppEvents {
 
     document.getElementById("btnFontColor").addEventListener("mousedown", event => { this.captureTextColorSelection(); event.preventDefault(); });
     document.getElementById("btnFontColor").addEventListener("click", event => this.openFontColorMenu(event.currentTarget));
+    const highlightButton = document.getElementById('btnTextHighlight');
+    highlightButton.addEventListener('mousedown', event => { this.captureTextColorSelection(); event.preventDefault(); });
+    highlightButton.addEventListener('click', event => this.openFontColorMenu(event.currentTarget, 'highlight'));
     const backgroundButton = document.getElementById("btnBackgroundColor");
     backgroundButton.addEventListener("mousedown", event => event.preventDefault());
     backgroundButton.addEventListener("click", event => this.openFontColorMenu(event.currentTarget, "backgroundColor"));
@@ -108,7 +111,7 @@ class PTAppEvents {
 
     for (const [id, property] of [["btnFontSize", "fontSize"], ["btnFontWeight", "fontWeight"]]) {
       const button = document.getElementById(id);
-      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("mousedown", event => { this.captureTextColorSelection(); event.preventDefault(); });
       button.addEventListener("click", event => this.openColumnTypographyMenu(property, event.currentTarget));
     }
 
@@ -348,6 +351,7 @@ class PTAppEvents {
     // Keyboard Shortcuts
     // Intercept search before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
+      if (!e.defaultPrevented && this.handleTextFormattingShortcut(e)) return;
       if (!e.defaultPrevented) this.handlePatientEditorSearchShortcut(e);
     }, true);
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
