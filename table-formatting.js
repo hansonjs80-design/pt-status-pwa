@@ -799,8 +799,8 @@ class PTTableFormatting {
     const sheet = this.elSheetContainer;
     sheet?.classList.toggle('is-highlight-brush', !!color);
     if (color) {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path fill="${this.highlightBrushColor}" stroke="black" stroke-width="2" d="m7 20 12-15 8 7-12 15z"/><path fill="black" d="m7 20 8 7-12 3z"/></svg>`;
-      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 3 29, crosshair`);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><g stroke="#344039" stroke-width="1.5" stroke-linejoin="round"><path fill="#f7faf8" d="m11 17 12-12q1-1 2 0l4 4q1 1 0 2L17 23z"/><path fill="#dbe5de" d="m23 5 2-2q1-1 2 0l4 4q1 1 0 2l-2 2z"/><path fill="#edf2ee" d="m11 17 6 6-3 3-8-2-1-2z"/><path fill="${this.highlightBrushColor}" d="m6 24 8 2-5 4H2z"/></g><path d="m14 16 9-9" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 2 30, crosshair`);
     } else sheet?.style.removeProperty('--highlight-brush-cursor');
     this.updateTextHighlightIndicator();
   }
