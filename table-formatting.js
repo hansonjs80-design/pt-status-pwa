@@ -799,7 +799,7 @@ class PTTableFormatting {
     const sheet = this.elSheetContainer;
     sheet?.classList.toggle('is-highlight-brush', !!color);
     if (color) {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><g stroke="#626765" stroke-width="1.6" stroke-linejoin="round"><path fill="${this.highlightBrushColor}" d="m10 19 14-14q1-1 2 0l3 3q1 1 0 2L15 24z"/><path fill="#626765" d="m10 19 5 5-5 3-5-5z"/><path fill="${this.highlightBrushColor}" d="m5 22 5 5-8 3z"/></g></svg>`;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><g stroke="#202127" stroke-width="1.6" stroke-linejoin="round"><path fill="${this.highlightBrushColor}" d="M7 17 20 4q3-3 6 0l3 3q3 3 0 6L16 26z"/><path fill="#414149" d="m7 17 9 9q-1 2-3 1-2-1-3 1l-1 1q-1 1-2 0l-3-3q-1-1 0-2l1-1q2-1 1-3-1-2 1-3z"/><path fill="${this.highlightBrushColor}" d="m4 25 4 4-2 2-4-1q-1 0 0-1z"/></g></svg>`;
       sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 1 22, crosshair`);
     } else sheet?.style.removeProperty('--highlight-brush-cursor');
     this.updateTextHighlightIndicator();
