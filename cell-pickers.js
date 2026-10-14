@@ -14,6 +14,7 @@ class PTCellPickers {
   isWriterRightExit(event, input) {
     const right = event.key === "ArrowRight" || event.code === "ArrowRight";
     return right && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !input.classList?.contains?.('is-armed') &&
       (this.isAutocompleteOpen() || (input.selectionStart === input.value.length && input.selectionEnd === input.value.length));
   }
 

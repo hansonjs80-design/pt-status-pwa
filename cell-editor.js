@@ -363,7 +363,7 @@ class PTCellEditor {
         this.focusSelectedCellEditor();
         return;
       }
-      if (colKey === "writer" && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      if (colKey === "writer" && !input.classList.contains("is-armed") && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         e.stopPropagation(); // Keep native caret movement while it is inside the text.
         return;
       }

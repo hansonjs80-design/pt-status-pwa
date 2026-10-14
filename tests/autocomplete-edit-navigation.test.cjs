@@ -931,3 +931,15 @@ test('typed autocomplete glyph components keep the cell color while untyped comp
   app.colorCompletionGlyphComponents(data,2,1,x=>x,1,[255,0,0]);
   assert.deepEqual(Array.from(data),[255,0,0,255,146,151,158,255]);
 });
+
+
+test('writer border selection leaves Right to sheet navigation even with selected hidden text or an empty cell', () => {
+  const {app}=createApp();app.isAutocompleteOpen=()=>false;
+  for(const value of ['S','JS','']) {
+    const input={value,selectionStart:0,selectionEnd:value.length,classList:{contains:()=>true}};
+    assert.equal(app.isWriterRightExit({key:'ArrowRight',code:'ArrowRight'},input),false,'armed selection is not native text editing');
+    input.classList.contains=()=>false;
+    input.selectionStart=input.selectionEnd=value.length;
+    assert.equal(app.isWriterRightExit({key:'ArrowRight'},input),true,'editing at the text end still commits and moves');
+  }
+});
