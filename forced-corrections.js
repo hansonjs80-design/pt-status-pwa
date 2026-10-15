@@ -90,6 +90,7 @@ class PTForcedCorrections {
     }
     delete input._forcedCorrectionProjection;
     if (!correction) return false;
+    input._forcedCorrectionApplied = true;
     if (!previous) {
       const hangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11ff]/u;
       correction.koreanToEnglish = hangul.test(correction.source) && !hangul.test(correction.target) && /[a-z]/i.test(correction.target);

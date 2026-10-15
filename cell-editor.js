@@ -441,6 +441,10 @@ class PTCellEditor {
     const commitAndBlur = (forcedVal) => {
       if (isCommitted) return;
       isCommitted = true;
+      // A corrected editor may still receive its original IME commit after
+      // Enter/Tab moves focus. Arm the destination before blurring this input,
+      // including when compositionend has already cleared the live projection.
+      if (input._forcedCorrectionApplied || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(this.getCellEditorValue(input));
