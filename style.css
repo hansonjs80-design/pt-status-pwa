@@ -2298,7 +2298,7 @@ body {
 .fill-color-bar { display: block; width: 23px; height: 4px; border: 1px solid #a3a3a3; background: #999999; box-sizing: border-box; }
 .font-size-controls { display: inline-flex; align-items: center; gap: 0; }
 .font-size-controls button { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; height: 32px; min-width: 24px; padding: 0; background: transparent; color: #484d4c; font: 500 22px Arial; cursor: pointer; }
-.font-size-controls #btnFontSize { min-width: 42px; border: 1px solid #7a8280; font-size: 16px; }
+.font-size-controls #btnFontSize { border: 0; font-size: 16px; }
 .font-size-controls button:hover { background: #e2e7eb; }
 .excel-table .cross-date-row .cross-date-num { font-size: 14px; color: #18181b; }
 .cross-date-day-current-date { color: #2563eb; }
@@ -2348,7 +2348,9 @@ body {
 .quick-chips .chip { border-width: 1.5px; font-size: 12px; font-weight: 600; padding: 4px 9px; }
 .excel-sidebar > .search-group { width: 100%; margin: 0; flex: none; }
 .excel-sidebar .search-box { width: 100%; min-width: 0; box-sizing: border-box; }
-.font-size-controls #btnFontSize { min-width: 30.6px; width: 30.6px; height: 27.2px; padding: 1px; font-weight: 600; }
+/* Expand the number into the neighboring padding while keeping the group
+   width and both minus/plus centers unchanged. */
+.font-size-controls #btnFontSize { flex: 0 0 42.6px; min-width: 42.6px; width: 42.6px; height: 27.2px; margin-inline: -6px; padding: 0; box-sizing: border-box; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
 .visit-time-refresh { opacity: 0; pointer-events: none; }
 .cell-visitTime:hover .visit-time-refresh,
 .cell-visitTime.cell-focused .visit-time-refresh,
@@ -3069,7 +3071,7 @@ body {
 
 .underline-controls { display: inline-flex; align-items: center; gap: 0; flex-shrink: 0; }
 #btnUnderline { position: relative; font-size: 19px; font-weight: 600; }
-#btnUnderline > span { position: absolute; top: 1px; left: 50%; transform: translateX(-50%); line-height: 22px; text-decoration: underline; text-underline-offset: 3px; }
+#btnUnderline > span { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); line-height: 22px; text-decoration: underline; text-underline-offset: 3px; }
 #btnUnderlineMenu { width: 16px; min-width: 16px; padding: 0; font-size: 12px; }
 #btnUnderline[aria-pressed="true"] { background: #e2efda; border-radius: 4px; }
 .underline-menu { min-width: 370px; }
