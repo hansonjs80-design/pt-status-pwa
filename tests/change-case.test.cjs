@@ -61,6 +61,11 @@ test('transformEnglishCase transforms only English letters and preserves Korean/
     assert.equal(formatter.transformEnglishCase('통증 10회', 'lastWordUppercase'), '통증 10회');
     assert.equal(formatter.transformEnglishCase('pain', 'firstWordUppercase'), 'PAIN');
     assert.equal(formatter.transformEnglishCase('pain', 'lastWordUppercase'), 'PAIN');
+    assert.equal(formatter.transformEnglishCase('l/t 12kg', 'firstWordUppercase'), 'L/T 12kg');
+    assert.equal(formatter.transformEnglishCase('l/t 12kg', 'lastWordUppercase'), 'l/t 12KG');
+    assert.equal(formatter.transformEnglishCase('  (l/t) 12kg', 'firstWordUppercase'), '  (L/T) 12kg');
+    assert.equal(formatter.transformEnglishCase('rom l/t', 'lastWordUppercase'), 'rom L/T');
+    assert.equal(formatter.transformEnglishCase('l-spine pain', 'firstWordUppercase'), 'L-SPINE pain');
   });
 
   await t.test('toggle case mode', () => {

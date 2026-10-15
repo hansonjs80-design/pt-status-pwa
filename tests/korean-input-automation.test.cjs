@@ -450,6 +450,31 @@ test('a Latin key handled by the app rejects a late native duplicate of that sam
   assert.equal(app.dataStore[app.currentDate][0].specialNote, 'ㅇ');
 });
 
+test('English laser retains every letter when the next key precedes the previous IME commit', () => {
+  for (const column of ['no', 'chartNo', 'name', 'part', 'prescription', 'extra', 'memo', 'specialNote']) {
+    const { app, input } = editingFixture({ column });
+    input.value = '';
+    input.setSelectionRange(0, 0);
+    input._listeners.keydown(keyEvent('HangulMode'));
+    const keys = [['l', 'ㅣ'], ['a', 'ㅁ'], ['s', 'ㄴ'], ['e', 'ㄷ'], ['r', 'ㄱ']];
+    for (let i = 0; i < keys.length; i++) {
+      const [letter, jamo] = keys[i];
+      input._listeners.keydown(keyEvent('Process', { code: `Key${letter.toUpperCase()}`, keyCode: 229, isComposing: true }));
+      if (i) input._listeners.compositionend({ type: 'compositionend', data: keys[i - 1][1] });
+      input._listeners.compositionstart({ type: 'compositionstart' });
+      const prefix = input.value;
+      input._listeners.beforeinput({ type: 'beforeinput', inputType: 'insertCompositionText', isComposing: true, data: jamo, cancelable: false });
+      input.value = prefix + jamo;
+      input.setSelectionRange(input.value.length, input.value.length);
+      input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: jamo });
+      assert.equal(app.getCellEditorValue(input), 'laser'.slice(0, i + 1), `${column}: ${letter}`);
+    }
+    input._listeners.compositionend({ type: 'compositionend', data: keys.at(-1)[1] });
+    assert.equal(input.value, 'laser', column);
+    assert.equal(app.getCurrentRows()[0][column], 'laser', column);
+  }
+});
+
 test('double-click activation and a fresh double-click editor both reset English to Korean', () => {
   const { app, input, cell } = editingFixture({ armed: true });
   app.toggleCellInputLanguage(keyEvent('CapsLock'), input);

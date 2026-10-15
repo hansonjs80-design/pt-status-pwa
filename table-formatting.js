@@ -597,10 +597,12 @@ class PTTableFormatting {
       case 'lastWordUppercase': {
         // These menu labels mean the first/last English word: Acute pain →
         // ACUTE pain / Acute PAIN. Preserve the case of every other word.
-        const words = [...text.matchAll(/[a-zA-Z]+/g)];
+        // Slash/hyphen abbreviations belong to the same space-delimited word:
+        // l/t 12kg → L/T 12kg, without uppercasing the following unit.
+        const words = [...text.matchAll(/\S+/g)].filter(match => /[a-zA-Z]/.test(match[0]));
         const word = caseType === 'firstWordUppercase' ? words[0] : words.at(-1);
         if (!word) return text;
-        return text.slice(0, word.index) + word[0].toUpperCase() + text.slice(word.index + word[0].length);
+        return text.slice(0, word.index) + word[0].replace(/[a-z]/g, char => char.toUpperCase()) + text.slice(word.index + word[0].length);
       }
       case 'uppercase':
         return text.replace(/[a-zA-Z]/g, ch => ch.toUpperCase());

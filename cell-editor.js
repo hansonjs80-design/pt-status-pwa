@@ -29,8 +29,8 @@ class PTCellEditor {
     input._engKorSuffix = "";
   }
 
-  rememberCellKeyValue(input) {
-    input._cellKeyValue = { value: input.value, start: input.selectionStart, end: input.selectionEnd };
+  rememberCellKeyValue(input, nativeData = null) {
+    input._cellKeyValue = { value: input.value, start: input.selectionStart, end: input.selectionEnd, nativeData };
   }
 
   beginCellComposition(input) {
@@ -51,7 +51,7 @@ class PTCellEditor {
     if (commit) {
       input.value = value;
       input.setSelectionRange(range.prefix.length + text.length, range.prefix.length + text.length);
-      this.rememberCellKeyValue(input);
+      this.rememberCellKeyValue(input, event.data);
     }
     return value;
   }
@@ -89,6 +89,14 @@ class PTCellEditor {
 
   restoreHandledCellKey(input, event) {
     const saved = input._cellKeyValue;
+    if (saved?.nativeData !== null && saved?.nativeData !== undefined &&
+        (event.type === "compositionstart" || (typeof event.data === "string" && event.data !== saved.nativeData))) {
+      // The previous composition can end after the next physical keydown.
+      // Its final-input guard belongs only to that committed text, never to
+      // a new composition or different text from the next letter.
+      delete input._cellKeyValue;
+      return false;
+    }
     if (!saved || !(event.isComposing || /[Cc]omposition/.test(event.type || "") ||
         /Composition/.test(event.inputType || "") || event.inputType === "insertText")) return false;
     // Some IMEs insert again after a handled Latin key. Restore the one
