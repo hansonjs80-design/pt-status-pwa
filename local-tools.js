@@ -53,7 +53,7 @@
         ctx.strokeStyle='#aeb8b1';ctx.lineWidth=1;ctx.strokeRect(x,y,widths[i],rowHeight);
         ctx.fillStyle='#111';lines[i].forEach((line,n)=>ctx.fillText(line,x+widths[i]/2,y+rowHeight/2+(n-(lines[i].length-1)/2)*23));x+=widths[i];
       });
-      if(lunch){ctx.strokeStyle='#d93025';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(margin,y);ctx.lineTo(width-margin,y);ctx.stroke();ctx.setLineDash([]);}
+      if(lunch){ctx.strokeStyle='#d93025';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(margin,y);ctx.lineTo(width-margin,y);ctx.stroke();}
       return rowHeight;
     };
     const newPage=()=>{
