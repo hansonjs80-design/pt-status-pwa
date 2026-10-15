@@ -481,3 +481,49 @@ test('changing current-date search during startup wins over delayed stored prefe
   assert.equal(app.includeCurrentDateSearch,true);
   assert.equal(h.disk.get('device-current-date-search-v1').enabled,true);
 });
+
+test('device-remembered summary and toolbar collapsed state syncs with documentElement and restores across relaunches', async () => {
+  const h = deviceSummaryHarness();
+  const docElement = { classList: new Set() };
+  docElement.classList.toggle = function(cls, val) { if (val) this.add(cls); else this.delete(cls); };
+  docElement.classList.contains = function(cls) { return this.has(cls); };
+  h.document = { documentElement: docElement };
+
+  const first = h.create();
+  first.initSummaryToggle();
+  first.initToolbarActionsToggle();
+  assert.equal(first.isSummaryClosed(), false);
+  assert.equal(h.sidebar.classList.closed, false);
+  assert.equal(h.toolbar.classList.closed, false);
+
+  // 사용자가 현황창을 닫고 빠른도구를 접음
+  first.setSummaryClosed(true);
+  first.setToolbarActionsClosed(true);
+  assert.equal(first.isSummaryClosed(), true);
+  assert.equal(h.sidebar.classList.closed, true);
+  assert.equal(h.toolbar.classList.closed, true);
+
+  // 앱 재실행 시뮬레이션: 새로운 앱 인스턴스
+  const relaunched = h.create();
+  relaunched.initSummaryToggle();
+  relaunched.initToolbarActionsToggle();
+  assert.equal(relaunched.isSummaryClosed(), true, '앱 재실행 시 현황창 닫힘 상태 복원');
+  assert.equal(h.sidebar.classList.closed, true, '현황창 DOM 클래스 닫힘 유지');
+  assert.equal(h.toolbar.classList.closed, true, '빠른도구 DOM 클래스 접힘 유지');
+
+  // 사용자가 현황창과 빠른도구를 다시 엶
+  relaunched.setSummaryClosed(false);
+  relaunched.setToolbarActionsClosed(false);
+  assert.equal(relaunched.isSummaryClosed(), false);
+  assert.equal(h.sidebar.classList.closed, false);
+  assert.equal(h.toolbar.classList.closed, false);
+
+  // 다시 앱 재실행 시뮬레이션: 열림 상태가 정상 유지되는지 확인
+  const again = h.create();
+  again.initSummaryToggle();
+  again.initToolbarActionsToggle();
+  assert.equal(again.isSummaryClosed(), false, '앱 재실행 시 현황창 열림 상태 복원');
+  assert.equal(h.sidebar.classList.closed, false, '현황창 DOM 열림 유지');
+  assert.equal(h.toolbar.classList.closed, false, '빠른도구 DOM 열림 유지');
+});
+

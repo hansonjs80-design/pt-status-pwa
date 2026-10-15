@@ -15,6 +15,38 @@
   <link rel="icon" type="image/svg+xml" href="icon.svg">
 
   <link rel="stylesheet" href="style.css">
+  <script>
+    (function() {
+      try {
+        function readState(key, legacyClosed) {
+          try {
+            var s = JSON.parse(localStorage.getItem(key + '_SNAPSHOT') || 'null');
+            if (s && typeof s.closed === 'boolean' && Number.isFinite(s.updatedAt)) return s;
+          } catch (_) {}
+          try {
+            var cookieKey = key + '_STATE=';
+            var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
+            var best = null;
+            for (var i = 0; i < matches.length; i++) {
+              try {
+                var parsed = JSON.parse(decodeURIComponent(matches[i].slice(cookieKey.length)));
+                if (parsed && typeof parsed.closed === 'boolean' && Number.isFinite(parsed.updatedAt)) {
+                  if (!best || parsed.updatedAt >= best.updatedAt) best = parsed;
+                }
+              } catch (_) {}
+            }
+            if (best) return best;
+          } catch (_) {}
+          try { return { closed: localStorage.getItem(key) === legacyClosed }; } catch (_) {}
+          return { closed: false };
+        }
+        var summary = readState('device-summary-closed-v1', '1');
+        if (summary.closed) document.documentElement.classList.add('device-summary-closed');
+        var toolbar = readState('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', 'true');
+        if (toolbar.closed) document.documentElement.classList.add('device-toolbar-collapsed');
+      } catch (_) {}
+    })();
+  </script>
   <!-- Supabase JS Client CDN -->
   <script id="supabaseSdk" async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>

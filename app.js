@@ -178,6 +178,7 @@ class PTApp {
     this.getCurrentRows();
     this.editHistory.clear();
     this.setDate(this.currentDate, true);
+    if (typeof document !== "undefined") document.documentElement?.classList?.add("app-ready");
   }
 
   // Helper: Get local Date string YYYY-MM-DD

@@ -72,9 +72,17 @@ class PTDeviceLayout {
     // storage is full and the app closes before an IndexedDB write can finish.
     try {
       const cookieKey = `${key}_STATE=`;
-      const raw = String(document.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith(cookieKey));
-      const saved = raw ? JSON.parse(decodeURIComponent(raw.slice(cookieKey.length))) : null;
-      if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt) && (!snapshot || saved.updatedAt >= snapshot.updatedAt)) snapshot = saved;
+      const matches = String(document.cookie || '').split(';')
+        .map(value => value.trim())
+        .filter(value => value.startsWith(cookieKey));
+      for (const raw of matches) {
+        try {
+          const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
+          if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt)) {
+            if (!snapshot || saved.updatedAt >= snapshot.updatedAt) snapshot = saved;
+          }
+        } catch (_) {}
+      }
     } catch (_) {}
     if (snapshot) return snapshot;
     try { return { [property]: localStorage.getItem(key) === legacyClosed, updatedAt: 0 }; }
@@ -83,7 +91,11 @@ class PTDeviceLayout {
 
   persistDevicePanelCookie(key, snapshot) {
     try {
-      document.cookie = `${key}_STATE=${encodeURIComponent(JSON.stringify(snapshot))}; Path=/; Max-Age=31536000; SameSite=Strict`;
+      const encoded = encodeURIComponent(JSON.stringify(snapshot));
+      document.cookie = `${key}_STATE=${encoded}; Path=/; Max-Age=31536000; SameSite=Strict`;
+      if (typeof window !== "undefined" && window.location?.pathname && window.location.pathname !== "/") {
+        document.cookie = `${key}_STATE=${encoded}; Max-Age=31536000; SameSite=Strict`;
+      }
     } catch (_) {}
   }
 
@@ -119,7 +131,8 @@ class PTDeviceLayout {
 
   async restoreDeviceSummaryState(store) {
     this.summaryStateStore = store;
-    const persisted = await store("device-summary-state-v1");
+    let persisted = null;
+    try { persisted = await store("device-summary-state-v1"); } catch (_) {}
     const local = this.deviceSummaryState || this.readDeviceSummaryState();
     // Never undo a toggle made while the disk state is still loading.
     if (!this.summaryStateChanged && typeof persisted?.closed === "boolean" &&
@@ -137,12 +150,19 @@ class PTDeviceLayout {
 
   setSummaryClosed(closed, save = true) {
     const sidebar = document.getElementById("summarySidebar");
+    const shell = sidebar?.closest?.(".summary-panel-shell") || (typeof document !== "undefined" && document.querySelector?.(".summary-panel-shell"));
     const button = document.getElementById("btnToggleSummary");
+    if (typeof document !== "undefined" && document.documentElement?.classList) {
+      document.documentElement.classList.toggle("device-summary-closed", closed);
+    }
     if (sidebar) {
       if (closed && sidebar.contains?.(document.activeElement)) button?.focus({ preventScroll: true });
       sidebar.classList.toggle("summary-closed", closed);
       sidebar.inert = closed;
       sidebar.setAttribute?.("aria-hidden", String(closed));
+    }
+    if (shell && shell.classList) {
+      shell.classList.toggle("summary-closed", closed);
     }
     if (button) {
       button.setAttribute("aria-expanded", String(!closed));
@@ -151,7 +171,7 @@ class PTDeviceLayout {
     }
     if (save) {
       const previous = this.deviceSummaryState || this.readDeviceSummaryState();
-      const snapshot = { closed, updatedAt: Math.max(Date.now(), previous.updatedAt + 1) };
+      const snapshot = { closed, updatedAt: Math.max(Date.now(), (previous?.updatedAt || 0) + 1) };
       this.summaryStateChanged = true;
       this.deviceSummaryState = snapshot;
       this.persistLocalSummaryState(snapshot);
@@ -163,17 +183,23 @@ class PTDeviceLayout {
   setToolbarActionsClosed(closed, save = true) {
     const panel = document.getElementById("collapsibleToolbarActions");
     const button = document.getElementById("btnToggleToolbarActions");
-    if (!panel || !button) return;
-    if (closed && panel.contains(document.activeElement)) button.focus({ preventScroll: true });
-    panel.classList.toggle("is-collapsed", closed);
-    panel.inert = closed;
-    panel.setAttribute("aria-hidden", String(closed));
-    button.setAttribute("aria-expanded", String(!closed));
-    button.title = closed ? "빠른 도구 및 설정 펼치기" : "빠른 도구 및 설정 접기";
-    button.setAttribute("aria-label", button.title);
+    if (typeof document !== "undefined" && document.documentElement?.classList) {
+      document.documentElement.classList.toggle("device-toolbar-collapsed", closed);
+    }
+    if (panel) {
+      if (closed && panel.contains?.(document.activeElement)) button?.focus({ preventScroll: true });
+      panel.classList.toggle("is-collapsed", closed);
+      panel.inert = closed;
+      panel.setAttribute?.("aria-hidden", String(closed));
+    }
+    if (button) {
+      button.setAttribute("aria-expanded", String(!closed));
+      button.title = closed ? "빠른 도구 및 설정 펼치기" : "빠른 도구 및 설정 접기";
+      button.setAttribute("aria-label", button.title);
+    }
     if (save) {
       const previous = this.deviceToolbarState || this.readDeviceToolbarState();
-      this.deviceToolbarState = { closed, updatedAt: Math.max(Date.now(), previous.updatedAt + 1) };
+      this.deviceToolbarState = { closed, updatedAt: Math.max(Date.now(), (previous?.updatedAt || 0) + 1) };
       this.toolbarStateChanged = true;
       this.persistLocalToolbarState(this.deviceToolbarState);
       this.queueDeviceToolbarState(this.deviceToolbarState);
@@ -205,7 +231,8 @@ class PTDeviceLayout {
 
   async restoreDeviceToolbarState(store) {
     this.toolbarStateStore = store;
-    const persisted = await store("device-toolbar-state-v1");
+    let persisted = null;
+    try { persisted = await store("device-toolbar-state-v1"); } catch (_) {}
     const local = this.deviceToolbarState || this.readDeviceToolbarState();
     if (!this.toolbarStateChanged && typeof persisted?.closed === "boolean" &&
         Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= local.updatedAt) {
@@ -223,20 +250,31 @@ class PTDeviceLayout {
   initToolbarActionsToggle() {
     this.deviceToolbarState = this.readDeviceToolbarState();
     this.setToolbarActionsClosed(this.deviceToolbarState.closed, false);
-    document.getElementById("btnToggleToolbarActions")?.addEventListener("click", () => {
-      const panel = document.getElementById("collapsibleToolbarActions");
-      this.setToolbarActionsClosed(!panel?.classList.contains("is-collapsed"));
-    });
+    const btn = document.getElementById("btnToggleToolbarActions");
+    if (btn && !btn._hasToggleListener) {
+      btn._hasToggleListener = true;
+      btn.addEventListener("click", () => {
+        const panel = document.getElementById("collapsibleToolbarActions");
+        const isClosed = (typeof document !== "undefined" && document.documentElement?.classList?.contains("device-toolbar-collapsed")) ||
+          Boolean(panel?.classList.contains("is-collapsed"));
+        this.setToolbarActionsClosed(!isClosed);
+      });
+    }
   }
 
   initSummaryToggle() {
     this.deviceSummaryState = this.readDeviceSummaryState();
     this.setSummaryClosed(this.deviceSummaryState.closed, false);
-    document.getElementById("btnToggleSummary")?.addEventListener("click", () => {
-      const sidebar = document.getElementById("summarySidebar");
-      const nextClosed = sidebar ? !sidebar.classList.contains("summary-closed") : true;
-      this.setSummaryClosed(nextClosed, true);
-    });
+    const btn = document.getElementById("btnToggleSummary");
+    if (btn && !btn._hasToggleListener) {
+      btn._hasToggleListener = true;
+      btn.addEventListener("click", () => {
+        const sidebar = document.getElementById("summarySidebar");
+        const isClosed = (typeof document !== "undefined" && document.documentElement?.classList?.contains("device-summary-closed")) ||
+          Boolean(sidebar?.classList.contains("summary-closed"));
+        this.setSummaryClosed(!isClosed, true);
+      });
+    }
   }
 
   initColumnResizing() {
