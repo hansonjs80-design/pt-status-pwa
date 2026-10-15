@@ -125,11 +125,10 @@ class PTSheetKeyboard {
     if (e.defaultPrevented) return;
     if (this.isHangulToggleKeyEvent?.(e)) {
       if (this.activeCell && this.isKoreanPreferredColumn?.(this.activeCell.colKey)) {
-        e.preventDefault();
-        e.stopPropagation();
         this._cellInputLanguage = (this._cellInputLanguage === "eng" ? "kor" : "eng");
-        const armed = this.elTableBody?.querySelector(".cell-input-element.is-armed");
-        if (armed) armed._inputLanguage = this._cellInputLanguage;
+        const cellInput = this.elTableBody?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"] input`)
+          || this.elTableBody?.querySelector(".cell-input-element.is-armed");
+        if (cellInput) cellInput._inputLanguage = this._cellInputLanguage;
         return;
       }
     }

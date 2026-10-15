@@ -250,4 +250,37 @@ test('toggling hangul key in armed/cell selection state switches input mode', ()
   assert.equal(app._cellInputLanguage, 'kor');
 });
 
+test('convertHangulToEng converts Korean syllables back to QWERTY English keys', () => {
+  const { app } = createTestApp();
+  assert.equal(app.convertHangulToEng('가'), 'rk');
+  assert.equal(app.convertHangulToEng('김'), 'rla');
+  assert.equal(app.convertHangulToEng('홍'), 'ghd');
+  assert.equal(app.convertHangulToEng('허리'), 'gjfl');
+  assert.equal(app.convertHangulToEng('pt 10회'), 'pt 10ghl');
+});
+
+test('isHangulToggleKeyEvent recognizes Windows, Mac, and various keyboard configurations', () => {
+  const { app } = createTestApp();
+  // Windows
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'HangulMode' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ keyCode: 21 }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'Process', code: 'KeyLang1' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'AltGraph' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'Alt', code: 'AltRight' }), true);
+
+  // Mac
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'CapsLock' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ code: 'CapsLock' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ keyCode: 20 }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ ctrlKey: true, code: 'Space' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ metaKey: true, code: 'Space' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ shiftKey: true, code: 'Space' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ code: 'OSRight' }), true);
+  assert.equal(app.isHangulToggleKeyEvent({ code: 'MetaRight' }), true);
+
+  // 일반 키는 false
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'a' }), false);
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'Enter' }), false);
+});
+
 

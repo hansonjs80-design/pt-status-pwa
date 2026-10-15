@@ -6,15 +6,19 @@ class PTCellEditor {
 
   isHangulToggleKeyEvent(e) {
     if (!e) return false;
-    // 1) 표준 및 Windows 한영키
+    // 1) 표준 및 Windows 한영키 / 한자키
     if (e.key === "HangulMode" || e.key === "ModeChange" || e.key === "KanaMode") return true;
-    if (e.code === "Lang1" || e.code === "Lang2") return true;
-    if (e.key === "Process" && (e.code === "KeyLang1" || e.code === "Lang1" || e.code === "Lang2")) return true;
+    if (e.code === "Lang1" || e.code === "Lang2" || e.code === "KeyLang1") return true;
+    if (e.keyCode === 21 || e.keyCode === 25) return true;
+    if (e.key === "Process" && (e.code === "KeyLang1" || e.code === "Lang1" || e.code === "Lang2" || e.code === "AltRight" || e.code === "HangulMode")) return true;
     if (e.key === "Alt" && (e.code === "AltRight" || e.location === 2)) return true;
+    if (e.key === "AltGraph" || e.code === "AltRight") return true;
 
-    // 2) macOS 한영 전환키 (기본 CapsLock 및 이전 단축키 Ctrl+Space, Cmd+Space)
-    if (e.key === "CapsLock" || e.code === "CapsLock") return true;
+    // 2) macOS 한영 전환키 (기본 CapsLock, Ctrl+Space, Cmd+Space, Shift+Space, OSRight/MetaRight)
+    if (e.key === "CapsLock" || e.code === "CapsLock" || e.keyCode === 20) return true;
     if ((e.ctrlKey || e.metaKey) && (e.code === "Space" || e.key === " ")) return true;
+    if (e.shiftKey && (e.code === "Space" || e.key === " ")) return true;
+    if (e.code === "OSRight" || e.code === "MetaRight") return true;
 
     return false;
   }
@@ -54,6 +58,7 @@ class PTCellEditor {
 
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
+      existingEditor._inputLanguage = this._cellInputLanguage || "kor";
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         delete existingEditor.dataset.navigationInputGuard;
         this.activateNativeEditor(existingEditor);
@@ -181,7 +186,18 @@ class PTCellEditor {
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
-      const val = input.value;
+      let val = input.value;
+      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng" && /[\u3131-\u318E\uAC00-\uD7A3]/.test(val)) {
+        const start = input.selectionStart;
+        const converted = this.convertHangulToEng(val);
+        if (converted !== val) {
+          input.value = converted;
+          const diff = converted.length - val.length;
+          const newPos = Math.max(0, start + diff);
+          input.setSelectionRange(newPos, newPos);
+          val = converted;
+        }
+      }
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
@@ -224,7 +240,18 @@ class PTCellEditor {
       if (this._justCommittedFromAutocomplete) return;
       // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
       // assembleHangul은 blur 시점에서만 최종 보정
-      const val = input.value;
+      let val = input.value;
+      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng" && /[\u3131-\u318E\uAC00-\uD7A3]/.test(val)) {
+        const start = input.selectionStart;
+        const converted = this.convertHangulToEng(val);
+        if (converted !== val) {
+          input.value = converted;
+          const diff = converted.length - val.length;
+          const newPos = Math.max(0, start + diff);
+          input.setSelectionRange(newPos, newPos);
+          val = converted;
+        }
+      }
       if (colKey === "writer") {
         const normalized = this.normalizeWriterEditorInput(input, e);
         if (normalized !== input.value) input.value = normalized;
@@ -325,12 +352,10 @@ class PTCellEditor {
       if (this.isKoreanPreferredColumn(colKey) && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // 한/영 전환 키(영문키) 감지 시: 한글 ↔ 영문 모드 전환
         if (this.isHangulToggleKeyEvent(e)) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.activateNativeEditor(input);
-
           if (input._engKorBuffer) {
             // 지금까지 조합된 한글을 원래 입력한 영문으로 즉시 복원하고 영문 모드로 전환
+            e.preventDefault();
+            e.stopPropagation();
             const prefix = input._engKorPrefix || "";
             const suffix = input._engKorSuffix || "";
             input.value = prefix + input._engKorBuffer + suffix;
@@ -347,6 +372,11 @@ class PTCellEditor {
           // 조합 중인 버퍼가 없을 때: 한글 모드 <-> 영문 모드 토글
           input._inputLanguage = (input._inputLanguage === "eng" ? "kor" : "eng");
           this._cellInputLanguage = input._inputLanguage;
+          // armed 상태(선택 테두리만 있는 상태)에서는 activateNativeEditor를 호출하지 않아
+          // 선택 테두리 및 기존 표시가 지워지지 않도록 보호
+          if (!input.classList.contains("is-armed")) {
+            this.activateNativeEditor(input);
+          }
           return;
         }
 

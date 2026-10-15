@@ -696,6 +696,52 @@ class PTCellInputTools {
     return this.assembleHangul(jamoStr);
   }
 
+  convertHangulToEng(str) {
+    if (!str || typeof str !== "string") return str;
+    const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+    const JUNGSUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+    const JONGSUNG = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+    const JAMO_TO_ENG = {
+      'ㄱ': 'r', 'ㄲ': 'R', 'ㄳ': 'rt',
+      'ㄴ': 's', 'ㄵ': 'sw', 'ㄶ': 'sg',
+      'ㄷ': 'e', 'ㄸ': 'E',
+      'ㄹ': 'f', 'ㄺ': 'fr', 'ㄻ': 'fa', 'ㄼ': 'fq', 'ㄽ': 'ft', 'ㄾ': 'fx', 'ㄿ': 'fv', 'ㅀ': 'fg',
+      'ㅁ': 'a',
+      'ㅂ': 'q', 'ㅃ': 'Q', 'ㅄ': 'qt',
+      'ㅅ': 't', 'ㅆ': 'T',
+      'ㅇ': 'd',
+      'ㅈ': 'w', 'ㅉ': 'W',
+      'ㅊ': 'c',
+      'ㅋ': 'z',
+      'ㅌ': 'x',
+      'ㅍ': 'v',
+      'ㅎ': 'g',
+      'ㅏ': 'k', 'ㅐ': 'o', 'ㅑ': 'i', 'ㅒ': 'O',
+      'ㅓ': 'j', 'ㅔ': 'p', 'ㅕ': 'u', 'ㅖ': 'P',
+      'ㅗ': 'h', 'ㅘ': 'hk', 'ㅙ': 'ho', 'ㅚ': 'hl', 'ㅛ': 'y',
+      'ㅜ': 'n', 'ㅝ': 'nj', 'ㅞ': 'np', 'ㅟ': 'nl', 'ㅠ': 'b',
+      'ㅡ': 'm', 'ㅢ': 'ml', 'ㅣ': 'l'
+    };
+
+    let res = "";
+    for (const ch of str) {
+      const code = ch.charCodeAt(0);
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const offset = code - 0xAC00;
+        const cho = CHOSUNG[Math.floor(offset / (21 * 28))];
+        const jung = JUNGSUNG[Math.floor((offset % (21 * 28)) / 28)];
+        const jong = JONGSUNG[offset % 28];
+        res += (JAMO_TO_ENG[cho] || cho) + (JAMO_TO_ENG[jung] || jung) + (jong ? (JAMO_TO_ENG[jong] || jong) : '');
+      } else if (JAMO_TO_ENG[ch]) {
+        res += JAMO_TO_ENG[ch];
+      } else {
+        res += ch;
+      }
+    }
+    return res;
+  }
+
   getChosung(str) {
     if (!str || typeof str !== "string") return "";
     const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
