@@ -1,18 +1,33 @@
 // Column/global correction rules share the existing preset persistence and sync.
 class PTForcedCorrections {
+  getForcedCorrectionColumns() {
+    return {no:'No.', gender:'성별', chartNo:'차트번호', name:'성함', part:'부위', prescription:'처방',
+      extra:'추가 사항', writer:'작성', memo:'메모', specialNote:'특이 사항', visitTime:'방문 시간'};
+  }
+
+  isForcedCorrectionScope(scope) {
+    const columns = this.getForcedCorrectionColumns();
+    return scope === '*' || Object.hasOwn(columns, scope) ||
+      (typeof scope === 'string' && scope.startsWith('!') && Object.hasOwn(columns, scope.slice(1)));
+  }
+
   getForcedCorrectionKey(scope, source = '') {
     return `__autocorrect:${scope}:${encodeURIComponent(source)}`;
   }
 
   getForcedCorrectionRules(scope) {
-    const prefix = this.getForcedCorrectionKey(scope);
+    const prefix = '__autocorrect:';
     const rules = [];
     for (const [key, values] of Object.entries(COLUMN_PRESETS)) {
       if (!key.startsWith(prefix) || !Array.isArray(values) || typeof values[0] !== 'string') continue;
       try {
-        const source = decodeURIComponent(key.slice(prefix.length));
+        const separator = key.indexOf(':', prefix.length);
+        if (separator < 0) continue;
+        const savedScope = key.slice(prefix.length, separator);
+        if (!this.isForcedCorrectionScope(savedScope) || (scope !== undefined && savedScope !== scope)) continue;
+        const source = decodeURIComponent(key.slice(separator + 1));
         const target = values[0];
-        if (source && target && source !== target) rules.push({scope, source, target});
+        if (source && target && source !== target) rules.push({scope:savedScope, source, target});
       } catch (_) { /* Ignore malformed imported keys without changing saved settings. */ }
     }
     return rules;
@@ -21,7 +36,7 @@ class PTForcedCorrections {
   setForcedCorrection(scope, source, target, previous = null) {
     source = String(source ?? '').trim().normalize('NFC');
     target = String(target ?? '').trim().normalize('NFC');
-    if (!['*', 'no', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime'].includes(scope) ||
+    if (!this.isForcedCorrectionScope(scope) ||
         !source || !target || source === target) return false;
     if (previous) delete COLUMN_PRESETS[this.getForcedCorrectionKey(previous.scope, previous.source)];
     // String arrays retain compatibility with existing backup and cloud records.
@@ -37,6 +52,9 @@ class PTForcedCorrections {
 
   findForcedCorrection(value, colKey, caret = value.length) {
     const rules = new Map(this.getForcedCorrectionRules('*').map(rule => [rule.source, rule]));
+    for (const rule of this.getForcedCorrectionRules()) {
+      if (rule.scope.startsWith('!') && rule.scope.slice(1) !== colKey) rules.set(rule.source, rule);
+    }
     for (const rule of this.getForcedCorrectionRules(colKey)) rules.set(rule.source, rule);
     for (const rule of [...rules.values()].sort((a, b) => b.source.length - a.source.length)) {
       const start = caret - rule.source.length;
@@ -107,10 +125,18 @@ class PTForcedCorrections {
     const panel = document.getElementById('forcedCorrectionPanel');
     if (!panel) return;
     const scope = document.getElementById('forcedCorrectionScope');
-    const labels = {name:'성함', part:'부위', prescription:'처방', extra:'추가 사항', writer:'작성', memo:'메모', specialNote:'특이 사항'};
+    const labels = this.getForcedCorrectionColumns();
     const column = this.activePresetTab;
-    scope.options[0].value = column;
-    scope.options[0].textContent = `${labels[column]} 열만`;
+    scope.replaceChildren();
+    const addOption = (parent, value, label) => {
+      const option = document.createElement('option'); option.value = value; option.textContent = label; parent.append(option);
+    };
+    addOption(scope, '*', '모든 열');
+    for (const [title, prefix, suffix] of [['지정한 열만 적용', '', '열만'], ['지정한 열을 제외하고 적용', '!', '열 제외']]) {
+      const group = document.createElement('optgroup'); group.label = title;
+      for (const [key, label] of Object.entries(labels)) addOption(group, prefix + key, `${label} ${suffix}`);
+      scope.append(group);
+    }
     scope.value = column;
     this.forcedCorrectionEditing = null;
     const source = document.getElementById('forcedCorrectionSource');
@@ -143,13 +169,15 @@ class PTForcedCorrections {
     const list = document.getElementById('forcedCorrectionList');
     if (!list) return;
     list.replaceChildren();
-    const rules = [...this.getForcedCorrectionRules(this.activePresetTab), ...this.getForcedCorrectionRules('*')];
+    const rules = this.getForcedCorrectionRules();
+    const labels = this.getForcedCorrectionColumns();
     document.getElementById('forcedCorrectionCount').textContent = rules.length;
     if (!rules.length) { list.textContent = '등록된 강제 자동수정이 없습니다.'; return; }
     for (const rule of rules) {
       const row = document.createElement('div'); row.className = 'forced-correction-row';
       const badge = document.createElement('span'); badge.className = 'forced-correction-scope';
-      badge.textContent = rule.scope === '*' ? '모든 열' : '이 열만';
+      badge.textContent = rule.scope === '*' ? '모든 열' : rule.scope.startsWith('!')
+        ? `${labels[rule.scope.slice(1)]} 열 제외` : `${labels[rule.scope]} 열만`;
       const text = document.createElement('span'); text.className = 'forced-correction-text';
       text.textContent = `${rule.source} → ${rule.target}`;
       const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'preset-action-btn'; edit.textContent = '수정';

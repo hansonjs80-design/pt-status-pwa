@@ -106,10 +106,13 @@ test('global and column forced corrections sync and delete through existing pres
   const db=new Map(),a=createApp(db),b=createApp(db);
   a.app.setForcedCorrection('*','l/t','L/T');
   a.app.setForcedCorrection('part','itb','ITB');
+  a.app.setForcedCorrection('!prescription','skip','EXCEPT');
   a.app.presetsDirty=true;await a.app.pushSharedPresets();await b.app.pullSharedPresets();
   assert.equal(b.app.findForcedCorrection('l/t','memo').value,'L/T');
   assert.equal(b.app.findForcedCorrection('itb','part').value,'ITB');
   assert.equal(b.app.findForcedCorrection('itb','memo'),null);
+  assert.equal(b.app.findForcedCorrection('skip','prescription'),null);
+  assert.equal(b.app.findForcedCorrection('skip','memo').value,'EXCEPT');
   b.app.deleteForcedCorrection('*','l/t');
   b.app.presetsDirty=true;await b.app.pushSharedPresets();await a.app.pullSharedPresets();
   assert.equal(a.app.findForcedCorrection('l/t','memo'),null);

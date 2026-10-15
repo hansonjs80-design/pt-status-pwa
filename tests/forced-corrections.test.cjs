@@ -39,6 +39,27 @@ test('correction rules validate inputs, rename scope and do not leak into anothe
   assert.equal(app.findForcedCorrection('it-band','memo').value,'IT band');
 });
 
+test('every column supports explicit inclusion and exclusion with specific-column precedence',()=>{
+  const {app,storage}=createApp();
+  for(const column of Object.keys(app.getForcedCorrectionColumns())) {
+    app.setForcedCorrection('!'+column,'skip','EXCEPT');
+    assert.equal(app.findForcedCorrection('skip',column),null);
+    const other=column==='memo'?'part':'memo';
+    assert.equal(app.findForcedCorrection('skip',other).value,'EXCEPT');
+    app.deleteForcedCorrection('!'+column,'skip');
+  }
+  app.setForcedCorrection('*','same','ALL');
+  app.setForcedCorrection('!prescription','same','EXCEPT');
+  app.setForcedCorrection('part','same','PART');
+  assert.equal(app.findForcedCorrection('same','prescription').value,'ALL');
+  assert.equal(app.findForcedCorrection('same','memo').value,'EXCEPT');
+  assert.equal(app.findForcedCorrection('same','part').value,'PART');
+  const next=createApp();next.context.setPresets(JSON.parse(storage.get('PT_APP_CUSTOM_PRESETS_V1')));
+  assert.equal(next.app.findForcedCorrection('same','memo').value,'EXCEPT');
+  assert.equal(next.app.getForcedCorrectionRules().length,3);
+  assert.equal(app.setForcedCorrection('!invalid','x','Y'),false);
+});
+
 test('matching respects case and token boundaries and preserves surrounding text and caret',()=>{
   const {app}=createApp();app.setForcedCorrection('part','itb','ITB');
   assert.equal(app.findForcedCorrection('bitb','part'),null);
