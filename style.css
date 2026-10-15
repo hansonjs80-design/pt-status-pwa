@@ -3035,6 +3035,58 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .alignment-menu button:focus-visible { outline: 2px solid #174ea6; outline-offset: -2px; }
 .alignment-menu svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
 
+.history-button.change-case-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: auto;
+  min-width: 38px;
+  height: 32px;
+  padding: 4px 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #333d38;
+}
+.history-button.change-case-button .change-case-icon {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  line-height: 1;
+}
+.history-button.change-case-button .change-case-arrow {
+  font-size: 9px;
+  line-height: 1;
+  color: #555e59;
+  transform: translateY(1px);
+}
+.column-typography-menu.change-case-menu {
+  width: 210px;
+  padding: 6px;
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16), 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.column-typography-menu.change-case-menu .change-case-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #222;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.column-typography-menu.change-case-menu .change-case-option:hover,
+.column-typography-menu.change-case-menu .change-case-option:focus-visible {
+  background: #f0f4f2;
+  color: #107c41;
+  outline: none;
+}
+
 /* The sticky top-left corner becomes an exit control while viewing search history. */
 .history-search-close { display: none; position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: #495057; cursor: pointer; align-items: center; justify-content: center; touch-action: manipulation; }
 .history-search-close svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; }

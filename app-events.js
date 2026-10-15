@@ -105,6 +105,11 @@ class PTAppEvents {
       button.addEventListener('mousedown', event => { this.captureTextColorSelection(); event.preventDefault(); });
       button.addEventListener('click', event => id === 'btnUnderline' ? this.toggleUnderline() : this.openUnderlineMenu(event.currentTarget));
     }
+    const changeCaseButton = document.getElementById('btnChangeCase');
+    if (changeCaseButton) {
+      changeCaseButton.addEventListener('mousedown', event => { this.captureTextColorSelection(); event.preventDefault(); });
+      changeCaseButton.addEventListener('click', event => this.openChangeCaseMenu(event.currentTarget));
+    }
     const highlightButton = document.getElementById('btnTextHighlight');
     highlightButton.addEventListener('mousedown', event => { this.captureTextColorSelection(); event.preventDefault(); });
     highlightButton.addEventListener('click', event => this.openFontColorMenu(event.currentTarget, 'highlight'));

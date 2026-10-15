@@ -549,6 +549,269 @@ class PTTableFormatting {
     if (!nativeEditor) (popup.querySelector('.is-current') || popup.querySelector('button')).focus();
   }
 
+  transformEnglishCase(text, caseType) {
+    if (typeof text !== 'string' || !text) return text || '';
+    switch (caseType) {
+      case 'sentence': {
+        let isNewSentence = true;
+        let res = '';
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (/[a-zA-Z]/.test(ch)) {
+            if (isNewSentence) {
+              res += ch.toUpperCase();
+              isNewSentence = false;
+            } else {
+              res += ch.toLowerCase();
+            }
+          } else {
+            res += ch;
+            if (ch === '.' || ch === '!' || ch === '?' || ch === '\n') {
+              isNewSentence = true;
+            }
+          }
+        }
+        return res;
+      }
+      case 'lowercase':
+        return text.replace(/[a-zA-Z]/g, ch => ch.toLowerCase());
+      case 'uppercase':
+        return text.replace(/[a-zA-Z]/g, ch => ch.toUpperCase());
+      case 'capitalize': {
+        let isNewWord = true;
+        let res = '';
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (/[a-zA-Z]/.test(ch)) {
+            if (isNewWord) {
+              res += ch.toUpperCase();
+              isNewWord = false;
+            } else {
+              res += ch.toLowerCase();
+            }
+          } else {
+            res += ch;
+            isNewWord = true;
+          }
+        }
+        return res;
+      }
+      case 'toggle':
+        return text.replace(/[a-zA-Z]/g, ch => {
+          const upper = ch.toUpperCase();
+          return ch === upper ? ch.toLowerCase() : upper;
+        });
+      default:
+        return text;
+    }
+  }
+
+  applyChangeCase(caseType) {
+    const rows = this.getCurrentRows();
+    const selected = this.textColorSelection;
+    const activeEditor = (typeof document !== 'undefined' && document.activeElement?.matches?.('.cell-input-element:not(.is-armed)'))
+      ? document.activeElement : null;
+
+    // Case 1: Partial text selection in inline editor
+    if (selected && rows[selected.rowIdx]) {
+      const row = rows[selected.rowIdx];
+      const colKey = selected.colKey;
+      const fullText = String(row[colKey] ?? '');
+      const start = Math.max(0, Math.min(selected.start, fullText.length));
+      const end = Math.max(start, Math.min(selected.end, fullText.length));
+      const targetChunk = fullText.slice(start, end);
+      const transformed = this.transformEnglishCase(targetChunk, caseType);
+      const nextFullText = fullText.slice(0, start) + transformed + fullText.slice(end);
+
+      this.captureHistory?.();
+      row[colKey] = nextFullText;
+      if (row._richText?.[colKey] && row._richText[colKey].text === fullText) {
+        row._richText[colKey].text = nextFullText;
+      }
+      this.captureHistory?.();
+      this.saveDataStore?.(false);
+
+      if (activeEditor && activeEditor.isConnected) {
+        activeEditor.value = nextFullText;
+        activeEditor.focus({ preventScroll: true });
+        activeEditor.setSelectionRange(start, start + transformed.length);
+        activeEditor.refreshEditorColors?.();
+      } else {
+        this.renderTable?.();
+      }
+      if (this.elFormulaInput && this.activeCell?.rowIdx === selected.rowIdx && this.activeCell?.colKey === colKey) {
+        this.elFormulaInput.value = nextFullText;
+      }
+      this.textColorSelection = null;
+      return true;
+    }
+
+    // Case 2: Full cell inline editing
+    if (activeEditor && this.activeCell && rows[this.activeCell.rowIdx]) {
+      const { rowIdx, colKey } = this.activeCell;
+      const row = rows[rowIdx];
+      const fullText = String(activeEditor.value ?? row[colKey] ?? '');
+      const transformed = this.transformEnglishCase(fullText, caseType);
+      const cursorStart = activeEditor.selectionStart ?? transformed.length;
+      const cursorEnd = activeEditor.selectionEnd ?? transformed.length;
+
+      this.captureHistory?.();
+      row[colKey] = transformed;
+      if (row._richText?.[colKey] && row._richText[colKey].text === fullText) {
+        row._richText[colKey].text = transformed;
+      }
+      this.captureHistory?.();
+      this.saveDataStore?.(false);
+
+      activeEditor.value = transformed;
+      activeEditor.focus({ preventScroll: true });
+      activeEditor.setSelectionRange(cursorStart, cursorEnd);
+      activeEditor.refreshEditorColors?.();
+      if (this.elFormulaInput) {
+        this.elFormulaInput.value = transformed;
+      }
+      return true;
+    }
+
+    // Case 3: Cell grid selection (range selection)
+    const range = this.getFormattingRange?.();
+    const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime'];
+    let modified = false;
+
+    if (range) {
+      this.captureHistory?.();
+      for (let r = range.minRow; r <= range.maxRow; r++) {
+        const row = rows[r];
+        if (!row) continue;
+        for (let c = range.minCol; c <= range.maxCol; c++) {
+          if (!this.isSelectedCoordinate(r, c)) continue;
+          const key = keys[c];
+          if (!key || key === 'no' || key === 'visitTime') continue;
+          const fullText = String(row[key] ?? '');
+          if (!/[a-zA-Z]/.test(fullText)) continue;
+          const transformed = this.transformEnglishCase(fullText, caseType);
+          if (transformed !== fullText) {
+            row[key] = transformed;
+            if (row._richText?.[key] && row._richText[key].text === fullText) {
+              row._richText[key].text = transformed;
+            }
+            modified = true;
+          }
+        }
+      }
+      if (modified) {
+        this.captureHistory?.();
+        this.saveDataStore?.(false);
+        this.renderTable?.();
+        return true;
+      }
+    }
+
+    // Fallback: activeCell or specialNote
+    if (this.activeCell && rows[this.activeCell.rowIdx]) {
+      const { rowIdx, colKey } = this.activeCell;
+      const row = rows[rowIdx];
+      const fullText = String(row[colKey] ?? '');
+      if (/[a-zA-Z]/.test(fullText)) {
+        this.captureHistory?.();
+        const transformed = this.transformEnglishCase(fullText, caseType);
+        row[colKey] = transformed;
+        if (row._richText?.[colKey] && row._richText[colKey].text === fullText) {
+          row._richText[colKey].text = transformed;
+        }
+        this.captureHistory?.();
+        this.saveDataStore?.(false);
+        this.renderTable?.();
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  openChangeCaseMenu(anchor) {
+    if (!this.prepareFormattingMenu('changeCase', anchor)) return;
+    this.typographyCleanup?.();
+    document.getElementById('columnTypographyMenu')?.remove();
+
+    const originalFocus = document.activeElement;
+    const nativeEditor = originalFocus?.matches?.('.cell-input-element') ? originalFocus : null;
+
+    const popup = document.createElement('div');
+    popup.id = 'columnTypographyMenu';
+    popup.className = 'column-typography-menu change-case-menu';
+    popup._formatAnchor = anchor;
+    popup._formatProperty = 'changeCase';
+    popup.setAttribute('role', 'dialog');
+    popup.setAttribute('aria-label', '대/소문자 바꾸기');
+
+    const options = [
+      { key: 'sentence', label: '문장의 첫 글자를 대문자로' },
+      { key: 'lowercase', label: '소문자로' },
+      { key: 'uppercase', label: '대문자로' },
+      { key: 'capitalize', label: '각 단어를 대문자로' },
+      { key: 'toggle', label: '대/소문자 전환' }
+    ];
+
+    const close = () => {
+      popup.remove();
+      this.typographyCleanup?.();
+      this.typographyCleanup = null;
+    };
+
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'change-case-option';
+      btn.dataset.caseType = opt.key;
+      btn.textContent = opt.label;
+      btn.onclick = () => {
+        this.applyChangeCase(opt.key);
+        close();
+        if (nativeEditor?.isConnected) {
+          nativeEditor.focus({ preventScroll: true });
+        } else if (anchor) {
+          anchor.focus();
+        }
+      };
+      popup.append(btn);
+    });
+
+    popup.onmousedown = event => event.preventDefault();
+    document.body.append(popup);
+
+    const rect = anchor ? anchor.getBoundingClientRect() : (this.elContextMenu || document.body).getBoundingClientRect();
+    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
+    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
+
+    const outside = event => {
+      if (!popup.contains(event.target) && !anchor?.contains(event.target)) close();
+    };
+
+    popup.onkeydown = event => {
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+        (nativeEditor?.isConnected ? nativeEditor : anchor)?.focus?.({ preventScroll: true });
+        return;
+      }
+      if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+        event.preventDefault();
+        const buttons = [...popup.querySelectorAll('button')];
+        const index = buttons.indexOf(document.activeElement);
+        const nextIndex = (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[nextIndex]?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', outside);
+    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+
+    const firstBtn = popup.querySelector('button');
+    firstBtn?.focus();
+  }
+
   openColumnTypographyMenu(property, anchor = null) {
     if (!this.prepareFormattingMenu(property, anchor)) return;
     if (!this.getFormattingRange()) return;

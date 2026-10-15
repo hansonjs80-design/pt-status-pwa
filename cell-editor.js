@@ -282,6 +282,7 @@ class PTCellEditor {
     input.addEventListener("blur", () => {
       input._engKorBuffer = "";
       input._engKorPrefix = "";
+      input._engKorDisabled = false;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       if (input.classList.contains("is-armed")) { input.remove(); return; }
@@ -306,6 +307,30 @@ class PTCellEditor {
 
       // 한글 우선 열(성함 열 및 작성/성별 제외 열)에서 OS 영문 모드로 입력 시 2벌식 한글 자동 변환
       if (this.isKoreanPreferredColumn(colKey) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // 한/영 전환 키(영문키) 감지 시: 영한 자동 변환 토글 및 영문 모드로 전환
+        const isHangulToggleKey = e.key === "HangulMode" || e.key === "ModeChange" ||
+          e.code === "Lang1" || e.code === "Lang2" ||
+          (e.key === "Process" && (e.code === "KeyLang1" || e.code === "Lang1")) ||
+          (e.key === "Alt" && e.code === "AltRight") ||
+          e.key === "CapsLock" || e.code === "CapsLock";
+
+        if (isHangulToggleKey) {
+          if (input._engKorBuffer) {
+            // 지금까지 조합된 한글을 원래 입력한 영문으로 즉시 복원하고 영문 모드로 변경
+            e.preventDefault();
+            const prefix = input._engKorPrefix || "";
+            input.value = prefix + input._engKorBuffer;
+            input._engKorBuffer = "";
+            input._engKorDisabled = true;
+            input.setSelectionRange(input.value.length, input.value.length);
+            input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+            return;
+          } else {
+            // 버퍼가 없을 때 영문키를 누르면 영한 자동 변환 모드 토글 (영문 직접 입력 모드로 전환)
+            input._engKorDisabled = !input._engKorDisabled;
+          }
+        }
+
         // 백스페이스: 영한 버퍼 조합 중이면 마지막 영타 1글자를 지우고 한글 재조합
         if (e.key === "Backspace" && input._engKorBuffer) {
           e.preventDefault();
@@ -317,24 +342,31 @@ class PTCellEditor {
           return;
         }
 
-        // Escape: 영한 변환된 내용을 취소하고 원래 타이핑한 영문 원본으로 복원
+        // Escape: 영한 변환된 내용을 취소하고 원래 타이핑한 영문 원본으로 복원 후 영문 모드 유지
         if (e.key === "Escape" && input._engKorBuffer) {
           e.preventDefault();
           e.stopPropagation();
           input.value = (input._engKorPrefix || "") + input._engKorBuffer;
           input._engKorBuffer = "";
+          input._engKorDisabled = true;
           input.setSelectionRange(input.value.length, input.value.length);
           input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           return;
         }
 
-        // 영문 알파벳 키(a-z, A-Z) 입력 감지 (단, IME 조합 중에는 개입하지 않음)
+        // 영문 알파벳 키(a-z, A-Z) 입력 감지 (단, IME 조합 중이거나 영문 모드로 전환된 경우 제외)
         if (e.key && e.key.length === 1 && /^[a-zA-Z]$/.test(e.key) && !e.isComposing && input.dataset.nativeComposing !== "true") {
+          // 사용자가 영문키를 눌러 영문 모드로 전환한 상태라면 영문 그대로 입력
+          if (input._engKorDisabled) {
+            this.activateNativeEditor(input);
+            return;
+          }
+
           const isArmed = input.classList.contains("is-armed");
           const isInitial = isArmed || !input.value ||
             (input.selectionStart === 0 && input.selectionEnd === input.value.length);
 
-          // 성함 열은 언제든지 영타 입력 시 한글로 변환, 기타 열은 셀에 처음 입력할 때부터 영한 버퍼 활성화
+          // 성함 열은 언제든지 영타 입력 시 한글 우선 변환, 기타 열은 셀에 처음 입력할 때부터 영한 버퍼 활성화
           if (colKey === "name" || isInitial || Boolean(input._engKorBuffer)) {
             this.activateNativeEditor(input);
             e.preventDefault();

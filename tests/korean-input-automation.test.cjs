@@ -166,3 +166,38 @@ test('writer column does not convert English keydown to Korean', () => {
   assert.equal(e.defaultPrevented, false);
 });
 
+test('hangul toggle key (HangulMode, CapsLock, Lang1) switches to English mode in name editor', () => {
+  const { app } = createTestApp();
+  const cellElement = {
+    dataset: { col: 'name' },
+    querySelector: () => null,
+    appendChild: () => {},
+    textContent: '',
+  };
+  app.elTableBody = { querySelector: () => null };
+  app.elFormulaInput = { value: '' };
+
+  app.startInlineEdit(0, 'name', cellElement, false);
+  const input = app.getCreatedInput();
+  assert.ok(input);
+  input.value = '';
+  input.selectionStart = 0;
+  input.selectionEnd = 0;
+
+  // 1. 처음 'r' 입력 -> 'ㄱ'으로 변환
+  input._listeners.keydown({ key: 'r', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
+  assert.equal(input.value, 'ㄱ');
+
+  // 2. 한/영 키 (HangulMode) 누름 -> 원래 영문 'r'로 복원되고 영문 모드(_engKorDisabled) 활성화
+  let toggleEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  input._listeners.keydown(toggleEvt);
+  assert.equal(toggleEvt.defaultPrevented, true);
+  assert.equal(input.value, 'r');
+  assert.equal(input._engKorDisabled, true);
+
+  // 3. 영문 모드에서 'l' 입력 -> 더 이상 가로채지 않고 영문 네이티브 입력 허용
+  let nextKey = { key: 'l', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  input._listeners.keydown(nextKey);
+  assert.equal(nextKey.defaultPrevented, false);
+});
+
