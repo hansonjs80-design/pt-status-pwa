@@ -239,7 +239,7 @@ class PTTableView {
     this.updateActiveHeaders(rowIdx, colKey);
 
     // Highlight row
-    document.querySelectorAll(".excel-row").forEach((r) => r.classList.remove("active-row"));
+    document.querySelectorAll(".active-row").forEach((r) => r.classList.remove("active-row"));
     const rowEl = cellElement.closest("tr");
     if (rowEl) rowEl.classList.add("active-row");
 
@@ -297,7 +297,7 @@ class PTTableView {
     const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
     let top = bounds.top + (container.clientTop || 0);
     // Sticky rows visually cover the viewport although native scrolling counts it as visible.
-    container.querySelectorAll("#excelTable thead th, .current-history-headers th").forEach(header => {
+    container.querySelectorAll("#excelTable thead, .current-history-headers").forEach(header => {
       const rect = header.getBoundingClientRect();
       if (rect.height && rect.bottom > top && rect.top < bottom) top = Math.max(top, rect.bottom);
     });
@@ -309,7 +309,7 @@ class PTTableView {
 
   highlightCell(cellElement) {
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
-    document.querySelectorAll(".excel-cell").forEach((c) => c.classList.remove("cell-focused"));
+    document.querySelectorAll(".cell-focused").forEach((c) => c.classList.remove("cell-focused"));
     cellElement.classList.add("cell-focused");
     const { row, col, colIdx } = cellElement.dataset;
     const value = this.getCurrentRows()[Number(row)]?.[col];

@@ -25,7 +25,7 @@ class PTCellEditor {
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
     // Background selection restoration must not take focus from patient search.
     if (armed && this.elSearchPromptModal?.style.display === 'flex') return;
-    void this.loadSearchHistory();
+    if (!armed) void this.loadSearchHistory();
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
       this.openGenderDropdown(rowIdx, cellElement, dropBtn);
@@ -179,6 +179,7 @@ class PTCellEditor {
       // without adding a fixed wait before the inline completion can appear.
       if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
         clearTimeout(_acDebounceTimer);
+        const acDelay = composing || input.dataset.nativeComposing === "true" ? 40 : 25;
         _acDebounceTimer = setTimeout(() => {
           if (!input.isConnected || document.activeElement !== input) return;
           const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
@@ -187,7 +188,7 @@ class PTCellEditor {
           } else {
             this.closeAutocompleteMenu();
           }
-        }, 0);
+        }, acDelay);
       }
     });
 

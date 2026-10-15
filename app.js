@@ -381,15 +381,14 @@ class PTApp {
   debounceSaveDataStore(delay = 350) {
     // Protect edits immediately; a pending cloud response must not replace this date.
     this.pendingSyncDates.add(this.currentDate);
-    void this.persistDataStore().then(() => {
-      localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
-    }).catch(() => this.showSaveIndicator("로컬 저장 공간을 확인해 주세요", true));
+    try { localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates])); } catch (_) {}
     this.updateHistoryButtons();
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
       this.saveDataStore();
     }, delay);
   }
+
 
   showSaveIndicator(text, isError = false) {
     if (!this.elSaveStatus) return;

@@ -1,7 +1,7 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTSheetSelection {
   updateActiveHeaders(rowIdx, colKey) {
-    document.querySelectorAll(".col-letter, .b-header, .row-num").forEach((el) => {
+    document.querySelectorAll(".header-active").forEach((el) => {
       el.classList.remove("header-active");
     });
 
@@ -68,10 +68,10 @@ class PTSheetSelection {
     this.clearCrossDateSelection();
     this.cancelFillDrag();
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
-    document.querySelectorAll(".col-letter, .b-header, .row-num, .corner-header").forEach((el) => {
+    document.querySelectorAll(".col-letter.selected, .b-header.selected, .row-num.selected, .corner-header.selected").forEach((el) => {
       el.classList.remove("selected");
     });
-    document.querySelectorAll(".excel-cell").forEach((el) => {
+    document.querySelectorAll(".col-selected, .row-selected, .all-selected, .range-selected").forEach((el) => {
       el.classList.remove(
         "col-selected",
         "row-selected",

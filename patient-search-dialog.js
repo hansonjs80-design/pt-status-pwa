@@ -396,7 +396,10 @@ class PTPatientSearchDialog {
 
   async searchPatientHistory(query, targetRowIdx) {
     this.closeSearchPromptModal();
-    if (this.supabaseClient) await this.loadSearchHistory();
+    if (this.supabaseClient) {
+      if (this.searchHistoryLoadedAt) void this.loadSearchHistory();
+      else await this.loadSearchHistory();
+    }
     // A repeated IME shortcut can open a prompt while cloud history is loading.
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
     const searchByChart = this.isChartNumberQuery(query);
@@ -432,7 +435,10 @@ class PTPatientSearchDialog {
     if (button) { button.disabled = true; button.textContent = "검색 중"; }
     this.elSearchPromptInput.setAttribute?.("aria-busy", "true");
     try {
-      if (this.supabaseClient) await Promise.race([this.loadSearchHistory(), cancelled]);
+      if (this.supabaseClient) {
+        if (this.searchHistoryLoadedAt) void this.loadSearchHistory();
+        else await Promise.race([this.loadSearchHistory(), cancelled]);
+      }
       // Closing or reopening the dialog must invalidate its old async result.
       if (this.searchPromptSubmission !== submission || (this.searchPromptRequestId || 0) !== requestId) return;
       // Ignore the active draft row: typing a new name does not establish history.
