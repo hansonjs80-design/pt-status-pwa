@@ -39,6 +39,17 @@ test('transformEnglishCase transforms only English letters and preserves Korean/
     );
   });
 
+  await t.test('first word mode', () => {
+    assert.strictEqual(
+      formatter.transformEnglishCase('특이사항: pt rom exercise. next line test!', 'firstWord'),
+      '특이사항: Pt rom exercise. next line test!'
+    );
+    assert.strictEqual(
+      formatter.transformEnglishCase('PT ROM EXERCISE 10회', 'firstWord'),
+      'Pt rom exercise 10회'
+    );
+  });
+
   await t.test('toggle case mode', () => {
     assert.strictEqual(
       formatter.transformEnglishCase('Pt Rom Exercise 10회', 'toggle'),

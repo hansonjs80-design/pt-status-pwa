@@ -573,6 +573,24 @@ class PTTableFormatting {
         }
         return res;
       }
+      case 'firstWord': {
+        let foundFirst = false;
+        let res = '';
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (/[a-zA-Z]/.test(ch)) {
+            if (!foundFirst) {
+              res += ch.toUpperCase();
+              foundFirst = true;
+            } else {
+              res += ch.toLowerCase();
+            }
+          } else {
+            res += ch;
+          }
+        }
+        return res;
+      }
       case 'lowercase':
         return text.replace(/[a-zA-Z]/g, ch => ch.toLowerCase());
       case 'uppercase':
@@ -748,9 +766,10 @@ class PTTableFormatting {
 
     const options = [
       { key: 'sentence', label: '문장의 첫 글자를 대문자로' },
-      { key: 'lowercase', label: '소문자로' },
       { key: 'uppercase', label: '대문자로' },
+      { key: 'firstWord', label: '앞단어만 대문자로' },
       { key: 'capitalize', label: '각 단어를 대문자로' },
+      { key: 'lowercase', label: '소문자로' },
       { key: 'toggle', label: '대/소문자 전환' }
     ];
 
