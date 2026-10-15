@@ -141,10 +141,11 @@ class PTForcedCorrections {
     const modal = document.getElementById('forcedCorrectionModal');
     if (!modal) return;
     clearTimeout(this.presetManagerFocusTimer);
+    document.getElementById('forcedCorrectionSearch').value = '';
     this.updateForcedCorrectionManager();
     modal.style.display = 'flex';
     if (this.elPresetManagerModal) this.elPresetManagerModal.inert = true;
-    document.getElementById('forcedCorrectionSource').focus();
+    document.getElementById('forcedCorrectionSearch').focus();
   }
 
   closeForcedCorrectionManager(restoreFocus = true) {
@@ -202,6 +203,26 @@ class PTForcedCorrections {
         event.preventDefault(); event.stopPropagation(); add.click();
       }
     };
+    const search = document.getElementById('forcedCorrectionSearch');
+    const clearSearch = () => {
+      search.value = '';
+      document.getElementById('forcedCorrectionList').scrollTop = 0;
+      this.renderForcedCorrectionList();
+      search.focus();
+    };
+    search.oninput = () => {
+      document.getElementById('forcedCorrectionList').scrollTop = 0;
+      this.renderForcedCorrectionList();
+    };
+    search.onkeydown = event => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.key === 'Escape' && search.value) {
+        event.preventDefault(); event.stopPropagation(); clearSearch();
+      } else if (event.key === 'Enter') {
+        event.preventDefault(); event.stopPropagation();
+      }
+    };
+    document.getElementById('btnClearForcedCorrectionSearch').onclick = clearSearch;
     document.getElementById('btnOpenForcedCorrectionManager').onclick = () => this.openForcedCorrectionManager();
     for (const id of ['btnCloseForcedCorrectionManager', 'btnDoneForcedCorrectionManager']) {
       document.getElementById(id).onclick = () => this.closeForcedCorrectionManager();
@@ -233,14 +254,23 @@ class PTForcedCorrections {
     list.replaceChildren();
     const rules = this.getForcedCorrectionRules();
     const labels = this.getForcedCorrectionColumns();
+    const scopeLabel = rule => rule.scope === '*' ? '모든 열' : rule.scope.startsWith('!')
+      ? `${labels[rule.scope.slice(1)]} 열 제외` : `${labels[rule.scope]} 열만`;
+    const normalize = value => String(value).normalize('NFC').toLowerCase().replace(/\s+/g, '');
+    const search = document.getElementById('forcedCorrectionSearch').value;
+    const query = normalize(search);
+    const filtered = query ? rules.filter(rule => [rule.source, rule.target, scopeLabel(rule)]
+      .some(value => normalize(value).includes(query))) : rules;
     document.getElementById('forcedCorrectionCount').textContent = rules.length;
     document.getElementById('forcedCorrectionModalCount').textContent = rules.length;
+    document.getElementById('forcedCorrectionSearchCount').textContent = query ? `검색 결과 ${filtered.length}개` : '';
+    document.getElementById('btnClearForcedCorrectionSearch').disabled = !search;
     if (!rules.length) { list.textContent = '등록된 강제 자동수정이 없습니다.'; return; }
-    for (const rule of rules) {
+    if (!filtered.length) { list.textContent = '검색 결과가 없습니다. 다른 문구로 검색해 주세요.'; return; }
+    for (const rule of filtered) {
       const row = document.createElement('div'); row.className = 'forced-correction-row';
       const badge = document.createElement('span'); badge.className = 'forced-correction-scope';
-      badge.textContent = rule.scope === '*' ? '모든 열' : rule.scope.startsWith('!')
-        ? `${labels[rule.scope.slice(1)]} 열 제외` : `${labels[rule.scope]} 열만`;
+      badge.textContent = scopeLabel(rule);
       const text = document.createElement('span'); text.className = 'forced-correction-text';
       text.textContent = `${rule.source} → ${rule.target}`;
       const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'preset-action-btn'; edit.textContent = '수정';

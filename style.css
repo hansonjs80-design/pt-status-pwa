@@ -3004,6 +3004,11 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 #forcedCorrectionModal .forced-correction-card { width: calc(100% - 32px); max-width: 940px; height: calc(100dvh - 48px); max-height: 960px; border-radius: 14px; }
 #forcedCorrectionModal .modal-header { flex-shrink: 0; }
 #forcedCorrectionModal .modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 16px; }
+.forced-correction-search { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin: 12px 0 0; }
+.forced-correction-search label { flex-shrink: 0; color: #526b5c; font-size: 13px; font-weight: 600; }
+.forced-correction-search input { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid #cbd8e5; border-radius: 6px; font: inherit; font-size: 13px; }
+.forced-correction-search button { flex-shrink: 0; }
+#forcedCorrectionSearchCount { margin-left: 12px; color: #107c41; font-size: 12px; font-weight: 500; }
 .forced-correction-card .preset-manager-note { flex-shrink: 0; }
 .forced-correction-card .forced-correction-form { flex-shrink: 0; grid-template-columns: 180px minmax(0, 1fr) auto minmax(0, 1fr) auto; padding: 0 0 16px; }
 .forced-correction-card .forced-correction-form :is(input, select) { padding: 10px 8px; font-size: 13px; }

@@ -600,7 +600,12 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
           <input id="forcedCorrectionTarget" type="text" aria-label="강제 자동수정 변경 문구" placeholder="변경 문구 (예: L/T)" spellcheck="false" autocomplete="off">
           <button id="btnAddForcedCorrection" type="button" class="preset-action-btn">추가</button>
         </div>
-        <div class="forced-correction-heading">등록 규칙 <strong id="forcedCorrectionModalCount">0</strong></div>
+        <div class="forced-correction-search">
+          <label for="forcedCorrectionSearch">목록 검색</label>
+          <input id="forcedCorrectionSearch" type="search" placeholder="입력 문구 · 변경 문구 · 적용 열 검색" spellcheck="false" autocomplete="off" aria-controls="forcedCorrectionList">
+          <button id="btnClearForcedCorrectionSearch" type="button" class="preset-action-btn" disabled>지우기</button>
+        </div>
+        <div class="forced-correction-heading">등록 규칙 <strong id="forcedCorrectionModalCount">0</strong><span id="forcedCorrectionSearchCount" role="status" aria-live="polite"></span></div>
         <div id="forcedCorrectionList" class="forced-correction-list"></div>
       </div>
       <div class="forced-correction-footer">
