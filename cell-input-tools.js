@@ -659,6 +659,43 @@ class PTCellInputTools {
     return result;
   }
 
+  convertEngToHangul(str) {
+    if (!str || typeof str !== "string") return str;
+    const ENG_TO_KOR_MAP = {
+      q: 'ㅂ', Q: 'ㅃ',
+      w: 'ㅈ', W: 'ㅉ',
+      e: 'ㄷ', E: 'ㄸ',
+      r: 'ㄱ', R: 'ㄲ',
+      t: 'ㅅ', T: 'ㅆ',
+      y: 'ㅛ', Y: 'ㅛ',
+      u: 'ㅕ', U: 'ㅕ',
+      i: 'ㅑ', I: 'ㅑ',
+      o: 'ㅐ', O: 'ㅒ',
+      p: 'ㅔ', P: 'ㅖ',
+      a: 'ㅁ', A: 'ㅁ',
+      s: 'ㄴ', S: 'ㄴ',
+      d: 'ㅇ', D: 'ㅇ',
+      f: 'ㄹ', F: 'ㄹ',
+      g: 'ㅎ', G: 'ㅎ',
+      h: 'ㅗ', H: 'ㅗ',
+      j: 'ㅓ', J: 'ㅓ',
+      k: 'ㅏ', K: 'ㅏ',
+      l: 'ㅣ', L: 'ㅣ',
+      z: 'ㅋ', Z: 'ㅋ',
+      x: 'ㅌ', X: 'ㅌ',
+      c: 'ㅊ', C: 'ㅊ',
+      v: 'ㅍ', V: 'ㅍ',
+      b: 'ㅠ', B: 'ㅠ',
+      n: 'ㅜ', N: 'ㅜ',
+      m: 'ㅡ', M: 'ㅡ'
+    };
+    let jamoStr = "";
+    for (const ch of str) {
+      jamoStr += ENG_TO_KOR_MAP[ch] || ch;
+    }
+    return this.assembleHangul(jamoStr);
+  }
+
   getChosung(str) {
     if (!str || typeof str !== "string") return "";
     const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];

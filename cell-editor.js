@@ -1,5 +1,9 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCellEditor {
+  isKoreanPreferredColumn(colKey) {
+    return !["writer", "gender", "no"].includes(colKey);
+  }
+
   getChartNameRedirect(value, previousChart = '') {
     const text = this.assembleHangul(String(value ?? '')).trim();
     if (!/\p{L}/u.test(text)) return null;
@@ -19,7 +23,8 @@ class PTCellEditor {
     }
     input.classList.remove("is-armed");
     input.refreshEditorColors?.();
-    if (["name", "memo"].includes(input.closest(".excel-cell")?.dataset.col)) this.initMemoInput(input);
+    const colKey = input.closest(".excel-cell")?.dataset.col;
+    if (this.isKoreanPreferredColumn(colKey)) this.initMemoInput(input);
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
@@ -62,7 +67,7 @@ class PTCellEditor {
       input.spellcheck = false;
     }
     // Set the Korean input hint before focus establishes the native IME context.
-    if (["name", "memo"].includes(colKey)) this.initMemoInput(input);
+    if (this.isKoreanPreferredColumn(colKey)) this.initMemoInput(input);
 
     cellElement.appendChild(input);
     input.refreshEditorColors = () => this.refreshEditorTextColors(input, cellElement, rows[rowIdx], colKey);
@@ -126,6 +131,8 @@ class PTCellEditor {
       }, 0);
     };
     input.addEventListener("compositionstart", (e) => {
+      input._engKorBuffer = "";
+      input._engKorPrefix = "";
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       this.rememberPatientSearchDraft(rowIdx, colKey, input);
       clearTimeout(_hangulRepairTimer);
@@ -273,6 +280,8 @@ class PTCellEditor {
     };
 
     input.addEventListener("blur", () => {
+      input._engKorBuffer = "";
+      input._engKorPrefix = "";
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       if (input.classList.contains("is-armed")) { input.remove(); return; }
@@ -294,6 +303,58 @@ class PTCellEditor {
 
     input.addEventListener("keydown", (e) => {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+
+      // 한글 우선 열(성함 열 및 작성/성별 제외 열)에서 OS 영문 모드로 입력 시 2벌식 한글 자동 변환
+      if (this.isKoreanPreferredColumn(colKey) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // 백스페이스: 영한 버퍼 조합 중이면 마지막 영타 1글자를 지우고 한글 재조합
+        if (e.key === "Backspace" && input._engKorBuffer) {
+          e.preventDefault();
+          input._engKorBuffer = input._engKorBuffer.slice(0, -1);
+          const prefix = input._engKorPrefix || "";
+          input.value = input._engKorBuffer ? prefix + this.convertEngToHangul(input._engKorBuffer) : prefix;
+          input.setSelectionRange(input.value.length, input.value.length);
+          input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+          return;
+        }
+
+        // Escape: 영한 변환된 내용을 취소하고 원래 타이핑한 영문 원본으로 복원
+        if (e.key === "Escape" && input._engKorBuffer) {
+          e.preventDefault();
+          e.stopPropagation();
+          input.value = (input._engKorPrefix || "") + input._engKorBuffer;
+          input._engKorBuffer = "";
+          input.setSelectionRange(input.value.length, input.value.length);
+          input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+          return;
+        }
+
+        // 영문 알파벳 키(a-z, A-Z) 입력 감지 (단, IME 조합 중에는 개입하지 않음)
+        if (e.key && e.key.length === 1 && /^[a-zA-Z]$/.test(e.key) && !e.isComposing && input.dataset.nativeComposing !== "true") {
+          const isArmed = input.classList.contains("is-armed");
+          const isInitial = isArmed || !input.value ||
+            (input.selectionStart === 0 && input.selectionEnd === input.value.length);
+
+          // 성함 열은 언제든지 영타 입력 시 한글로 변환, 기타 열은 셀에 처음 입력할 때부터 영한 버퍼 활성화
+          if (colKey === "name" || isInitial || Boolean(input._engKorBuffer)) {
+            this.activateNativeEditor(input);
+            e.preventDefault();
+            if (!input._engKorBuffer) {
+              input._engKorPrefix = isInitial ? "" : input.value.slice(0, input.selectionStart);
+              input._engKorBuffer = "";
+            }
+            input._engKorBuffer += e.key;
+            const converted = this.convertEngToHangul(input._engKorBuffer);
+            input.value = (input._engKorPrefix || "") + converted;
+            input.setSelectionRange(input.value.length, input.value.length);
+            input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+            return;
+          }
+        } else if (e.key === " " || e.key === "Enter" || e.key === "Tab") {
+          // 공백이나 확정 키 입력 시 영한 버퍼 확정
+          input._engKorBuffer = "";
+          input._engKorPrefix = "";
+        }
+      }
       // Wait for explicit Enter; typing/composition must stay in the chart editor.
       // Handle physical Enter before the generic IME guard so one press can
       // confirm the composed name and move to its proper cell.
