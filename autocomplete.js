@@ -377,6 +377,7 @@ class PTAutocomplete {
     const value = edit.value;
     this.autocompleteRenameBusy = true;
     try {
+      this.showSaveIndicator('전체 날짜 기록 확인 중…');
       const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText);
       // Do not let the existing editor restore the old text on blur.
       if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
@@ -405,8 +406,10 @@ class PTAutocomplete {
     const client = this.supabaseClient;
     if (client) {
       if (this.searchHistoryRequest) await this.searchHistoryRequest;
-      if (!await this.loadSearchHistory(true) || this.supabaseClient !== client) {
-        throw new Error("모든 날짜의 기록을 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요.");
+      if (!await this.loadSearchHistory(true, { allDates: true }) || this.supabaseClient !== client) {
+        const reason = this.supabaseClient !== client ? '클라우드 연결이 변경되었습니다.'
+          : this.searchHistoryLoadError?.message || '클라우드에 연결할 수 없습니다.';
+        throw new Error(`전체 날짜 기록 확인 실패: ${reason}\n기록은 변경하지 않았습니다. 잠시 후 ‘이전 기록 수정’을 다시 눌러 주세요.`);
       }
     }
     const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();

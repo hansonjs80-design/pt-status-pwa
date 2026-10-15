@@ -146,6 +146,84 @@ test('bulk rename refreshes cloud history and preserves all pending merge baseli
   assert.equal(app.syncBaselines.size, 20);
 });
 
+test('case-only part rename reads all dates in small pages, retries a failed page and backs up first', async () => {
+  const { app, storage, queued } = createApp({
+    '2026-10-04': [{ part: 'Rt. knee', memo: 'Rt. knee' }, { part: 'Rt. Knee(P)' }],
+  }, { part: ['Rt. knee', 'Rt. Knee'] });
+  app.getSearchPeriod = () => '3months';
+  app.refreshSearchSuggestions = () => {};
+  const records = Array.from({ length: 22 }, (_, i) => ({
+    date: `2024-01-${String(22 - i).padStart(2, '0')}`, updated_at: 'v1', rows_data: [{ part: 'Rt. knee' }],
+  }));
+  const requests = []; let failed = false;
+  app.supabaseClient = { from() { return {
+    select() { return this; }, order() { return this; },
+    gte() { assert.fail('all-date rename must ignore the patient search period'); },
+    async range(start, end) {
+      requests.push([start, end]);
+      if (start === 20 && !failed) { failed = true; return { error: { code: '57014', message: 'statement timeout' } }; }
+      return { data: records.slice(start, end + 1), count: records.length };
+    },
+  }; } };
+  assert.equal(await app.renameAutocompleteValue('part', 'Rt. knee', 'Rt. Knee'), 23);
+  assert.deepEqual(requests, [[0, 19], [20, 39], [20, 20], [21, 21]]);
+  assert.equal(queued.length, 23);
+  assert.equal(app.dataStore['2026-10-04'][0].part, 'Rt. Knee');
+  assert.equal(app.dataStore['2026-10-04'][0].memo, 'Rt. knee');
+  assert.equal(app.dataStore['2026-10-04'][1].part, 'Rt. Knee(P)');
+  assert.equal(app.dataStore['2024-01-01'][0].part, 'Rt. Knee');
+  const backup = JSON.parse(storage.get([...storage.keys()].find(key => key.startsWith('PT_TEXT_EDIT_BACKUP_'))));
+  assert.equal(backup.cloudSearchHistory['2024-01-01'][0].part, 'Rt. knee');
+  assert.equal(backup.dataStore['2026-10-04'][0].part, 'Rt. knee');
+});
+
+test('permanent cloud failure explains the reason and never edits or queues partial history', async () => {
+  for (const permissionError of [true, false]) {
+    const { app, storage, queued } = createApp({ '2026-10-04': [{ part: 'Rt. knee' }] });
+    app.refreshSearchSuggestions = () => {};
+    const before = JSON.stringify(app.dataStore); let attempts = 0;
+    app.supabaseClient = { from() { return {
+      select() { return this; }, order() { return this; },
+      async range(start) {
+        attempts++;
+        if (start === 0) return { data: [{ date: '2024-01-01', rows_data: [{ part: 'Rt. knee' }] }], count: 2 };
+        return { error: permissionError ? { code: '42501', message: 'permission denied' } : new Error('Failed to fetch') };
+      },
+    }; } };
+    await assert.rejects(app.renameAutocompleteValue('part', 'Rt. knee', 'Rt. Knee'),
+      permissionError ? /permission denied[\s\S]*기록은 변경하지 않았습니다/ : /Failed to fetch[\s\S]*기록은 변경하지 않았습니다/);
+    assert.equal(attempts, permissionError ? 2 : 4, 'one-date network request gets one final retry');
+    assert.equal(JSON.stringify(app.dataStore), before);
+    assert.deepEqual(queued, []);
+    assert.equal(storage.size, 0);
+    assert.equal(Object.keys(app.cloudSearchHistory).length, 0);
+    assert.equal(app.searchHistoryRequest, null);
+  }
+});
+
+test('all-date edit waits for a narrow background request then loads older dates too', async () => {
+  const { app } = createApp();
+  app.getSearchPeriod = () => '3months'; app.refreshSearchSuggestions = () => {};
+  let finish, cutoff, reads = 0;
+  app.supabaseClient = { from() { return {
+    select() { return this; }, order() { return this; },
+    gte() { cutoff = true; return this; },
+    async range() {
+      reads++;
+      if (reads === 1) return new Promise(resolve => { finish = resolve; });
+      assert.equal(cutoff, false);
+      return { data: [{ date: '2023-01-01', rows_data: [{ part: 'Rt. knee' }] }], count: 1 };
+    },
+  }; } };
+  const background = app.loadSearchHistory();
+  const rename = app.renameAutocompleteValue('part', 'Rt. knee', 'Rt. Knee');
+  cutoff = false; finish({ data: [], count: 0 });
+  await background;
+  assert.equal(await rename, 1);
+  assert.equal(reads, 2);
+  assert.equal(app.dataStore['2023-01-01'][0].part, 'Rt. Knee');
+});
+
 test('bulk history rename survives baseline quota and restores every pending date after restart', async () => {
   const {app, storage, context} = createApp();
   const disk = new Map();

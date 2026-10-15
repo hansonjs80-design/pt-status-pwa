@@ -615,9 +615,11 @@ class PTApp {
     return history;
   }
 
-  async readSearchHistoryPages(client, columns, cutoffDate, dates = null) {
-    const entries = [], pageSize = 200;
+  async readSearchHistoryPages(client, columns, cutoffDate, dates = null, pageSize = 200) {
+    const entries = [];
+    let retriedSingleDate = false;
     for (let offset = 0; ;) {
+      if (this.supabaseClient !== client) return null;
       let query = client.from('pt_daily_records').select(columns, { count: 'exact' }).order('date', { ascending: false });
       this.searchHistoryCanFilter = typeof query.in === 'function';
       if (cutoffDate && typeof query.gte === 'function') query = query.gte('date', cutoffDate);
@@ -636,19 +638,30 @@ class PTApp {
             }),
           ]);
         } else result = await query.range(offset, offset + pageSize - 1);
+        if (result.error) throw result.error;
+      } catch (error) {
+        if (this.supabaseClient !== client) return null;
+        const retryable = error.code === '57014' || Number(error.status || result?.status) >= 500 ||
+          /fetch|network|offline|timeout|timed out|시간.*초과|connection|연결/i.test(error.message || '');
+        if (!retryable || (pageSize === 1 && retriedSingleDate)) throw error;
+        // Retry the failed offset only; large daily JSON records can exceed the
+        // server/network limit even when a request contains fewer than 200 dates.
+        if (pageSize === 1) retriedSingleDate = true;
+        else pageSize = pageSize > 20 ? 20 : 1;
+        continue;
       } finally { if (timeout !== undefined) clearTimeout(timeout); }
-      if (result.error) throw result.error;
       if (this.supabaseClient !== client) return null;
       const page = result.data || [];
       entries.push(...page);
       offset += page.length;
+      retriedSingleDate = false;
       // Honor server response caps; an exact total avoids the final empty request.
       if (!page.length || (Number.isInteger(result.count) && offset >= result.count)) break;
     }
     return entries;
   }
 
-  async loadSearchHistory(force = false) {
+  async loadSearchHistory(force = false, { allDates = false } = {}) {
     const client = this.supabaseClient;
     if (!client) return false;
     if (this.searchHistoryClient !== client) {
@@ -660,7 +673,7 @@ class PTApp {
       this.searchHistoryVersions = null;
       this.searchHistoryCanFilter = false;
     }
-    const currentPeriod = this.getSearchPeriod();
+    const currentPeriod = allDates ? '1year_plus' : this.getSearchPeriod();
     const periodWeight = { "3months": 1, "6months": 2, "1year": 3, "1year_plus": 4 };
     const neededForce = force || (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryLoadedPeriod] || 0);
     // A valid cached range can answer immediately during a background refresh.
@@ -670,7 +683,7 @@ class PTApp {
     if (this.searchHistoryRequest) {
       if ((force && this.searchHistoryRequestFull === false) || (neededForce && (periodWeight[currentPeriod] || 2) > (periodWeight[this.searchHistoryRequestPeriod] || 0))) {
         try { await this.searchHistoryRequest; } catch (e) {}
-        return this.loadSearchHistory(true);
+        return this.loadSearchHistory(true, { allDates });
       }
       return this.searchHistoryRequest;
     }
@@ -700,7 +713,7 @@ class PTApp {
             entries.push(...batch);
           }
         } else {
-          entries = await this.readSearchHistoryPages(client, 'date, rows_data, updated_at', cutoffDate);
+          entries = await this.readSearchHistoryPages(client, 'date, rows_data, updated_at', cutoffDate, null, allDates ? 20 : 200);
           if (!entries) return false;
         }
         for (const entry of entries) {

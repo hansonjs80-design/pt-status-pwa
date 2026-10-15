@@ -539,7 +539,11 @@ test('stalled cloud history pages time out, release their request and retry succ
   const app = createApp({}, {}, { AbortController, setTimeout(fn, ms) { assert.equal(ms, 15000); expire = fn; return 1; }, clearTimeout() { cleared++; }, console: { warn() {} } });
   app.refreshSearchSuggestions = () => {};
   app.supabaseClient = { from() { return { select() { return this; }, order() { return this; }, abortSignal(value) { signal = value; return this; }, range() { return stalled ? new Promise(() => {}) : Promise.resolve({ data: [] }); } }; } };
-  const pending = app.loadSearchHistory(); expire();
+  const pending = app.loadSearchHistory();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    expire();
+    await new Promise(resolve => setImmediate(resolve));
+  }
   assert.equal(await pending, false);
   assert.equal(signal.aborted, true);
   assert.equal(app.searchHistoryRequest, null);
@@ -547,7 +551,7 @@ test('stalled cloud history pages time out, release their request and retry succ
   stalled = false;
   assert.equal(await app.loadSearchHistory(), true);
   assert.equal(app.searchHistoryLoadError, null);
-  assert.equal(cleared, 2);
+  assert.equal(cleared, 5);
 });
 
 function createVersionedHistoryFixture(cap = 200) {
