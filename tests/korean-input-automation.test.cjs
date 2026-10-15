@@ -35,6 +35,9 @@ function createTestApp() {
       return { classList: { contains: () => false, add() {}, remove() {} } };
     },
     activeElement: null,
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
   };
   const context = vm.createContext({
     window: { addEventListener() {} },
@@ -52,6 +55,8 @@ function createTestApp() {
     syncBaselines: new Map(),
     pendingSyncDates: new Set(),
     editHistory: new Map(),
+    elCellAddress: { textContent: '' },
+    elSelectedCellCoords: { textContent: '' },
     getCreatedInput() { return createdInput; },
   });
   return { app, context };
@@ -166,7 +171,7 @@ test('writer column does not convert English keydown to Korean', () => {
   assert.equal(e.defaultPrevented, false);
 });
 
-test('hangul toggle key (HangulMode, CapsLock, Lang1) switches to English mode in name editor', () => {
+test('hangul toggle key (HangulMode, CapsLock, Lang1) switches to English mode and back to Korean mode', () => {
   const { app } = createTestApp();
   const cellElement = {
     dataset: { col: 'name' },
@@ -184,20 +189,65 @@ test('hangul toggle key (HangulMode, CapsLock, Lang1) switches to English mode i
   input.selectionStart = 0;
   input.selectionEnd = 0;
 
-  // 1. 처음 'r' 입력 -> 'ㄱ'으로 변환
+  // 1. 처음 'r' 입력 -> 'ㄱ'으로 변환 (기본 한글 모드)
   input._listeners.keydown({ key: 'r', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
   assert.equal(input.value, 'ㄱ');
 
-  // 2. 한/영 키 (HangulMode) 누름 -> 원래 영문 'r'로 복원되고 영문 모드(_engKorDisabled) 활성화
-  let toggleEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  // 2. 한/영 키 (HangulMode) 누름 -> 원래 영문 'r'로 복원되고 영문 모드로 전환
+  let toggleEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
   input._listeners.keydown(toggleEvt);
   assert.equal(toggleEvt.defaultPrevented, true);
   assert.equal(input.value, 'r');
-  assert.equal(input._engKorDisabled, true);
+  assert.equal(input._inputLanguage, 'eng');
 
-  // 3. 영문 모드에서 'l' 입력 -> 더 이상 가로채지 않고 영문 네이티브 입력 허용
-  let nextKey = { key: 'l', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
-  input._listeners.keydown(nextKey);
-  assert.equal(nextKey.defaultPrevented, false);
+  // 3. 영문 모드에서 'l' 입력 -> 가로채지 않고 영문 네이티브 입력 허용
+  let engKey = { key: 'l', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  input._listeners.keydown(engKey);
+  assert.equal(engKey.defaultPrevented, false);
+
+  // 4. 한 번 더 한영키 누름 -> 다시 한글 모드로 복귀!
+  let toggleBackEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+  input._listeners.keydown(toggleBackEvt);
+  assert.equal(input._inputLanguage, 'kor');
+
+  // 5. 다시 한글 모드에서 영타 'k' 입력 시 한글 'ㅏ'로 정상 조합
+  input.value = 'rl';
+  input.selectionStart = 2;
+  input.selectionEnd = 2;
+  let korKey = { key: 'k', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  input._listeners.keydown(korKey);
+  assert.equal(korKey.defaultPrevented, true);
+  assert.equal(input.value, 'rlㅏ');
 });
+
+test('toggling hangul key in armed/cell selection state switches input mode', () => {
+  const { app } = createTestApp();
+  const cellElement = {
+    dataset: { col: 'specialNote', colIdx: '9' },
+    querySelector: () => null,
+    appendChild: () => {},
+    textContent: '',
+    scrollIntoView: () => {},
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    closest: () => ({ classList: { add() {}, remove() {} } }),
+  };
+  app.elTableBody = { querySelector: () => cellElement, querySelectorAll: () => [] };
+  app.elFormulaInput = { value: '' };
+  app.elSheetContainer = { focus() {} };
+
+  // 셀 선택 (기본 한글 모드 'kor')
+  app.selectCell(0, 'specialNote', cellElement, false);
+  assert.equal(app._cellInputLanguage, 'kor');
+
+  // 셀이 선택된 상태에서 한영키 1번 누름 -> 'eng' 모드로 토글
+  const toggleEvt1 = { key: 'HangulMode', preventDefault() {}, stopPropagation() {} };
+  app.handleGlobalKeyDown(toggleEvt1);
+  assert.equal(app._cellInputLanguage, 'eng');
+
+  // 한 번 더 누름 -> 다시 'kor' 모드로 토글
+  const toggleEvt2 = { key: 'HangulMode', preventDefault() {}, stopPropagation() {} };
+  app.handleGlobalKeyDown(toggleEvt2);
+  assert.equal(app._cellInputLanguage, 'kor');
+});
+
 

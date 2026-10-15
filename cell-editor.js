@@ -4,6 +4,21 @@ class PTCellEditor {
     return !["writer", "gender", "no"].includes(colKey);
   }
 
+  isHangulToggleKeyEvent(e) {
+    if (!e) return false;
+    // 1) 표준 및 Windows 한영키
+    if (e.key === "HangulMode" || e.key === "ModeChange" || e.key === "KanaMode") return true;
+    if (e.code === "Lang1" || e.code === "Lang2") return true;
+    if (e.key === "Process" && (e.code === "KeyLang1" || e.code === "Lang1" || e.code === "Lang2")) return true;
+    if (e.key === "Alt" && (e.code === "AltRight" || e.location === 2)) return true;
+
+    // 2) macOS 한영 전환키 (기본 CapsLock 및 이전 단축키 Ctrl+Space, Cmd+Space)
+    if (e.key === "CapsLock" || e.code === "CapsLock") return true;
+    if ((e.ctrlKey || e.metaKey) && (e.code === "Space" || e.key === " ")) return true;
+
+    return false;
+  }
+
   getChartNameRedirect(value, previousChart = '') {
     const text = this.assembleHangul(String(value ?? '')).trim();
     if (!/\p{L}/u.test(text)) return null;
@@ -58,6 +73,7 @@ class PTCellEditor {
     input.type = "text";
     input.className = "cell-input-element" + (armed ? " is-armed" : "");
     input.value = initialVal;
+    input._inputLanguage = this._cellInputLanguage || "kor";
     if (this.guardNextCellInput) {
       input.dataset.navigationInputGuard = "true";
       this.guardNextCellInput = false;
@@ -282,7 +298,7 @@ class PTCellEditor {
     input.addEventListener("blur", () => {
       input._engKorBuffer = "";
       input._engKorPrefix = "";
-      input._engKorDisabled = false;
+      input._engKorSuffix = "";
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       if (input.classList.contains("is-armed")) { input.remove(); return; }
@@ -307,28 +323,31 @@ class PTCellEditor {
 
       // 한글 우선 열(성함 열 및 작성/성별 제외 열)에서 OS 영문 모드로 입력 시 2벌식 한글 자동 변환
       if (this.isKoreanPreferredColumn(colKey) && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // 한/영 전환 키(영문키) 감지 시: 영한 자동 변환 토글 및 영문 모드로 전환
-        const isHangulToggleKey = e.key === "HangulMode" || e.key === "ModeChange" ||
-          e.code === "Lang1" || e.code === "Lang2" ||
-          (e.key === "Process" && (e.code === "KeyLang1" || e.code === "Lang1")) ||
-          (e.key === "Alt" && e.code === "AltRight") ||
-          e.key === "CapsLock" || e.code === "CapsLock";
+        // 한/영 전환 키(영문키) 감지 시: 한글 ↔ 영문 모드 전환
+        if (this.isHangulToggleKeyEvent(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.activateNativeEditor(input);
 
-        if (isHangulToggleKey) {
           if (input._engKorBuffer) {
-            // 지금까지 조합된 한글을 원래 입력한 영문으로 즉시 복원하고 영문 모드로 변경
-            e.preventDefault();
+            // 지금까지 조합된 한글을 원래 입력한 영문으로 즉시 복원하고 영문 모드로 전환
             const prefix = input._engKorPrefix || "";
-            input.value = prefix + input._engKorBuffer;
+            const suffix = input._engKorSuffix || "";
+            input.value = prefix + input._engKorBuffer + suffix;
+            input.setSelectionRange(prefix.length + input._engKorBuffer.length, prefix.length + input._engKorBuffer.length);
             input._engKorBuffer = "";
-            input._engKorDisabled = true;
-            input.setSelectionRange(input.value.length, input.value.length);
+            input._engKorPrefix = "";
+            input._engKorSuffix = "";
+            input._inputLanguage = "eng";
+            this._cellInputLanguage = "eng";
             input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
             return;
-          } else {
-            // 버퍼가 없을 때 영문키를 누르면 영한 자동 변환 모드 토글 (영문 직접 입력 모드로 전환)
-            input._engKorDisabled = !input._engKorDisabled;
           }
+
+          // 조합 중인 버퍼가 없을 때: 한글 모드 <-> 영문 모드 토글
+          input._inputLanguage = (input._inputLanguage === "eng" ? "kor" : "eng");
+          this._cellInputLanguage = input._inputLanguage;
+          return;
         }
 
         // 백스페이스: 영한 버퍼 조합 중이면 마지막 영타 1글자를 지우고 한글 재조합
@@ -336,8 +355,10 @@ class PTCellEditor {
           e.preventDefault();
           input._engKorBuffer = input._engKorBuffer.slice(0, -1);
           const prefix = input._engKorPrefix || "";
-          input.value = input._engKorBuffer ? prefix + this.convertEngToHangul(input._engKorBuffer) : prefix;
-          input.setSelectionRange(input.value.length, input.value.length);
+          const suffix = input._engKorSuffix || "";
+          const converted = input._engKorBuffer ? this.convertEngToHangul(input._engKorBuffer) : "";
+          input.value = prefix + converted + suffix;
+          input.setSelectionRange(prefix.length + converted.length, prefix.length + converted.length);
           input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           return;
         }
@@ -346,45 +367,48 @@ class PTCellEditor {
         if (e.key === "Escape" && input._engKorBuffer) {
           e.preventDefault();
           e.stopPropagation();
-          input.value = (input._engKorPrefix || "") + input._engKorBuffer;
+          const prefix = input._engKorPrefix || "";
+          const suffix = input._engKorSuffix || "";
+          input.value = prefix + input._engKorBuffer + suffix;
+          input.setSelectionRange(prefix.length + input._engKorBuffer.length, prefix.length + input._engKorBuffer.length);
           input._engKorBuffer = "";
-          input._engKorDisabled = true;
-          input.setSelectionRange(input.value.length, input.value.length);
+          input._engKorPrefix = "";
+          input._engKorSuffix = "";
+          input._inputLanguage = "eng";
+          this._cellInputLanguage = "eng";
           input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           return;
         }
 
-        // 영문 알파벳 키(a-z, A-Z) 입력 감지 (단, IME 조합 중이거나 영문 모드로 전환된 경우 제외)
+        // 영문 알파벳 키(a-z, A-Z) 입력 감지 (단, IME 조합 중에는 개입하지 않음)
         if (e.key && e.key.length === 1 && /^[a-zA-Z]$/.test(e.key) && !e.isComposing && input.dataset.nativeComposing !== "true") {
-          // 사용자가 영문키를 눌러 영문 모드로 전환한 상태라면 영문 그대로 입력
-          if (input._engKorDisabled) {
+          // 사용자가 영문 모드로 전환한 상태라면 영문 그대로 입력
+          if (input._inputLanguage === "eng") {
             this.activateNativeEditor(input);
             return;
           }
 
-          const isArmed = input.classList.contains("is-armed");
-          const isInitial = isArmed || !input.value ||
-            (input.selectionStart === 0 && input.selectionEnd === input.value.length);
-
-          // 성함 열은 언제든지 영타 입력 시 한글 우선 변환, 기타 열은 셀에 처음 입력할 때부터 영한 버퍼 활성화
-          if (colKey === "name" || isInitial || Boolean(input._engKorBuffer)) {
-            this.activateNativeEditor(input);
-            e.preventDefault();
-            if (!input._engKorBuffer) {
-              input._engKorPrefix = isInitial ? "" : input.value.slice(0, input.selectionStart);
-              input._engKorBuffer = "";
-            }
-            input._engKorBuffer += e.key;
-            const converted = this.convertEngToHangul(input._engKorBuffer);
-            input.value = (input._engKorPrefix || "") + converted;
-            input.setSelectionRange(input.value.length, input.value.length);
-            input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
-            return;
+          // 한글 모드일 때: 2벌식 한글 자동 변환
+          this.activateNativeEditor(input);
+          e.preventDefault();
+          if (!input._engKorBuffer) {
+            input._engKorPrefix = input.value.slice(0, input.selectionStart);
+            input._engKorSuffix = input.value.slice(input.selectionEnd);
+            input._engKorBuffer = "";
           }
+          input._engKorBuffer += e.key;
+          const converted = this.convertEngToHangul(input._engKorBuffer);
+          const prefix = input._engKorPrefix || "";
+          const suffix = input._engKorSuffix || "";
+          input.value = prefix + converted + suffix;
+          input.setSelectionRange(prefix.length + converted.length, prefix.length + converted.length);
+          input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+          return;
         } else if (e.key === " " || e.key === "Enter" || e.key === "Tab") {
           // 공백이나 확정 키 입력 시 영한 버퍼 확정
           input._engKorBuffer = "";
           input._engKorPrefix = "";
+          input._engKorSuffix = "";
         }
       }
       // Wait for explicit Enter; typing/composition must stay in the chart editor.

@@ -123,6 +123,16 @@ class PTSheetKeyboard {
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
+    if (this.isHangulToggleKeyEvent?.(e)) {
+      if (this.activeCell && this.isKoreanPreferredColumn?.(this.activeCell.colKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        this._cellInputLanguage = (this._cellInputLanguage === "eng" ? "kor" : "eng");
+        const armed = this.elTableBody?.querySelector(".cell-input-element.is-armed");
+        if (armed) armed._inputLanguage = this._cellInputLanguage;
+        return;
+      }
+    }
     if (this.consumePresetLeftRepeat(e)) return;
     if (this.handlePatientEditorSearchShortcut(e)) return;
     if (e.key === "Escape" && this.activeCell) {
