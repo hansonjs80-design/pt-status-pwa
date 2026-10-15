@@ -730,12 +730,13 @@ class PTTableFormatting {
   }
 
   openChangeCaseMenu(anchor) {
+    this.captureTextColorSelection();
     if (!this.prepareFormattingMenu('changeCase', anchor)) return;
     this.typographyCleanup?.();
     document.getElementById('columnTypographyMenu')?.remove();
 
     const originalFocus = document.activeElement;
-    const nativeEditor = originalFocus?.matches?.('.cell-input-element') ? originalFocus : null;
+    const nativeEditor = originalFocus?.matches?.('.cell-input-element:not(.is-armed)') ? originalFocus : null;
 
     const popup = document.createElement('div');
     popup.id = 'columnTypographyMenu';
@@ -765,6 +766,10 @@ class PTTableFormatting {
       btn.className = 'change-case-option';
       btn.dataset.caseType = opt.key;
       btn.textContent = opt.label;
+      btn.onmousedown = event => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
       btn.onclick = () => {
         this.applyChangeCase(opt.key);
         close();
@@ -808,8 +813,8 @@ class PTTableFormatting {
     document.addEventListener('mousedown', outside);
     this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
 
-    const firstBtn = popup.querySelector('button');
-    firstBtn?.focus();
+    const initial = popup.querySelector('.is-current') || popup.querySelector('button');
+    if (!nativeEditor) initial?.focus();
   }
 
   openColumnTypographyMenu(property, anchor = null) {
