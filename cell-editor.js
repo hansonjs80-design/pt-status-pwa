@@ -56,17 +56,23 @@ class PTCellEditor {
     return value;
   }
 
-  getCellEditorValue(input) {
+  getCellEditorBaseValue(input) {
     const range = input._nativeCellComposition;
     return range && input._inputLanguage === "eng" && typeof range.data === "string"
       ? range.prefix + this.convertHangulToEng(range.data) + range.suffix : input.value;
+  }
+
+  getCellEditorValue(input) {
+    return input._forcedCorrectionProjection?.value ?? this.getCellEditorBaseValue(input);
   }
 
   refreshNativeLanguagePreview(input) {
     input.nativeLanguagePreview?.remove();
     input.nativeLanguagePreview = null;
     const range = input._nativeCellComposition;
-    const show = input._inputLanguage === "eng" && input.dataset.nativeComposing === "true" && typeof range?.data === "string";
+    const correction = input._forcedCorrectionProjection;
+    const show = input.dataset.nativeComposing === "true" && (correction ||
+      (input._inputLanguage === "eng" && typeof range?.data === "string"));
     input.classList.toggle("has-native-language-preview", show);
     if (!show) return;
     // Do not rewrite input.value during native composition: that ends the OS
@@ -77,15 +83,16 @@ class PTCellEditor {
     const font = getComputedStyle(input);
     preview.style.font = font.font;
     preview.style.letterSpacing = font.letterSpacing;
-    preview.style.left = `${this.getEditorTextLeft(input, font)}px`;
-    const before = range.prefix + this.convertHangulToEng(range.data);
+    const value = this.getCellEditorValue(input);
+    preview.style.left = `${this.getEditorTextLeft(input, font, value)}px`;
+    const offset = correction?.caret ?? (range.prefix.length + this.convertHangulToEng(range.data).length);
+    const before = value.slice(0, offset), after = value.slice(offset);
     preview.append(document.createTextNode(before));
     const caret = document.createElement("span");
     caret.className = "native-language-caret";
     preview.append(caret);
     const state = this.autocompleteState;
-    const value = this.getCellEditorValue(input);
-    if (state?.input === input && state.query === value && !range.suffix &&
+    if (state?.input === input && state.query === value && !after &&
         input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
       const suffix = this.getInlineCompletionSuffix(value, this.getSelectedAutocompleteItem());
       if (suffix) {
@@ -95,7 +102,7 @@ class PTCellEditor {
         preview.append(completion);
       }
     }
-    preview.append(document.createTextNode(range.suffix));
+    preview.append(document.createTextNode(after));
     input.parentElement.append(preview);
     input.nativeLanguagePreview = preview;
   }
@@ -138,13 +145,14 @@ class PTCellEditor {
       const value = this.getCellEditorValue(input);
       if (input.value !== value) {
         input.value = value;
-        const caret = range.prefix.length + this.convertHangulToEng(range.data).length;
+        const caret = input._forcedCorrectionProjection?.caret ?? (range.prefix.length + this.convertHangulToEng(range.data).length);
         input.setSelectionRange(caret, caret);
       }
       input._inputLanguage = this._cellInputLanguage;
       this.clearKoreanKeyBuffer(input);
       this.rememberCellKeyValue(input);
       delete input._nativeCellComposition;
+      delete input._forcedCorrectionProjection;
       this.refreshNativeLanguagePreview(input);
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
@@ -284,7 +292,7 @@ class PTCellEditor {
         // English projected from a native IME is the visible query, just like
         // ordinary English typing. Never search with the hidden Korean draft.
         const query = this.getCellEditorValue(input);
-        const koreanComposing = input._inputLanguage !== "eng" && input.dataset.composing === "true";
+        const koreanComposing = input._inputLanguage !== "eng" && !input._forcedCorrectionProjection && input.dataset.composing === "true";
         const suggestions = this.getAutocompleteSuggestions(colKey, query, koreanComposing);
         if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) {
           this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
@@ -378,6 +386,7 @@ class PTCellEditor {
       if (e.isComposing && !handledKey) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
+      if (!handledKey) this.updateForcedCorrection(input, colKey, {deleting: e.inputType?.startsWith('delete')});
       const val = this.getCellEditorValue(input);
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
 
@@ -402,7 +411,9 @@ class PTCellEditor {
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       const handledKey = this.restoreHandledCellKey(input, e);
       if (!handledKey) this.projectCellComposition(input, e, true);
+      if (!handledKey) this.updateForcedCorrection(input, colKey, {commit: true, nativeData: e.data});
       delete input._nativeCellComposition;
+      delete input._forcedCorrectionProjection;
       composing = false;
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
@@ -495,6 +506,7 @@ class PTCellEditor {
 
     input.addEventListener("keydown", (e) => {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 
       if (this.isKoreanPreferredColumn(colKey)) {
         if (this.toggleCellInputLanguage(e, input)) {
@@ -568,7 +580,7 @@ class PTCellEditor {
         }
         if (!["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
           this.clearKoreanKeyBuffer(input);
-          delete input._cellKeyValue;
+          if (!(nativeKey && input._cellKeyValue?.nativeData != null)) delete input._cellKeyValue;
         }
       }
       // Wait for explicit Enter; typing/composition must stay in the chart editor.
@@ -671,7 +683,15 @@ class PTCellEditor {
       }
       // English projection uses the app's candidates even while the OS reports
       // composition. Other composing keys continue through the native IME.
-      const englishCandidateKey = input._inputLanguage === "eng" && this.isAutocompleteOpen() &&
+      if (input._forcedCorrectionProjection && !this.isAutocompleteOpen() &&
+          !e.ctrlKey && !e.metaKey && !e.altKey && ['Enter', 'NumpadEnter'].includes(e.code || e.key)) {
+        e.preventDefault(); e.stopPropagation();
+        commitAndBlur();
+        this.selectAutocompleteRightCell(rowIdx, colKey);
+        this.focusSelectedCellEditor();
+        return;
+      }
+      const englishCandidateKey = (input._inputLanguage === "eng" || input._forcedCorrectionProjection) && this.isAutocompleteOpen() &&
         !e.ctrlKey && !e.metaKey && !e.altKey &&
         ["Enter", "NumpadEnter", "Tab", "ArrowUp", "ArrowDown"].includes(e.code || e.key);
       if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey) {

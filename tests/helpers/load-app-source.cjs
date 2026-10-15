@@ -13,6 +13,7 @@ module.exports = [
   'cloud-sync.js',
   'context-menu.js',
   'preset-manager.js',
+  'forced-corrections.js',
   'autocomplete.js',
   'cell-editor.js',
   'sheet-selection.js',

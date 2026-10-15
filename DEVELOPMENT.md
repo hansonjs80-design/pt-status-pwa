@@ -17,6 +17,7 @@
 | `cloud-sync.js` | 클라우드 연결, 실시간 통신, 기록·프리셋 병합과 동기화 |
 | `context-menu.js` | 우클릭 메뉴, 모바일 길게 터치, 메뉴 작업 실행 |
 | `preset-manager.js` | 빠른 입력 관리, 목록 편집·정렬·숨김과 관리 창 |
+| `forced-corrections.js` | 모든 열·해당 열의 강제 자동수정 설정과 입력 중 치환 |
 | `autocomplete.js` | 자동완성 검색·후보 표시·선택과 입력 문구 수정 |
 | `cell-editor.js` | 네이티브 셀 편집, 입력·IME·확정·포커스 처리 |
 | `sheet-selection.js` | 셀·행·열·범위 선택, 헤더 강조와 정렬 |

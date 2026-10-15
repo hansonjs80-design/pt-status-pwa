@@ -181,6 +181,7 @@ class PTPresetManager {
   }
 
   updatePresetManagerTabs() {
+    this.updateForcedCorrectionManager();
     const context = this.autocompleteManagerContext;
     const labels = { name: "성함", part: "부위", prescription: "처방", extra: "추가 사항", writer: "작성", memo: "메모", specialNote: "특이 사항" };
     const title = this.elPresetManagerModal?.querySelector(".modal-title");
@@ -575,7 +576,7 @@ class PTPresetManager {
     }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
       const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) =>
-        key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
+        key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();

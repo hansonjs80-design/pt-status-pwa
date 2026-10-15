@@ -102,6 +102,20 @@ test('preset edits and deletions propagate to another computer', async () => {
   assert.equal(a.app.presetsDirty,false);
 });
 
+test('global and column forced corrections sync and delete through existing preset records', async () => {
+  const db=new Map(),a=createApp(db),b=createApp(db);
+  a.app.setForcedCorrection('*','l/t','L/T');
+  a.app.setForcedCorrection('part','itb','ITB');
+  a.app.presetsDirty=true;await a.app.pushSharedPresets();await b.app.pullSharedPresets();
+  assert.equal(b.app.findForcedCorrection('l/t','memo').value,'L/T');
+  assert.equal(b.app.findForcedCorrection('itb','part').value,'ITB');
+  assert.equal(b.app.findForcedCorrection('itb','memo'),null);
+  b.app.deleteForcedCorrection('*','l/t');
+  b.app.presetsDirty=true;await b.app.pushSharedPresets();await a.app.pullSharedPresets();
+  assert.equal(a.app.findForcedCorrection('l/t','memo'),null);
+  assert.equal(a.app.findForcedCorrection('itb','part').value,'ITB');
+});
+
 test('typing during asynchronous baseline persistence stays pending and is not overwritten', async () => {
   const date='2026-09-30', db=new Map([[date,{date,rows_data:[{name:'가상',memo:'서버'}],updated_at:null}]]);
   const {app}=createApp(db);

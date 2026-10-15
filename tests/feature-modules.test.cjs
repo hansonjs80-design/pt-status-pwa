@@ -37,7 +37,7 @@ test('feature methods do not collide and are installed before the app starts', (
   vm.runInContext(require('./helpers/load-app-source.cjs') + `
     globalThis.App = PTApp;
     globalThis.features = [PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools,
-      PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager,
+      PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager, PTForcedCorrections,
       PTAutocomplete, PTCellEditor, PTSheetSelection, PTSheetActions, PTSheetKeyboard, PTColumnSettings, PTStaffCalendarSettings,
       PTAppEvents, PTHolidayCalendar, PTDateNavigation, PTTableView, PTCellPickers, PTPatientSearchDialog, PTHistoryTable];
   `, context);

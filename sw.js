@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v392';
+const CACHE_NAME = 'pt-status-pwa-v393';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const ASSETS_TO_CACHE = [
   './cloud-sync.js',
   './context-menu.js',
   './preset-manager.js',
+  './forced-corrections.js',
   './autocomplete.js',
   './cell-editor.js',
   './sheet-selection.js',

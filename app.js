@@ -769,7 +769,7 @@ class PTApp {
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
     const query = this.getCellEditorValue(input);
-    const koreanComposing = input._inputLanguage !== "eng" && input.dataset.composing === "true";
+    const koreanComposing = input._inputLanguage !== "eng" && !input._forcedCorrectionProjection && input.dataset.composing === "true";
     const suggestions = this.getAutocompleteSuggestions(colKey, query, koreanComposing);
     if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
     else this.closeAutocompleteMenu();
@@ -1049,7 +1049,7 @@ class PTApp {
 
 // Install feature methods before the app starts. Preserve class method descriptors.
 for (const feature of [PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools, PTHolidayCalendar,
-  PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager,
+  PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager, PTForcedCorrections,
   PTAutocomplete, PTCellEditor, PTSheetSelection, PTSheetActions, PTSheetKeyboard, PTColumnSettings, PTStaffCalendarSettings,
   PTAppEvents, PTDateNavigation, PTTableView, PTCellPickers, PTPatientSearchDialog, PTHistoryTable]) {
   for (const name of Object.getOwnPropertyNames(feature.prototype)) {

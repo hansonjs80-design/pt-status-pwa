@@ -161,14 +161,14 @@ class PTCellInputTools {
     row._richText[key] = next;
   }
 
-  getEditorTextLeft(input, font) {
+  getEditorTextLeft(input, font, value = input.value) {
     const left = parseFloat(font.paddingLeft) || 0;
     let offset = 0;
     if (['center', 'right'].includes(font.textAlign)) {
       this.editorMeasurementCanvas ||= document.createElement('canvas');
       const context = this.editorMeasurementCanvas.getContext('2d');
       context.font = font.font;
-      const width = context.measureText(input.value).width + (parseFloat(font.letterSpacing) || 0) * input.value.length;
+      const width = context.measureText(value).width + (parseFloat(font.letterSpacing) || 0) * value.length;
       const available = input.clientWidth - left - (parseFloat(font.paddingRight) || 0);
       offset = Math.max(0, available - width) / (font.textAlign === 'center' ? 2 : 1);
     }
@@ -454,7 +454,7 @@ class PTCellInputTools {
     const state = this.autocompleteState;
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
-    if (input._inputLanguage === 'eng' && input._nativeCellComposition && input.dataset.nativeComposing === 'true') {
+    if ((input._forcedCorrectionProjection || (input._inputLanguage === 'eng' && input._nativeCellComposition)) && input.dataset.nativeComposing === 'true') {
       this.refreshNativeLanguagePreview(input);
       return;
     }
