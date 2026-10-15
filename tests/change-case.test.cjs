@@ -67,3 +67,20 @@ test('applyChangeCase works with rows and richText', () => {
   assert.strictEqual(mockRow.specialNote, 'PT ROM EXERCISE 10회');
   assert.strictEqual(mockRow._richText.specialNote.text, 'PT ROM EXERCISE 10회');
 });
+
+test('context menu executeContextAction opens change-case menu', () => {
+  const contextMenuCode = fs.readFileSync(path.join(__dirname, '../context-menu.js'), 'utf8');
+  const contextFactory = new Function(`${contextMenuCode}; return PTContextMenu;`);
+  const PTContextMenu = contextFactory();
+
+  const menu = new PTContextMenu();
+  let openedAnchor = null;
+  menu.openChangeCaseMenu = (anchor) => { openedAnchor = anchor; };
+  menu.elContextMenu = { id: 'excelContextMenu' };
+
+  const dummyItem = { dataset: { action: 'change-case' } };
+  menu.executeContextAction('change-case', dummyItem);
+
+  assert.strictEqual(openedAnchor, dummyItem);
+});
+

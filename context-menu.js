@@ -16,7 +16,7 @@ class PTContextMenu {
       if (!menuItem) return;
 
       const action = menuItem.dataset.action;
-      this.executeContextAction(action);
+      this.executeContextAction(action, menuItem);
       this.hideContextMenu();
     });
   }
@@ -178,7 +178,7 @@ class PTContextMenu {
     }
   }
 
-  executeContextAction(action) {
+  executeContextAction(action, menuItem = null) {
     const targetRow = this.contextTarget?.rowIdx ?? this.selectedRowIdx ?? (this.activeCell ? this.activeCell.rowIdx : 0);
     const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
 
@@ -188,14 +188,17 @@ class PTContextMenu {
         document.activeElement?.blur();
         const cell = this.elSheetContainer.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`);
         if (cell) {
-          this.selectCell(targetRow, targetCol, cell, false);
-          this.findActiveCell();
+           this.selectCell(targetRow, targetCol, cell, false);
+           this.findActiveCell();
         }
         break;
       }
       case "font-size":
       case "font-weight":
         this.openColumnTypographyMenu(action === "font-size" ? "fontSize" : "fontWeight");
+        break;
+      case "change-case":
+        this.openChangeCaseMenu(menuItem || document.getElementById("btnChangeCase") || this.elContextMenu);
         break;
       case "font-color":
         this.openFontColorMenu(document.getElementById("btnFontColor"));
