@@ -434,17 +434,25 @@ class PTCellInputTools {
     glyph.append(canvas,text);return glyph;
   }
 
+  assembleCellEditorText(input, value) {
+    const prefix = input._forcedCorrectionPrefix;
+    // The replaced word is already committed. New Korean letters compose only
+    // with the following draft, never with the final syllable of that word.
+    return prefix && value.startsWith(prefix)
+      ? prefix + this.assembleHangul(value.slice(prefix.length).normalize('NFC')) : this.assembleHangul(value.normalize('NFC'));
+  }
+
   normalizeCompletedHangulInput(input) {
     if (input.dataset.nativeComposing === 'true') return false;
     const value = input.value;
-    const assembled = this.assembleHangul(value.normalize('NFC'));
+    const assembled = this.assembleCellEditorText(input, value);
     if (assembled === value) return false;
     const start = input.selectionStart, end = input.selectionEnd;
     const direction = input.selectionDirection;
     input.value = assembled;
     if (start !== null && end !== null) {
-      input.setSelectionRange(this.assembleHangul(value.slice(0, start).normalize('NFC')).length,
-        this.assembleHangul(value.slice(0, end).normalize('NFC')).length, direction);
+      input.setSelectionRange(this.assembleCellEditorText(input, value.slice(0, start)).length,
+        this.assembleCellEditorText(input, value.slice(0, end)).length, direction);
     }
     return true;
   }

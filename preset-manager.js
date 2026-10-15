@@ -158,6 +158,7 @@ class PTPresetManager {
   }
 
   closePresetManager() {
+    this.closeForcedCorrectionManager(false);
     clearTimeout(this.presetManagerFocusTimer);
     this.clearPresetDrag();
     if (this.elPresetManagerModal?.style.display === "flex") {

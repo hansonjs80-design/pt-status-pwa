@@ -120,6 +120,30 @@ test('native English projection applies a column correction and survives its fin
   assert.equal(input.value,'ITB');
 });
 
+test('English-to-Korean correction switches language and translates the remaining native composition once',()=>{
+  const {app}=createApp();app.setForcedCorrection('part','itb','장경인대');
+  const input=editor('i슈');input.dataset.nativeComposing='true';input._inputLanguage='eng';
+  input._nativeCellComposition={prefix:'i',suffix:'',data:'슈'};
+  app.updateForcedCorrection(input,'part');
+  assert.equal(input._inputLanguage,'kor');assert.equal(app._cellInputLanguage,'kor');
+  assert.equal(input.value,'i슈');assert.equal(app.getCellEditorValue(input),'장경인대');
+  input.value='i슘';input.setSelectionRange(2,2);
+  app.projectCellComposition(input,{data:'슘'});
+  app.updateForcedCorrection(input,'part');
+  assert.equal(app.getCellEditorValue(input),'장경인대ㅁ');
+  app.projectCellComposition(input,{data:'슘'},true);
+  app.updateForcedCorrection(input,'part',{commit:true,nativeData:'슘'});delete input._nativeCellComposition;
+  assert.equal(input.value,'장경인대ㅁ');
+  input.dataset.nativeComposing='false';
+  assert.equal(app.normalizeCompletedHangulInput(input),false);
+  assert.equal(app.assembleCellEditorText(input,input.value),'장경인대ㅁ');
+  input.value+='슘';app.restoreHandledCellKey(input,{type:'input',inputType:'insertText',data:'슘'});
+  assert.equal(input.value,'장경인대ㅁ');
+  const ordinary=editor('itb');ordinary._inputLanguage='eng';
+  app.updateForcedCorrection(ordinary,'part');
+  assert.equal(ordinary.value,'장경인대');assert.equal(ordinary._inputLanguage,'kor');
+});
+
 test('Backspace edits the corrected visible text and rejects the old native commit',()=>{
  const {app}=createApp();app.setForcedCorrection('*','ㅣ/ㅅ','L/T');
  const input=editor('ㅣ/ㅅ');input._inputLanguage='kor';input.dataset.nativeComposing='true';input._nativeCellComposition={prefix:'ㅣ/',suffix:'',data:'ㅅ'};input.dispatchEvent=()=>{};

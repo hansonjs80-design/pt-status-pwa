@@ -2999,6 +2999,29 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .forced-correction-scope { flex-shrink: 0; padding: 3px 5px; border-radius: 4px; background: #e2efda; color: #326344; font-size: 10px; }
 .forced-correction-text { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .forced-correction-row button { flex-shrink: 0; }
+#btnOpenForcedCorrectionManager { margin: 0 10px 10px; padding: 8px 12px; }
+#forcedCorrectionModal { z-index: 1100; }
+#forcedCorrectionModal .forced-correction-card { width: calc(100% - 32px); max-width: 940px; height: calc(100dvh - 48px); max-height: 960px; border-radius: 14px; }
+#forcedCorrectionModal .modal-header { flex-shrink: 0; }
+#forcedCorrectionModal .modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 16px; }
+.forced-correction-card .preset-manager-note { flex-shrink: 0; }
+.forced-correction-card .forced-correction-form { flex-shrink: 0; grid-template-columns: 180px minmax(0, 1fr) auto minmax(0, 1fr) auto; padding: 0 0 16px; }
+.forced-correction-card .forced-correction-form :is(input, select) { padding: 10px 8px; font-size: 13px; }
+.forced-correction-heading { flex-shrink: 0; padding: 0 0 8px; color: #576e60; font-size: 13px; }
+.forced-correction-heading strong { color: #107c41; margin-left: 6px; }
+.forced-correction-card .forced-correction-list { flex: 1; min-height: 0; max-height: none; padding: 0 12px; border: 1px solid #e2e8e4; border-radius: 8px; font-size: 14px; overscroll-behavior: contain; }
+.forced-correction-card .forced-correction-row { min-height: 42px; padding: 8px 0; }
+.forced-correction-card .forced-correction-row:first-child { border-top: 0; }
+.forced-correction-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid #e2e8e4; background: #fbfcfb; }
+#forcedCorrectionFeedback { color: #708379; font-size: 12px; }
+#btnDoneForcedCorrectionManager { padding: 9px 20px; border: 0; border-radius: 7px; background: #107c41; color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+#forcedCorrectionModal :is(button, input, select):focus-visible { outline: 2px solid #107c41; outline-offset: 2px; }
+@media (max-width: 540px) {
+  #forcedCorrectionModal .forced-correction-card { width: calc(100% - 24px); height: calc(100dvh - 24px); }
+  #forcedCorrectionModal .modal-body { padding: 12px; }
+  .forced-correction-card .forced-correction-form { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .forced-correction-card .forced-correction-scope { max-width: 100px; white-space: normal; }
+}
 @media (max-width: 540px) { .forced-correction-form { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); } #forcedCorrectionScope { grid-column: 1 / 3; } #forcedCorrectionSource { grid-column: 1; } #btnAddForcedCorrection { grid-column: 3; grid-row: 1; } }
 #presetManagerModal .preset-advanced p { margin: 0; padding: 0 10px 8px; color: #86958c; font-size: 11px; line-height: 1.5; }
 #presetManagerModal .preset-detail-controls { gap: 6px; margin: 0; padding: 0 10px 10px; border: 0; background: transparent; }

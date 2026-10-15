@@ -80,7 +80,8 @@ class PTForcedCorrections {
       const raw = decompose(value), prefix = decompose(previous.prefix + previous.source), suffix = decompose(previous.suffix);
       if (raw.startsWith(prefix) && raw.endsWith(suffix) && raw.length >= prefix.length + suffix.length) {
         const remaining = this.assembleHangul(raw.slice(prefix.length, suffix ? -suffix.length : undefined));
-        const rest = previous.koreanToEnglish ? this.convertHangulToEng(remaining) : remaining;
+        const rest = previous.koreanToEnglish ? this.convertHangulToEng(remaining)
+          : previous.englishToKorean ? this.convertEngToHangul(remaining) : remaining;
         correction = {...previous, value: previous.prefix + previous.target + rest + previous.suffix,
           caret: previous.prefix.length + previous.target.length + rest.length};
       }
@@ -94,12 +95,16 @@ class PTForcedCorrections {
     if (!previous) {
       const hangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11ff]/u;
       correction.koreanToEnglish = hangul.test(correction.source) && !hangul.test(correction.target) && /[a-z]/i.test(correction.target);
-      correction.nativeKorean = correction.koreanToEnglish && input._inputLanguage !== 'eng' && input.dataset.nativeComposing === 'true';
+      correction.englishToKorean = !hangul.test(correction.source) && /[a-z]/i.test(correction.source) && hangul.test(correction.target);
+      const changingLanguage = correction.koreanToEnglish || correction.englishToKorean;
+      correction.nativeKorean = changingLanguage && input._inputLanguage !== 'eng' && input.dataset.nativeComposing === 'true';
+      correction.nativeEnglish = changingLanguage && input._inputLanguage === 'eng' && input.dataset.nativeComposing === 'true';
     }
-    if (correction.koreanToEnglish) {
-      input._inputLanguage = this._cellInputLanguage = 'eng';
+    if (correction.koreanToEnglish || correction.englishToKorean) {
+      input._inputLanguage = this._cellInputLanguage = correction.koreanToEnglish ? 'eng' : 'kor';
       this.clearKoreanKeyBuffer(input);
     }
+    if (correction.englishToKorean) input._forcedCorrectionPrefix = correction.prefix + correction.target;
     if (!commit && input.dataset.nativeComposing === 'true') {
       // Project the corrected text; leave the live OS composition untouched.
       input._forcedCorrectionProjection = correction;
@@ -132,12 +137,35 @@ class PTForcedCorrections {
     return true;
   }
 
+  openForcedCorrectionManager() {
+    const modal = document.getElementById('forcedCorrectionModal');
+    if (!modal) return;
+    clearTimeout(this.presetManagerFocusTimer);
+    this.updateForcedCorrectionManager();
+    modal.style.display = 'flex';
+    if (this.elPresetManagerModal) this.elPresetManagerModal.inert = true;
+    document.getElementById('forcedCorrectionSource').focus();
+  }
+
+  closeForcedCorrectionManager(restoreFocus = true) {
+    const modal = typeof document === 'undefined' ? null : document.getElementById?.('forcedCorrectionModal');
+    if (!modal || modal.style.display !== 'flex') return;
+    modal.style.display = 'none';
+    if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
+    if (restoreFocus) document.getElementById('btnOpenForcedCorrectionManager')?.focus({preventScroll:true});
+  }
+
+  setForcedCorrectionFeedback(message) {
+    const feedback = document.getElementById('forcedCorrectionFeedback');
+    if (feedback) feedback.textContent = message;
+    this.setPresetManagerFeedback(message);
+  }
+
   updateForcedCorrectionManager() {
     const panel = document.getElementById('forcedCorrectionPanel');
     if (!panel) return;
     const scope = document.getElementById('forcedCorrectionScope');
     const labels = this.getForcedCorrectionColumns();
-    const column = this.activePresetTab;
     scope.replaceChildren();
     const addOption = (parent, value, label) => {
       const option = document.createElement('option'); option.value = value; option.textContent = label; parent.append(option);
@@ -148,7 +176,7 @@ class PTForcedCorrections {
       for (const [key, label] of Object.entries(labels)) addOption(group, prefix + key, `${label} ${suffix}`);
       scope.append(group);
     }
-    scope.value = column;
+    scope.value = '*';
     this.forcedCorrectionEditing = null;
     const source = document.getElementById('forcedCorrectionSource');
     const target = document.getElementById('forcedCorrectionTarget');
@@ -157,15 +185,16 @@ class PTForcedCorrections {
     add.textContent = '추가';
     add.onclick = () => {
       if (!this.setForcedCorrection(scope.value, source.value, target.value, this.forcedCorrectionEditing)) {
-        this.setPresetManagerFeedback('입력 문구와 변경 문구를 서로 다르게 입력해 주세요.');
+        this.setForcedCorrectionFeedback('입력 문구와 변경 문구를 서로 다르게 입력해 주세요.');
         (!source.value.trim() ? source : target).focus();
         return;
       }
       source.value = target.value = '';
+      scope.value = '*';
       this.forcedCorrectionEditing = null;
       add.textContent = '추가';
       this.renderForcedCorrectionList();
-      this.setPresetManagerFeedback('강제 자동수정 설정을 저장했습니다.');
+      this.setForcedCorrectionFeedback('강제 자동수정 설정을 저장했습니다.');
       source.focus();
     };
     for (const input of [source, target]) input.onkeydown = event => {
@@ -173,16 +202,39 @@ class PTForcedCorrections {
         event.preventDefault(); event.stopPropagation(); add.click();
       }
     };
+    document.getElementById('btnOpenForcedCorrectionManager').onclick = () => this.openForcedCorrectionManager();
+    for (const id of ['btnCloseForcedCorrectionManager', 'btnDoneForcedCorrectionManager']) {
+      document.getElementById(id).onclick = () => this.closeForcedCorrectionManager();
+    }
+    const modal = document.getElementById('forcedCorrectionModal');
+    modal.onclick = event => { if (event.target === modal) this.closeForcedCorrectionManager(); };
+    modal.onkeydown = event => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        if (!event.isComposing && event.keyCode !== 229) {
+          event.preventDefault(); this.closeForcedCorrectionManager();
+        }
+      } else if (event.key === 'Tab') {
+        const controls = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')]
+          .filter(element => element.getClientRects().length);
+        const first = controls[0], last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.getElementById('forcedCorrectionFeedback').textContent = '변경사항은 바로 저장됩니다.';
     this.renderForcedCorrectionList();
   }
 
   renderForcedCorrectionList() {
     const list = document.getElementById('forcedCorrectionList');
     if (!list) return;
+    const scrollTop = list.scrollTop;
     list.replaceChildren();
     const rules = this.getForcedCorrectionRules();
     const labels = this.getForcedCorrectionColumns();
     document.getElementById('forcedCorrectionCount').textContent = rules.length;
+    document.getElementById('forcedCorrectionModalCount').textContent = rules.length;
     if (!rules.length) { list.textContent = '등록된 강제 자동수정이 없습니다.'; return; }
     for (const rule of rules) {
       const row = document.createElement('div'); row.className = 'forced-correction-row';
@@ -206,9 +258,11 @@ class PTForcedCorrections {
       remove.onclick = () => {
         this.deleteForcedCorrection(rule.scope, rule.source);
         this.updateForcedCorrectionManager();
-        this.setPresetManagerFeedback('강제 자동수정 설정을 삭제했습니다.');
+        this.setForcedCorrectionFeedback('강제 자동수정 설정을 삭제했습니다.');
+        document.getElementById('forcedCorrectionSource').focus();
       };
       row.append(badge, text, edit, remove); list.append(row);
     }
+    list.scrollTop = scrollTop;
   }
 }

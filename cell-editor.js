@@ -42,14 +42,16 @@ class PTCellEditor {
 
   projectCellComposition(input, event, commit = false) {
     const range = input._nativeCellComposition;
-    // A Korean-to-English correction owns the visible prefix and subsequent
-    // letters. Commit it before translating the original native draft.
-    if (commit && input._forcedCorrectionProjection?.nativeKorean) return input.value;
-    if (!range || input._inputLanguage !== "eng" || typeof event.data !== "string") return input.value;
+    const correction = input._forcedCorrectionProjection;
+    const sourceEnglish = correction?.nativeEnglish || (input._inputLanguage === 'eng' && !correction?.nativeKorean);
+    if (!range || !sourceEnglish || typeof event.data !== "string") return input.value;
     // Composition data replaces the whole current composition, not the text
     // from the preceding input event. Project it once from the original range.
     const text = this.convertHangulToEng(event.data);
     range.data = event.data;
+    // A language-changing correction owns its visible prefix. Keep its source
+    // composition mapping until the correction itself commits.
+    if (commit && (correction?.nativeKorean || correction?.nativeEnglish)) return input.value;
     const value = range.prefix + text + range.suffix;
     if (commit) {
       input.value = value;
@@ -61,7 +63,7 @@ class PTCellEditor {
 
   getCellEditorBaseValue(input) {
     const range = input._nativeCellComposition;
-    return range && input._inputLanguage === "eng" && typeof range.data === "string"
+    return range && (input._inputLanguage === "eng" || input._forcedCorrectionProjection?.nativeEnglish) && typeof range.data === "string"
       ? range.prefix + this.convertHangulToEng(range.data) + range.suffix : input.value;
   }
 
@@ -210,8 +212,9 @@ class PTCellEditor {
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
-    // Background selection restoration must not take focus from patient search.
-    if (armed && this.elSearchPromptModal?.style.display === 'flex') return;
+    // Background selection restoration must not take focus from an open editor dialog.
+    if (armed && (this.elSearchPromptModal?.style.display === 'flex' ||
+        (typeof document !== 'undefined' && document.activeElement?.closest?.('#forcedCorrectionModal')))) return;
     if (!armed) void this.loadSearchHistory();
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
@@ -447,7 +450,7 @@ class PTCellEditor {
       if (input._forcedCorrectionApplied || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
-      let finalVal = forcedVal !== undefined ? forcedVal : this.assembleHangul(this.getCellEditorValue(input));
+      let finalVal = forcedVal !== undefined ? forcedVal : this.assembleCellEditorText(input, this.getCellEditorValue(input));
       input.nativeLanguagePreview?.remove();
       finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
         : colKey === "prescription" ? this.normalizePrescriptionInput(finalVal) : finalVal.trim();
