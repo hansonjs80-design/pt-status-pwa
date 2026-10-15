@@ -18,6 +18,7 @@ function createTestApp() {
           selectionEnd: 0,
           classList: {
             contains(cls) { return classes.has(cls); },
+            toggle(cls, enabled) { if (enabled) classes.add(cls); else classes.delete(cls); },
             add(...clss) { clss.forEach(c => classes.add(c)); this.className = [...classes].join(' '); },
             remove(...clss) { clss.forEach(c => classes.delete(c)); this.className = [...classes].join(' '); },
           },
@@ -41,6 +42,7 @@ function createTestApp() {
   };
   const context = vm.createContext({
     window: { addEventListener() {} },
+    setTimeout: () => 1, clearTimeout() {},
     document: doc,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
   });
@@ -99,7 +101,7 @@ test('isKoreanPreferredColumn identifies columns that prefer Korean entry', () =
 
   assert.equal(app.isKoreanPreferredColumn('writer'), false);
   assert.equal(app.isKoreanPreferredColumn('gender'), false);
-  assert.equal(app.isKoreanPreferredColumn('no'), false);
+  assert.equal(app.isKoreanPreferredColumn('no'), true);
 });
 
 test('name editor converts English keydown sequence into Korean syllables and supports Backspace and Escape', () => {
@@ -193,17 +195,17 @@ test('hangul toggle key (HangulMode, CapsLock, Lang1) switches to English mode a
   input._listeners.keydown({ key: 'r', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
   assert.equal(input.value, 'ㄱ');
 
-  // 2. 한/영 키 (HangulMode) 누름 -> 원래 영문 'r'로 복원되고 영문 모드로 전환
+  // 전환은 이미 입력한 한글을 보존하고 이후 입력 언어만 바꾼다.
   let toggleEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
   input._listeners.keydown(toggleEvt);
   assert.equal(toggleEvt.defaultPrevented, true);
-  assert.equal(input.value, 'r');
+  assert.equal(input.value, 'ㄱ');
   assert.equal(input._inputLanguage, 'eng');
 
-  // 3. 영문 모드에서 'l' 입력 -> 가로채지 않고 영문 네이티브 입력 허용
+  // 영문도 같은 경로로 입력하므로 OS 입력 소스에 영향받지 않는다.
   let engKey = { key: 'l', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
   input._listeners.keydown(engKey);
-  assert.equal(engKey.defaultPrevented, false);
+  assert.equal(engKey.defaultPrevented, true);
 
   // 4. 한 번 더 한영키 누름 -> 다시 한글 모드로 복귀!
   let toggleBackEvt = { key: 'HangulMode', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
@@ -231,7 +233,7 @@ test('toggling hangul key in armed/cell selection state switches input mode', ()
     classList: { add() {}, remove() {}, contains() { return false; } },
     closest: () => ({ classList: { add() {}, remove() {} } }),
   };
-  app.elTableBody = { querySelector: () => cellElement, querySelectorAll: () => [] };
+  app.elTableBody = { querySelector: selector => selector.endsWith(' input') ? app.getCreatedInput() : cellElement, querySelectorAll: () => [] };
   app.elFormulaInput = { value: '' };
   app.elSheetContainer = { focus() {} };
 
@@ -292,7 +294,7 @@ test('typing Korean, backspacing completely, and pressing hangul toggle switches
     textContent: '',
     classList: { add() {}, remove() {}, contains() { return false; } }
   };
-  app.elTableBody = { querySelector: () => cellElement, querySelectorAll: () => [] };
+  app.elTableBody = { querySelector: selector => selector.endsWith(' input') ? app.getCreatedInput() : cellElement, querySelectorAll: () => [] };
   app.elFormulaInput = { value: '' };
 
   // 1. 더블 클릭으로 활성 커서 진입 (armed = false) -> 기본 한글 모드
@@ -326,10 +328,161 @@ test('typing Korean, backspacing completely, and pressing hangul toggle switches
   input._listeners.keydown(toggleEvt);
   assert.equal(input._inputLanguage, 'eng');
 
-  // 5. 영문 입력 -> 영문 그대로 입력 (가로채지 않음)
+  // 영문 입력은 OS 입력 소스에 관계없이 즉시 영문으로 입력된다.
   let engKey = { key: 'p', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
   input._listeners.keydown(engKey);
-  assert.equal(engKey.defaultPrevented, false);
+  assert.equal(engKey.defaultPrevented, true);
 });
 
 
+
+function editingFixture({ armed = false, column = 'specialNote' } = {}) {
+  const { app } = createTestApp();
+  let input = null;
+  const cell = {
+    dataset: { col: column }, textContent: '',
+    querySelector(selector) { return selector === 'input' ? input : null; },
+    appendChild(element) { input = element; },
+  };
+  app.elTableBody = { querySelector: () => cell };
+  app.elFormulaInput = { value: '' };
+  app.debounceSaveDataStore = () => {};
+  app.rememberPatientSearchDraft = () => {};
+  app.updateEditorTextColors = () => {};
+  app.clearInlineAutocompletePreview = () => {};
+  app.refreshNativeLanguagePreview = () => {};
+  app.startInlineEdit(0, column, cell, armed);
+  return { app, input: app.getCreatedInput(), cell };
+}
+
+function keyEvent(key, extra = {}) {
+  return {
+    type: 'keydown', key, cancelable: true, defaultPrevented: false, stopped: false,
+    preventDefault() { this.defaultPrevented = true; },
+    stopPropagation() { this.stopped = true; },
+    ...extra,
+  };
+}
+
+function typeKeys(input, keys, extra = {}) {
+  for (const key of keys) input._listeners.keydown(keyEvent(key, { code: `Key${key.toUpperCase()}`, ...extra }));
+}
+
+test('each Windows/Mac toggle is consumed once even when its event reaches the sheet', () => {
+  const toggles = [
+    { key: 'HangulMode', code: 'Lang1' },
+    { key: 'Process', code: 'AltRight', altKey: true, keyCode: 229 },
+    { key: 'CapsLock', code: 'CapsLock' },
+    { key: ' ', code: 'Space', ctrlKey: true },
+    { key: ' ', code: 'Space', metaKey: true },
+    { key: ' ', code: 'Space', shiftKey: true },
+  ];
+  for (const toggle of toggles) {
+    const { app, input } = editingFixture();
+    app.activeCell = { rowIdx: 0, colKey: 'specialNote' };
+    const event = keyEvent(toggle.key, toggle);
+    input._listeners.keydown(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(event.stopped, true);
+    app.handleGlobalKeyDown(event);
+    assert.equal(input._inputLanguage, 'eng', JSON.stringify(toggle));
+    assert.equal(app._cellInputLanguage, 'eng');
+    input._listeners.keydown(keyEvent(toggle.key, { ...toggle, repeat: true }));
+    assert.equal(input._inputLanguage, 'eng', 'repeat must not switch back');
+    typeKeys(input, 'pt');
+    assert.equal(input.value, 'pt');
+    input._listeners.keydown(keyEvent(toggle.key, toggle));
+    typeKeys(input, 'rla');
+    assert.equal(input.value, 'pt김');
+  }
+});
+
+test('switching language preserves Korean already entered and only affects new typing', () => {
+  const { input } = editingFixture();
+  typeKeys(input, 'rla');
+  input._listeners.keydown(keyEvent('HangulMode'));
+  assert.equal(input.value, '김');
+  typeKeys(input, 'pain');
+  assert.equal(input.value, '김pain');
+});
+
+test('native Process/229 letters are inserted once by the IME, with English projected until commit', () => {
+  const { app, input } = editingFixture();
+  const process = keyEvent('Process', { code: 'KeyD', keyCode: 229, isComposing: true });
+  input._listeners.keydown(process);
+  assert.equal(process.defaultPrevented, false);
+  assert.equal(input.value, '', 'keydown must not also insert the native letter');
+  input._listeners.compositionstart({ type: 'compositionstart' });
+  input.value = 'ㅇ';
+  input.setSelectionRange(1, 1);
+  input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: 'ㅇ' });
+  assert.equal(input.value, 'ㅇ');
+  input._listeners.compositionend({ type: 'compositionend', data: 'ㅇ' });
+  input._listeners.keydown(keyEvent('CapsLock'));
+  input._listeners.keydown(keyEvent('Process', { code: 'KeyD', keyCode: 229, isComposing: true }));
+  input._listeners.compositionstart({ type: 'compositionstart' });
+  for (const [data, projected] of [['ㅇ', 'ㅇd'], ['아', 'ㅇdk'], ['안', 'ㅇdks']]) {
+    input.value = 'ㅇ' + data;
+    input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data });
+    assert.equal(input.value, 'ㅇ' + data, 'do not terminate native composition by rewriting its value');
+    assert.equal(app.getCellEditorValue(input), projected);
+    assert.equal(app.dataStore[app.currentDate][0].specialNote, projected);
+  }
+  input._listeners.compositionend({ type: 'compositionend', data: '안' });
+  assert.equal(input.value, 'ㅇdks');
+  // Safari/Windows may send a final input after compositionend.
+  input.value = 'ㅇdks안';
+  input._listeners.input({ type: 'input', inputType: 'insertText', data: '안' });
+  assert.equal(input.value, 'ㅇdks');
+});
+
+test('a Latin key handled by the app rejects a late native duplicate of that same key', () => {
+  const { app, input } = editingFixture();
+  typeKeys(input, 'd');
+  assert.equal(input.value, 'ㅇ');
+  input._listeners.compositionstart({ type: 'compositionstart' });
+  input.value = 'ㅇㅇ';
+  input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: 'ㅇ' });
+  assert.equal(input.value, 'ㅇ');
+  input.value = 'ㅇㅇ';
+  input._listeners.compositionend({ type: 'compositionend', data: 'ㅇ' });
+  assert.equal(input.value, 'ㅇ');
+  assert.equal(app.dataStore[app.currentDate][0].specialNote, 'ㅇ');
+});
+
+test('double-click activation and a fresh double-click editor both reset English to Korean', () => {
+  const { app, input, cell } = editingFixture({ armed: true });
+  app.toggleCellInputLanguage(keyEvent('CapsLock'), input);
+  assert.equal(input._inputLanguage, 'eng');
+  app.startInlineEdit(0, 'specialNote', cell, false);
+  assert.equal(input._inputLanguage, 'kor');
+  typeKeys(input, 'rla');
+  assert.equal(input.value, '김');
+  app._cellInputLanguage = 'eng';
+  cell.querySelector = () => null;
+  app.startInlineEdit(0, 'specialNote', cell, false);
+  assert.equal(app.getCreatedInput()._inputLanguage, 'kor');
+});
+
+test('caret movement and selection deletion cannot resurrect an old Korean buffer', () => {
+  const { input } = editingFixture();
+  typeKeys(input, 'rla');
+  input.setSelectionRange(0, input.value.length);
+  // Selected Backspace is left to the browser instead of decomposing old jamo.
+  input._listeners.keydown(keyEvent('Backspace'));
+  assert.equal(input._engKorBuffer, '');
+  input.value = '';
+  input.setSelectionRange(0, 0);
+  input._listeners.keydown(keyEvent('CapsLock'));
+  typeKeys(input, 'pt');
+  assert.equal(input.value, 'pt');
+});
+
+test('Hanja and shortcuts outside the sheet do not switch a retained cell selection', () => {
+  const { app, input } = editingFixture();
+  assert.equal(app.isHangulToggleKeyEvent({ key: 'HanjaMode', code: 'Lang2', keyCode: 25 }), false);
+  app.activeCell = { rowIdx: 0, colKey: 'specialNote' };
+  app.consumePresetLeftRepeat = () => true;
+  app.handleGlobalKeyDown(keyEvent('CapsLock', { target: { closest: () => null } }));
+  assert.equal(input._inputLanguage, 'kor');
+});

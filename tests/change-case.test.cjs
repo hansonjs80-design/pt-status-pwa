@@ -50,6 +50,19 @@ test('transformEnglishCase transforms only English letters and preserves Korean/
     );
   });
 
+  await t.test('first and last English words become uppercase without changing the others', () => {
+    for (const [mode, expected] of [['firstWordUppercase', 'ACUTE pain'], ['lastWordUppercase', 'Acute PAIN']]) {
+      assert.equal(formatter.transformEnglishCase('Acute pain', mode), expected);
+    }
+    assert.equal(formatter.transformEnglishCase('통증: Acute pain (10회)', 'firstWordUppercase'), '통증: ACUTE pain (10회)');
+    assert.equal(formatter.transformEnglishCase('통증: Acute pain (10회)', 'lastWordUppercase'), '통증: Acute PAIN (10회)');
+    assert.equal(formatter.transformEnglishCase('Acute ROM pain', 'firstWordUppercase'), 'ACUTE ROM pain');
+    assert.equal(formatter.transformEnglishCase('Acute ROM pain', 'lastWordUppercase'), 'Acute ROM PAIN');
+    assert.equal(formatter.transformEnglishCase('통증 10회', 'lastWordUppercase'), '통증 10회');
+    assert.equal(formatter.transformEnglishCase('pain', 'firstWordUppercase'), 'PAIN');
+    assert.equal(formatter.transformEnglishCase('pain', 'lastWordUppercase'), 'PAIN');
+  });
+
   await t.test('toggle case mode', () => {
     assert.strictEqual(
       formatter.transformEnglishCase('Pt Rom Exercise 10회', 'toggle'),
@@ -94,4 +107,3 @@ test('context menu executeContextAction opens change-case menu', () => {
 
   assert.strictEqual(openedAnchor, dummyItem);
 });
-

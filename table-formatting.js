@@ -593,6 +593,15 @@ class PTTableFormatting {
       }
       case 'lowercase':
         return text.replace(/[a-zA-Z]/g, ch => ch.toLowerCase());
+      case 'firstWordUppercase':
+      case 'lastWordUppercase': {
+        // These menu labels mean the first/last English word: Acute pain →
+        // ACUTE pain / Acute PAIN. Preserve the case of every other word.
+        const words = [...text.matchAll(/[a-zA-Z]+/g)];
+        const word = caseType === 'firstWordUppercase' ? words[0] : words.at(-1);
+        if (!word) return text;
+        return text.slice(0, word.index) + word[0].toUpperCase() + text.slice(word.index + word[0].length);
+      }
       case 'uppercase':
         return text.replace(/[a-zA-Z]/g, ch => ch.toUpperCase());
       case 'capitalize': {
@@ -767,8 +776,10 @@ class PTTableFormatting {
     const options = [
       { key: 'sentence', label: '문장의 첫 글자를 대문자로' },
       { key: 'uppercase', label: '대문자로' },
-      { key: 'firstWord', label: '앞단어만 대문자로' },
       { key: 'capitalize', label: '각 단어를 대문자로' },
+      { key: 'firstWordUppercase', label: '첫 문장을 대문자로' },
+      { key: 'lastWordUppercase', label: '마지막 문장을 대문자로' },
+      { key: 'firstWord', label: '앞단어만 대문자로' },
       { key: 'lowercase', label: '소문자로' },
       { key: 'toggle', label: '대/소문자 전환' }
     ];

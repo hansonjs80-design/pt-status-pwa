@@ -2504,6 +2504,10 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .excel-table .cell-input-element.has-inline-completion,
 .excel-table .cell-input-element.has-editor-colors { -webkit-text-fill-color: transparent; caret-color: currentColor; }
 .inline-editor-color-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
+.excel-table .cell-input-element.has-native-language-preview { -webkit-text-fill-color: transparent; caret-color: transparent; }
+.excel-cell:has(.has-native-language-preview) > :is(.inline-editor-color-preview, .inline-autocomplete-preview) { visibility: hidden; }
+.native-language-preview { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; white-space: pre; pointer-events: none; z-index: 4; }
+.native-language-caret { display: inline-block; height: 1em; border-left: 1px solid currentColor; }
 .inline-autocomplete-preview { position: absolute; display: flex; align-items: center; white-space: pre; pointer-events: none; text-align: left; z-index: 3; font: inherit; letter-spacing: inherit; }
 .inline-completion-prefix { color: inherit; }
 .inline-completion-suffix { color: #92979e; }
