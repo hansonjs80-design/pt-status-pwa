@@ -39,7 +39,7 @@ class PTPresetManager {
   }
 
   openAutocompletePresetManager(colKey, value, input) {
-    const query = input?.value || this.autocompleteState?.query || value;
+    const query = (input ? this.getCellEditorValue(input) : '') || this.autocompleteState?.query || value;
     const shown = this.autocompleteState?.colKey === colKey && this.autocompleteState?.query === query
       ? this.autocompleteState.candidates : this.getAutocompleteSuggestions(colKey, query, true);
     const key = this.getAutocompleteRuleKey(colKey, query);

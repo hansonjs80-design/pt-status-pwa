@@ -36,15 +36,15 @@ test('names, numeric chart numbers and other fields include previous dates', () 
   assert.equal(JSON.stringify(data), before);
 });
 
-test('duplicates across dates and presets are shown once', () => {
+test('exact duplicates across dates and presets are shown once while case variants remain selectable', () => {
   const app = createApp({
     '2026-09-30': [{ name: 'Kim', chartNo: '12345' }],
     '2026-09-29': [{ name: ' KIM ', chartNo: 12345 }, null],
-    '2026-09-28': [{ name: 'kim', chartNo: '12345' }],
+    '2026-09-28': [{ name: 'kim', chartNo: '12345' }, { name: 'Kim', chartNo: '12345' }],
   }, { name: ['Kim'] });
-  assert.deepEqual(suggestions(app, 'name', 'ki'), ['Kim']);
+  assert.deepEqual(suggestions(app, 'name', 'ki'), ['Kim', 'KIM', 'kim']);
   assert.deepEqual(suggestions(app, 'chartNo', '123'), ['123', '12345']);
-  assert.deepEqual(suggestions(app, 'name', 'Kim'), ['Kim']);
+  assert.deepEqual(suggestions(app, 'name', 'Kim'), ['Kim', 'KIM', 'kim']);
 });
 
 test('suggestions reflect history edits and keep the ten-item limit', () => {
@@ -697,4 +697,54 @@ test('native English menu query and typed-value option use visible English inste
   input.value = 'la'; delete input._nativeCellComposition;
   app.showAutocompleteMenu(0, 'specialNote', cell, input, ['laser 12kg', 'laser 20kg']);
   assert.equal(app.getSelectedAutocompleteItem(), 'laser 20kg', 'native commit preserves candidate selection');
+});
+
+test('historical English case variants remain distinct for every autocomplete column', () => {
+  for (const col of ['chartNo', 'name', 'part', 'prescription', 'extra', 'memo', 'specialNote']) {
+    const app = createApp({
+      '2026-09-30': [],
+      '2026-09-29': [{ [col]: 'MW' }, { [col]: 'mw' }],
+      '2026-09-28': [{ [col]: 'MW' }, { [col]: 'Mw' }],
+    });
+    const variants = suggestions(app, col, 'm');
+    for (const value of ['MW', 'mw', 'Mw']) assert.equal(variants.filter(item => item === value).length, 1, `${col}: ${value}`);
+    assert.ok(suggestions(app, col, 'mw').includes('MW'), `${col}: full lowercase query must retain uppercase history`);
+    assert.ok(suggestions(app, col, 'MW').includes('mw'), `${col}: full uppercase query must retain lowercase history`);
+  }
+});
+
+test('lowercase input keeps registered case variants in the menu and commits their exact spelling', () => {
+  for (const native of [false, true]) {
+    let menu = null, committed = null;
+    const element = () => ({ style: {}, children: [], listeners: {}, isConnected: true, offsetWidth: 160, offsetHeight: 100,
+      appendChild(child) { this.children.push(child); }, setAttribute() {},
+      addEventListener(type, callback) { this.listeners[type] = callback; }, remove() { menu = null; } });
+    const document = { createElement: element, getElementById: () => menu,
+      body: { appendChild(child) { menu = child; } }, addEventListener() {}, removeEventListener() {} };
+    const window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1000, innerHeight: 800 };
+    const presets = { '__query:specialNote:mw': ['MW', 'Mw', 'MW말고 ICT선호'] };
+    const app = createApp({'2026-09-30': [{}]}, presets, { document, window });
+    app.moveAutocompleteSelection = () => {};
+    app.updateInlineAutocompletePreview = () => {};
+    app.selectCell = () => {};
+    const cell = { isConnected: true, getBoundingClientRect: () => ({left: 100, top: 100, bottom: 130, width: 100}) };
+    const input = { value: native ? 'mㅈ' : 'mw', dataset: {}, _inputLanguage: 'eng',
+      commitAutocompleteValue(value) { committed = value; return true; } };
+    if (native) input._nativeCellComposition = { prefix: 'm', suffix: '', data: 'ㅈ' };
+    const show = () => app.showAutocompleteMenu(0, 'specialNote', cell, input, app.getAutocompleteSuggestions('specialNote', app.getCellEditorValue(input)));
+    show();
+    assert.deepEqual(Array.from(app.autocompleteState.candidates), ['mw', 'MW', 'Mw', 'MW말고 ICT선호']);
+    assert.equal(app.getSelectedAutocompleteItem(), 'MW', 'registered uppercase spelling stays preferred');
+    app.autocompleteState.selectedIndex = 2;
+    show();
+    assert.equal(app.getSelectedAutocompleteItem(), 'Mw', 'refresh must preserve the exact selected case');
+    menu.children[1].listeners.click({stopPropagation() {}});
+    assert.equal(committed, 'MW');
+    show();
+    let managed;
+    app.openPresetManager = (col, context) => { managed = context; };
+    app.openAutocompletePresetManager('specialNote', 'MW', input);
+    assert.equal(managed.query, 'mw');
+    assert.deepEqual(Array.from(managed.items), ['MW', 'Mw', 'MW말고 ICT선호']);
+  }
 });

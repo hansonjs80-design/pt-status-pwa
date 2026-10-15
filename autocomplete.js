@@ -25,8 +25,8 @@ class PTAutocomplete {
       for (const date of snapshot.dates) {
         if (date === this.currentDate || !Array.isArray(snapshot.store[date])) continue;
         for (const row of snapshot.store[date]) {
-          const value = String(row?.[colKey] ?? '').trim(), normalized = value.toLowerCase();
-          if (value && !seen.has(normalized)) { seen.add(normalized); values.push(value); }
+          const value = String(row?.[colKey] ?? '').trim();
+          if (value && !seen.has(value)) { seen.add(value); values.push(value); }
         }
       }
       snapshot.values.set(colKey, values);
@@ -58,7 +58,8 @@ class PTAutocomplete {
 
   getAutocompleteSuggestions(colKey, rawQuery, isComposing = false) {
     if (!rawQuery) return [];
-    const query = String(rawQuery).trim().toLowerCase();
+    const typedQuery = String(rawQuery).trim();
+    const query = typedQuery.toLowerCase();
     if (!query) return [];
 
     const columnHidden = new Set((COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).map(value => value.trim().toLowerCase()));
@@ -72,7 +73,7 @@ class PTAutocomplete {
       }
       return values;
     }
-    const presets = COLUMN_PRESETS[colKey] ? [...COLUMN_PRESETS[colKey]] : [];
+    const presets = [...new Set(COLUMN_PRESETS[colKey] || [])];
     // An initial-specific list also supplies candidates as its syllable grows
     // (ㅇ → 아 → 안). An explicitly edited list for the exact query above wins.
     const rulePrefix = `__query:${colKey}:`;
@@ -85,7 +86,7 @@ class PTAutocomplete {
         if (!hidden.has(value) && !presets.includes(value)) presets.push(value);
       }
     }
-    const presetSet = new Set(presets.map((p) => p.toLowerCase()));
+    const presetSet = new Set(presets);
 
     // 현재 날짜뿐 아니라 저장된 모든 날짜의 같은 열에서 후보를 수집한다.
     // 현재 날짜, 최근 날짜 순으로 수집하되 같은 값은 한 번만 표시한다.
@@ -93,9 +94,9 @@ class PTAutocomplete {
     const existingValues = new Set();
     const seenValues = new Set(presetSet);
     const addValue = raw => {
-      const value = String(raw ?? '').trim(), normalized = value.toLowerCase();
-      if (!value || seenValues.has(normalized)) return;
-      seenValues.add(normalized); existingValues.add(value);
+      const value = String(raw ?? '').trim();
+      if (!value || seenValues.has(value)) return;
+      seenValues.add(value); existingValues.add(value);
     };
     // Current-day rows remain live: new input, paste and deletion take effect now.
     for (const row of this.dataStore?.[this.currentDate] || snapshot.store[this.currentDate] || []) addValue(row?.[colKey]);
@@ -125,7 +126,7 @@ class PTAutocomplete {
       const itemLower = item.toLowerCase();
       if (columnHidden.has(itemLower.trim())) return;
       // Explicitly registered candidates remain visible even after complete typing.
-      if (itemLower === query && !isPreset) return;
+      if (item === typedQuery && !isPreset) return;
 
       // 부위·성함·추가 사항·메모·특이 사항은 앞부분만 매칭한다.
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
@@ -216,7 +217,9 @@ class PTAutocomplete {
     input.dataset.autocompleteQuery = query;
     const typedValue = this.assembleHangul(query).trim();
     const showTypedValue = includeTypedValue && ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
-    if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value.toLowerCase() !== typedValue.toLowerCase())];
+    // Matching ignores case, but choosing a candidate must retain its spelling:
+    // the typed "mw" and the registered "MW" are different selectable values.
+    if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value !== typedValue)];
     const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
       previous.colKey === colKey && previous.query === query;
     // Ending IME composition while browsing must not remove pending-initial
