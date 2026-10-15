@@ -104,6 +104,73 @@ test('isKoreanPreferredColumn identifies columns that prefer Korean entry', () =
   assert.equal(app.isKoreanPreferredColumn('no'), true);
 });
 
+test('repairing trailing jamo preserves all eleven compound finals inside completed syllables', () => {
+  const { app } = createTestApp();
+  for (const word of ['넋', '앉', '많', '닭', '삶', '밟', '곬', '핥', '읊', '싫', '없']) {
+    for (const [suffix, expected] of [['ㅇ', 'ㅇ'], ['으ㅁ', '음'], ['ㄷㅏ', '다']]) {
+      assert.equal(app.assembleHangul(word + suffix), word + expected, word + suffix);
+    }
+  }
+  assert.equal(app.assembleHangul('자국싫으ㅁ'), '자국싫음');
+  assert.equal(app.assembleHangul('ㅅㅣㅀㅇㅡㅁ'), '싫음');
+  assert.equal(app.assembleHangul('싫ㅓ'), '실허', 'a following vowel still splits the compound final');
+  assert.equal(app.assembleHangul('ㅀ'), 'ㅀ', 'an isolated compound final stays visible');
+});
+
+test('typing 자국싫음 keeps its compound final through real input handlers and caret repair', () => {
+  for (const column of ['name', 'part', 'prescription', 'extra', 'memo', 'specialNote']) {
+    const fixture = editingFixture({ column });
+    const { app, input } = fixture;
+    const flushRepairs = enableInputRepair(fixture);
+    input.value = ''; input.setSelectionRange(0, 0);
+    const keys = 'wkrnrtlfgdma';
+    const drafts = ['ㅈ', '자', '작', '자구', '자국', '자굯', '자국시', '자국실', '자국싫', '자국싫ㅇ', '자국싫으', '자국싫음'];
+    for (let i = 0; i < keys.length; i++) {
+      typeKeys(input, keys[i]);
+      flushRepairs();
+      assert.equal(input.value, drafts[i], `${column}: ${keys.slice(0, i + 1)}`);
+      assert.equal(input.selectionStart, drafts[i].length);
+      assert.equal(app.getCurrentRows()[0][column], drafts[i]);
+    }
+  }
+});
+
+test('native IME repair keeps compound finals and waits until composition ends', () => {
+  const fixture = editingFixture();
+  const { app, input } = fixture;
+  const flushRepairs = enableInputRepair(fixture);
+  input.value = '자국싫'; input.setSelectionRange(3, 3);
+  input._listeners.compositionstart({ type: 'compositionstart' });
+  for (const data of ['ㅇ', '으', '으ㅁ']) {
+    const raw = '자국싫' + data;
+    input.value = raw; input.setSelectionRange(raw.length, raw.length);
+    input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data });
+    flushRepairs();
+    assert.equal(input.value, raw, 'never rewrite the live native composition');
+  }
+  input._listeners.compositionend({ type: 'compositionend', data: '으ㅁ' });
+  flushRepairs();
+  assert.equal(input.value, '자국싫음');
+  assert.equal(input.selectionStart, 4);
+  assert.equal(app.getCurrentRows()[0].specialNote, '자국싫음');
+});
+
+function enableInputRepair({ app, context, input }) {
+  const timers = new Map(); let serial = 0;
+  context.setTimeout = (callback, delay) => { const id = ++serial; if (delay === 0) timers.set(id, callback); return id; };
+  context.clearTimeout = id => timers.delete(id);
+  context.Event = class { constructor(type) { this.type = type; } };
+  context.document.activeElement = input; input.isConnected = true;
+  input.dispatchEvent = event => input._listeners.input(event);
+  app.showAutocompleteMenu = () => {};
+  return () => {
+    while (timers.size) {
+      const [id, callback] = timers.entries().next().value;
+      timers.delete(id); callback();
+    }
+  };
+}
+
 test('name editor converts English keydown sequence into Korean syllables and supports Backspace and Escape', () => {
   const { app } = createTestApp();
   app.dataStore['2026-10-15'][0].name = '';

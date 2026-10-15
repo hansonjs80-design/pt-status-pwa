@@ -633,7 +633,10 @@ class PTCellInputTools {
           flush();
           result += c;
         }
-      } else if (isCho(c)) {
+      } else if (isCho(c) || isJong(c)) {
+        // Decomposing a completed syllable keeps its compound final as one
+        // jamo (e.g. 싫 -> ㅅ ㅣ ㅀ). These finals cannot start a syllable, but
+        // must reattach below it when a later isolated jamo triggers repair.
         if (!cho) {
           cho = c;
         } else if (!jung) {
@@ -642,7 +645,7 @@ class PTCellInputTools {
         } else if (!jong) {
           if (isJong(c)) {
             const next = stream[i + 1];
-            if (next && isJung(next)) {
+            if (next && isJung(next) && isCho(c)) {
               flush();
               cho = c;
             } else {
