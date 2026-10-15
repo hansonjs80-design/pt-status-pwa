@@ -58,7 +58,15 @@ class PTCellEditor {
 
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
-      existingEditor._inputLanguage = this._cellInputLanguage || "kor";
+      if (!armed) {
+        existingEditor._inputLanguage = "kor";
+        this._cellInputLanguage = "kor";
+        existingEditor._engKorBuffer = "";
+        existingEditor._engKorPrefix = "";
+        existingEditor._engKorSuffix = "";
+      } else {
+        existingEditor._inputLanguage = this._cellInputLanguage || "kor";
+      }
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         delete existingEditor.dataset.navigationInputGuard;
         this.activateNativeEditor(existingEditor);
@@ -175,6 +183,20 @@ class PTCellEditor {
       }
       // Native insertion starts editing before input/composition events arrive.
       if (!["deleteContentBackward", "deleteContentForward"].includes(e.inputType)) this.activateNativeEditor(input);
+      // 영문 모드일 때 OS 한글 IME가 입력하는 글자를 영문(QWERTY 2벌식)으로 정밀 가로채기
+      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng") {
+        if (e.data && /[\u3131-\u318E\uAC00-\uD7A3]/.test(e.data)) {
+          e.preventDefault();
+          this.activateNativeEditor(input);
+          const converted = this.convertHangulToEng(e.data);
+          const start = input.selectionStart ?? input.value.length;
+          const end = input.selectionEnd ?? start;
+          input.value = input.value.slice(0, start) + converted + input.value.slice(end);
+          input.setSelectionRange(start + converted.length, start + converted.length);
+          input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
+          return;
+        }
+      }
       if (colKey === "writer" && input.dataset.writerKeyValue !== undefined &&
           (e.isComposing || /Composition/.test(e.inputType || "") || e.inputType === "insertText")) {
         e.preventDefault();
@@ -186,18 +208,7 @@ class PTCellEditor {
       if (e.isComposing) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
-      let val = input.value;
-      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng" && /[\u3131-\u318E\uAC00-\uD7A3]/.test(val)) {
-        const start = input.selectionStart;
-        const converted = this.convertHangulToEng(val);
-        if (converted !== val) {
-          input.value = converted;
-          const diff = converted.length - val.length;
-          const newPos = Math.max(0, start + diff);
-          input.setSelectionRange(newPos, newPos);
-          val = converted;
-        }
-      }
+      const val = input.value;
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
 
       // writer 열은 영문 대문자 변환만 (한글 입력과 무관)
@@ -238,20 +249,17 @@ class PTCellEditor {
       input.dataset.nativeComposing = "false";
       repairCompletedInput();
       if (this._justCommittedFromAutocomplete) return;
-      // ★ input.value를 절대 변경하지 않음! 다음 글자 조합을 방해함
-      // assembleHangul은 blur 시점에서만 최종 보정
-      let val = input.value;
-      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng" && /[\u3131-\u318E\uAC00-\uD7A3]/.test(val)) {
-        const start = input.selectionStart;
-        const converted = this.convertHangulToEng(val);
-        if (converted !== val) {
-          input.value = converted;
-          const diff = converted.length - val.length;
-          const newPos = Math.max(0, start + diff);
-          input.setSelectionRange(newPos, newPos);
-          val = converted;
+      // ★ 영문 모드일 때 방금 조합된 한글이 남아있다면 해당 부분만 영문으로 치환 (기존 한글 본문 보존)
+      if (this.isKoreanPreferredColumn(colKey) && input._inputLanguage === "eng" && e.data && /[\u3131-\u318E\uAC00-\uD7A3]/.test(e.data)) {
+        const start = input.selectionStart ?? input.value.length;
+        const converted = this.convertHangulToEng(e.data);
+        const startPos = Math.max(0, start - e.data.length);
+        if (input.value.slice(startPos, start) === e.data) {
+          input.value = input.value.slice(0, startPos) + converted + input.value.slice(start);
+          input.setSelectionRange(startPos + converted.length, startPos + converted.length);
         }
       }
+      const val = input.value;
       if (colKey === "writer") {
         const normalized = this.normalizeWriterEditorInput(input, e);
         if (normalized !== input.value) input.value = normalized;
@@ -389,6 +397,10 @@ class PTCellEditor {
           const converted = input._engKorBuffer ? this.convertEngToHangul(input._engKorBuffer) : "";
           input.value = prefix + converted + suffix;
           input.setSelectionRange(prefix.length + converted.length, prefix.length + converted.length);
+          if (!input._engKorBuffer) {
+            input._engKorPrefix = "";
+            input._engKorSuffix = "";
+          }
           input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           return;
         }

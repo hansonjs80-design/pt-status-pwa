@@ -283,4 +283,53 @@ test('isHangulToggleKeyEvent recognizes Windows, Mac, and various keyboard confi
   assert.equal(app.isHangulToggleKeyEvent({ key: 'Enter' }), false);
 });
 
+test('typing Korean, backspacing completely, and pressing hangul toggle switches to English mode immediately', () => {
+  const { app } = createTestApp();
+  const cellElement = {
+    dataset: { col: 'specialNote', colIdx: '9' },
+    querySelector: () => null,
+    appendChild: () => {},
+    textContent: '',
+    classList: { add() {}, remove() {}, contains() { return false; } }
+  };
+  app.elTableBody = { querySelector: () => cellElement, querySelectorAll: () => [] };
+  app.elFormulaInput = { value: '' };
+
+  // 1. 더블 클릭으로 활성 커서 진입 (armed = false) -> 기본 한글 모드
+  app.startInlineEdit(0, 'specialNote', cellElement, false);
+  const input = app.getCreatedInput();
+  assert.ok(input);
+  assert.equal(input._inputLanguage, 'kor');
+
+  // 2. 한글 '홍' 입력 (영타 'ghd')
+  input.value = '';
+  input.selectionStart = 0;
+  input.selectionEnd = 0;
+  input._listeners.keydown({ key: 'g', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
+  input._listeners.keydown({ key: 'h', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
+  input._listeners.keydown({ key: 'd', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, preventDefault() {} });
+  assert.equal(input.value, '홍');
+  assert.equal(input._engKorBuffer, 'ghd');
+
+  // 3. 백스페이스로 3글자 모두 삭제
+  input._listeners.keydown({ key: 'Backspace', preventDefault() {} });
+  assert.equal(input.value, '호');
+  input._listeners.keydown({ key: 'Backspace', preventDefault() {} });
+  assert.equal(input.value, 'ㅎ');
+  input._listeners.keydown({ key: 'Backspace', preventDefault() {} });
+  assert.equal(input.value, '');
+  assert.equal(input._engKorBuffer, '');
+  assert.equal(input._engKorPrefix, '');
+
+  // 4. 한영 전환키 누름 -> 즉시 영문 모드 전환!
+  let toggleEvt = { key: 'CapsLock', code: 'CapsLock', preventDefault() {}, stopPropagation() {} };
+  input._listeners.keydown(toggleEvt);
+  assert.equal(input._inputLanguage, 'eng');
+
+  // 5. 영문 입력 -> 영문 그대로 입력 (가로채지 않음)
+  let engKey = { key: 'p', ctrlKey: false, metaKey: false, altKey: false, isComposing: false, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  input._listeners.keydown(engKey);
+  assert.equal(engKey.defaultPrevented, false);
+});
+
 
