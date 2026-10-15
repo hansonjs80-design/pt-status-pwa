@@ -1907,9 +1907,11 @@ test('interrupted pointer selection releases all drag guards without changing da
   const classes=new Set(['is-selecting','is-fill-dragging']);
   app.elSheetContainer.classList={remove(...names){names.forEach(name=>classes.delete(name));}};
   app.cancelFillDrag=()=>{cancelled++;app.fillDrag=null;};
-  Object.assign(app,{fillDrag:{},isSelectingCrossDate:true,isSelectingRange:true,isSelectingRows:true,_isRowDragging:true,_rowDragAnchor:0});
+  let resizeCancelled=0;app.endColumnResize=()=>{resizeCancelled++;};
+  Object.assign(app,{fillDrag:{},isSelectingCrossDate:true,isSelectingRange:true,isSelectingRows:true,_isRowDragging:true,_rowDragAnchor:0,columnDragAnchor:'name'});
   app.cancelSheetPointerInteraction();
   for(const key of ['isSelectingCrossDate','isSelectingRange','isSelectingRows','_isRowDragging'])assert.equal(app[key],false);
   assert.equal(app._rowDragAnchor,undefined);assert.equal(classes.size,0);assert.equal(cancelled,1);
+  assert.equal(app.columnDragAnchor,null);assert.equal(resizeCancelled,1);
   assert.equal(app.selectedRange,range);assert.equal(JSON.stringify(app.dataStore),before);
 });

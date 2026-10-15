@@ -1,26 +1,147 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCloudSync {
+  openLocalDatabase(name, storeName) {
+    this._localDatabases ||= new Map();
+    if (this._localDatabases.has(name)) return this._localDatabases.get(name);
+    const ready = new Promise((resolve, reject) => {
+      let settled = false;
+      const fail = error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      };
+      const timer = setTimeout(() => fail(new Error('기기 저장소 연결 시간이 초과되었습니다. 다시 시도해 주세요.')), 15000);
+      let request;
+      try { request = indexedDB.open(name, 1); }
+      catch (error) { fail(error); return; }
+      request.onupgradeneeded = () => {
+        if (settled) { request.transaction.abort(); return; }
+        request.result.createObjectStore(storeName);
+      };
+      request.onblocked = () => fail(new Error('다른 창에서 기기 저장소를 사용 중입니다. 다른 창을 닫고 다시 시도해 주세요.'));
+      request.onerror = () => fail(request.error || new Error('기기 저장소를 열지 못했습니다.'));
+      request.onsuccess = () => {
+        const db = request.result;
+        if (settled) { db.close(); return; }
+        settled = true;
+        clearTimeout(timer);
+        const release = () => {
+          if (this._localDatabases.get(name) === ready) this._localDatabases.delete(name);
+        };
+        db.onversionchange = () => { release(); db.close(); };
+        db.onclose = release;
+        resolve(db);
+      };
+    });
+    this._localDatabases.set(name, ready);
+    ready.catch(() => {
+      if (this._localDatabases.get(name) === ready) this._localDatabases.delete(name);
+    });
+    return ready;
+  }
+
+  async localDatabaseStore(name, storeName, key, value) {
+    const ready = this.openLocalDatabase(name, storeName);
+    const db = await ready;
+    return new Promise((resolve, reject) => {
+      let tx, request, settled = false;
+      const finish = error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) {
+          if (this._localDatabases.get(name) === ready) this._localDatabases.delete(name);
+          try { tx?.abort(); } catch (_) {}
+          db.close();
+          reject(error);
+        } else resolve(request.result);
+      };
+      const timer = setTimeout(() => finish(new Error('기기 저장소 응답 시간이 초과되었습니다. 다시 시도해 주세요.')), 15000);
+      try {
+        tx = db.transaction(storeName, value === undefined ? 'readonly' : 'readwrite');
+        request = value === undefined ? tx.objectStore(storeName).get(key) : tx.objectStore(storeName).put(value, key);
+        tx.oncomplete = () => finish();
+        tx.onerror = () => finish(tx.error || request.error || new Error('기기 저장소 처리 실패'));
+        tx.onabort = () => finish(tx.error || new Error('기기 저장소 처리가 중단되었습니다.'));
+      } catch (error) { finish(error); }
+    });
+  }
+
+  async runCloudQuery(query, timeoutMs = 15000) {
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    if (controller && typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
+    let timer;
+    try {
+      return await Promise.race([
+        query,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error('클라우드 응답 시간이 초과되었습니다.'));
+            controller?.abort();
+          }, timeoutMs);
+        }),
+      ]);
+    } finally { clearTimeout(timer); }
+  }
+
+  restoreLocalState() {
+    if (this._localRestoreTask) return this._localRestoreTask;
+    const needsRecords = Boolean((this._recordsOnDisk && !this._recordsRestored) || this._recordRestoreError);
+    this._recordsRestorePending = needsRecords;
+    this.updateLocalRestoreUI(needsRecords ? 'loading' : '');
+    this.manualDateDeletionsReady = this.restoreManualDateDeletions();
+    const recordsReady = (async () => {
+      if (!needsRecords) return;
+      if (this._recordRestoreError) {
+        this._recordRestoreError = null;
+        this.dataStore = this.loadDataStore();
+      }
+      await this.restoreDiskRecords();
+      this._recordsRestored = true;
+      this._recordsRestorePending = false;
+      this.updateLocalRestoreUI('');
+      this.getCurrentRows();
+      this.editHistory.clear();
+      this.renderTable();
+      this.updateSidebarStats();
+    })();
+    this.syncBaselinesReady = Promise.allSettled([recordsReady, this.restoreSyncBaselines(), this.manualDateDeletionsReady])
+      .then(results => {
+        const failed = results.find(result => result.status === 'rejected');
+        if (failed) throw failed.reason;
+      });
+    const task = this.syncBaselinesReady.then(() => {
+      this.updateLocalRestoreUI('');
+    }, () => {
+      this.updateLocalRestoreUI(this._recordsRestorePending ? 'records-error' : 'sync-error');
+      this.showSaveIndicator('기기 저장소 복원 확인 필요 · 다시 시도해 주세요', true);
+    }).finally(() => { if (this._localRestoreTask === task) this._localRestoreTask = null; });
+    this._localRestoreTask = task;
+    return task;
+  }
+
+  updateLocalRestoreUI(state) {
+    const panel = document.getElementById('localRestoreNotice');
+    const app = document.querySelector('.excel-app');
+    if (app) app.inert = Boolean(this._recordsRestorePending);
+    if (!panel) return;
+    panel.hidden = !state;
+    const message = panel.querySelector('[data-restore-message]');
+    message.textContent = state === 'loading' ? '이 기기에 저장된 기록을 불러오는 중입니다.'
+      : state === 'records-error' ? '저장된 기록을 아직 불러오지 못했습니다. 기존 기록을 보존하고 있습니다. 다시 시도해 주세요.'
+        : '기록은 열렸지만 동기화 준비를 완료하지 못했습니다. 다시 시도해 주세요.';
+    const retry = panel.querySelector('button');
+    retry.disabled = state === 'loading';
+    retry.onclick = () => void this.restoreLocalState();
+  }
+
   async syncBaselineDisk(value) {
     return this.syncStateDisk('baselines', value);
   }
 
   async syncStateDisk(key, value) {
-    this._baselineDatabase ||= new Promise((resolve, reject) => {
-      const request = indexedDB.open('PT_SYNC_STATE', 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('state');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    let db;
-    try { db = await this._baselineDatabase; }
-    catch (error) { this._baselineDatabase = null; throw error; }
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('state', value === undefined ? 'readonly' : 'readwrite');
-      const request = value === undefined ? tx.objectStore('state').get(key) : tx.objectStore('state').put(value, key);
-      tx.oncomplete = () => resolve(request.result);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error || Error('동기화 기준 저장이 중단되었습니다.'));
-    });
+    return this.localDatabaseStore('PT_SYNC_STATE', 'state', key, value);
   }
 
   async restoreSyncBaselines() {
@@ -36,11 +157,18 @@ class PTCloudSync {
     if (!this._recordsOnDisk) return;
     const saved = await this.syncStateDisk('records');
     const records = typeof saved === 'string' ? JSON.parse(saved) : null;
-    if (!records || typeof records !== 'object' || Array.isArray(records)) throw new Error('로컬 기록을 복원하지 못했습니다.');
+    if (!this.isValidRecordStore(records)) throw new Error('로컬 기록을 복원하지 못했습니다.');
     this.dataStore = records;
   }
 
+  isValidRecordStore(records) {
+    return records && typeof records === 'object' && !Array.isArray(records) &&
+      Object.values(records).every(rows => Array.isArray(rows) &&
+        rows.every(row => row && typeof row === 'object' && !Array.isArray(row)));
+  }
+
   persistDataStore(records = this.dataStore) {
+    if (this._recordsRestorePending) return Promise.reject(new Error('기록 복원 중에는 저장할 수 없습니다.'));
     if (this._recordRestoreError) return Promise.reject(this._recordRestoreError);
     const snapshot = JSON.stringify(records);
     const isQuota = error => error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014;
@@ -84,6 +212,10 @@ class PTCloudSync {
 
   // --- Supabase Cloud Sync Methods ---
   initSupabase() {
+    if (!window.supabase && !this._supabaseLoadBound) {
+      this._supabaseLoadBound = true;
+      document.getElementById('supabaseSdk')?.addEventListener('load', () => this.initSupabase(), { once: true });
+    }
     try {
       let url = DEFAULT_SUPABASE_URL;
       let key = DEFAULT_SUPABASE_KEY;
@@ -165,7 +297,7 @@ class PTCloudSync {
     try {
       const testClient = window.supabase.createClient(url, key);
       // Test query to check table
-      const { error } = await testClient.from("pt_daily_records").select("date").limit(1);
+      const { error } = await this.runCloudQuery(testClient.from("pt_daily_records").select("date").limit(1));
       if (error && (error.code === "PGRST204" || (error.message && error.message.includes("relation") && error.message.includes("does not exist")))) {
         alert("Supabase 연결은 확인되었으나, 'pt_daily_records' 테이블이 없습니다.\n하단의 SQL 스크립트를 Supabase SQL Editor에서 실행해주세요!");
       }
@@ -202,6 +334,9 @@ class PTCloudSync {
   }
 
   stopLiveSync() {
+    this.liveSyncSession = null;
+    this.liveRefreshBusy = false;
+    clearTimeout(this.liveReconnectTimer);
     clearInterval(this.liveSyncTimer);
     clearInterval(this.columnFormattingLiveTimer);
     clearTimeout(this.presetsSyncTimer);
@@ -236,6 +371,7 @@ class PTCloudSync {
     if (!client) return;
     this.setupNetworkSyncListeners();
     this.liveClient = client;
+    const session = this.liveSyncSession = {};
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         if (payload?.date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
@@ -245,33 +381,36 @@ class PTCloudSync {
         this.searchHistoryLoadedAt = 0;
       });
     this.liveChannel.subscribe((status) => {
+      if (this.liveSyncSession !== session) return;
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
         console.warn("Supabase 실시간 채널 연결 이상 감지, 재시도:", status);
-        setTimeout(() => {
-          if (this.supabaseClient === client && (!this.liveChannel || status === "CHANNEL_ERROR")) {
-            this.startLiveSync();
-          }
+        clearTimeout(this.liveReconnectTimer);
+        this.liveReconnectTimer = setTimeout(() => {
+          if (this.supabaseClient === client && this.liveSyncSession === session) this.startLiveSync();
         }, 3000);
       }
     });
     const refresh = async () => {
-      if (this.liveRefreshBusy || this.supabaseClient !== client) return;
+      if (this.liveRefreshBusy || this.supabaseClient !== client || this.liveSyncSession !== session) return;
       this.liveRefreshBusy = true;
       try {
         // pendingSyncDates를 순차적으로 push하여 완료를 기다림
         const pending = [...this.pendingSyncDates];
         for (const date of pending) {
-          if (this.supabaseClient !== client) break;
+          if (this.supabaseClient !== client || this.liveSyncSession !== session) return;
           if (!this.activePushes.has(date)) await this.pushToCloud(date);
         }
+        if (this.liveSyncSession !== session) return;
         void this.syncStaffCountSettings();
         if (this.presetsDirty) await this.pushSharedPresets();
         else await this.pullSharedPresets();
         // push가 모두 완료된 후 pull 실행
-        if (!this.pendingSyncDates.has(this.currentDate)) {
+        if (this.liveSyncSession === session && !this.pendingSyncDates.has(this.currentDate)) {
           await this.pullFromCloud(this.currentDate);
         }
-      } finally { this.liveRefreshBusy = false; }
+      } catch (error) {
+        if (this.liveSyncSession === session) this.showSaveIndicator('클라우드 동기화 대기 · 연결되면 다시 시도합니다', true);
+      } finally { if (this.liveSyncSession === session) this.liveRefreshBusy = false; }
     };
     this.liveSyncTimer = setInterval(refresh, 2000);
     this.columnFormattingLiveTimer = setInterval(() => { void this.syncSharedColumnFormatting(); }, 2000);
@@ -295,13 +434,13 @@ class PTCloudSync {
     const client = this.supabaseClient;
     if (!client || this.presetsDirty || this.presetsPushing) return;
     try {
-      const { data, error } = await client.from("pt_daily_records").select("rows_data").eq("date", SHARED_PRESETS_RECORD).maybeSingle();
+      const { data, error } = await this.runCloudQuery(client.from("pt_daily_records").select("rows_data").eq("date", SHARED_PRESETS_RECORD).maybeSingle());
       if (error) throw error;
       if (client !== this.supabaseClient || this.presetsDirty) return;
       const presets = data?.rows_data?.[0]?.presets;
       if (!data) {
-        const result = await client.from("pt_daily_records").insert({ date: SHARED_PRESETS_RECORD,
-          rows_data: [{ presets: COLUMN_PRESETS }], total_count: 0, updated_at: new Date().toISOString() });
+        const result = await this.runCloudQuery(client.from("pt_daily_records").insert({ date: SHARED_PRESETS_RECORD,
+          rows_data: [{ presets: COLUMN_PRESETS }], total_count: 0, updated_at: new Date().toISOString() }));
         if (result.error && result.error.code !== "23505") throw result.error;
         return;
       }
@@ -320,9 +459,10 @@ class PTCloudSync {
     this.presetsPushing = true;
     const snapshot = JSON.stringify(COLUMN_PRESETS);
     try {
-      const { error } = await client.from("pt_daily_records").upsert({ date: SHARED_PRESETS_RECORD,
-        rows_data: [{ presets: JSON.parse(snapshot) }], total_count: 0, updated_at: new Date().toISOString() });
+      const { error } = await this.runCloudQuery(client.from("pt_daily_records").upsert({ date: SHARED_PRESETS_RECORD,
+        rows_data: [{ presets: JSON.parse(snapshot) }], total_count: 0, updated_at: new Date().toISOString() }));
       if (error) throw error;
+      if (client !== this.supabaseClient) return;
       if (JSON.stringify(COLUMN_PRESETS) === snapshot) {
         this.presetsDirty = false; localStorage.removeItem("PT_PRESETS_PENDING");
       }
@@ -454,8 +594,9 @@ class PTCloudSync {
     this.activePushes.set(dateStr, true);
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const { data, error: readError } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", dateStr).maybeSingle();
+        const { data, error: readError } = await this.runCloudQuery(client.from("pt_daily_records").select("rows_data, updated_at").eq("date", dateStr).maybeSingle());
         if (readError) throw readError;
+        if (client !== this.supabaseClient) return;
         if (missingLocal) {
           if (data && Array.isArray(data.rows_data) && data.rows_data.some(row => String(row?.name || '').trim() || String(row?.chartNo || '').trim())) {
             await this.restoreProtectedCloudDate(dateStr, data);
@@ -479,8 +620,8 @@ class PTCloudSync {
         let result;
         if (data) {
           const update = client.from("pt_daily_records").update(record).eq("date", dateStr);
-          result = await (data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date");
-        } else result = await client.from("pt_daily_records").insert(record).select("date");
+          result = await this.runCloudQuery((data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date"));
+        } else result = await this.runCloudQuery(client.from("pt_daily_records").insert(record).select("date"));
         if (result.error?.code === "23505") continue;
         if (result.error) throw result.error;
         if (!result.data?.length) continue;
@@ -537,11 +678,11 @@ class PTCloudSync {
     }
 
     try {
-      const { data, error } = await this.supabaseClient
+      const { data, error } = await this.runCloudQuery(client
         .from("pt_daily_records")
         .select("rows_data, updated_at")
         .eq("date", dateStr)
-        .maybeSingle();
+        .maybeSingle());
 
       if (error) {
         console.warn("Cloud pull warning:", error);

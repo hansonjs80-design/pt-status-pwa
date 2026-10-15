@@ -6,6 +6,7 @@ function tools(){const window={addEventListener(){}};vm.runInNewContext(fs.readF
 test('full backup preserves staff-calendar scope separately from patient dates',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype),saved=new Map();
  l.app={dataStore:{},supabaseClient:{from(){const q={select(){return q},order(){return q},range(){return Promise.resolve({data:[{date:'2026-10-10',rows_data:[{name:'가상'}]},{date:'__pt_staff_calendar_count_settings_v1__',rows_data:[{staffCalendarCounts:{scope:'from',startDate:'2026-09-01'}}]}]})}};return q}}};
+ l.app.runCloudQuery=async query=>query;
  l.settings={};l.store=async(k,v)=>v===undefined?saved.get(k):saved.set(k,v);l.save=()=>{};l.cleanupOldBackups=async()=>{};l.write=async()=>{};l.report=()=>{};
  await l.backup(true);const backup=JSON.parse([...saved.values()][0]);
  assert.equal(backup.staffCalendarCounts.startDate,'2026-09-01');assert.equal(backup.staffCalendarCounts.scope,'from');
@@ -16,6 +17,15 @@ test('PDF writer records valid byte offsets and all page objects',async()=>{
  const bytes=Buffer.from(await blob.arrayBuffer()),text=bytes.toString('latin1');assert.ok(text.includes('/Count 2'));
  const xref=Number(text.match(/startxref\n(\d+)/)[1]);assert.equal(text.slice(xref,xref+4),'xref');
  const entries=text.slice(xref).split('\n').slice(3,11);entries.forEach((entry,i)=>assert.equal(text.slice(Number(entry.slice(0,10)),Number(entry.slice(0,10))+7),`${i+1} 0 obj`));
+});
+
+test('failed record restoration cannot replace or rotate saved backups', async () => {
+ const {LocalTools}=tools(),l=Object.create(LocalTools.prototype);
+ l.app={syncBaselinesReady:Promise.reject(Error('복원 실패')),dataStore:{}};
+ l.store=()=>assert.fail('must not store a placeholder backup');
+ l.cleanupOldBackups=()=>assert.fail('must not rotate preserved backups');
+ await assert.rejects(l.backup(true),/복원 실패/);
+ await assert.rejects(l.dayRows('2026-10-15'),/복원 실패/);
 });
 test('scheduler catches up missed previous days once and never marks failed PDF complete',async()=>{
  const {LocalTools,previousDay}=tools(),l=Object.create(LocalTools.prototype),now=new Date(),target=previousDay(now);
@@ -190,5 +200,3 @@ test('backup pauses outside work hours when workHoursOnly is enabled', async () 
  // 근무 시간 내이므로 백업 실행되어야 함
  assert.equal(backups, 1);
 });
-
-

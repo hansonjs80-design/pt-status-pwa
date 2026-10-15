@@ -36,7 +36,8 @@ class PTAppEvents {
         this.columnDragAnchor = start;
         this.selectEntireColumn(start, "", th.dataset.col);
       });
-      th.addEventListener("mouseenter", () => {
+      th.addEventListener("mouseenter", event => {
+        if (event.buttons === 0) { this.columnDragAnchor = null; return; }
         if (this.columnDragAnchor && !["del", "spacer"].includes(th.dataset.col)) this.selectEntireColumn(this.columnDragAnchor, "", th.dataset.col);
       });
     });
@@ -359,6 +360,7 @@ class PTAppEvents {
     // Keyboard Shortcuts
     // Intercept search before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
+      if (this._recordsRestorePending) return;
       if (!e.defaultPrevented && this.handleTextFormattingShortcut(e)) return;
       if (!e.defaultPrevented) this.handlePatientEditorSearchShortcut(e);
     }, true);
@@ -371,6 +373,7 @@ class PTAppEvents {
     window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; });
 
     document.addEventListener("paste", event => {
+      if (this._recordsRestorePending) return;
       const target = event.target;
       if (this.crossDateSelection) { event.preventDefault(); return; }
       if (!this.activeCell && !this.selectedRange && this.selectedRowIdx === null) return;
@@ -448,7 +451,7 @@ class PTAppEvents {
 
     // Global mouseup to finish drag selection (cells or rows)
     document.addEventListener("mousemove", (event) => {
-      if (event.buttons === 0 && (this.fillDrag || this.isSelectingRange || this.isSelectingRows || this.isSelectingCrossDate || this._isRowDragging)) {
+      if (event.buttons === 0 && (this.fillDrag || this.isSelectingRange || this.isSelectingRows || this.isSelectingCrossDate || this._isRowDragging || this.columnDragAnchor)) {
         this.cancelSheetPointerInteraction();
         return;
       }
@@ -495,6 +498,8 @@ class PTAppEvents {
   }
 
   cancelSheetPointerInteraction() {
+    this.columnDragAnchor = null;
+    this.endColumnResize?.();
     this.cancelHighlightStroke?.();
     this.cancelFillDrag();
     this.isSelectingCrossDate = false;

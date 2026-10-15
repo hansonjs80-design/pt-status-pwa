@@ -16,9 +16,13 @@
 
   <link rel="stylesheet" href="style.css">
   <!-- Supabase JS Client CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script id="supabaseSdk" async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <div id="localRestoreNotice" class="local-restore-notice" role="alert" hidden>
+    <span data-restore-message></span>
+    <button type="button">다시 시도</button>
+  </div>
   <div class="excel-app">
     <!-- Top Green Header Ribbon Bar -->
     <header class="excel-titlebar">

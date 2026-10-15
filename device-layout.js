@@ -242,6 +242,7 @@ class PTDeviceLayout {
   initColumnResizing() {
     let activeTh = null;
     let activeColKey = null;
+    let activeResizer = null;
     let startX = 0;
     let startWidth = 0;
     let fixedRight = 0;
@@ -277,6 +278,8 @@ class PTDeviceLayout {
         ? document.querySelector(`.col-headers-row th[data-col="${sourceTh.dataset.col}"]`)
         : sourceTh;
       activeColKey = activeTh?.dataset?.col || null;
+      if (!activeTh) return;
+      activeResizer = resizerEl;
       startX = clientX;
       startWidth = saved[activeColKey] || parseFloat(activeTh.style.width) || activeTh.getBoundingClientRect().width;
       fixedRight = activeTh.getBoundingClientRect().right;
@@ -301,21 +304,19 @@ class PTDeviceLayout {
 
     const endResize = () => {
       if (activeTh) {
-        const resizer = activeTh.querySelector(".col-resizer");
-        if (resizer) resizer.classList.remove("resizing");
-
-        // 기기별 localStorage에 열 너비 영구 저장
-        if (activeColKey) {
-          const finalWidth = parseFloat(activeTh.style.width) || activeTh.offsetWidth;
-          this.saveColumnWidth(activeColKey, finalWidth);
-        }
-
+        const key = activeColKey;
+        const finalWidth = parseFloat(activeTh.style.width) || activeTh.offsetWidth;
+        activeResizer?.classList.remove?.("resizing");
+        activeResizer = null;
         activeTh = null;
         activeColKey = null;
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        // Release pointer state before persistence, even when storage fails.
+        if (key) this.saveColumnWidth(key, finalWidth);
       }
     };
+    this.endColumnResize = endResize;
 
     // 마우스 이벤트 리스너
     document.addEventListener("mousedown", (e) => {
@@ -328,6 +329,7 @@ class PTDeviceLayout {
 
     document.addEventListener("mousemove", (e) => {
       if (activeTh) {
+        if (e.buttons === 0) { endResize(); return; }
         doResize(e.pageX);
       }
     });

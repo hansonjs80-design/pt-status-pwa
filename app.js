@@ -139,11 +139,9 @@ class PTApp {
     this.syncTimers = new Map();
     this.syncBaselines = new Map();
     try { const saved = JSON.parse(localStorage.getItem("PT_SYNC_BASELINES") || "{}"); if (saved && typeof saved === 'object') for (const [date, rows] of Object.entries(saved)) this.syncBaselines.set(date, rows); } catch (_) {}
-    this.manualDateDeletionsReady = this.restoreManualDateDeletions();
-    this.syncBaselinesReady = Promise.all([this.restoreSyncBaselines(), this.restoreDiskRecords(), this.manualDateDeletionsReady]);
-    this.syncBaselinesReady.catch(() => this.showSaveIndicator('동기화 기준 복원 실패 · 동기화 보류', true));
     this.activePushes = new Map();
-    this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1";
+    try { this.presetsDirty = localStorage.getItem("PT_PRESETS_PENDING") === "1"; }
+    catch (_) { this.presetsDirty = false; }
     try { this.pendingSyncDates = new Set(JSON.parse(localStorage.getItem("PT_PENDING_DATES") || "[]")); } catch (_) {}
 
     // Autocomplete State
@@ -169,13 +167,7 @@ class PTApp {
     this.contextTarget = null; // { type: 'cell'|'row'|'col'|'corner', rowIdx, colKey, colIdx }
 
     this.cacheElements();
-    if (this._recordsOnDisk) {
-      this.elSheetContainer.inert = true;
-      this.syncBaselinesReady.then(() => {
-        this.elSheetContainer.inert = false;
-        this.getCurrentRows(); this.renderTable(); this.updateSidebarStats();
-      }).catch(() => {});
-    }
+    void this.restoreLocalState();
     this.bindEvents();
     this.initContextMenu();
     this.initColumnResizing();
@@ -204,7 +196,7 @@ class PTApp {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed === 'indexedDB') { this._recordsOnDisk = true; return {}; }
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('기록 저장 형식 오류');
+        if (!this.isValidRecordStore(parsed)) throw new Error('기록 저장 형식 오류');
         return parsed;
       }
     } catch (e) {
@@ -213,7 +205,8 @@ class PTApp {
       return {}; // Preserve the original saved bytes instead of replacing them with samples.
     }
     // Save sample data on first run
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_DATA));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_DATA)); }
+    catch (_) { /* A full localStorage must not prevent the first render. Saving can use IndexedDB. */ }
     return JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA));
   }
 
@@ -400,10 +393,11 @@ class PTApp {
 
   showSaveIndicator(text, isError = false) {
     if (!this.elSaveStatus) return;
+    clearTimeout(this._saveStatusTimer);
     this.elSaveStatus.textContent = text;
     this.elSaveStatus.className = "save-status" + (isError ? " unsaved" : "");
     if (!isError) {
-      setTimeout(() => {
+      this._saveStatusTimer = setTimeout(() => {
         if (this.elSaveStatus) this.elSaveStatus.textContent = "저장 완료됨";
       }, 1500);
     }

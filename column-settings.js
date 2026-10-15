@@ -124,14 +124,14 @@ class PTColumnSettings {
     if (!client || this.columnFormattingSyncBusy || Object.keys(this.columnFormattingPending || {}).length) return;
     this.columnFormattingSyncBusy = true;
     try {
-      const { data, error } = await client.from("pt_daily_records").select("rows_data").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle();
+      const { data, error } = await this.runCloudQuery(client.from("pt_daily_records").select("rows_data").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle());
       if (error) throw error;
       if (client !== this.supabaseClient || Object.keys(this.columnFormattingPending || {}).length) return;
       if (!data) {
         // Only the first device seeds legacy settings. Every later device uses
         // the established shared values, never its old device-specific cache.
-        const result = await client.from("pt_daily_records").insert({ date: SHARED_COLUMN_FORMATTING_RECORD,
-          rows_data: [{ columnFormatting: this.columnFormatting || {} }], total_count: 0, updated_at: new Date().toISOString() });
+        const result = await this.runCloudQuery(client.from("pt_daily_records").insert({ date: SHARED_COLUMN_FORMATTING_RECORD,
+          rows_data: [{ columnFormatting: this.columnFormatting || {} }], total_count: 0, updated_at: new Date().toISOString() }));
         if (result.error && result.error.code !== "23505") throw result.error;
         this.notifyCloudChange(SHARED_COLUMN_FORMATTING_RECORD);
         return;
@@ -151,7 +151,7 @@ class PTColumnSettings {
     const pending = JSON.parse(JSON.stringify(this.columnFormattingPending));
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const { data, error } = await client.from("pt_daily_records").select("rows_data, updated_at").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle();
+        const { data, error } = await this.runCloudQuery(client.from("pt_daily_records").select("rows_data, updated_at").eq("date", SHARED_COLUMN_FORMATTING_RECORD).maybeSingle());
         if (error) throw error;
         if (client !== this.supabaseClient) return;
         const remote = data && this.normalizeSharedColumnFormatting(data.rows_data?.[0]?.columnFormatting);
@@ -163,8 +163,8 @@ class PTColumnSettings {
         let result;
         if (data) {
           const update = client.from("pt_daily_records").update(record).eq("date", SHARED_COLUMN_FORMATTING_RECORD);
-          result = await (data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date");
-        } else result = await client.from("pt_daily_records").insert(record).select("date");
+          result = await this.runCloudQuery((data.updated_at == null ? update.is("updated_at", null) : update.eq("updated_at", data.updated_at)).select("date"));
+        } else result = await this.runCloudQuery(client.from("pt_daily_records").insert(record).select("date"));
         if (result.error?.code === "23505") continue;
         if (result.error) throw result.error;
         if (!result.data?.length) continue;

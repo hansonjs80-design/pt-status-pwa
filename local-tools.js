@@ -125,24 +125,10 @@
       this.init().catch(error => this.report(error.message));
     }
     async db() {
-      if (this.database) return this.database;
-      this.databasePromise ||= new Promise((resolve, reject) => {
-        const request = indexedDB.open('PT_DEVICE_BACKUPS', 1);
-        request.onupgradeneeded = () => { request.result.createObjectStore('files'); };
-        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-      });
-      this.database = await this.databasePromise;
-      return this.database;
+      return this.app.openLocalDatabase('PT_DEVICE_BACKUPS', 'files');
     }
     async store(key, value) {
-      const db = await this.db();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction('files', value === undefined ? 'readonly' : 'readwrite');
-        const request = value === undefined ? tx.objectStore('files').get(key) : tx.objectStore('files').put(value, key);
-        tx.oncomplete = () => resolve(request.result);
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error || Error('로컬 백업 저장이 중단되었습니다.'));
-      });
+      return this.app.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key, value);
     }
     async init() {
       await Promise.all([
@@ -196,8 +182,9 @@
     }
     async dayRows(date) {
       const app = this.app;
+      await app.syncBaselinesReady;
       if (!app.supabaseClient) return app.dataStore[date] || [];
-      const { data, error } = await app.supabaseClient.from('pt_daily_records').select('rows_data').eq('date', date).maybeSingle();
+      const { data, error } = await app.runCloudQuery(app.supabaseClient.from('pt_daily_records').select('rows_data').eq('date', date).maybeSingle());
       if (error) throw Error('최신 일지 확인 실패: ' + error.message);
       if (app.pendingSyncDates?.has(date)) throw Error(`${date}의 클라우드 저장이 완료된 후 다시 시도합니다.`);
       return data?.rows_data || app.dataStore[date] || [];
@@ -209,13 +196,15 @@
       return blob;
     }
     async backup(automatic = false) {
+      // Never rotate backups with the empty placeholder used while records restore.
+      await this.app.syncBaselinesReady;
       const cloud = {};
       let shared = null;
       let staffCalendarCounts = null;
       if (this.app.supabaseClient) {
         try {
           for (let offset = 0; ; offset += 200) {
-            const { data, error } = await this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199);
+            const { data, error } = await this.app.runCloudQuery(this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199));
             if (error) throw Error('전체 백업 조회 실패: ' + error.message);
             for (const record of data || []) {
               if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;

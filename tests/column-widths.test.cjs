@@ -71,6 +71,26 @@ test('pinching releases a column resize without blocking the gesture or resizing
   }
 });
 
+test('lost mouseup and interrupted resize release cursor, selection and the actual history handle', () => {
+  for (const interruption of ['lost-mouseup', 'cancel']) {
+    const { app, headers, listeners, context } = device();
+    const th = headers[2], classes = new Set();
+    const handle = { classList: {
+      contains: () => true, add: value => classes.add(value), remove: value => classes.delete(value),
+    }, closest: () => th };
+    listeners.mousedown({ target: handle, pageX: 200, preventDefault() {}, stopPropagation() {} });
+    listeners.mousemove({ pageX: 220, buttons: 1 });
+    assert.equal(context.document.body.style.userSelect, 'none');
+    if (interruption === 'lost-mouseup') listeners.mousemove({ pageX: 400, buttons: 0 });
+    else app.endColumnResize();
+    listeners.mousemove({ pageX: 440, buttons: 0 });
+    assert.equal(th.style.width, '150px');
+    assert.equal(context.document.body.style.userSelect, '');
+    assert.equal(context.document.body.style.cursor, '');
+    assert.equal(classes.size, 0);
+  }
+});
+
 test('atomic width snapshot survives interrupted legacy timestamp writes and a backward clock', () => {
   const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1','{"part":160}'],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','500']]);
   const first=device(storage);first.context.Date=class extends Date {static now(){return 100;}};

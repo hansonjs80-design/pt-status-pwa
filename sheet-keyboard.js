@@ -121,6 +121,7 @@ class PTSheetKeyboard {
   }
 
   handleGlobalKeyDown(e) {
+    if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
     if (this.consumePresetLeftRepeat(e)) return;
     if (this.handlePatientEditorSearchShortcut(e)) return;
