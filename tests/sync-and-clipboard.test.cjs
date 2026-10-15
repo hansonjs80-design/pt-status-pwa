@@ -395,3 +395,43 @@ test('manual deletion cannot authorize removal of a newly added remote patient o
     assert.equal(app.manualDateDeletions.has(date),false);
   }
 });
+
+test('lunch line is unique to a single row and clears previous row when moved', () => {
+  const { app, context } = createApp();
+  context.document.querySelectorAll = () => []; context.document.querySelector = () => null;
+  app.selectRowRange = () => {};
+  const date = app.currentDate;
+  app.dataStore[date] = [{ name: '1행' }, { name: '2행' }, { name: '3행' }, { name: '4행' }];
+  app.toggleLunchLine(1);
+  assert.equal(app.dataStore[date][1]._lunchBefore, true);
+  assert.equal(Boolean(app.dataStore[date][0]._lunchBefore), false);
+  // 다른 행(3행)에 적용 시 1행의 점심선은 지워지고 3행에만 적용됨
+  app.toggleLunchLine(3);
+  assert.equal(Boolean(app.dataStore[date][1]._lunchBefore), false);
+  assert.equal(app.dataStore[date][3]._lunchBefore, true);
+  // 동일 행(3행)에 다시 적용 시 해제됨
+  app.toggleLunchLine(3);
+  assert.equal(Boolean(app.dataStore[date][3]._lunchBefore), false);
+});
+
+test('lunch line survives row deletion without being lost', () => {
+  const { app, context } = createApp();
+  context.document.querySelectorAll = () => []; context.document.querySelector = () => null;
+  app.selectCell = () => {};
+  const date = app.currentDate;
+  app.dataStore[date] = [
+    { name: '1행' },
+    { name: '2행', _lunchBefore: true },
+    { name: '3행' },
+    { name: '4행' },
+    { name: '5행' }
+  ];
+  // 2행(점심선 있는 행)을 삭제하면, 3행(원래 3행)이 2행 위치로 올라오며 점심선 유지
+  app.deleteRowAt(1);
+  assert.equal(app.dataStore[date][1].name, '3행');
+  assert.equal(app.dataStore[date][1]._lunchBefore, true);
+  // 점심선이 없는 0행(1행)을 삭제하면, 점심선은 여전히 유지되며 1행 위치로 이동
+  app.deleteRowAt(0);
+  assert.equal(app.dataStore[date][0].name, '3행');
+  assert.equal(app.dataStore[date][0]._lunchBefore, true);
+});

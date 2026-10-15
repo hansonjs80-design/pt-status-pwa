@@ -543,6 +543,7 @@ class PTSheetActions {
     }
 
     if (minRow >= 0 && minRow < rows.length) {
+      const hadLunchLine = rows.slice(minRow, minRow + deleteCount).some(r => r._lunchBefore);
       rows.splice(minRow, deleteCount);
       // Guarantee the current default row count is maintained
       const formattedDate = this.currentDate.replace(/-/g, ".");
@@ -561,6 +562,10 @@ class PTSheetActions {
           date: formattedDate
         });
       }
+      if (hadLunchLine && rows.length > 0) {
+        const nextIdx = Math.min(minRow, rows.length - 1);
+        rows[nextIdx]._lunchBefore = true;
+      }
       this.activeCell = null;
       this.clearHeaderSelections();
       this.selectedRowIdx = null;
@@ -570,13 +575,28 @@ class PTSheetActions {
       this.saveDataStore();
       this.renderTable();
       const nextRowIdx = Math.min(minRow, rows.length - 1);
-      const nextCell = this.elTableBody.querySelector(`[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`);
+      const nextCell = this.elTableBody?.querySelector(`[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`);
       if (nextCell) this.selectCell(nextRowIdx, nextColKey, nextCell);
       const msg = deleteCount > 1
         ? `${minRow + BASE_ROW_NUMBER}~${minRow + deleteCount - 1 + BASE_ROW_NUMBER}행 (${deleteCount}개 행)이 삭제되었습니다.`
         : `${minRow + BASE_ROW_NUMBER}행이 삭제되었습니다.`;
       this.showSaveIndicator(msg);
     }
+  }
+
+  toggleLunchLine(targetRow) {
+    const rows = this.getCurrentRows();
+    if (!rows[targetRow]) return;
+    const willEnable = !rows[targetRow]._lunchBefore;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i]._lunchBefore) delete rows[i]._lunchBefore;
+    }
+    if (willEnable) {
+      rows[targetRow]._lunchBefore = true;
+    }
+    this.saveDataStore();
+    this.renderTable();
+    this.selectRowRange(targetRow, targetRow);
   }
 
   clearColData(colKey) {

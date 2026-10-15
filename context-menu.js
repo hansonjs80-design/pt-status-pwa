@@ -204,10 +204,7 @@ class PTContextMenu {
         this.openFontColorMenu(document.getElementById("btnBackgroundColor"), "backgroundColor");
         break;
       case "lunch-line":
-        this.getCurrentRows()[targetRow]._lunchBefore = !this.getCurrentRows()[targetRow]._lunchBefore;
-        this.saveDataStore();
-        this.renderTable();
-        this.selectRowRange(targetRow, targetRow);
+        this.toggleLunchLine(targetRow);
         break;
       case "cut":
         this.cutSelection();

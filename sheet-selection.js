@@ -64,7 +64,7 @@ class PTSheetSelection {
     this.horizontalSelectionMode = null;
     this.selectedCellSet = null; this.selectedCellKind = null;
     this.elTableBody?.querySelectorAll(".is-discrete-selected").forEach(cell => cell.classList.remove("is-discrete-selected"));
-    this.elSheetContainer.classList.remove("has-cell-range");
+    this.elSheetContainer?.classList?.remove("has-cell-range");
     this.clearCrossDateSelection();
     this.cancelFillDrag();
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
@@ -222,7 +222,7 @@ class PTSheetSelection {
     lastCol = Math.min(lastCol, 9);
     if (this.genderPickerState) this.closeGenderDropdown();
     // Clear native browser text highlighting before painting the spreadsheet selection.
-    window.getSelection()?.removeAllRanges();
+    window.getSelection?.()?.removeAllRanges?.();
     // Finish the current edit before replacing cell selection with row selection.
     const focusedElement = document.activeElement;
     if (focusedElement === this.elFormulaInput ||
