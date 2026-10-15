@@ -454,6 +454,10 @@ class PTCellInputTools {
     const state = this.autocompleteState;
     if (!state || !['name', 'chartNo', 'part', 'prescription', 'extra', 'memo', 'specialNote'].includes(state.colKey)) return;
     const { input, cellElement } = state;
+    if (input._inputLanguage === 'eng' && input._nativeCellComposition && input.dataset.nativeComposing === 'true') {
+      this.refreshNativeLanguagePreview(input);
+      return;
+    }
     input.refreshEditorColors?.();
     if (input.classList?.contains?.('has-editor-typography')) {
       // Keep completion separate from the saved text and the variable-font caret.

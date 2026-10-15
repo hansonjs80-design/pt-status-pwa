@@ -768,8 +768,10 @@ class PTApp {
     const cell = input.closest(".excel-cell");
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
-    const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
-    if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
+    const query = this.getCellEditorValue(input);
+    const koreanComposing = input._inputLanguage !== "eng" && input.dataset.composing === "true";
+    const suggestions = this.getAutocompleteSuggestions(colKey, query, koreanComposing);
+    if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
     else this.closeAutocompleteMenu();
   }
 

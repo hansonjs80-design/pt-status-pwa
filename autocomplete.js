@@ -212,7 +212,7 @@ class PTAutocomplete {
 
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true } = {}) {
     const previous = this.autocompleteState;
-    const query = input.value;
+    const query = this.getCellEditorValue(input);
     input.dataset.autocompleteQuery = query;
     const typedValue = this.assembleHangul(query).trim();
     const showTypedValue = includeTypedValue && ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
@@ -289,18 +289,22 @@ class PTAutocomplete {
 
       itemEl.addEventListener("click", (e) => {
         e.stopPropagation();
-        input.value = cand;
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
-        const rows = this.getCurrentRows();
-        if (rows[rowIdx]) {
-          rows[rowIdx][colKey] = cand;
-          this.applyAutocompleteColor(rows[rowIdx], colKey, cand, query);
-          this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
-          this.renderColoredText(cellElement, rows[rowIdx], colKey);
+        // Finalize on the original editor, before removing a live IME input.
+        // This shares Enter's guard against a late native composition commit.
+        if (!input.commitAutocompleteValue?.(cand)) {
+          input.value = cand;
+          const rows = this.getCurrentRows();
+          if (rows[rowIdx]) {
+            rows[rowIdx][colKey] = cand;
+            this.applyAutocompleteColor(rows[rowIdx], colKey, cand, query);
+            this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
+            this.renderColoredText(cellElement, rows[rowIdx], colKey);
+          }
+          this.saveDataStore();
+          if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         }
-        this.saveDataStore();
-        if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         if (cand === "") this.selectAutocompleteRightCell(rowIdx, colKey);
         else this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
@@ -542,6 +546,7 @@ class PTAutocomplete {
   }
 
   closeAutocompleteMenu() {
+    const input = this.autocompleteState?.input;
     this.clearInlineAutocompletePreview();
     this.autocompleteCleanup?.();
     this.autocompleteCleanup = null;
@@ -550,6 +555,7 @@ class PTAutocomplete {
       existing.remove();
     }
     this.autocompleteState = null;
+    if (input?.nativeLanguagePreview) this.refreshNativeLanguagePreview(input);
   }
 
 }

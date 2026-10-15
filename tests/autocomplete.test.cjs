@@ -676,3 +676,25 @@ test('cached formatting chooses the latest matching date and skips the excluded 
   app.cloudSearchHistory={'2026-10-01':[{name:'동일',_textColors:{name:'#abcdef'}}]};
   assert.equal(app.getAutocompleteValueFormatting('name','동일',null,latest).color,'#abcdef','future-date ranking is unchanged');
 });
+
+test('native English menu query and typed-value option use visible English instead of hidden Korean', () => {
+  let menu = null;
+  const element = () => ({ style: {}, children: [], isConnected: true, offsetWidth: 160, offsetHeight: 100,
+    appendChild(child) { this.children.push(child); }, setAttribute() {}, addEventListener() {}, remove() { menu = null; } });
+  const document = { createElement: element, getElementById: () => menu,
+    body: { appendChild(child) { menu = child; } }, addEventListener() {}, removeEventListener() {} };
+  const window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1000, innerHeight: 800 };
+  const app = createApp({}, { specialNote: ['laser 12kg', 'laser 20kg'] }, { document, window });
+  app.moveAutocompleteSelection = () => {};
+  app.updateInlineAutocompletePreview = () => {};
+  const cell = { isConnected: true, getBoundingClientRect: () => ({left: 100, top: 100, bottom: 130, width: 100}) };
+  const input = { value: 'lㅁ', dataset: {}, _inputLanguage: 'eng', _nativeCellComposition: {prefix:'l',suffix:'',data:'ㅁ'} };
+  app.showAutocompleteMenu(0, 'specialNote', cell, input, ['laser 12kg', 'laser 20kg']);
+  assert.equal(app.autocompleteState.query, 'la');
+  assert.equal(input.dataset.autocompleteQuery, 'la');
+  assert.deepEqual(Array.from(app.autocompleteState.candidates), ['la', 'laser 12kg', 'laser 20kg']);
+  app.autocompleteState.selectedIndex = 2;
+  input.value = 'la'; delete input._nativeCellComposition;
+  app.showAutocompleteMenu(0, 'specialNote', cell, input, ['laser 12kg', 'laser 20kg']);
+  assert.equal(app.getSelectedAutocompleteItem(), 'laser 20kg', 'native commit preserves candidate selection');
+});

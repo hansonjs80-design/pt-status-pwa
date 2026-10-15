@@ -337,7 +337,7 @@ test('typing Korean, backspacing completely, and pressing hangul toggle switches
 
 
 function editingFixture({ armed = false, column = 'specialNote' } = {}) {
-  const { app } = createTestApp();
+  const { app, context } = createTestApp();
   let input = null;
   const cell = {
     dataset: { col: column }, textContent: '',
@@ -352,7 +352,7 @@ function editingFixture({ armed = false, column = 'specialNote' } = {}) {
   app.clearInlineAutocompletePreview = () => {};
   app.refreshNativeLanguagePreview = () => {};
   app.startInlineEdit(0, column, cell, armed);
-  return { app, input: app.getCreatedInput(), cell };
+  return { app, context, input: app.getCreatedInput(), cell };
 }
 
 function keyEvent(key, extra = {}) {
@@ -510,4 +510,41 @@ test('Hanja and shortcuts outside the sheet do not switch a retained cell select
   app.consumePresetLeftRepeat = () => true;
   app.handleGlobalKeyDown(keyEvent('CapsLock', { target: { closest: () => null } }));
   assert.equal(input._inputLanguage, 'kor');
+});
+
+test('English autocomplete refreshes from the displayed query during native composition', () => {
+  for (const column of ['chartNo', 'name', 'part', 'prescription', 'extra', 'memo', 'specialNote']) {
+    const { app, context, input } = editingFixture({ column });
+    input.value = '';
+    input.setSelectionRange(0, 0);
+    input.isConnected = true;
+    context.document.activeElement = input;
+    const timers = new Map(); let serial = 0;
+    context.setTimeout = callback => { timers.set(++serial, callback); return serial; };
+    context.clearTimeout = id => timers.delete(id);
+    app.closeAutocompleteMenu = () => {};
+    let searched, displayed;
+    app.getAutocompleteSuggestions = (col, query, composing) => {
+      searched = { col, query, composing }; return ['laser 12kg'];
+    };
+    app.showAutocompleteMenu = (row, col, cell, editor, candidates) => {
+      displayed = { col, query: app.getCellEditorValue(editor), candidates };
+    };
+    input._listeners.keydown(keyEvent('HangulMode'));
+    input._listeners.keydown(keyEvent('Process', { code: 'KeyL', keyCode: 229, isComposing: true }));
+    input._listeners.compositionstart({ type: 'compositionstart' });
+    input.value = 'ㅣ'; input.setSelectionRange(1, 1);
+    input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: 'ㅣ' });
+    for (const callback of [...timers.values()]) callback();
+    assert.deepEqual(searched, { col: column, query: 'l', composing: false });
+    assert.equal(displayed.query, 'l');
+    assert.equal(displayed.candidates[0], 'laser 12kg');
+    assert.equal(input.value, 'ㅣ', 'autocomplete must not rewrite native composition');
+    input.matches = () => true;
+    input.closest = () => ({ dataset: { col: column, row: '0' } });
+    searched = displayed = null;
+    app.refreshSearchSuggestions();
+    assert.deepEqual(searched, { col: column, query: 'l', composing: false });
+    assert.equal(displayed.query, 'l', 'asynchronous history refresh uses the same visible query');
+  }
 });

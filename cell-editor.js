@@ -82,7 +82,20 @@ class PTCellEditor {
     preview.append(document.createTextNode(before));
     const caret = document.createElement("span");
     caret.className = "native-language-caret";
-    preview.append(caret, document.createTextNode(range.suffix));
+    preview.append(caret);
+    const state = this.autocompleteState;
+    const value = this.getCellEditorValue(input);
+    if (state?.input === input && state.query === value && !range.suffix &&
+        input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+      const suffix = this.getInlineCompletionSuffix(value, this.getSelectedAutocompleteItem());
+      if (suffix) {
+        const completion = document.createElement("span");
+        completion.className = "inline-completion-suffix";
+        completion.textContent = suffix;
+        preview.append(completion);
+      }
+    }
+    preview.append(document.createTextNode(range.suffix));
     input.parentElement.append(preview);
     input.nativeLanguagePreview = preview;
   }
@@ -263,6 +276,23 @@ class PTCellEditor {
     let isCommitted = false;
     let composing = false;
     input.onInputLanguageToggle = () => { composing = false; };
+    const queueAutocomplete = (delay) => {
+      if (["gender", "writer", "no"].includes(colKey)) return;
+      clearTimeout(_acDebounceTimer);
+      _acDebounceTimer = setTimeout(() => {
+        if (isCommitted || !input.isConnected || document.activeElement !== input) return;
+        // English projected from a native IME is the visible query, just like
+        // ordinary English typing. Never search with the hidden Korean draft.
+        const query = this.getCellEditorValue(input);
+        const koreanComposing = input._inputLanguage !== "eng" && input.dataset.composing === "true";
+        const suggestions = this.getAutocompleteSuggestions(colKey, query, koreanComposing);
+        if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) {
+          this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
+        } else {
+          this.closeAutocompleteMenu();
+        }
+      }, delay);
+    };
     const redirectChartName = () => {
       if (isCommitted || colKey !== 'chartNo' || composing || input.dataset.nativeComposing === 'true') return false;
       const redirect = this.getChartNameRedirect(input.value, initialVal);
@@ -364,24 +394,8 @@ class PTCellEditor {
       this.refreshNativeLanguagePreview(input);
       this.debounceSaveDataStore();
       if (!composing && input.dataset.nativeComposing !== "true") repairCompletedInput();
-      if (input._inputLanguage === "eng" && input._nativeCellComposition) return;
-
-      // Keep the native input and focus intact during composition.
-      // Refresh the separate popup on the next task, coalescing IME/input events
-      // without adding a fixed wait before the inline completion can appear.
-      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
-        clearTimeout(_acDebounceTimer);
-        const acDelay = composing || input.dataset.nativeComposing === "true" ? 40 : 25;
-        _acDebounceTimer = setTimeout(() => {
-          if (!input.isConnected || document.activeElement !== input) return;
-          const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
-          if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
-            this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
-          } else {
-            this.closeAutocompleteMenu();
-          }
-        }, acDelay);
-      }
+      // Refresh from the visible query while preserving the native IME input.
+      queueAutocomplete(composing || input.dataset.nativeComposing === "true" ? 40 : 25);
     });
 
     input.addEventListener("compositionend", (e) => {
@@ -406,19 +420,8 @@ class PTCellEditor {
       this.elFormulaInput.value = input.value;
       this.debounceSaveDataStore();
 
-      // Let final input events settle before refreshing, without a fixed IME delay.
-      if (colKey !== "gender" && colKey !== "writer" && colKey !== "no") {
-        clearTimeout(_acDebounceTimer);
-        _acDebounceTimer = setTimeout(() => {
-          if (!input.isConnected || document.activeElement !== input) return;
-          const suggestions = this.getAutocompleteSuggestions(colKey, input.value, input.dataset.composing === "true");
-          if (suggestions.length > 0 || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && input.value.trim())) {
-            this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, suggestions);
-          } else {
-            this.closeAutocompleteMenu();
-          }
-        }, 0);
-      }
+      // A final IME event must use the same query and preserve menu selection.
+      queueAutocomplete(0);
     });
 
     const commitAndBlur = (forcedVal) => {
@@ -666,8 +669,12 @@ class PTCellEditor {
         this.focusSelectedCellEditor();
         return;
       }
-      // Let the native IME handle candidate selection and composition confirmation.
-      if (composing || e.isComposing || e.keyCode === 229) {
+      // English projection uses the app's candidates even while the OS reports
+      // composition. Other composing keys continue through the native IME.
+      const englishCandidateKey = input._inputLanguage === "eng" && this.isAutocompleteOpen() &&
+        !e.ctrlKey && !e.metaKey && !e.altKey &&
+        ["Enter", "NumpadEnter", "Tab", "ArrowUp", "ArrowDown"].includes(e.code || e.key);
+      if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey) {
         e.stopPropagation();
         return;
       }
@@ -709,13 +716,13 @@ class PTCellEditor {
       }
       // 1) 자동완성 목록이 열려 있을 때: Enter/Tab 시 최상단(또는 선택된) 항목 즉시 입력
       if (this.isAutocompleteOpen()) {
-        if (e.key === "ArrowDown") {
+        if (e.key === "ArrowDown" || e.code === "ArrowDown") {
           e.preventDefault();
           e.stopPropagation();
           this.moveAutocompleteSelection(1);
           return;
         }
-        if (e.key === "ArrowUp") {
+        if (e.key === "ArrowUp" || e.code === "ArrowUp") {
           e.preventDefault();
           e.stopPropagation();
           this.moveAutocompleteSelection(-1);
@@ -727,7 +734,7 @@ class PTCellEditor {
           this.closeAutocompleteMenu();
           return;
         }
-        if (e.key === "Enter" || e.code === "Enter" || e.keyCode === 13) {
+        if (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13) {
           e.preventDefault();
           e.stopPropagation();
           const chosenVal = this.getSelectedAutocompleteItem();
@@ -743,7 +750,7 @@ class PTCellEditor {
           }
           return;
         }
-        if (e.key === "Tab") {
+        if (e.key === "Tab" || e.code === "Tab") {
           e.preventDefault();
           e.stopPropagation();
           const chosenVal = this.getSelectedAutocompleteItem();
