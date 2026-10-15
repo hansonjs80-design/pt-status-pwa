@@ -42,6 +42,9 @@ class PTCellEditor {
 
   projectCellComposition(input, event, commit = false) {
     const range = input._nativeCellComposition;
+    // A Korean-to-English correction owns the visible prefix and subsequent
+    // letters. Commit it before translating the original native draft.
+    if (commit && input._forcedCorrectionProjection?.nativeKorean) return input.value;
     if (!range || input._inputLanguage !== "eng" || typeof event.data !== "string") return input.value;
     // Composition data replaces the whole current composition, not the text
     // from the preceding input event. Project it once from the original range.

@@ -87,11 +87,25 @@ test('native Korean correction is visible without mutating the live composition 
   const input=editor('ㅣ/ㅅ');input.dataset.nativeComposing='true';input._inputLanguage='kor';
   assert.equal(app.updateForcedCorrection(input,'specialNote'),true);
   assert.equal(input.value,'ㅣ/ㅅ');assert.equal(app.getCellEditorValue(input),'L/T');
+  assert.equal(input._inputLanguage,'eng');assert.equal(app._cellInputLanguage,'eng');
   input.value='ㅣ/사';input.setSelectionRange(3,3);
   app.updateForcedCorrection(input,'specialNote');
-  assert.equal(app.getCellEditorValue(input),'L/Tㅏ','growing a native syllable must retain the corrected prefix');
+  assert.equal(app.getCellEditorValue(input),'L/Tk','growing a native syllable continues in English after the correction');
+  input._nativeCellComposition={prefix:'ㅣ/',suffix:'',data:'사'};
+  app.projectCellComposition(input,{data:'사'},true);
   app.updateForcedCorrection(input,'specialNote',{commit:true,nativeData:'사'});
-  assert.equal(input.value,'L/Tㅏ');assert.equal(input._forcedCorrectionProjection,undefined);
+  assert.equal(input.value,'L/Tk');assert.equal(input._forcedCorrectionProjection,undefined);
+});
+
+test('only Korean-to-English corrections automatically switch the remaining cell input to English',()=>{
+  const {app}=createApp();
+  for(const [source,target,language] of [['ㅣ/ㅅ','L/T','eng'],['허리','Lumbar','eng'],['허리','왼 허리','kor'],['mw','MW','kor'],['일','1','kor']]) {
+    app.setForcedCorrection('*',source,target);
+    const input=editor(source);input._inputLanguage='kor';
+    app.updateForcedCorrection(input,'memo');
+    assert.equal(input.value,target);assert.equal(input._inputLanguage,language);
+    assert.equal(input._engKorBuffer,'');
+  }
 });
 
 test('native English projection applies a column correction and survives its final IME event',()=>{

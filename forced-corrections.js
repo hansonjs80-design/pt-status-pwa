@@ -68,18 +68,19 @@ class PTForcedCorrections {
   }
 
   updateForcedCorrection(input, colKey, {commit = false, nativeData = null, deleting = false} = {}) {
-    const value = this.getCellEditorBaseValue(input);
+    const previous = input._forcedCorrectionProjection;
+    const value = previous?.nativeKorean ? input.value : this.getCellEditorBaseValue(input);
     const range = input._nativeCellComposition;
     const caret = input._inputLanguage === 'eng' && typeof range?.data === 'string'
       ? range.prefix.length + this.convertHangulToEng(range.data).length : (input.selectionStart ?? value.length);
-    const previous = input._forcedCorrectionProjection;
     let correction = null;
     // Preserve an already-corrected prefix if the same native syllable grows.
     if (previous && !deleting) {
       const decompose = text => Array.from(text, char => this.getCompletionJamo(char).join('')).join('');
       const raw = decompose(value), prefix = decompose(previous.prefix + previous.source), suffix = decompose(previous.suffix);
       if (raw.startsWith(prefix) && raw.endsWith(suffix) && raw.length >= prefix.length + suffix.length) {
-        const rest = this.assembleHangul(raw.slice(prefix.length, suffix ? -suffix.length : undefined));
+        const remaining = this.assembleHangul(raw.slice(prefix.length, suffix ? -suffix.length : undefined));
+        const rest = previous.koreanToEnglish ? this.convertHangulToEng(remaining) : remaining;
         correction = {...previous, value: previous.prefix + previous.target + rest + previous.suffix,
           caret: previous.prefix.length + previous.target.length + rest.length};
       }
@@ -89,6 +90,15 @@ class PTForcedCorrections {
     }
     delete input._forcedCorrectionProjection;
     if (!correction) return false;
+    if (!previous) {
+      const hangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11ff]/u;
+      correction.koreanToEnglish = hangul.test(correction.source) && !hangul.test(correction.target) && /[a-z]/i.test(correction.target);
+      correction.nativeKorean = correction.koreanToEnglish && input._inputLanguage !== 'eng' && input.dataset.nativeComposing === 'true';
+    }
+    if (correction.koreanToEnglish) {
+      input._inputLanguage = this._cellInputLanguage = 'eng';
+      this.clearKoreanKeyBuffer(input);
+    }
     if (!commit && input.dataset.nativeComposing === 'true') {
       // Project the corrected text; leave the live OS composition untouched.
       input._forcedCorrectionProjection = correction;
