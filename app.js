@@ -855,7 +855,9 @@ class PTApp {
 
   focusDateEntryCell() {
     const rows = this.getCurrentRows();
-    const keys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+    // Today's prepared writer initials and notes do not mark a patient row.
+    const keys = this.currentDate === this.getTodayString() ? ['name']
+      : ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
     const lastRow = rows.findLastIndex(row => keys.some(key => String(row?.[key] ?? '').trim()));
     const targetRow = lastRow + 1;
     const colKey = lastRow < 0 ? 'no' : 'name';

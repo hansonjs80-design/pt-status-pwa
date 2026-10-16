@@ -54,14 +54,31 @@ test('all dates select the name below the last entered row and center the last r
   }
 });
 
-test('all dates use A1 when empty, skip internal gaps and count other entered columns', () => {
+test('empty dates use A1 and today follows names while past dates retain other entered columns', () => {
   for (const date of ['2026-10-08', '2025-09-09']) for (const [rows, target] of [[[], 0], [[{name:'첫 기록'}, {}, {name:'끝 기록'}, {}, {memo:'준비 내용'}], 5]]) {
     const app = createApp(rows);
     app.dataStore[date]=rows;
     app.setDate(date);
-    assert.deepEqual(app.activeCell, { rowIdx: target, colKey: target ? 'name' : 'no' });
+    const expected = date === '2026-10-08' && target ? 3 : target;
+    assert.deepEqual(app.activeCell, { rowIdx: expected, colKey: expected ? 'name' : 'no' });
     assert.equal(app.elSheetContainer.scrollTop, 0);
   }
+});
+
+test('today centers the last named patient and ignores prepared writer and note rows below it', () => {
+  const rows = Array.from({length:180}, (_, index) => ({name:index<30?'가상 환자':'',writer:'J',memo:index===179?'준비':''}));
+  rows[120].chartNo='가상 차트';
+  const app=createApp(rows);
+  const before=JSON.stringify(rows);
+  app.setDate('2026-10-08',true);
+  assert.deepEqual(app.activeCell,{rowIdx:30,colKey:'name'});
+  const rect=app.elTableBody.querySelector('[data-row="29"][data-col="name"]').getBoundingClientRect();
+  assert.equal((rect.top+rect.bottom)/2,430);
+  assert.equal(JSON.stringify(rows.slice(0,180)),before,'focus must not change prepared values');
+  const blank=createApp(Array.from({length:180},()=>({writer:'J'})));
+  blank.setDate('2026-10-08',true);
+  assert.deepEqual(blank.activeCell,{rowIdx:0,colKey:'no'});
+  assert.equal(blank.elSheetContainer.scrollTop,0);
 });
 
 test('cloud records update any date destination without stealing later navigation, selection or editing', async () => {
