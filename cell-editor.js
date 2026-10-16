@@ -4,6 +4,12 @@ class PTCellEditor {
     return !["writer", "gender"].includes(colKey);
   }
 
+  usesWindowsNativeInput() {
+    if (typeof navigator === "undefined") return false;
+    const platform = navigator.userAgentData?.platform || navigator.platform || "";
+    return /^Win/i.test(platform) || /Windows NT/i.test(navigator.userAgent || "");
+  }
+
   isHangulToggleKeyEvent(e) {
     if (!e) return false;
     // Windows Korean/English key (the Hanja/Lang2 key is a separate action).
@@ -43,7 +49,7 @@ class PTCellEditor {
   projectCellComposition(input, event, commit = false) {
     const range = input._nativeCellComposition;
     const correction = input._forcedCorrectionProjection;
-    const sourceEnglish = correction?.nativeEnglish || (input._inputLanguage === 'eng' && !correction?.nativeKorean);
+    const sourceEnglish = correction?.nativeEnglish || (!this.usesWindowsNativeInput() && input._inputLanguage === 'eng' && !correction?.nativeKorean);
     if (!range || !sourceEnglish || typeof event.data !== "string") return input.value;
     // Composition data replaces the whole current composition, not the text
     // from the preceding input event. Project it once from the original range.
@@ -63,7 +69,7 @@ class PTCellEditor {
 
   getCellEditorBaseValue(input) {
     const range = input._nativeCellComposition;
-    return range && (input._inputLanguage === "eng" || input._forcedCorrectionProjection?.nativeEnglish) && typeof range.data === "string"
+    return range && ((!this.usesWindowsNativeInput() && input._inputLanguage === "eng") || input._forcedCorrectionProjection?.nativeEnglish) && typeof range.data === "string"
       ? range.prefix + this.convertHangulToEng(range.data) + range.suffix : input.value;
   }
 
@@ -85,7 +91,7 @@ class PTCellEditor {
     const range = input._nativeCellComposition;
     const correction = input._forcedCorrectionProjection;
     const show = input.dataset.nativeComposing === "true" && (correction ||
-      (input._inputLanguage === "eng" && typeof range?.data === "string"));
+      (!this.usesWindowsNativeInput() && input._inputLanguage === "eng" && typeof range?.data === "string"));
     input.classList.toggle("has-native-language-preview", show);
     if (!show) return;
     // Do not rewrite input.value during native composition: that ends the OS
@@ -122,6 +128,12 @@ class PTCellEditor {
 
   restoreHandledCellKey(input, event) {
     const saved = input._cellKeyValue;
+    if (this.usesWindowsNativeInput() && saved && saved.nativeData == null) {
+      // Ordinary Windows input is owned by the IME. A previous replacement's
+      // generic guard must not swallow input after an OS-only language change.
+      delete input._cellKeyValue;
+      return false;
+    }
     if (saved?.nativeData !== null && saved?.nativeData !== undefined &&
         (event.type === "compositionstart" || (typeof event.data === "string" && event.data !== saved.nativeData))) {
       // The previous composition can end after the next physical keydown.
@@ -145,6 +157,9 @@ class PTCellEditor {
   }
 
   toggleCellInputLanguage(event, input = null) {
+    // Windows Chrome/Edge must keep control of the actual IME. Cancelling its
+    // language key or converting Latin keydowns desynchronizes A/가 from input.
+    if (this.usesWindowsNativeInput()) return false;
     // Windows IMEs can identify a key only on keyup (keydown is Process/229).
     // Pair recognized keydown/keyup even if their key/code names differ.
     const down = this._cellLanguageToggleDown;
@@ -186,6 +201,7 @@ class PTCellEditor {
   }
 
   handleCellLanguageToggle(event) {
+    if (this.usesWindowsNativeInput()) return false;
     // Release a handled key even if focus moved away from its original cell.
     if (event.type === "keyup" && this._cellLanguageToggleDown &&
         (this.isHangulToggleKeyEvent(event) || (event.code && event.code === this._cellLanguageToggleDown.code) ||
@@ -252,13 +268,13 @@ class PTCellEditor {
       if (!armed) {
         // Enter/double-click activates this selection; it must not undo a
         // language toggle already made while its border was selected.
-        existingEditor._inputLanguage = this._cellInputLanguage || "kor";
+        existingEditor._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
         existingEditor._engKorBuffer = "";
         existingEditor._engKorPrefix = "";
         existingEditor._engKorSuffix = "";
         delete existingEditor._cellKeyValue;
       } else {
-        existingEditor._inputLanguage = this._cellInputLanguage || "kor";
+        existingEditor._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
       }
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         delete existingEditor.dataset.navigationInputGuard;
@@ -281,9 +297,9 @@ class PTCellEditor {
     input.value = initialVal;
     // Retain already-saved literal spaces when a corrected cell is reopened.
     input._preserveBoundaryWhitespace = /^\s|\s$/.test(String(initialVal));
-    // selectCell resets new selections to Korean. Recreating an editor within
-    // the same selection retains the language explicitly chosen by the user.
-    input._inputLanguage = this._cellInputLanguage || "kor";
+    // Windows follows the OS input source. Software input on other platforms
+    // retains the language chosen within this selection.
+    input._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
     this._cellInputLanguage = input._inputLanguage;
     if (this.guardNextCellInput) {
       input.dataset.navigationInputGuard = "true";
@@ -562,7 +578,18 @@ class PTCellEditor {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 
-      if (this.isKoreanPreferredColumn(colKey)) {
+      const nativeWindowsInput = this.isKoreanPreferredColumn(colKey) && this.usesWindowsNativeInput();
+      if (nativeWindowsInput) {
+        // OS input-source changes may produce no keyboard event at all. Trust
+        // beforeinput/composition instead of a separate application language.
+        this.clearKoreanKeyBuffer(input);
+        if (this.isHangulToggleKeyEvent(e)) return;
+        this.releaseNavigationInputGuard(input, e);
+        const nativeKey = e.isComposing || e.keyCode === 229;
+        if (!["Shift", "Control", "Alt", "Meta"].includes(e.key) &&
+            !(nativeKey && input._cellKeyValue?.nativeData != null)) delete input._cellKeyValue;
+      }
+      if (this.isKoreanPreferredColumn(colKey) && !nativeWindowsInput) {
         if (this.toggleCellInputLanguage(e, input)) {
           composing = false;
           return;

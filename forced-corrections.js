@@ -87,7 +87,7 @@ class PTForcedCorrections {
     const previous = input._forcedCorrectionProjection;
     const value = previous?.nativeKorean ? input.value : this.getCellEditorBaseValue(input);
     const range = input._nativeCellComposition;
-    const caret = input._inputLanguage === 'eng' && typeof range?.data === 'string'
+    const caret = !this.usesWindowsNativeInput() && input._inputLanguage === 'eng' && typeof range?.data === 'string'
       ? range.prefix.length + this.convertHangulToEng(range.data).length : (input.selectionStart ?? value.length);
     let correction = null;
     // Preserve an already-corrected prefix if the same native syllable grows.
@@ -114,11 +114,12 @@ class PTForcedCorrections {
       correction.koreanToEnglish = hangul.test(correction.source) && !hangul.test(correction.target) && /[a-z]/i.test(correction.target);
       correction.englishToKorean = !hangul.test(correction.source) && /[a-z]/i.test(correction.source) && hangul.test(correction.target);
       const changingLanguage = correction.koreanToEnglish || correction.englishToKorean;
-      correction.nativeKorean = changingLanguage && input._inputLanguage !== 'eng' && input.dataset.nativeComposing === 'true';
-      correction.nativeEnglish = changingLanguage && input._inputLanguage === 'eng' && input.dataset.nativeComposing === 'true';
+      const nativeKorean = this.usesWindowsNativeInput() ? hangul.test(correction.source) : input._inputLanguage !== 'eng';
+      correction.nativeKorean = changingLanguage && nativeKorean && input.dataset.nativeComposing === 'true';
+      correction.nativeEnglish = changingLanguage && !nativeKorean && input.dataset.nativeComposing === 'true';
     }
     if (correction.koreanToEnglish || correction.englishToKorean) {
-      input._inputLanguage = this._cellInputLanguage = correction.koreanToEnglish ? 'eng' : 'kor';
+      if (!this.usesWindowsNativeInput()) input._inputLanguage = this._cellInputLanguage = correction.koreanToEnglish ? 'eng' : 'kor';
       this.clearKoreanKeyBuffer(input);
     }
     if (correction.englishToKorean) input._forcedCorrectionPrefix = correction.prefix + correction.target;

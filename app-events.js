@@ -366,6 +366,7 @@ class PTAppEvents {
     // Intercept search before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
       if (this._recordsRestorePending) return;
+      if (this.usesWindowsNativeInput() && this.isHangulToggleKeyEvent(e)) return;
       // Input-source shortcuts win over formatting (Ctrl+Space was also red).
       if (this.handleCellLanguageToggle(e)) return;
       if (!e.defaultPrevented && this.handleTextFormattingShortcut(e)) return;

@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-function createTestApp() {
+function createTestApp(environment = {}) {
   const storage = new Map();
   let createdInput = null;
   const doc = {
@@ -45,6 +45,7 @@ function createTestApp() {
     setTimeout: () => 1, clearTimeout() {},
     document: doc,
     localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
+    ...environment,
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
@@ -403,8 +404,8 @@ test('typing Korean, backspacing completely, and pressing hangul toggle switches
 
 
 
-function editingFixture({ armed = false, column = 'specialNote', value } = {}) {
-  const { app, context } = createTestApp();
+function editingFixture({ armed = false, column = 'specialNote', value, environment = {} } = {}) {
+  const { app, context } = createTestApp(environment);
   if (value !== undefined) app.getCurrentRows()[0][column] = value;
   let input = null;
   const cell = {
@@ -460,7 +461,7 @@ function typeKeys(input, keys, extra = {}) {
   for (const key of keys) input._listeners.keydown(keyEvent(key, { code: `Key${key.toUpperCase()}`, ...extra }));
 }
 
-test('each Windows/Mac toggle is consumed once even when its event reaches the sheet', () => {
+test('each software input toggle is consumed once even when its event reaches the sheet', () => {
   const toggles = [
     { key: 'HangulMode', code: 'Lang1' },
     { key: 'Process', code: 'AltRight', altKey: true, keyCode: 229 },
@@ -685,7 +686,7 @@ test('fast Enter and Tab refresh an earlier autocomplete query before committing
 });
 
 
-test('Windows keyup-only Hangul signals switch once after an unidentified Process keydown', () => {
+test('software input keyup-only Hangul signals switch once after an unidentified Process keydown', () => {
   const releases=[
     {key:'HangulMode',code:'Unidentified',keyCode:21},
     {key:'Hangul',code:'Unidentified',keyCode:21},
@@ -710,7 +711,7 @@ test('Windows keyup-only Hangul signals switch once after an unidentified Proces
   }
 });
 
-test('Windows keydown and keyup aliases form one toggle, including modifier release', () => {
+test('software input keydown and keyup aliases form one toggle, including modifier release', () => {
   const pairs=[
     [{key:'HangulMode',code:'Lang1',keyCode:21},{key:'HangulMode',code:'Lang1',keyCode:21}],
     [{key:'Process',code:'AltRight',keyCode:229,altKey:true},{key:'HangulMode',code:'Lang1',keyCode:21}],
@@ -744,7 +745,7 @@ test('a toggle release after focus moves cannot flip another cell or a dialog in
   assert.equal(app._cellInputLanguage,'kor');
 });
 
-test('Windows keyup switching keeps a native Korean composition through its late final input', () => {
+test('software input keyup switching keeps a native Korean composition through its late final input', () => {
   const {app,input}=editingFixture({value:''});
   input.dispatchEvent=event=>input._listeners.input(event);
   input._listeners.keydown(keyEvent('Process',{code:'KeyR',keyCode:229,isComposing:true}));
@@ -760,4 +761,103 @@ test('Windows keyup switching keeps a native Korean composition through its late
   input._listeners.keyup(keyEvent('HangulMode',{type:'keyup',code:'Lang1',keyCode:21}));
   typeKeys(input,'rla');assert.equal(input.value,'김pt김');
   assert.equal(app.getCurrentRows()[0].specialNote,'김pt김');
+});
+
+
+test('Windows Chrome and Edge leave native language keys and Latin input uncancelled', () => {
+  const platforms=[
+    {userAgentData:{platform:'Windows'},platform:'Win32'},
+    {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0'},
+    {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Edg/140.0.0.0'},
+  ];
+  for(const navigator of platforms)for(const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+    const {app,input}=editingFixture({column,armed:true,value:'',environment:{navigator}});
+    for(const phase of ['keydown','keyup'])for(const key of [
+      {key:'HangulMode',code:'Lang1',keyCode:21},
+      {key:'Process',code:'AltRight',keyCode:229,altKey:true},
+      {key:'Alt',code:'AltRight',keyCode:18,altKey:true,location:2},
+      {key:'CapsLock',code:'CapsLock'},
+      {key:' ',code:'Space',ctrlKey:true},
+      {key:' ',code:'Space',shiftKey:true},
+    ]) {
+      const event=keyEvent(key.key,{...key,type:phase});
+      input._listeners[phase](event);
+      assert.equal(event.defaultPrevented,false,column+phase+JSON.stringify(key));
+      assert.equal(event.stopped,false);
+    }
+    const letter=keyEvent('p',{code:'KeyP'});input._listeners.keydown(letter);
+    assert.equal(letter.defaultPrevented,false,'Windows English entry belongs to the native input');
+    assert.equal(input.value,'','keydown must not insert a synthetic Korean syllable');
+    assert.equal(input._engKorBuffer||'','');
+  }
+});
+
+test('Windows follows native English Korean English transitions without any toggle key event', () => {
+  for(const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+    const {app,input}=editingFixture({column,value:'',environment:{navigator:{platform:'Win32'}}});
+    input._listeners.keydown(keyEvent('p',{code:'KeyP'}));
+    input.value='pt';input.setSelectionRange(2,2);
+    input._listeners.beforeinput({type:'beforeinput',inputType:'insertText',data:'t'});
+    input._listeners.input({type:'input',inputType:'insertText',data:'t'});
+    assert.equal(input.value,'pt');
+    input._listeners.keydown(keyEvent('Process',{code:'KeyR',keyCode:229,isComposing:true}));
+    input._listeners.compositionstart({type:'compositionstart'});
+    input.value='pt김';input.setSelectionRange(3,3);
+    input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'김'});
+    input._listeners.compositionend({type:'compositionend',data:'김'});
+    assert.equal(app.getCellEditorValue(input),'pt김');
+    const next=keyEvent('a',{code:'KeyA'});input._listeners.keydown(next);
+    assert.equal(next.defaultPrevented,false);
+    input.value='pt김abc';input.setSelectionRange(6,6);
+    input._listeners.input({type:'input',inputType:'insertText',data:'abc'});
+    assert.equal(app.getCurrentRows()[0][column],'pt김abc');
+    for(const method of ['applyCellFormatting','renderColoredText','saveDataStore','endNativeCellEditing','refreshNewPatientRows'])app[method]=()=>{};
+    input._listeners.blur();assert.equal(app.getCurrentRows()[0][column],'pt김abc');
+  }
+});
+
+
+test('Windows corrections retain literal spaces without forcing the following OS input language', () => {
+  const {app,input}=editingFixture({column:'part',value:'',environment:{navigator:{platform:'Win32'}}});
+  app.setForcedCorrection('*','rt ','Rt. ');
+  input.value='rt ';input.setSelectionRange(3,3);
+  input._listeners.input({type:'input',inputType:'insertText',data:' '});
+  assert.equal(input.value,'Rt. ');
+  // Windows can switch input sources without delivering any key event.
+  input._listeners.compositionstart({type:'compositionstart'});
+  input.value='Rt. 김';input.setSelectionRange(5,5);
+  input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'김'});
+  input._listeners.compositionend({type:'compositionend',data:'김'});
+  assert.equal(input.value,'Rt. 김');
+  assert.equal(app.getCurrentRows()[0].part,'Rt. 김');
+  input._listeners.keydown(keyEvent('p',{code:'KeyP'}));
+  input.value='Rt. 김pt';input.setSelectionRange(7,7);
+  input._listeners.input({type:'input',inputType:'insertText',data:'pt'});
+  assert.equal(app.getCurrentRows()[0].part,'Rt. 김pt');
+});
+
+test('Windows Korean-to-English corrections project only the corrected composition', () => {
+  const {app,input}=editingFixture({column:'part',value:'',environment:{navigator:{platform:'Win32'}}});
+  app.setForcedCorrection('*','무릎','Knee');
+  input._listeners.compositionstart({type:'compositionstart'});
+  input.value='무릎';input.setSelectionRange(2,2);
+  input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'무릎'});
+  assert.equal(app.getCellEditorValue(input),'Knee');
+  assert.equal(input.value,'무릎','leave the current native draft intact');
+  input._listeners.compositionend({type:'compositionend',data:'무릎'});
+  assert.equal(input.value,'Knee');
+  const e=keyEvent('p',{code:'KeyP'});input._listeners.keydown(e);
+  assert.equal(e.defaultPrevented,false);
+  input.value='Knee pain';input.setSelectionRange(9,9);
+  input._listeners.input({type:'input',inputType:'insertText',data:' pain'});
+  assert.equal(app.getCurrentRows()[0].part,'Knee pain');
+});
+
+test('Windows detection handles Client Hints, Win32 and user-agent fallbacks', () => {
+  for(const navigator of [{userAgentData:{platform:'Windows'}},{platform:'Win64'},{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}]) {
+    const {app}=createTestApp({navigator});assert.equal(app.usesWindowsNativeInput(),true);
+  }
+  for(const navigator of [{platform:'MacIntel'},{userAgentData:{platform:'macOS'}},{platform:'Linux x86_64'},{}]) {
+    const {app}=createTestApp({navigator});assert.equal(app.usesWindowsNativeInput(),false);
+  }
 });
