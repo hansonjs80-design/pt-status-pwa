@@ -335,19 +335,28 @@ class PTAutocomplete {
       if (!menu.isConnected || !cellElement.isConnected) return;
       const rect = cellElement.getBoundingClientRect();
       const margin = 6, gap = 4;
-      const width = Math.min(colKey === "writer" ? 104 : Math.max(rect.width, 160), window.innerWidth - margin * 2);
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft || 0, top = viewport?.offsetTop || 0;
+      const right = left + (viewport?.width || window.innerWidth);
+      const bottom = top + (viewport?.height || window.innerHeight);
+      const maxWidth = Math.max(0, right - left - margin * 2);
+      const width = Math.min(colKey === "writer" ? 104 : Math.max(rect.width, 160), maxWidth);
       menu.style.minWidth = `${width}px`;
-      menu.style.maxWidth = `${window.innerWidth - margin * 2}px`;
-      menu.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - menu.offsetWidth - margin))}px`;
-      menu.style.maxHeight = "220px";
+      menu.style.maxWidth = `${maxWidth}px`;
+      menu.style.left = `${Math.max(left + margin, Math.min(rect.left, right - menu.offsetWidth - margin))}px`;
+      const below = Math.max(0, bottom - Math.max(top, rect.bottom) - gap - margin);
+      const above = Math.max(0, Math.min(bottom, rect.top) - top - gap - margin);
+      // Prescription lists can use all available space instead of scrolling
+      // after 220px. Other pickers retain their compact height.
+      const maxHeight = colKey === "prescription" ? Math.max(below, above) : 220;
+      menu.style.maxHeight = `${maxHeight}px`;
       const naturalHeight = menu.offsetHeight;
-      const below = Math.max(0, window.innerHeight - rect.bottom - gap - margin);
-      const above = Math.max(0, rect.top - gap - margin);
       const useBelow = naturalHeight <= below || below >= above;
       const available = useBelow ? below : above;
-      menu.style.maxHeight = `${Math.min(220, available)}px`;
+      menu.style.maxHeight = `${Math.min(maxHeight, available)}px`;
       const height = menu.offsetHeight;
-      menu.style.top = `${useBelow ? rect.bottom + gap : rect.top - gap - height}px`;
+      const anchorTop = useBelow ? rect.bottom + gap : rect.top - gap - height;
+      menu.style.top = `${Math.max(top + margin, Math.min(anchorTop, bottom - height - margin))}px`;
     };
     positionMenu();
     if (selectedIndex > 0) this.moveAutocompleteSelection(0);
@@ -360,10 +369,14 @@ class PTAutocomplete {
     };
     document.addEventListener("mousedown", outsideClickListener);
     window.addEventListener("resize", positionMenu);
+    window.visualViewport?.addEventListener("resize", positionMenu);
+    window.visualViewport?.addEventListener("scroll", positionMenu);
     document.addEventListener("scroll", scrollListener, true);
     this.autocompleteCleanup = () => {
       document.removeEventListener("mousedown", outsideClickListener);
       window.removeEventListener("resize", positionMenu);
+      window.visualViewport?.removeEventListener("resize", positionMenu);
+      window.visualViewport?.removeEventListener("scroll", positionMenu);
       document.removeEventListener("scroll", scrollListener, true);
     };
   }
