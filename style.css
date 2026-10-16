@@ -2132,6 +2132,27 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
   padding-left: 8px;
 }
 
+.excel-context-menu .menu-submenu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.excel-context-menu .menu-submenu-button:hover,
+.excel-context-menu .menu-submenu-button:focus-visible {
+  background: #d7ebdf;
+  outline: 1px solid var(--excel-green);
+}
+
 .excel-context-menu .menu-divider {
   height: 1px;
   background: #e1e4e8;

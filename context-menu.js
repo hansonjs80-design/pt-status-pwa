@@ -20,8 +20,9 @@ class PTContextMenu {
       const menuItem = e.target.closest(".menu-item");
       if (!menuItem) return;
 
-      const action = menuItem.dataset.action;
-      this.executeContextAction(action, menuItem);
+      const actionItem = e.target.closest("[data-action]") || menuItem;
+      const action = actionItem.dataset.action;
+      this.executeContextAction(action, actionItem);
       this.hideContextMenu();
     });
   }
@@ -217,6 +218,9 @@ class PTContextMenu {
         break;
       case "underline":
         this.toggleUnderline();
+        break;
+      case "underline-menu":
+        this.openUnderlineMenu(menuItem || document.getElementById("btnUnderlineMenu"));
         break;
       case "text-highlight":
         this.openFontColorMenu(menuItem || document.getElementById("btnTextHighlight"), "highlight");
