@@ -39,6 +39,38 @@ test('correction rules validate inputs, rename scope and do not leak into anothe
   assert.equal(app.findForcedCorrection('it-band','memo').value,'IT band');
 });
 
+test('correction sources retain trailing spaces and wait for the exact space before replacing',()=>{
+  const {app,storage}=createApp();
+  assert.equal(app.setForcedCorrection('*','rt ','Rt.'),true);
+  assert.equal(app.getForcedCorrectionRules()[0].source,'rt ');
+  assert.equal(app.findForcedCorrection('rt','part'),null);
+  assert.equal(app.findForcedCorrection('rt\t','part'),null,'a tab does not replace the configured space');
+  const input=editor('rt ');input._inputLanguage='eng';
+  assert.equal(app.updateForcedCorrection(input,'part'),true);
+  assert.equal(input.value,'Rt.');assert.equal(input.selectionStart,3);
+  const saved=JSON.parse(storage.get('PT_APP_CUSTOM_PRESETS_V1'));
+  const reloaded=createApp();reloaded.context.setPresets(saved);
+  assert.equal(reloaded.app.findForcedCorrection('rt','part'),null);
+  assert.equal(reloaded.app.findForcedCorrection('rt ','part').value,'Rt.');
+  assert.ok(Object.keys(saved).some(key=>key.endsWith('rt%20')));
+});
+
+test('leading and trailing spaces survive edits and consume only the explicitly entered whitespace',()=>{
+  const {app}=createApp();
+  assert.equal(app.setForcedCorrection('*','rt ',' Rt. '),true);
+  assert.equal(app.findForcedCorrection('rt ','part').value,' Rt. ');
+  assert.equal(app.findForcedCorrection('앞 rt 뒤','part',5).value,'앞  Rt. 뒤','the source already contains a word boundary');
+  const previous=app.getForcedCorrectionRules()[0];
+  assert.equal(app.setForcedCorrection('part',' rt  ','Rt. ',previous),true);
+  assert.equal(app.getForcedCorrectionRules().length,1);
+  assert.equal(app.findForcedCorrection('rt ','memo'),null);
+  assert.equal(app.findForcedCorrection('앞 rt  뒤','part',6).value,'앞Rt. 뒤');
+  app.deleteForcedCorrection('part',' rt  ');
+  assert.equal(app.getForcedCorrectionRules().length,0);
+  assert.equal(app.setForcedCorrection('*',' ','Rt.'),false);
+  assert.equal(app.setForcedCorrection('*','rt',' '),false);
+});
+
 test('every column supports explicit inclusion and exclusion with specific-column precedence',()=>{
   const {app,storage}=createApp();
   for(const column of Object.keys(app.getForcedCorrectionColumns())) {

@@ -34,10 +34,10 @@ class PTForcedCorrections {
   }
 
   setForcedCorrection(scope, source, target, previous = null) {
-    source = String(source ?? '').trim().normalize('NFC');
-    target = String(target ?? '').trim().normalize('NFC');
+    source = String(source ?? '').normalize('NFC');
+    target = String(target ?? '').normalize('NFC');
     if (!this.isForcedCorrectionScope(scope) ||
-        !source || !target || source === target) return false;
+        !source.trim() || !target.trim() || source === target) return false;
     if (previous) delete COLUMN_PRESETS[this.getForcedCorrectionKey(previous.scope, previous.source)];
     // String arrays retain compatibility with existing backup and cloud records.
     COLUMN_PRESETS[this.getForcedCorrectionKey(scope, source)] = [target];
@@ -59,8 +59,8 @@ class PTForcedCorrections {
     for (const rule of [...rules.values()].sort((a, b) => b.source.length - a.source.length)) {
       const start = caret - rule.source.length;
       if (start < 0 || value.slice(start, caret) !== rule.source) continue;
-      if (start && !/[\s([{]/.test(value[start - 1])) continue;
-      if (caret < value.length && !/[\s)\]},.!?;:]/.test(value[caret])) continue;
+      if (start && !/^\s/.test(rule.source) && !/[\s([{]/.test(value[start - 1])) continue;
+      if (caret < value.length && !/\s$/.test(rule.source) && !/[\s)\]},.!?;:]/.test(value[caret])) continue;
       return {...rule, prefix: value.slice(0, start), suffix: value.slice(caret),
         value: value.slice(0, start) + rule.target + value.slice(caret), caret: start + rule.target.length};
     }
@@ -272,7 +272,7 @@ class PTForcedCorrections {
       const badge = document.createElement('span'); badge.className = 'forced-correction-scope';
       badge.textContent = scopeLabel(rule);
       const text = document.createElement('span'); text.className = 'forced-correction-text';
-      text.textContent = `${rule.source} → ${rule.target}`;
+      text.textContent = `${rule.source.replace(/ /g, '␠')} → ${rule.target.replace(/ /g, '␠')}`;
       const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'preset-action-btn'; edit.textContent = '수정';
       edit.setAttribute('aria-label', `${rule.source} 강제 자동수정 수정`);
       edit.onclick = () => {
