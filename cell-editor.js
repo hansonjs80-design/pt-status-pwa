@@ -10,6 +10,11 @@ class PTCellEditor {
     return /^Win/i.test(platform) || /Windows NT/i.test(navigator.userAgent || "");
   }
 
+  getCellInputLanguage(colKey) {
+    if (this.usesWindowsNativeInput()) return colKey === "name" ? "kor" : "native";
+    return this._cellInputLanguage || "kor";
+  }
+
   isHangulToggleKeyEvent(e) {
     if (!e) return false;
     // Windows Korean/English key (the Hanja/Lang2 key is a separate action).
@@ -128,7 +133,15 @@ class PTCellEditor {
 
   restoreHandledCellKey(input, event) {
     const saved = input._cellKeyValue;
-    if (this.usesWindowsNativeInput() && saved && saved.nativeData == null) {
+    if (input._koreanNameOnly && saved?.nativeData == null &&
+        (event.type === "compositionstart" || event.inputType === "insertCompositionText")) {
+      // A new native Korean composition may arrive without a usable keydown.
+      // It replaces the software draft instead of replaying its last key.
+      delete input._cellKeyValue;
+      this.clearKoreanKeyBuffer(input);
+      return false;
+    }
+    if (this.usesWindowsNativeInput() && !input._koreanNameOnly && saved && saved.nativeData == null) {
       // Ordinary Windows input is owned by the IME. A previous replacement's
       // generic guard must not swallow input after an OS-only language change.
       delete input._cellKeyValue;
@@ -268,13 +281,13 @@ class PTCellEditor {
       if (!armed) {
         // Enter/double-click activates this selection; it must not undo a
         // language toggle already made while its border was selected.
-        existingEditor._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
+        existingEditor._inputLanguage = this.getCellInputLanguage(colKey);
         existingEditor._engKorBuffer = "";
         existingEditor._engKorPrefix = "";
         existingEditor._engKorSuffix = "";
         delete existingEditor._cellKeyValue;
       } else {
-        existingEditor._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
+        existingEditor._inputLanguage = this.getCellInputLanguage(colKey);
       }
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         delete existingEditor.dataset.navigationInputGuard;
@@ -297,9 +310,10 @@ class PTCellEditor {
     input.value = initialVal;
     // Retain already-saved literal spaces when a corrected cell is reopened.
     input._preserveBoundaryWhitespace = /^\s|\s$/.test(String(initialVal));
-    // Windows follows the OS input source. Software input on other platforms
-    // retains the language chosen within this selection.
-    input._inputLanguage = this.usesWindowsNativeInput() ? "native" : this._cellInputLanguage || "kor";
+    // Windows names compose Korean letters; other columns follow the OS.
+    // Software input elsewhere retains the language chosen in this selection.
+    input._koreanNameOnly = colKey === "name" && this.usesWindowsNativeInput();
+    input._inputLanguage = this.getCellInputLanguage(colKey);
     this._cellInputLanguage = input._inputLanguage;
     if (this.guardNextCellInput) {
       input.dataset.navigationInputGuard = "true";
@@ -578,7 +592,7 @@ class PTCellEditor {
       if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 
-      const nativeWindowsInput = this.isKoreanPreferredColumn(colKey) && this.usesWindowsNativeInput();
+      const nativeWindowsInput = this.isKoreanPreferredColumn(colKey) && this.usesWindowsNativeInput() && !input._koreanNameOnly;
       if (nativeWindowsInput) {
         // OS input-source changes may produce no keyboard event at all. Trust
         // beforeinput/composition instead of a separate application language.
@@ -617,7 +631,7 @@ class PTCellEditor {
           input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           return;
         }
-        if (plainKey && e.key === "Escape" && input._engKorBuffer) {
+        if (plainKey && e.key === "Escape" && input._engKorBuffer && !input._koreanNameOnly) {
           e.preventDefault(); e.stopPropagation?.();
           const caret = input._engKorPrefix.length + input._engKorBuffer.length;
           input.value = input._engKorPrefix + input._engKorBuffer + input._engKorSuffix;
@@ -635,7 +649,7 @@ class PTCellEditor {
           // IME and must never also insert a character from this keydown.
           e.preventDefault(); e.stopPropagation?.();
           this.activateNativeEditor(input);
-          if (input._inputLanguage === "eng") {
+          if (input._inputLanguage === "eng" && !input._koreanNameOnly) {
             const start = input.selectionStart ?? input.value.length;
             const end = input.selectionEnd ?? start;
             input.value = input.value.slice(0, start) + letter + input.value.slice(end);

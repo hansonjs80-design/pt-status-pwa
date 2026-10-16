@@ -770,7 +770,7 @@ test('Windows Chrome and Edge leave native language keys and Latin input uncance
     {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0'},
     {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Edg/140.0.0.0'},
   ];
-  for(const navigator of platforms)for(const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+  for(const navigator of platforms)for(const column of ['no','chartNo','part','prescription','extra','memo','specialNote']) {
     const {app,input}=editingFixture({column,armed:true,value:'',environment:{navigator}});
     for(const phase of ['keydown','keyup'])for(const key of [
       {key:'HangulMode',code:'Lang1',keyCode:21},
@@ -793,7 +793,7 @@ test('Windows Chrome and Edge leave native language keys and Latin input uncance
 });
 
 test('Windows follows native English Korean English transitions without any toggle key event', () => {
-  for(const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+  for(const column of ['no','chartNo','part','prescription','extra','memo','specialNote']) {
     const {app,input}=editingFixture({column,value:'',environment:{navigator:{platform:'Win32'}}});
     input._listeners.keydown(keyEvent('p',{code:'KeyP'}));
     input.value='pt';input.setSelectionRange(2,2);
@@ -860,4 +860,55 @@ test('Windows detection handles Client Hints, Win32 and user-agent fallbacks', (
   for(const navigator of [{platform:'MacIntel'},{userAgentData:{platform:'macOS'}},{platform:'Linux x86_64'},{}]) {
     const {app}=createTestApp({navigator});assert.equal(app.usesWindowsNativeInput(),false);
   }
+});
+
+
+test('Windows names always compose Korean from English keys without changing other columns', () => {
+  for(const armed of [true,false]) {
+    const f=editingFixture({column:'name',armed,value:'',environment:{navigator:{platform:'Win32'}}});
+    const {app,input}=f;enableInputRepair(f);
+    for(const signal of [{key:'HangulMode',code:'Lang1',keyCode:21},{key:'Alt',code:'AltRight',altKey:true}]) {
+      input._listeners.keydown(keyEvent(signal.key,signal));
+      assert.equal(input._inputLanguage,'kor');
+    }
+    typeKeys(input,'rlaalstn');assert.equal(input.value,'김민수');
+    assert.equal(app.getCurrentRows()[0].name,'김민수');
+    assert.equal(input.selectionStart,3);
+    input._listeners.keydown(keyEvent('Backspace',{code:'Backspace'}));
+    assert.equal(input.value,'김민ㅅ');
+    typeKeys(input,'n');assert.equal(input.value,'김민수');
+    input.setSelectionRange(0,input.value.length);typeKeys(input,'dlcnstlr');
+    assert.equal(input.value,'이춘식','selection replacement starts a new Korean buffer');
+  }
+});
+
+test('Windows name typing can alternate software Korean and native IME without duplication', () => {
+  const f=editingFixture({column:'name',value:'',environment:{navigator:{platform:'Win32'}}});
+  const {app,input}=f;enableInputRepair(f);
+  typeKeys(input,'rla');assert.equal(input.value,'김');
+  input._listeners.keydown(keyEvent('Process',{code:'KeyA',keyCode:229,isComposing:true}));
+  input._listeners.compositionstart({type:'compositionstart'});
+  for(const data of ['ㅁ','미','민']) {
+    input.value='김'+data;input.setSelectionRange(input.value.length,input.value.length);
+    input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data});
+    assert.equal(input.value,'김'+data,'do not rewrite a live native composition');
+  }
+  input._listeners.compositionend({type:'compositionend',data:'민'});
+  typeKeys(input,'tn');assert.equal(input.value,'김민수');
+  assert.equal(app.getCurrentRows()[0].name,'김민수');
+});
+
+
+test('Windows name accepts a native composition with no keyboard event after software typing', () => {
+  const f=editingFixture({column:'name',value:'',environment:{navigator:{platform:'Win32'}}});
+  const {app,input}=f;enableInputRepair(f);
+  typeKeys(input,'rla');assert.equal(input.value,'김');
+  input._listeners.compositionstart({type:'compositionstart'});
+  assert.equal(input.dataset.nativeComposing,'true');
+  input.value='김민';input.setSelectionRange(2,2);
+  input._listeners.beforeinput({type:'beforeinput',inputType:'insertCompositionText',isComposing:true,data:'민'});
+  input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'민'});
+  input._listeners.compositionend({type:'compositionend',data:'민'});
+  typeKeys(input,'tn');
+  assert.equal(input.value,'김민수');assert.equal(app.getCurrentRows()[0].name,'김민수');
 });
