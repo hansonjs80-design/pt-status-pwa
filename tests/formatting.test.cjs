@@ -441,7 +441,7 @@ test('column defaults persist across past, future, empty and search rows with in
 });
 
 
-test('header formatting updates every date without copying defaults into individual records', () => {
+test('header formatting replaces older overrides on every date without rewriting individual records', () => {
   const instance=Object.create(context.App.prototype);
   const rows=[{name:'현재',_textStyles:{name:{fontSize:11,fontWeight:700}},_textColors:{name:'#ff0000'}},{}];
   const history={name:'이전',_textStyles:{name:{fontSize:10,fontWeight:400}},_textColors:{name:'#00ff00'}};
@@ -454,11 +454,70 @@ test('header formatting updates every date without copying defaults into individ
   instance.applyColumnTypography('fontWeight',500);
   instance.applyTextColor('#123456');
   for(const row of [...rows,history,{name:'미래'}]) {
-    assert.equal(instance.getCellFormatting(row,'name','fontSize'),row._textStyles?.name?.fontSize ?? 20);
-    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),row._textStyles?.name?.fontWeight ?? 500);
-    assert.equal(instance.getCellFormatting(row,'name','color'),row._textColors?.name ?? '#123456');
+    assert.equal(instance.getCellFormatting(row,'name','fontSize'),20);
+    assert.equal(instance.getCellFormatting(row,'name','fontWeight'),500);
+    assert.equal(instance.getCellFormatting(row,'name','color'),'#123456');
   }
   assert.equal(JSON.stringify(rows),before);
+});
+
+test('header apply wins over pasted styles, later cell edits survive reload, and the same header value applies again', () => {
+  const instance=Object.create(context.App.prototype),row={part:'가상 부위'},past={part:'가상 과거'};
+  const rows=[row,{}];
+  Object.assign(instance,{columnFormatting:{},selectedColumnRange:{minCol:4,maxCol:4},selectedRange:{minRow:0,maxRow:1,minCol:4,maxCol:4}});
+  instance.getCurrentRows=()=>rows;instance.isEditingCell=()=>false;
+  instance.renderTable=instance.selectEntireColumn=instance.closeFontColorMenu=()=>{};
+  instance.saveDataStore=()=>{};
+  const properties={fontWeight:600,fontSize:18,color:'#123456',backgroundColor:'#e2efda'};
+  const pasted={fontWeight:400,fontSize:12,color:'#ff0000',backgroundColor:'#ffff00'};
+  instance.applyCopiedCellFormatting(row,'part',pasted);
+  for(const [property,value] of Object.entries(properties)) {
+    if(property==='color')instance.applyTextColor(value);else instance.applyColumnTypography(property,value);
+    for(const record of [row,past,{}])assert.equal(instance.getCellFormatting(record,'part',property),value);
+  }
+  instance.activeCell={rowIdx:0,colKey:'part'};
+  instance.selectedRange={minRow:0,maxRow:0,minCol:4,maxCol:4};
+  instance.applyColumnTypography('fontWeight',800);instance.applyTextColor('#00ff00');
+  const reloaded=Object.create(context.App.prototype);reloaded.columnFormatting=instance.loadColumnFormatting();
+  assert.equal(reloaded.getCellFormatting(JSON.parse(JSON.stringify(row)),'part','fontWeight'),800);
+  assert.equal(reloaded.getCellFormatting(row,'part','color'),'#00ff00');
+  assert.equal(reloaded.getCellFormatting(past,'part','fontWeight'),600);
+  instance.activeCell=null;instance.selectedRange={minRow:0,maxRow:1,minCol:4,maxCol:4};
+  for(const [property,value] of Object.entries(properties)) {
+    if(property==='color')instance.applyTextColor(value);else instance.applyColumnTypography(property,value);
+    assert.equal(instance.getCellFormatting(row,'part',property),value,'reapplying '+property);
+  }
+  // Copying after a column apply is a later cell operation and keeps its formatting.
+  instance.applyCopiedCellFormatting(row,'part',pasted);
+  for(const [property,value] of Object.entries(pasted))assert.equal(instance.getCellFormatting(row,'part',property),value);
+});
+
+test('column typography clears old character overrides without reviving them during later partial edits', () => {
+  const instance=Object.create(context.App.prototype);
+  const row={part:'가상부위',_textStyles:{part:{fontWeight:400,fontSize:12}},_richText:{part:{
+    text:'가상부위',colors:['#ff0000',null,null,null],styles:[{fontWeight:900,fontSize:30,underline:{kind:'solid',color:'#000000',thickness:1}},null,null,null]}}};
+  instance.columnFormatting={};instance.getCurrentRows=()=>[row];instance.isEditingCell=()=>false;
+  instance.renderTable=instance.selectEntireColumn=instance.closeFontColorMenu=()=>{};
+  Object.assign(instance,{selectedColumnRange:{minCol:4,maxCol:4},selectedRange:{minRow:0,maxRow:0,minCol:4,maxCol:4}});
+  instance.applyColumnTypography('fontWeight',600);
+  let rich=instance.getEffectiveCellRichText(row,'part');
+  assert.equal(rich.styles[0].fontWeight,undefined);
+  assert.equal(rich.styles[0].fontSize,30,'unrelated character size remains');
+  assert.equal(rich.colors[0],'#ff0000','unrelated character color remains');
+  instance.applyColumnTypography('fontSize',18);
+  instance.setPartialTextStyle(row,'part',1,2,'fontWeight',800);
+  rich=instance.getEffectiveCellRichText(row,'part');
+  assert.equal(instance.getCellFormatting(row,'part','fontWeight'),600,'the old cell weight must not revive');
+  assert.equal(rich.styles[0].fontWeight,undefined);
+  assert.equal(rich.styles[1].fontWeight,800);
+  assert.equal(rich.styles[0].fontSize,undefined);
+  instance.applyTextColor('#0000ff');
+  rich=instance.getEffectiveCellRichText(row,'part');
+  assert.equal(rich.colors[0],null,'column color clears only earlier character colors');
+  assert.equal(rich.styles[1].fontWeight,800,'later character weight survives an unrelated column color change');
+  assert.ok(rich.styles[0].underline);
+  instance.applyColumnTypography('fontWeight',600);
+  assert.equal(instance.getEffectiveCellRichText(row,'part').styles[1],null);
 });
 
 test('single cell typography/color do not change defaults even with a stale column marker; reset inherits defaults', () => {

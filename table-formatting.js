@@ -325,7 +325,21 @@ class PTTableFormatting {
   }
 
   getEffectiveCellRichText(row, key) {
-    return this.isCellFormattingCurrent(row, key, 'color') ? row._richText?.[key] : undefined;
+    const rich = row._richText?.[key];
+    if (!rich) return undefined;
+    const stale = ['color', 'fontSize', 'fontWeight'].filter(property => !this.isCellFormattingCurrent(row, key, property));
+    if (!stale.length) return rich;
+    // Character formatting follows the same per-property column revisions as
+    // whole cells. Resetting weight must not revive or erase another property.
+    const effective = { ...rich };
+    if (stale.includes('color')) effective.colors = (rich.colors || []).map(() => null);
+    if (rich.styles) effective.styles = rich.styles.map(style => {
+      if (!style) return null;
+      const next = { ...style };
+      for (const property of stale) delete next[property];
+      return Object.keys(next).length ? next : null;
+    });
+    return effective.colors?.some(Boolean) || effective.styles?.some(Boolean) ? effective : undefined;
   }
 
   markCellFormatting(row, key, property) {
@@ -420,9 +434,9 @@ class PTTableFormatting {
     if (this.isEditingCell()) document.activeElement.blur();
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     if (columns) {
-      // Applying alignment to a whole column must also replace older cell
-      // overrides. Later cell edits can still override the new reset revision.
-      this.setColumnFormatting(columns, property, value, property === 'textAlign');
+      // Every explicit header apply replaces older overrides, even when the
+      // chosen value is unchanged. Later cell edits stamp this new revision.
+      this.setColumnFormatting(columns, property, value, true);
       this.renderTable();
       this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
       return;
@@ -955,6 +969,12 @@ class PTTableFormatting {
     if (!this.isCellFormattingCurrent(row, key, 'color')) {
       row._textColors ||= {}; row._textColors[key] = this.getCellFormatting(row, key, 'color');
     }
+    if (['fontSize', 'fontWeight'].includes(property) && !this.isCellFormattingCurrent(row, key, property)) {
+      const base = this.getCellFormatting(row, key, property);
+      row._textStyles ||= {}; row._textStyles[key] ||= {};
+      if (base == null) delete row._textStyles[key][property];
+      else row._textStyles[key][property] = base;
+    }
     const rich = previous?.text === text ? JSON.parse(JSON.stringify(previous))
       : { text, colors: Array(text.length).fill(null) };
     rich.styles ||= Array(text.length).fill(null);
@@ -965,6 +985,7 @@ class PTTableFormatting {
     }
     row._richText ||= {}; row._richText[key] = rich;
     this.markCellFormatting(row, key, 'color');
+    this.markCellFormatting(row, key, property);
   }
 
   applySelectedTextStyle(property, value) {
@@ -1045,7 +1066,7 @@ class PTTableFormatting {
     const columns = this.getSelectedFormattingColumns();
     if (columns) {
       this.textColorSelection = null;
-      this.setColumnFormatting(columns, "color", color);
+      this.setColumnFormatting(columns, "color", color, true);
       this.renderTable();
       const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
       this.selectEntireColumn(keys[columns.minCol], "", keys[columns.maxCol]);
