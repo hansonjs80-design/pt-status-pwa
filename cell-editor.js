@@ -15,6 +15,69 @@ class PTCellEditor {
     return this._cellInputLanguage || "kor";
   }
 
+  rememberCellWindowInput(input = document.activeElement) {
+    if (!this.usesWindowsNativeInput()) return;
+    const selected = this.activeCell;
+    const previous = this.cellWindowInput;
+    this.cellWindowInput = null;
+    if (!selected || selected.colKey === "gender" || this.crossDateSelection || this.selectedColumnRange || this.selectedRowRange) return;
+    if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow ||
+        this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
+    const cell = this.elTableBody?.querySelector(`[data-row="${selected.rowIdx}"][data-col="${selected.colKey}"]`);
+    const editor = cell?.querySelector("input");
+    if (input && input !== document.body && input !== this.elSheetContainer && input !== editor) return;
+    // Element blur may remove the editor before the window blur event arrives.
+    if (input !== editor && previous?.date === this.currentDate &&
+        previous.rowIdx === selected.rowIdx && previous.colKey === selected.colKey) {
+      this.cellWindowInput = previous;
+      return;
+    }
+    this.cellWindowInput = { ...selected, date: this.currentDate,
+      armed: !editor || editor.classList.contains("is-armed"),
+      text: editor?.value, start: editor?.selectionStart, end: editor?.selectionEnd };
+  }
+
+  restoreCellWindowInput() {
+    if (document.visibilityState === "hidden" || document.hasFocus?.() === false) return;
+    const saved = this.cellWindowInput;
+    this.cellWindowInput = null;
+    if (!saved || this._recordsRestorePending || saved.date !== this.currentDate ||
+        this.activeCell?.rowIdx !== saved.rowIdx || this.activeCell?.colKey !== saved.colKey ||
+        this.crossDateSelection || this.selectedColumnRange || this.selectedRowRange) return;
+    if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow ||
+        this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
+    if ([...document.querySelectorAll('.modal-overlay, dialog[open], #excelContextMenu, #fontColorMenu, #columnTypographyMenu')]
+        .some(element => element.getClientRects().length)) return;
+    const cell = this.elTableBody?.querySelector(`[data-row="${saved.rowIdx}"][data-col="${saved.colKey}"]`);
+    if (!cell?.isConnected || !cell.getClientRects().length) return;
+    const editor = cell.querySelector("input");
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && focused !== this.elSheetContainer && focused !== editor) return;
+    // Reuse an existing native composition/caret without recreating its input.
+    if (editor) { if (focused !== editor) editor.focus({ preventScroll: true }); return; }
+    this.startInlineEdit(saved.rowIdx, saved.colKey, cell, saved.armed);
+    const restored = cell.querySelector("input");
+    if (restored && !saved.armed && restored.value === saved.text && Number.isInteger(saved.start)) {
+      restored.setSelectionRange(saved.start, saved.end);
+    }
+  }
+
+  initCellWindowFocus() {
+    if (this.cellWindowFocusBound) return;
+    this.cellWindowFocusBound = true;
+    window.addEventListener("blur", () => this.rememberCellWindowInput());
+    const resume = () => {
+      this.restoreCellWindowInput();
+      // Some browsers update document focus just after the window event.
+      setTimeout(() => this.restoreCellWindowInput(), 0);
+    };
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") this.rememberCellWindowInput();
+      else resume();
+    });
+  }
+
   isHangulToggleKeyEvent(e) {
     if (!e) return false;
     // Windows Korean/English key (the Hanja/Lang2 key is a separate action).
@@ -565,6 +628,7 @@ class PTCellEditor {
     };
 
     input.addEventListener("blur", () => {
+      if (document.hasFocus?.() === false) this.rememberCellWindowInput(input);
       input._engKorBuffer = "";
       input._engKorPrefix = "";
       input._engKorSuffix = "";

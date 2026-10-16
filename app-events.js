@@ -381,6 +381,7 @@ class PTAppEvents {
       if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
     });
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
+    this.initCellWindowFocus();
     window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; this._cellLanguageToggleDown = null; });
 
     document.addEventListener("paste", event => {
