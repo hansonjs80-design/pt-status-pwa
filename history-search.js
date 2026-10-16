@@ -584,7 +584,7 @@ class PTHistorySearch {
     return JSON.stringify([dateKey, ...compareCols.map(k => String(row[k] || "").trim().toLowerCase())]);
   }
 
-  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false } = {}) {
+  searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false, searchStore: preparedSearchStore = null } = {}) {
     if (this.includeCurrentDateSearch && this.currentDateSearchOriginalTarget?.date === this.currentDate) {
       this.historyApplyTarget = this.currentDateSearchOriginalTarget;
     }
@@ -637,7 +637,9 @@ class PTHistorySearch {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const allMatchedRows = [];
 
-    const searchStore = this.getSearchDataStore();
+    // Reuse only this lookup's snapshot; later searches and cloud refreshes
+    // still read current records instead of retaining a stale global cache.
+    const searchStore = preparedSearchStore || this.getSearchDataStore();
     const isChartQuery = this.isChartNumberQuery(q);
     const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
     // 성함 후보에 해당하는 검색어는 완전 일치로 찾고, 다른 열의 검색은 기존 방식으로 유지한다.
@@ -651,10 +653,9 @@ class PTHistorySearch {
       const dateRows = searchStore[dateKey] || [];
       dateRows.forEach((row, sourceRowIdx) => {
         if (!row.name && !row.chartNo && !row.part && !row.prescription) return;
-        const rowText = colKeys.map(k => (row[k] || "")).join(" ").toLowerCase();
         const matches = isChartQuery ? String(row.chartNo ?? "").trim().toLowerCase() === q : (isNameQuery || includeCurrent)
           ? String(row.name ?? "").trim().toLowerCase() === q
-          : rowText.includes(q);
+          : colKeys.map(k => (row[k] || "")).join(" ").toLowerCase().includes(q);
         if (matches) {
           allMatchedRows.push({ ...row, _sourceDate: dateKey, _sourceRowIdx: sourceRowIdx });
         }

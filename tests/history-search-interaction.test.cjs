@@ -384,7 +384,7 @@ test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
     const row = { dataset: { rowIdx: '0' }, classList: { add() {} } };
     const input = { tagName: 'INPUT', value: '가상환자', closest: selector => selector === '.excel-row' ? row : {}, blur() {} };
     app.handleGlobalKeyDown({ key: 'f', [modifier]: true, target: input, preventDefault() {}, stopPropagation() {} });
-    assert.deepEqual(searched, ['가상환자', 0]);
+    assert.deepEqual(JSON.parse(JSON.stringify(searched)), ['가상환자', 0, {searchStore: JSON.parse(JSON.stringify(app.getSearchDataStore()))}]);
   }
 });
 
@@ -701,7 +701,7 @@ test('the first physical Ctrl/Cmd+F searches a composing editor and releases its
     assert.ok(app.isSearchShortcut(event));
     app.handleGlobalKeyDown(event);
     assert.equal(searches.length, 1);
-    assert.deepEqual(searches[0], ['확정된이름', 0]);
+    assert.deepEqual(JSON.parse(JSON.stringify(searches[0])), ['확정된이름', 0, {searchStore: JSON.parse(JSON.stringify(app.getSearchDataStore()))}]);
     assert.equal(app.historyApplyBlockedKey, 'f');
     app.releaseHistorySearchKey({ key: 'ㄹ', code: 'KeyF' });
     assert.equal(app.historyApplyBlockedKey, null);
@@ -934,7 +934,7 @@ test('search Enter preserves the typed exact name instead of accepting a highlig
   assert.equal(closed,1);
   app.dataStore['2026-09-27'] = [{name:'이연'}];
   await app.submitSearchPrompt();
-  assert.deepEqual(JSON.parse(JSON.stringify(searched)),['이연',0,{focusCurrentTarget:true}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searched)),['이연',0,{focusCurrentTarget:true,searchStore:JSON.parse(JSON.stringify(app.getSearchDataStore()))}]);
   assert.equal(closed,2);
 });
 
@@ -972,12 +972,12 @@ test('cloud-only exact names and chart search remain usable', async () => {
   app.searchAllDates = (...args) => searches.push(args);
   context.alert = () => assert.fail('known name and chart search must not report missing name');
   await app.submitSearchPrompt();
-  assert.deepEqual(JSON.parse(JSON.stringify(searches[0])),['이연진',0,{focusCurrentTarget:false}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searches[0])),['이연진',0,{focusCurrentTarget:false,searchStore:JSON.parse(JSON.stringify(app.getSearchDataStore()))}]);
   app._searchPromptACExplicit = false;
   app._searchPromptACMenu = null;
   app.elSearchPromptInput.value = '15889';
   await app.submitSearchPrompt();
-  assert.deepEqual(JSON.parse(JSON.stringify(searches[1])),['15889',0,{focusCurrentTarget:false}]);
+  assert.deepEqual(JSON.parse(JSON.stringify(searches[1])),['15889',0,{focusCurrentTarget:false,searchStore:JSON.parse(JSON.stringify(app.getSearchDataStore()))}]);
 });
 
 
@@ -1808,7 +1808,7 @@ test('closing and reopening search immediately permits new Enter while the previ
   const button=app.elBtnSearchPromptSubmit={innerHTML:'검색 <span>Enter</span>',disabled:false};
   app.supabaseClient={};const finish=[];const searched=[];
   app.loadSearchHistory=()=>new Promise(resolve=>finish.push(resolve));
-  app.hasRecordedPatientValue=()=>true;app.searchAllDates=query=>searched.push(query);
+  app.hasRecordedPatientValue=()=>false;app.searchAllDates=query=>searched.push(query);
   app.openSearchPromptModal(0,'첫검색');const first=app.submitSearchPrompt();
   assert.equal(button.disabled,true);
   app.closeSearchPromptModal();
@@ -1818,7 +1818,7 @@ test('closing and reopening search immediately permits new Enter while the previ
   assert.equal(finish.length,2);assert.equal(app.searchPromptSubmitting,true);
   finish[0](true);await Promise.resolve();await Promise.resolve();
   assert.equal(app.searchPromptSubmitting,true);assert.equal(button.disabled,true);
-  finish[1](true);await second;
+  app.hasRecordedPatientValue=()=>true;finish[1](true);await second;
   assert.deepEqual(searched,['새검색']);assert.equal(button.disabled,false);
   assert.equal(button.innerHTML,'검색 <span>Enter</span>');
 });
@@ -1914,4 +1914,80 @@ test('interrupted pointer selection releases all drag guards without changing da
   assert.equal(app._rowDragAnchor,undefined);assert.equal(classes.size,0);assert.equal(cancelled,1);
   assert.equal(app.columnDragAnchor,null);assert.equal(resizeCancelled,1);
   assert.equal(app.selectedRange,range);assert.equal(JSON.stringify(app.dataStore),before);
+});
+
+
+test('a local patient hit opens the search immediately while its first cloud refresh remains pending', async () => {
+  for (const direct of [false, true]) {
+    const {app}=createApp([{}]);
+    const local={'2026-10-03':[{name:'가상환자',chartNo:'731'}]};
+    app.dataStore=local;app.supabaseClient={};app.searchHistoryLoadedAt=0;
+    let loads=0,reads=0,rendered;
+    app.loadSearchHistory=()=>{loads++;return new Promise(()=>{});};
+    const read=app.getSearchDataStore.bind(app);
+    app.getSearchDataStore=()=>{reads++;return read();};
+    app.searchAllDates=(q,row,options)=>{rendered={q,row,options};};
+    app.elSearchPromptInput={value:'가상환자'};app.searchPromptTargetRowIdx=0;
+    const pending=direct?app.searchPatientHistory('가상환자',0):app.submitSearchPrompt();
+    assert.equal(rendered.q,'가상환자','a known patient must render before network resolves');
+    assert.equal(rendered.options.searchStore['2026-10-03'],local['2026-10-03']);
+    assert.equal(reads,1,'matching and rendering share one transaction snapshot');
+    assert.equal(loads,1);
+    await pending;
+  }
+});
+
+test('a cached-history miss waits for changed server records instead of reporting no match early', async () => {
+  const {app}=createApp([{}]);app.supabaseClient={};app.searchHistoryLoadedAt=Date.now();
+  let finish,rendered=false,misses=0;
+  app.loadSearchHistory=()=>new Promise(resolve=>{finish=resolve;});
+  app.elSearchPromptInput={value:'가상새환자'};app.searchPromptTargetRowIdx=0;
+  app.searchAllDates=(query,row,{searchStore})=>{rendered=true;assert.equal(searchStore['2026-10-02'][0].name,query);};
+  app.showSearchNotFoundModal=()=>{misses++;};
+  const pending=app.submitSearchPrompt();
+  assert.equal(rendered,false);assert.equal(misses,0);assert.equal(app.searchPromptSubmitting,true);
+  app.cloudSearchHistory={'2026-10-02':[{name:'가상새환자'}]};finish(true);await pending;
+  assert.equal(rendered,true);assert.equal(misses,0);
+});
+
+test('search snapshots do not outlive a lookup after local edits or incoming cloud changes', () => {
+  const {app}=createApp([{}]);
+  app.dataStore['2026-10-03']=[{name:'가상환자',chartNo:'731'}];
+  const first=app.preparePatientHistorySearch('가상환자',0);
+  assert.equal(first.exists,true);
+  app.dataStore['2026-10-03'][0].name='바뀐가상환자';
+  assert.equal(app.preparePatientHistorySearch('가상환자',0).exists,false);
+  assert.equal(app.preparePatientHistorySearch('바뀐가상환자',0).exists,true);
+  app.cloudSearchHistory={'2026-10-02':[{name:'서버가상환자'}]};
+  const next=app.preparePatientHistorySearch('서버가상환자',0);
+  assert.equal(next.exists,true);assert.notEqual(first.searchStore,next.searchStore);
+});
+
+test('cancelling a pending lookup skips a second expensive history snapshot', async () => {
+  const {app}=createApp([{}]);app.supabaseClient={};
+  app.loadSearchHistory=()=>new Promise(()=>{});
+  let cancel,reads=0;
+  const cancelled=new Promise(resolve=>{cancel=resolve;});
+  const read=app.getSearchDataStore.bind(app);
+  app.getSearchDataStore=()=>{reads++;return read();};
+  const pending=app.preparePatientHistorySearch('없는가상환자',0,cancelled);
+  assert.equal(reads,1);cancel();
+  assert.equal((await pending).exists,false);
+  assert.equal(reads,1,'cancel must not trigger another merge or scan');
+});
+
+test('an earlier direct lookup cannot replace a newer direct or dialog search after a slow refresh', async () => {
+  for(const dialog of [false,true]) {
+    const {app}=createApp([{}]);app.supabaseClient={};app.searchHistoryLoadedAt=Date.now();
+    app.dataStore['2026-10-03']=[{name:'최신가상환자'}];
+    let finish;const refresh=new Promise(resolve=>{finish=resolve;});
+    app.loadSearchHistory=()=>refresh;
+    const searched=[];app.searchAllDates=query=>searched.push(query);
+    const old=app.searchPatientHistory('이전가상환자',0);
+    if(dialog){app.elSearchPromptInput={value:'최신가상환자'};app.searchPromptTargetRowIdx=0;await app.submitSearchPrompt();}
+    else await app.searchPatientHistory('최신가상환자',0);
+    app.cloudSearchHistory={'2026-10-02':[{name:'이전가상환자'}]};finish(true);
+    assert.equal(await old,false);
+    assert.deepEqual(searched,['최신가상환자']);
+  }
 });

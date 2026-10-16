@@ -296,14 +296,14 @@ class PTPatientSearchDialog {
     this._searchPromptACExplicit = false;
   }
 
-  hasRecordedPatientName(query, targetRowIdx) {
-    return this.hasRecordedPatientValue(query, targetRowIdx, "name");
+  hasRecordedPatientName(query, targetRowIdx, searchStore) {
+    return this.hasRecordedPatientValue(query, targetRowIdx, "name", searchStore);
   }
 
-  hasRecordedPatientValue(query, targetRowIdx, field) {
+  hasRecordedPatientValue(query, targetRowIdx, field, searchStore = this.getSearchDataStore()) {
     const normalized = String(query).trim().toLowerCase();
     const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
-    return Object.entries(this.getSearchDataStore()).some(([date, rows]) =>
+    return Object.entries(searchStore).some(([date, rows]) =>
       date <= this.currentDate && (!cutoffDate || date >= cutoffDate || (this.includeCurrentDateSearch && date === this.currentDate)) && Array.isArray(rows) && rows.some((row, index) =>
         ((this.includeCurrentDateSearch && date === this.currentDate) || !(date === this.currentDate && index === targetRowIdx)) &&
         String(row?.[field] ?? "").trim().toLowerCase() === normalized));
@@ -394,16 +394,36 @@ class PTPatientSearchDialog {
     this.historyOriginSelection = undefined;
   }
 
+  preparePatientHistorySearch(query, targetRowIdx, cancelled = null) {
+    // Start refresh first: a changed cloud client must discard its old cache.
+    const refresh = this.supabaseClient ? this.loadSearchHistory() : null;
+    const field = this.isChartNumberQuery(query) ? "chartNo" : "name";
+    const snapshot = () => {
+      const searchStore = this.getSearchDataStore();
+      const exists = field === "name" ? this.hasRecordedPatientName(query, targetRowIdx, searchStore)
+        : this.hasRecordedPatientValue(query, targetRowIdx, field, searchStore);
+      return { searchStore, exists };
+    };
+    const result = snapshot();
+    // A local hit can open immediately, even on the first cloud connection.
+    // A miss must await refresh before claiming that the patient has no history.
+    if (!result.exists && refresh) {
+      const ready = cancelled ? Promise.race([refresh.then(() => true), cancelled.then(() => false)])
+        : refresh.then(() => true);
+      // Closing a large-history search must not start another full merge.
+      return ready.then(refreshed => refreshed ? snapshot() : result);
+    }
+    return result;
+  }
+
   async searchPatientHistory(query, targetRowIdx) {
     this.closeSearchPromptModal();
-    if (this.supabaseClient) {
-      if (this.searchHistoryLoadedAt) void this.loadSearchHistory();
-      else await this.loadSearchHistory();
-    }
+    const requestId = this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
+    const lookup = this.preparePatientHistorySearch(query, targetRowIdx);
+    const { searchStore, exists } = lookup?.then ? await lookup : lookup;
+    if (requestId !== this.patientHistorySearchRequestId) return false;
     // A repeated IME shortcut can open a prompt while cloud history is loading.
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
-    const searchByChart = this.isChartNumberQuery(query);
-    const exists = searchByChart ? this.hasRecordedPatientValue(query, targetRowIdx, "chartNo") : this.hasRecordedPatientName(query, targetRowIdx);
     if (!exists) {
       if (this.supabaseClient && this.searchHistoryLoadError) {
         this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
@@ -412,7 +432,7 @@ class PTPatientSearchDialog {
       this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query, targetRowIdx });
       return false;
     }
-    this.searchAllDates(query, targetRowIdx);
+    this.searchAllDates(query, targetRowIdx, { searchStore });
     return true;
   }
 
@@ -425,6 +445,7 @@ class PTPatientSearchDialog {
     const q = this.elSearchPromptInput.value.trim();
     const targetIdx = this.searchPromptTargetRowIdx;
     if (!q) return;
+    this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     this.searchPromptSubmitting = true;
     const requestId = this.searchPromptRequestId || 0;
     const submission = {};
@@ -435,10 +456,8 @@ class PTPatientSearchDialog {
     if (button) { button.disabled = true; button.textContent = "검색 중"; }
     this.elSearchPromptInput.setAttribute?.("aria-busy", "true");
     try {
-      if (this.supabaseClient) {
-        if (this.searchHistoryLoadedAt) void this.loadSearchHistory();
-        else await Promise.race([this.loadSearchHistory(), cancelled]);
-      }
+      const lookup = this.preparePatientHistorySearch(q, targetIdx, cancelled);
+      const { searchStore, exists } = lookup?.then ? await lookup : lookup;
       // Closing or reopening the dialog must invalidate its old async result.
       if (this.searchPromptSubmission !== submission || (this.searchPromptRequestId || 0) !== requestId) return;
       // Ignore the active draft row: typing a new name does not establish history.
@@ -446,7 +465,6 @@ class PTPatientSearchDialog {
       const searchByChart = this.isChartNumberQuery(q);
       // loadSearchHistory already refreshes expired or incomplete history.
       // A miss must not force a second full download of the same date range.
-      const exists = this.hasRecordedPatientValue(normalized, targetIdx, searchByChart ? "chartNo" : "name");
       if (!exists) {
         if (this.supabaseClient && this.searchHistoryLoadError) {
           this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
@@ -460,7 +478,7 @@ class PTPatientSearchDialog {
       const targetRow = this.getCurrentRows()[targetIdx];
       const field = searchByChart ? "chartNo" : "name";
       const focusCurrentTarget = String(targetRow?.[field] ?? "").trim().toLowerCase() === normalized;
-      this.searchAllDates(q, targetIdx, { focusCurrentTarget });
+      this.searchAllDates(q, targetIdx, { focusCurrentTarget, searchStore });
     } catch (error) {
       if (!this.searchPromptSubmission || this.searchPromptSubmission === submission) this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
     } finally {
