@@ -248,3 +248,78 @@ test('a superseded live refresh cannot release the busy flag of a newer session'
   assert.equal(app.liveRefreshBusy, false);
   app.stopLiveSync();
 });
+
+
+test('large records and merge baselines move to verified asynchronous storage before quota failure', async () => {
+  const {app,storage}=harness();
+  const records={'2026-10-15':[{name:'가상 대용량',memo:'x'.repeat(300000)}]};
+  const disk=new Map(), writes=[];
+  app.syncStateDisk=async (key,value)=>{
+    if(value!==undefined){writes.push(key);disk.set(key,value);}
+    return disk.get(key);
+  };
+  await app.persistDataStore(records);
+  await app.persistSyncBaselines(new Map(Object.entries(records)));
+  assert.deepEqual(writes,['records','baselines']);
+  assert.equal(storage.get('PT_APP_DATA_STORAGE_V1'),'"indexedDB"');
+  assert.equal(storage.get('PT_SYNC_BASELINES'),'"indexedDB"');
+  assert.deepEqual(JSON.parse(disk.get('records')),records);
+  assert.deepEqual(JSON.parse(disk.get('baselines')),records);
+  app._recordsOnDisk=true;await app.restoreDiskRecords();
+  await app.restoreSyncBaselines();
+  assert.equal(app.dataStore['2026-10-15'][0].memo,records['2026-10-15'][0].memo);
+  assert.equal(app.syncBaselines.get('2026-10-15')[0].name,'가상 대용량');
+});
+
+test('failed proactive disk migration preserves the previous snapshot until a verified retry', async () => {
+  for(const kind of ['records','baselines']) {
+    const {app,storage}=harness();
+    const key=kind==='records'?'PT_APP_DATA_STORAGE_V1':'PT_SYNC_BASELINES';
+    const before=JSON.stringify({'2026-10-15':[{name:'기존 가상 기록'}]});storage.set(key,before);
+    const records={'2026-10-15':[{name:'새 가상 기록',memo:'x'.repeat(300000)}]};
+    const save=()=>kind==='records'?app.persistDataStore(records):app.persistSyncBaselines(new Map(Object.entries(records)));
+    app.syncStateDisk=async()=>{throw Error('temporary disk failure');};
+    await assert.rejects(save(),/temporary disk failure/);
+    assert.equal(storage.get(key),before);
+    app.syncStateDisk=async()=> 'invalid verification';
+    await assert.rejects(save(),/검증/);
+    assert.equal(storage.get(key),before);
+    let saved;app.syncStateDisk=async(_key,value)=>value===undefined?saved:(saved=value);
+    await save();assert.equal(storage.get(key),'"indexedDB"');
+    assert.deepEqual(JSON.parse(saved),records);
+  }
+});
+
+test('typing avoids row serialization, retains pending dates and retries unavailable storage', () => {
+  const {app,context,storage,timers}=harness();
+  const buttons={btnUndo:{disabled:true},btnRedo:{disabled:false}};
+  context.document.getElementById=id=>buttons[id];
+  app.updateHistoryButtons=context.App.prototype.updateHistoryButtons;
+  app.dataStore[app.currentDate]=[{memo:'원래'}];app.getEditHistory();
+  let serializations=0,writes=0,fail=false;
+  app.dataStore[app.currentDate][0].toJSON=function(){serializations++;return {memo:this.memo};};
+  context.localStorage.setItem=(key,value)=>{writes++;if(fail)throw Error('temporary storage');storage.set(key,value);};
+  for(let i=0;i<100;i++){app.dataStore[app.currentDate][0].memo='입력'+i;app.debounceSaveDataStore();}
+  assert.equal(serializations,0);assert.equal(writes,1);assert.equal(timers.size,1);
+  assert.equal(buttons.btnUndo.disabled,false);assert.equal(buttons.btnRedo.disabled,true);
+  assert.deepEqual(JSON.parse(storage.get('PT_PENDING_DATES')),[app.currentDate]);
+  app.pendingSyncDates.clear();storage.set('PT_PENDING_DATES','[]');app.debounceSaveDataStore();
+  assert.equal(writes,2);assert.deepEqual(JSON.parse(storage.get('PT_PENDING_DATES')),[app.currentDate]);
+  app.currentDate='2026-10-16';app.getEditHistory();fail=true;app.debounceSaveDataStore();
+  fail=false;app.debounceSaveDataStore();assert.equal(writes,4);
+  assert.deepEqual(JSON.parse(storage.get('PT_PENDING_DATES')),['2026-10-15','2026-10-16']);
+});
+
+test('explicit save cancels the trailing input save and restores exact undo state for reverted typing', async () => {
+  const {app,context,timers}=harness();
+  const buttons={btnUndo:{disabled:true},btnRedo:{disabled:true}};context.document.getElementById=id=>buttons[id];
+  app.updateHistoryButtons=context.App.prototype.updateHistoryButtons;
+  app.dataStore[app.currentDate]=[{memo:'원래'}];app.getEditHistory();
+  let saves=0;app.persistDataStore=async()=>{saves++;};app.scheduleSupabaseSync=()=>{};
+  app.dataStore[app.currentDate][0].memo='변경';app.debounceSaveDataStore();
+  app.dataStore[app.currentDate][0].memo='원래';app.debounceSaveDataStore();
+  assert.equal(buttons.btnUndo.disabled,false);
+  await app.saveDataStore();
+  assert.equal(saves,1);assert.equal(timers.size,0);assert.equal(app._saveTimer,null);
+  assert.equal(buttons.btnUndo.disabled,true);assert.equal(app.getEditHistory().undo.length,0);
+});

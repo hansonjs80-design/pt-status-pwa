@@ -212,6 +212,9 @@ class PTApp {
   }
 
   saveDataStore(recordHistory = true) {
+    // A commit/blur already saves the live rows; discard its trailing input save.
+    clearTimeout(this._saveTimer);
+    this._saveTimer = null;
     if (this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]) !== '[]') this.invalidateManualDateDeletion(this.currentDate);
     this.visitNameState ||= new WeakMap();
     this.visitTimeState ||= new WeakMap();
@@ -275,10 +278,10 @@ class PTApp {
     history.redo = [];
   }
 
-  updateHistoryButtons() {
+  updateHistoryButtons(pending) {
     if (!this.editHistory || !this.currentDate) return;
     const history = this.getEditHistory();
-    const pending = JSON.stringify(this.dataStore[this.currentDate] || []) !== history.current;
+    pending ??= JSON.stringify(this.dataStore[this.currentDate] || []) !== history.current;
     const undo = document.getElementById("btnUndo");
     const redo = document.getElementById("btnRedo");
     if (undo) undo.disabled = !pending && history.undo.length === 0;
@@ -381,11 +384,21 @@ class PTApp {
 
   debounceSaveDataStore(delay = 350) {
     // Protect edits immediately; a pending cloud response must not replace this date.
+    if (!this.pendingSyncDates.has(this.currentDate)) this._pendingInputDatesSnapshot = null;
     this.pendingSyncDates.add(this.currentDate);
-    try { localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates])); } catch (_) {}
-    this.updateHistoryButtons();
+    const pendingDates = JSON.stringify([...this.pendingSyncDates]);
+    if (this._pendingInputDatesSnapshot !== pendingDates) {
+      try {
+        localStorage.setItem("PT_PENDING_DATES", pendingDates);
+        this._pendingInputDatesSnapshot = pendingDates;
+      } catch (_) { /* Retry on the next input if device storage was unavailable. */ }
+    }
+    // Enable Undo immediately without serializing every row on every keystroke.
+    // Saving/undo compares the exact snapshot, including an edit reverted by typing.
+    this.updateHistoryButtons(true);
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
       this.saveDataStore();
     }, delay);
   }

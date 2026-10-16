@@ -660,3 +660,26 @@ test('English autocomplete refreshes from the displayed query during native comp
     assert.equal(displayed.query, 'l', 'asynchronous history refresh uses the same visible query');
   }
 });
+
+
+test('fast Enter and Tab refresh an earlier autocomplete query before committing', () => {
+  for(const key of ['Enter','Tab']) {
+    const {app,input,context,cell}=editingFixture({column:'memo',value:''});
+    for(const method of ['applyCellFormatting','renderColoredText','saveDataStore','endNativeCellEditing',
+      'selectAutocompleteRightCell','navigateCol','focusSelectedCellEditor'])app[method]=()=>{};
+    input.isConnected=true;input.matches=()=>true;context.document.activeElement=input;
+    input.closest=()=>cell;
+    app.autocompleteState={input,query:'ㄱ',candidates:['가상 예전 후보'],selectedIndex:0};
+    app.isAutocompleteOpen=()=>Boolean(app.autocompleteState);
+    app.getAutocompleteSuggestions=(_col,query)=>{assert.equal(query,'김새입력');return [];};
+    let refreshed=0;
+    app.showAutocompleteMenu=(_row,_col,_cell,_input,candidates)=>{
+      refreshed++;assert.equal(candidates.length,0);
+      app.autocompleteState={input,query:input.value,candidates:[input.value],selectedIndex:0};
+    };
+    input.value='김새입력';input.setSelectionRange(input.value.length,input.value.length);
+    input._listeners.keydown(keyEvent(key,{code:key}));
+    assert.equal(refreshed,1,key);
+    assert.equal(app.getCurrentRows()[0].memo,'김새입력',key+' must not commit an old candidate');
+  }
+});

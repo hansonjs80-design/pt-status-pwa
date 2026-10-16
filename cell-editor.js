@@ -320,6 +320,15 @@ class PTCellEditor {
         }
       }, delay);
     };
+    const refreshPendingAutocomplete = () => {
+      const state = this.autocompleteState;
+      if (!state || state.input !== input || state.query === this.getCellEditorValue(input) ||
+          ["gender", "writer", "no"].includes(colKey)) return;
+      // Navigation can beat the delayed refresh. Never confirm a candidate
+      // left over from an earlier query after fast typing or a language toggle.
+      clearTimeout(_acDebounceTimer);
+      this.refreshSearchSuggestions();
+    };
     const redirectChartName = () => {
       if (isCommitted || colKey !== 'chartNo' || composing || input.dataset.nativeComposing === 'true') return false;
       const redirect = this.getChartNameRedirect(input.value, initialVal);
@@ -519,6 +528,7 @@ class PTCellEditor {
     });
 
     input.addEventListener("contextmenu", event => {
+      refreshPendingAutocomplete();
       if (!this.isAutocompleteOpen()) return;
       event.preventDefault(); event.stopPropagation();
       const chosen = this.getSelectedAutocompleteItem();
@@ -629,6 +639,8 @@ class PTCellEditor {
         return;
       }
       if (this.consumePresetLeftRepeat(e)) return;
+      if (["Enter", "NumpadEnter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.code || e.key) ||
+          this.isSearchShortcut(e)) refreshPendingAutocomplete();
       this.releaseNavigationInputGuard(input, e);
       if (input.classList.contains("is-armed")) {
         if (this.handleSelectedTextCellEnter(e)) return;

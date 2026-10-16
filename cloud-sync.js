@@ -172,7 +172,9 @@ class PTCloudSync {
     if (this._recordRestoreError) return Promise.reject(this._recordRestoreError);
     const snapshot = JSON.stringify(records);
     const isQuota = error => error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014;
-    if (!this._recordsOnDisk && !this._recordWrite) {
+    // Large synchronous localStorage writes block typing and pointer events.
+    // Use the existing verified IndexedDB path before reaching the quota limit.
+    if (!this._recordsOnDisk && !this._recordWrite && snapshot.length <= 256 * 1024) {
       try { localStorage.setItem(STORAGE_KEY, snapshot); return Promise.resolve(); }
       catch (error) { if (!isQuota(error)) return Promise.reject(error); }
     }
@@ -191,7 +193,7 @@ class PTCloudSync {
   persistSyncBaselines(baselines = this.syncBaselines) {
     const snapshot = JSON.stringify(Object.fromEntries(baselines));
     const save = async () => {
-      if (!this._baselinesOnDisk) {
+      if (!this._baselinesOnDisk && snapshot.length <= 256 * 1024) {
         try { localStorage.setItem('PT_SYNC_BASELINES', snapshot); return; }
         catch (error) {
           if (error.name !== 'QuotaExceededError' && error.code !== 22 && error.code !== 1014) throw error;
