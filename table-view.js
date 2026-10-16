@@ -317,7 +317,7 @@ class PTTableView {
     if (value === null || value === undefined || String(value).trim() === "") return;
     const handle = document.createElement("span");
     handle.className = "cell-fill-handle";
-    handle.title = "아래로 드래그하여 같은 내용 채우기";
+    handle.title = "위아래로 드래그하여 같은 내용 채우기";
     handle.setAttribute("aria-label", handle.title);
     handle.addEventListener("mousedown", (event) => {
       if (event.button !== 0) return;
@@ -343,13 +343,15 @@ class PTTableView {
     this.startFillDragAutoScroll();
     const row = this.getFillDragRow(event);
     if (!row || !this.elTableBody.contains(row)) return;
-    const endRow = Math.max(this.fillDrag.rowIdx, Number(row.dataset.rowIdx));
+    const endRow = Number(row.dataset.rowIdx);
     // 카운트 뱃지 위치 항상 업데이트 (endRow 변화 여부 무관)
-    this._updateFillDragBadge(event.clientX, event.clientY, endRow - this.fillDrag.rowIdx + 1);
+    this._updateFillDragBadge(event.clientX, event.clientY, Math.abs(endRow - this.fillDrag.rowIdx) + 1);
     if (this.fillDrag.endRow === endRow) return;
     this.fillDrag.endRow = endRow;
     this.elTableBody.querySelectorAll(".fill-preview").forEach((cell) => cell.classList.remove("fill-preview"));
-    for (let r = this.fillDrag.rowIdx + 1; r <= endRow; r++) {
+    const first = Math.min(this.fillDrag.rowIdx, endRow), last = Math.max(this.fillDrag.rowIdx, endRow);
+    for (let r = first; r <= last; r++) {
+      if (r === this.fillDrag.rowIdx) continue;
       this.elTableBody.querySelector(`.excel-cell[data-row="${r}"][data-col="${this.fillDrag.colKey}"]`)?.classList.add("fill-preview");
     }
   }
@@ -357,7 +359,7 @@ class PTTableView {
   getFillDragRow(point) {
     const rect = this.elSheetContainer.getBoundingClientRect();
     if (point.clientX < rect.left || point.clientX >= rect.right) return null;
-    // Keep targeting the last visible row when the pointer passes the bottom.
+    // Keep targeting visible rows when the pointer passes either vertical edge.
     const header = document.getElementById('excelTable')?.querySelector('thead');
     const top = Math.max(rect.top, header?.getBoundingClientRect().bottom || rect.top);
     const y = Math.max(top + 1, Math.min(rect.bottom - 2, point.clientY));
@@ -423,10 +425,12 @@ class PTTableView {
     const drag = this.fillDrag;
     const releasedRow = this.getFillDragRow(event);
     this.cancelFillDrag();
-    if (!drag || drag.date !== this.currentDate || drag.endRow <= drag.rowIdx ||
+    if (!drag || drag.date !== this.currentDate || drag.endRow === drag.rowIdx ||
         !releasedRow || !this.elTableBody.contains(releasedRow)) return;
     const rows = this.getCurrentRows();
-    for (let r = drag.rowIdx + 1; r <= drag.endRow; r++) {
+    const first = Math.min(drag.rowIdx, drag.endRow), last = Math.max(drag.rowIdx, drag.endRow);
+    for (let r = first; r <= last; r++) {
+      if (r === drag.rowIdx) continue;
       rows[r][drag.colKey] = drag.value;
     }
     this.saveDataStore();
@@ -437,7 +441,7 @@ class PTTableView {
     this.rangeEnd = { ...this.rangeStart, rowIdx: drag.endRow };
     this.updateRangeSelection();
     this.updateSidebarStats();
-    this.showSaveIndicator(`${drag.endRow - drag.rowIdx}개 셀 채우기 완료`);
+    this.showSaveIndicator(`${Math.abs(drag.endRow - drag.rowIdx)}개 셀 채우기 완료`);
   }
 
 }
