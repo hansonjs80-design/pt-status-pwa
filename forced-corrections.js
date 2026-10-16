@@ -41,22 +41,38 @@ class PTForcedCorrections {
     if (previous) delete COLUMN_PRESETS[this.getForcedCorrectionKey(previous.scope, previous.source)];
     // String arrays retain compatibility with existing backup and cloud records.
     COLUMN_PRESETS[this.getForcedCorrectionKey(scope, source)] = [target];
+    this.forcedCorrectionMatchCache = null;
     saveColumnPresets(COLUMN_PRESETS);
     return true;
   }
 
   deleteForcedCorrection(scope, source) {
     delete COLUMN_PRESETS[this.getForcedCorrectionKey(scope, source)];
+    this.forcedCorrectionMatchCache = null;
     saveColumnPresets(COLUMN_PRESETS);
   }
 
-  findForcedCorrection(value, colKey, caret = value.length) {
-    const rules = new Map(this.getForcedCorrectionRules('*').map(rule => [rule.source, rule]));
-    for (const rule of this.getForcedCorrectionRules()) {
-      if (rule.scope.startsWith('!') && rule.scope.slice(1) !== colKey) rules.set(rule.source, rule);
+  getApplicableForcedCorrectionRules(colKey) {
+    if (this.forcedCorrectionMatchCache?.presets !== COLUMN_PRESETS) {
+      this.forcedCorrectionMatchCache = {presets: COLUMN_PRESETS, columns: new Map()};
     }
-    for (const rule of this.getForcedCorrectionRules(colKey)) rules.set(rule.source, rule);
-    for (const rule of [...rules.values()].sort((a, b) => b.source.length - a.source.length)) {
+    const cache = this.forcedCorrectionMatchCache.columns;
+    if (!cache.has(colKey)) {
+      // Decode and order shared rules once per column, not on every input.
+      // Local edits invalidate above; cloud restore replaces the presets object.
+      const all = this.getForcedCorrectionRules();
+      const rules = new Map(all.filter(rule => rule.scope === '*').map(rule => [rule.source, rule]));
+      for (const rule of all) {
+        if (rule.scope.startsWith('!') && rule.scope.slice(1) !== colKey) rules.set(rule.source, rule);
+      }
+      for (const rule of all) if (rule.scope === colKey) rules.set(rule.source, rule);
+      cache.set(colKey, [...rules.values()].sort((a, b) => b.source.length - a.source.length));
+    }
+    return cache.get(colKey);
+  }
+
+  findForcedCorrection(value, colKey, caret = value.length) {
+    for (const rule of this.getApplicableForcedCorrectionRules(colKey)) {
       const start = caret - rule.source.length;
       if (start < 0 || value.slice(start, caret) !== rule.source) continue;
       if (start && !/^\s/.test(rule.source) && !/[\s([{]/.test(value[start - 1])) continue;
@@ -92,6 +108,7 @@ class PTForcedCorrections {
     delete input._forcedCorrectionProjection;
     if (!correction) return false;
     input._forcedCorrectionApplied = true;
+    if (/^\s|\s$/.test(correction.target)) input._preserveBoundaryWhitespace = true;
     if (!previous) {
       const hangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11ff]/u;
       correction.koreanToEnglish = hangul.test(correction.source) && !hangul.test(correction.target) && /[a-z]/i.test(correction.target);

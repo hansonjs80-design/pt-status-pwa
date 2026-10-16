@@ -71,6 +71,14 @@ class PTCellEditor {
     return input._forcedCorrectionProjection?.value ?? this.getCellEditorBaseValue(input);
   }
 
+  normalizeCellEditorValue(input, value, colKey) {
+    const text = String(value ?? '');
+    const normalized = colKey === 'writer' ? this.normalizeWriterInput(text)
+      : colKey === 'prescription' ? this.normalizePrescriptionInput(text) : text.trim();
+    if (!input._preserveBoundaryWhitespace || !text.trim()) return normalized;
+    return text.match(/^\s*/)[0] + normalized + text.match(/\s*$/)[0];
+  }
+
   refreshNativeLanguagePreview(input) {
     input.nativeLanguagePreview?.remove();
     input.nativeLanguagePreview = null;
@@ -225,8 +233,9 @@ class PTCellEditor {
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
       if (!armed) {
-        existingEditor._inputLanguage = "kor";
-        this._cellInputLanguage = "kor";
+        // Enter/double-click activates this selection; it must not undo a
+        // language toggle already made while its border was selected.
+        existingEditor._inputLanguage = this._cellInputLanguage || "kor";
         existingEditor._engKorBuffer = "";
         existingEditor._engKorPrefix = "";
         existingEditor._engKorSuffix = "";
@@ -253,7 +262,11 @@ class PTCellEditor {
     input.type = "text";
     input.className = "cell-input-element" + (armed ? " is-armed" : "");
     input.value = initialVal;
-    input._inputLanguage = armed ? (this._cellInputLanguage || "kor") : "kor";
+    // Retain already-saved literal spaces when a corrected cell is reopened.
+    input._preserveBoundaryWhitespace = /^\s|\s$/.test(String(initialVal));
+    // selectCell resets new selections to Korean. Recreating an editor within
+    // the same selection retains the language explicitly chosen by the user.
+    input._inputLanguage = this._cellInputLanguage || "kor";
     this._cellInputLanguage = input._inputLanguage;
     if (this.guardNextCellInput) {
       input.dataset.navigationInputGuard = "true";
@@ -450,10 +463,13 @@ class PTCellEditor {
       if (input._forcedCorrectionApplied || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
-      let finalVal = forcedVal !== undefined ? forcedVal : this.assembleCellEditorText(input, this.getCellEditorValue(input));
+      const liveValue = this.getCellEditorValue(input);
+      // Candidates omit boundary spaces for matching. Confirming the same
+      // visible wording must retain the literal spaces from the correction.
+      const keepLiteral = input._preserveBoundaryWhitespace && forcedVal !== undefined && String(forcedVal).trim() === liveValue.trim();
+      let finalVal = forcedVal !== undefined && !keepLiteral ? forcedVal : this.assembleCellEditorText(input, liveValue);
       input.nativeLanguagePreview?.remove();
-      finalVal = colKey === "writer" ? this.normalizeWriterInput(finalVal)
-        : colKey === "prescription" ? this.normalizePrescriptionInput(finalVal) : finalVal.trim();
+      finalVal = this.normalizeCellEditorValue(input, finalVal, colKey);
       this.endNativeCellEditing(input);
       this.updateEditorTextColors(rows[rowIdx], colKey, finalVal);
       rows[rowIdx][colKey] = finalVal;
@@ -770,9 +786,6 @@ class PTCellEditor {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
-          if (chosenVal) {
-            input.value = chosenVal;
-          }
           commitAndBlur(chosenVal);
           this.selectAutocompleteRightCell(rowIdx, colKey);
           if (this.elSheetContainer) {
@@ -786,9 +799,6 @@ class PTCellEditor {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
-          if (chosenVal) {
-            input.value = chosenVal;
-          }
           commitAndBlur(chosenVal);
           if (e.shiftKey) {
             this.navigateCol(rowIdx, colKey, -1);
@@ -818,9 +828,6 @@ class PTCellEditor {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
-          if (chosenVal) {
-            input.value = chosenVal;
-          }
           commitAndBlur(chosenVal);
         } else {
           commitAndBlur();

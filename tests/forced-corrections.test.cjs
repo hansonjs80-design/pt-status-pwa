@@ -92,6 +92,22 @@ test('every column supports explicit inclusion and exclusion with specific-colum
   assert.equal(app.setForcedCorrection('!invalid','x','Y'),false);
 });
 
+test('typing reuses compiled rules while local edits, deletion and incoming presets refresh matches immediately',()=>{
+  const {app,context}=createApp();
+  const presets={};for(let i=0;i<280;i++)presets[app.getForcedCorrectionKey('*','code'+i)]=['TERM'+i];
+  context.setPresets(presets);
+  const read=app.getForcedCorrectionRules;let reads=0;
+  app.getForcedCorrectionRules=function(...args){reads++;return read.apply(this,args);};
+  for(let i=0;i<100;i++)assert.equal(app.findForcedCorrection('code279','part').value,'TERM279');
+  assert.equal(reads,1);
+  app.setForcedCorrection('part','code279','UPDATED');
+  assert.equal(app.findForcedCorrection('code279','part').value,'UPDATED');assert.equal(reads,2);
+  app.deleteForcedCorrection('part','code279');
+  assert.equal(app.findForcedCorrection('code279','part').value,'TERM279');assert.equal(reads,3);
+  context.setPresets({[app.getForcedCorrectionKey('*','code279')]:['REMOTE']});
+  assert.equal(app.findForcedCorrection('code279','part').value,'REMOTE');assert.equal(reads,4);
+});
+
 test('matching respects case and token boundaries and preserves surrounding text and caret',()=>{
   const {app}=createApp();app.setForcedCorrection('part','itb','ITB');
   assert.equal(app.findForcedCorrection('bitb','part'),null);

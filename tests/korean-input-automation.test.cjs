@@ -403,8 +403,9 @@ test('typing Korean, backspacing completely, and pressing hangul toggle switches
 
 
 
-function editingFixture({ armed = false, column = 'specialNote' } = {}) {
+function editingFixture({ armed = false, column = 'specialNote', value } = {}) {
   const { app, context } = createTestApp();
+  if (value !== undefined) app.getCurrentRows()[0][column] = value;
   let input = null;
   const cell = {
     dataset: { col: column }, textContent: '',
@@ -421,6 +422,30 @@ function editingFixture({ armed = false, column = 'specialNote' } = {}) {
   app.startInlineEdit(0, column, cell, armed);
   return { app, context, input: app.getCreatedInput(), cell };
 }
+
+test('forced replacement boundary spaces survive blur, autocomplete confirmation and later editing', () => {
+  for (const column of ['name','part','prescription','extra','writer','memo','specialNote']) {
+    for (const commit of ['blur','candidate','reopen']) {
+      const target = column === 'writer' ? 'J ' : ' Rt. ';
+      const {app,input} = editingFixture({column,value:commit==='reopen'?target:''});
+      for(const method of ['applyCellFormatting','renderColoredText','saveDataStore','refreshNewPatientRows','endNativeCellEditing'])app[method]=()=>{};
+      if(commit!=='reopen') {
+        app.setForcedCorrection('*','zz',target);
+        input.value='zz';input.setSelectionRange(2,2);
+        app.updateForcedCorrection(input,column);
+        input._listeners.input({type:'input'});
+        assert.equal(input.value,target,column+': live correction');
+      }
+      if(commit==='candidate')input.commitAutocompleteValue(target.trim());
+      else input._listeners.blur();
+      assert.equal(app.getCurrentRows()[0][column],target,`${column}: ${commit}`);
+    }
+  }
+  const {app,input}=editingFixture({column:'memo',value:''});
+  for(const method of ['applyCellFormatting','renderColoredText','saveDataStore','endNativeCellEditing'])app[method]=()=>{};
+  input.value=' manual ';input._listeners.blur();
+  assert.equal(app.getCurrentRows()[0].memo,'manual','ordinary new input keeps its usual normalization');
+});
 
 function keyEvent(key, extra = {}) {
   return {
@@ -542,18 +567,38 @@ test('English laser retains every letter when the next key precedes the previous
   }
 });
 
-test('double-click activation and a fresh double-click editor both reset English to Korean', () => {
+test('activating the selected editor retains its chosen language and a fresh selection starts Korean', () => {
   const { app, input, cell } = editingFixture({ armed: true });
   app.toggleCellInputLanguage(keyEvent('CapsLock'), input);
   assert.equal(input._inputLanguage, 'eng');
   app.startInlineEdit(0, 'specialNote', cell, false);
-  assert.equal(input._inputLanguage, 'kor');
-  typeKeys(input, 'rla');
-  assert.equal(input.value, '김');
-  app._cellInputLanguage = 'eng';
+  assert.equal(input._inputLanguage, 'eng');
+  typeKeys(input, 'pt');
+  assert.equal(input.value, 'pt');
+  app._cellInputLanguage = 'kor';
   cell.querySelector = () => null;
   app.startInlineEdit(0, 'specialNote', cell, false);
   assert.equal(app.getCreatedInput()._inputLanguage, 'kor');
+});
+
+test('every text column toggles Korean English Korean across selection-to-cursor activation and editor recreation', () => {
+  for (const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+    const {app,input,cell}=editingFixture({column,armed:true,value:''});
+    app.toggleCellInputLanguage(keyEvent('CapsLock'),input);
+    app.startInlineEdit(0,column,cell,false);
+    typeKeys(input,'pt');
+    assert.equal(input.value,'pt',column+': activate chosen English');
+    app.toggleCellInputLanguage(keyEvent('CapsLock'),input);
+    typeKeys(input,'rla');
+    assert.equal(input.value,'pt김',column+': return to Korean');
+    app.toggleCellInputLanguage(keyEvent('CapsLock'),input);
+    cell.querySelector=()=>null;
+    app.startInlineEdit(0,column,cell,false);
+    const recreated=app.getCreatedInput();
+    typeKeys(recreated,'pt');
+    assert.equal(recreated.value.endsWith('pt'),true,column+': retain selection language after recreating editor');
+    assert.equal(recreated._inputLanguage,'eng');
+  }
 });
 
 test('caret movement and selection deletion cannot resurrect an old Korean buffer', () => {

@@ -111,7 +111,7 @@ class PTCellPickers {
       event.inputType === "insertText" || event.type === "compositionend";
     if (handled !== undefined && nativeLetter) input.value = handled;
     else if (event.inputType) delete input.dataset.writerKeyValue;
-    return this.normalizeWriterInput(input.value);
+    return this.normalizeCellEditorValue(input, input.value, 'writer');
   }
 
   // Convert Korean keyboard input to uppercase English writer initials.
