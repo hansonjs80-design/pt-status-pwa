@@ -683,3 +683,81 @@ test('fast Enter and Tab refresh an earlier autocomplete query before committing
     assert.equal(app.getCurrentRows()[0].memo,'김새입력',key+' must not commit an old candidate');
   }
 });
+
+
+test('Windows keyup-only Hangul signals switch once after an unidentified Process keydown', () => {
+  const releases=[
+    {key:'HangulMode',code:'Unidentified',keyCode:21},
+    {key:'Hangul',code:'Unidentified',keyCode:21},
+    {key:'Process',code:'Unidentified',keyCode:21},
+    {key:'Process',code:'Lang1',keyCode:229},
+    {key:'Alt',code:'AltRight',keyCode:18,location:2},
+    {key:'Unidentified',code:'Unidentified',which:21},
+  ];
+  for(const column of ['no','chartNo','name','part','prescription','extra','memo','specialNote']) {
+    for(const release of releases) {
+      const {app,input}=editingFixture({column,armed:true,value:''});
+      for(let i=0;i<2;i++) {
+        input._listeners.keydown(keyEvent('Process',{code:'Unidentified',keyCode:229,isComposing:true}));
+        const up=keyEvent(release.key,{...release,type:'keyup'});
+        input._listeners.keyup(up);
+        assert.equal(up.defaultPrevented,true,JSON.stringify(release));
+        assert.equal(input._inputLanguage,i?'kor':'eng',column);
+        typeKeys(input,i?'rla':'pt');
+      }
+      assert.equal(input.value,'pt김',column+JSON.stringify(release));
+    }
+  }
+});
+
+test('Windows keydown and keyup aliases form one toggle, including modifier release', () => {
+  const pairs=[
+    [{key:'HangulMode',code:'Lang1',keyCode:21},{key:'HangulMode',code:'Lang1',keyCode:21}],
+    [{key:'Process',code:'AltRight',keyCode:229,altKey:true},{key:'HangulMode',code:'Lang1',keyCode:21}],
+    [{key:'Alt',code:'AltRight',altKey:true,location:2},{key:'Alt',code:'AltRight',altKey:false,location:2}],
+    [{key:' ',code:'Space',ctrlKey:true},{key:' ',code:'Space',ctrlKey:false}],
+    [{key:' ',code:'Space',shiftKey:true},{key:' ',code:'Space',shiftKey:false}],
+  ];
+  for(const [down,up]of pairs) {
+    const {app,input}=editingFixture({value:''});
+    for(let i=0;i<2;i++) {
+      input._listeners.keydown(keyEvent(down.key,down));
+      input._listeners.keyup(keyEvent(up.key,{...up,type:'keyup'}));
+      assert.equal(input._inputLanguage,i?'kor':'eng');
+      assert.equal(app._cellLanguageToggleDown,null);
+      typeKeys(input,i?'rla':'pt');
+    }
+    assert.equal(input.value,'pt김');
+  }
+});
+
+test('a toggle release after focus moves cannot flip another cell or a dialog input', () => {
+  const {app,input}=editingFixture({value:''});
+  input._listeners.keydown(keyEvent('HangulMode',{code:'Lang1'}));
+  app._cellInputLanguage='kor';app.activeCell={rowIdx:0,colKey:'memo'};
+  const release=keyEvent('HangulMode',{type:'keyup',code:'Lang1',target:{closest:()=>null}});
+  assert.equal(app.handleCellLanguageToggle(release),true);
+  assert.equal(app._cellInputLanguage,'kor');
+  assert.equal(input._inputLanguage,'eng');
+  const outside=keyEvent('HangulMode',{type:'keyup',code:'Lang1',target:{closest:()=>null}});
+  assert.equal(app.handleCellLanguageToggle(outside),false);
+  assert.equal(app._cellInputLanguage,'kor');
+});
+
+test('Windows keyup switching keeps a native Korean composition through its late final input', () => {
+  const {app,input}=editingFixture({value:''});
+  input.dispatchEvent=event=>input._listeners.input(event);
+  input._listeners.keydown(keyEvent('Process',{code:'KeyR',keyCode:229,isComposing:true}));
+  input._listeners.compositionstart({type:'compositionstart'});
+  input.value='김';input.setSelectionRange(1,1);
+  input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'김'});
+  input._listeners.keyup(keyEvent('HangulMode',{type:'keyup',code:'Lang1',keyCode:21}));
+  input._listeners.compositionend({type:'compositionend',data:'김'});
+  input.value='김김';input.setSelectionRange(2,2);
+  input._listeners.input({type:'input',inputType:'insertText',data:'김'});
+  assert.equal(input.value,'김');
+  typeKeys(input,'pt');assert.equal(input.value,'김pt');
+  input._listeners.keyup(keyEvent('HangulMode',{type:'keyup',code:'Lang1',keyCode:21}));
+  typeKeys(input,'rla');assert.equal(input.value,'김pt김');
+  assert.equal(app.getCurrentRows()[0].specialNote,'김pt김');
+});

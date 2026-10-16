@@ -372,12 +372,15 @@ class PTAppEvents {
       if (!e.defaultPrevented) this.handlePatientEditorSearchShortcut(e);
     }, true);
     document.addEventListener("keydown", (e) => this.handleGlobalKeyDown(e));
+    document.addEventListener("keyup", e => {
+      if (!this._recordsRestorePending) this.handleCellLanguageToggle(e);
+    }, true);
     document.addEventListener("keyup", (e) => {
       this.releaseHistorySearchKey(e);
       if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
     });
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
-    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; });
+    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; this._cellLanguageToggleDown = null; });
 
     document.addEventListener("paste", event => {
       if (this._recordsRestorePending) return;

@@ -7,9 +7,9 @@ class PTCellEditor {
   isHangulToggleKeyEvent(e) {
     if (!e) return false;
     // Windows Korean/English key (the Hanja/Lang2 key is a separate action).
-    if (e.key === "HangulMode" || e.key === "ModeChange" || e.key === "KanaMode") return true;
+    if (["HangulMode", "Hangul", "ModeChange", "KanaMode"].includes(e.key)) return true;
     if (e.code === "Lang1" || e.code === "KeyLang1") return true;
-    if (e.keyCode === 21) return true;
+    if (e.keyCode === 21 || e.which === 21) return true;
     if (e.key === "Process" && (e.code === "AltRight" || e.code === "HangulMode")) return true;
     if (e.key === "Alt" && (e.code === "AltRight" || e.location === 2)) return true;
     if (e.key === "AltGraph" || e.code === "AltRight") return true;
@@ -145,12 +145,23 @@ class PTCellEditor {
   }
 
   toggleCellInputLanguage(event, input = null) {
+    // Windows IMEs can identify a key only on keyup (keydown is Process/229).
+    // Pair recognized keydown/keyup even if their key/code names differ.
+    const down = this._cellLanguageToggleDown;
+    if (event.type === "keyup" && down && (this.isHangulToggleKeyEvent(event) ||
+        (event.code && event.code === down.code) || (event.key && event.key === down.key))) {
+      this._cellLanguageToggleDown = null;
+      event.preventDefault();
+      event.stopPropagation?.();
+      return true;
+    }
     if (!this.isHangulToggleKeyEvent(event)) return false;
     // Consume here, including modifier shortcuts, before the event can bubble
     // to the sheet and toggle a second time. Holding a key is still one switch.
     event.preventDefault();
     event.stopPropagation?.();
     if (event.repeat) return true;
+    if (event.type !== "keyup") this._cellLanguageToggleDown = { code: event.code, key: event.key };
     const language = input?._inputLanguage || this._cellInputLanguage || "kor";
     this._cellInputLanguage = language === "eng" ? "kor" : "eng";
     if (input) {
@@ -175,6 +186,12 @@ class PTCellEditor {
   }
 
   handleCellLanguageToggle(event) {
+    // Release a handled key even if focus moved away from its original cell.
+    if (event.type === "keyup" && this._cellLanguageToggleDown &&
+        (this.isHangulToggleKeyEvent(event) || (event.code && event.code === this._cellLanguageToggleDown.code) ||
+          (event.key && event.key === this._cellLanguageToggleDown.key))) {
+      return this.toggleCellInputLanguage(event);
+    }
     if (event.defaultPrevented || !this.activeCell || !this.isKoreanPreferredColumn(this.activeCell.colKey) ||
         !this.isHangulToggleKeyEvent(event)) return false;
     const target = event.target;
@@ -283,7 +300,8 @@ class PTCellEditor {
     input.refreshEditorColors = () => this.refreshEditorTextColors(input, cellElement, rows[rowIdx], colKey);
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
-    for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, () => {
+    for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, e => {
+      if (event === "keyup" && this.isKoreanPreferredColumn(colKey) && this.toggleCellInputLanguage(e, input)) return;
       input.refreshEditorColors();
       this.updateInlineAutocompletePreview();
       this.refreshNativeLanguagePreview(input);
