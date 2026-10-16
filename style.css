@@ -2246,7 +2246,7 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
   border-bottom: 0 !important;
 }
 .excel-table .excel-row.lunch-break-row > :is(th, td):not(.cell-spacer) {
-  border-top: 1px dashed #d93025 !important;
+  border-top: 1.5px dashed #d93025 !important;
 }
 
 /* Keep the date and search available on smaller desktop/PWA windows. */
@@ -2341,7 +2341,7 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .print-table td:nth-child(1), .print-table td:nth-child(2), .print-table td:nth-child(3), .print-table td:nth-child(4), .print-table td:nth-child(8) { white-space: nowrap; }
 .print-table tr:has(+ .print-lunch-row) > td,
 .print-table:has(tbody > .print-lunch-row:first-child) thead th { border-bottom: 0; }
-.print-table .print-lunch-row td { border-top: 1px dashed #d93025; }
+.print-table .print-lunch-row td { border-top: 1.5px dashed #d93025; }
 .print-summary-bar { flex-wrap: wrap; gap: 6px; }
 @media print { @page { size: A4 landscape; margin: 8mm; } .preview-printable-area { padding: 0 !important; } }
 
