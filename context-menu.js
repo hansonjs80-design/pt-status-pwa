@@ -10,6 +10,11 @@ class PTContextMenu {
     });
     this.initCellLongPressMenu();
 
+    // Keep the editor's selected text until the formatting action consumes it.
+    this.elContextMenu.addEventListener("mousedown", (e) => {
+      if (e.target.closest('[data-action="underline"], [data-action="text-highlight"]')) e.preventDefault();
+    });
+
     // Context menu item click dispatcher
     this.elContextMenu.addEventListener("click", (e) => {
       const menuItem = e.target.closest(".menu-item");
@@ -136,7 +141,9 @@ class PTContextMenu {
         rowIdx >= this.selectedRange.minRow && rowIdx <= this.selectedRange.maxRow &&
         colIdx >= this.selectedRange.minCol && colIdx <= this.selectedRange.maxCol;
 
-      if (!inRange || this.selectedColumnRange) {
+      const hasTextSelection = this.textColorSelection?.rowIdx === rowIdx &&
+        this.textColorSelection?.colKey === colKey;
+      if ((!inRange && !hasTextSelection) || this.selectedColumnRange) {
         this.selectCell(rowIdx, colKey, tdCell, false);
       }
 
@@ -154,8 +161,10 @@ class PTContextMenu {
     menu.style.visibility = "hidden";
 
     const menuRect = menu.getBoundingClientRect();
-    const menuWidth = menuRect.width || 210;
-    const menuHeight = menuRect.height || 260;
+    // The opening animation scales the visual rect; use the full layout size
+    // so the menu still fits when the animation finishes.
+    const menuWidth = menu.offsetWidth || menuRect.width || 210;
+    const menuHeight = menu.offsetHeight || menuRect.height || 260;
 
     let posX = clientX;
     let posY = clientY;
@@ -205,6 +214,12 @@ class PTContextMenu {
         break;
       case "background-color":
         this.openFontColorMenu(document.getElementById("btnBackgroundColor"), "backgroundColor");
+        break;
+      case "underline":
+        this.toggleUnderline();
+        break;
+      case "text-highlight":
+        this.openFontColorMenu(menuItem || document.getElementById("btnTextHighlight"), "highlight");
         break;
       case "lunch-line":
         this.toggleLunchLine(targetRow);

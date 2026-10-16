@@ -2075,6 +2075,8 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 /* Excel Context Menu */
 .excel-context-menu {
   position: fixed;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   z-index: 2000;
   background: #ffffff;
   border: 1px solid #d0d7de;
