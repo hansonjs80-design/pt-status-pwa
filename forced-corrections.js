@@ -111,9 +111,10 @@ class PTForcedCorrections {
     for (const rule of this.getApplicableForcedCorrectionRules(colKey)) {
       const start = caret - rule.source.length;
       if (start < 0 || value.slice(start, caret) !== rule.source) continue;
-      // Tilde separates adjacent terms (엉~gj → 엉~허), but remains in the text.
-      if (start && !/^\s/.test(rule.source) && !/[\s([{~]/.test(value[start - 1])) continue;
-      if (caret < value.length && !/\s$/.test(rule.source) && !/[\s)\]},.!?;:~]/.test(value[caret])) continue;
+      // Punctuation and symbols separate terms (La/mw → La/MW) without
+      // becoming part of a short rule. Longer explicit phrases still win.
+      if (start && !/^\s/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[start - 1])) continue;
+      if (caret < value.length && !/\s$/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[caret])) continue;
       return {...rule, prefix: value.slice(0, start), suffix: value.slice(caret),
         value: value.slice(0, start) + rule.target + value.slice(caret), caret: start + rule.target.length};
     }

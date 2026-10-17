@@ -218,6 +218,29 @@ test('tilde separates correction tokens without consuming either side or moving 
   for(const value of ['엉gj','엉~agj','엉~gjx']) assert.equal(app.findForcedCorrection(value,'part',value==='엉~gjx'?4:value.length),null);
 });
 
+test('punctuation separates correction terms while retaining symbols, surrounding text and caret',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','mw','MW');
+  for(const separator of ['/','+','-','~',',',':',';','.', '／','→']) {
+    const input=editor('La'+separator+'mw');input._inputLanguage='native';
+    assert.equal(app.updateForcedCorrection(input,'prescription'),true,separator);
+    assert.equal(input.value,'La'+separator+'MW');assert.equal(input.selectionStart,5);
+    const middle=editor('La'+separator+'mw'+separator+'ICT',5);
+    assert.equal(app.updateForcedCorrection(middle,'prescription'),true,separator+' middle');
+    assert.equal(middle.value,'La'+separator+'MW'+separator+'ICT');assert.equal(middle.selectionStart,5);
+  }
+  assert.equal(app.findForcedCorrection('Lamw','prescription'),null);
+  assert.equal(app.findForcedCorrection('La/mwx','prescription',5),null);
+});
+
+test('explicit slash phrases still outrank shorter rules and retain exact configured spaces',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','mw','MW');app.setForcedCorrection('*','La/mw','Laser / MW');
+  assert.equal(app.findForcedCorrection('La/mw','prescription').value,'Laser / MW');
+  app.setForcedCorrection('*','l/t','L/T');
+  assert.equal(app.findForcedCorrection('La/l/t','prescription').value,'La/L/T');
+  app.setForcedCorrection('prescription','mw ','MW ');
+  assert.equal(app.findForcedCorrection('La/mw ','prescription').value,'La/MW ');
+});
+
 test('explicit tilde rules, column overrides and exact spaces retain their matching priority',()=>{
   const {app}=createApp();app.setForcedCorrection('*','gj','허');
   app.setForcedCorrection('part','gj','허리');
