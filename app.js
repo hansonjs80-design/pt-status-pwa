@@ -408,6 +408,7 @@ class PTApp {
     if (!this.elSaveStatus) return;
     clearTimeout(this._saveStatusTimer);
     this.elSaveStatus.textContent = text;
+    this.elSaveStatus.title = '';
     this.elSaveStatus.className = "save-status" + (isError ? " unsaved" : "");
     if (!isError) {
       this._saveStatusTimer = setTimeout(() => {

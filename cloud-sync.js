@@ -146,6 +146,7 @@ class PTCloudSync {
     clearTimeout(this.liveReconnectTimer);
     clearInterval(this.liveSyncTimer);
     clearInterval(this.columnFormattingLiveTimer);
+    clearInterval(this.presetsLiveTimer);
     clearTimeout(this.presetsSyncTimer);
     clearTimeout(this.columnFormattingSyncTimer);
     if (this.liveChannel && this.liveClient) void this.liveClient.removeChannel(this.liveChannel);
@@ -168,6 +169,7 @@ class PTCloudSync {
         if (!this.liveChannel) this.startLiveSync();
         else void this.pullFromCloud(this.currentDate);
         void this.syncSharedColumnFormatting();
+        void this.syncSharedPresets();
       }
     });
   }
@@ -183,7 +185,7 @@ class PTCloudSync {
       .on("broadcast", { event: "changed" }, ({ payload }) => {
         if (payload?.date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
         if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
-        if (payload?.date === SHARED_PRESETS_RECORD) void this.pullSharedPresets();
+        if (payload?.date === SHARED_PRESETS_RECORD) { void this.syncSharedPresets({force:true}); return; }
         else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
         this.searchHistoryLoadedAt = 0;
       });
@@ -209,8 +211,6 @@ class PTCloudSync {
         }
         if (this.liveSyncSession !== session) return;
         void this.syncStaffCountSettings();
-        if (this.presetsDirty) await this.pushSharedPresets();
-        else await this.pullSharedPresets();
         // push가 모두 완료된 후 pull 실행
         if (this.liveSyncSession === session && !this.pendingSyncDates.has(this.currentDate)) {
           await this.pullFromCloud(this.currentDate);
@@ -219,6 +219,8 @@ class PTCloudSync {
         if (this.liveSyncSession === session) this.showSaveIndicator('클라우드 동기화 대기 · 연결되면 다시 시도합니다', true);
       } finally { if (this.liveSyncSession === session) this.liveRefreshBusy = false; }
     };
+    this.presetsLiveTimer = setInterval(() => { if (this.liveSyncSession === session) void this.syncSharedPresets(); }, 2000);
+    void this.syncSharedPresets();
     this.liveSyncTimer = setInterval(refresh, 2000);
     this.columnFormattingLiveTimer = setInterval(() => { void this.syncSharedColumnFormatting(); }, 2000);
     void this.syncSharedColumnFormatting();
@@ -227,55 +229,138 @@ class PTCloudSync {
   }
 
   notifyCloudChange(date) {
-    if (this.liveChannel) void this.liveChannel.send({ type: "broadcast", event: "changed", payload: { date } });
+    // Polling is the fallback. A failed optional broadcast must not turn an
+    // acknowledged database write into a misleading save/retry error.
+    try {
+      if (this.liveChannel) void Promise.resolve(this.liveChannel.send({ type: "broadcast", event: "changed", payload: { date } })).catch(() => {});
+    } catch (_) {}
   }
 
   schedulePresetSync() {
     this.presetsDirty = true;
+    this.presetEditRevision = (this.presetEditRevision || 0) + 1;
     localStorage.setItem("PT_PRESETS_PENDING", "1");
     clearTimeout(this.presetsSyncTimer);
-    this.presetsSyncTimer = setTimeout(() => this.pushSharedPresets(), 250);
+    this.presetsSyncTimer = setTimeout(() => { void this.pushSharedPresets(); }, 250);
   }
 
-  async pullSharedPresets() {
-    const client = this.supabaseClient;
-    if (!client || this.presetsDirty || this.presetsPushing) return;
-    try {
-      const { data, error } = await this.runCloudQuery(client.from("pt_daily_records").select("rows_data").eq("date", SHARED_PRESETS_RECORD).maybeSingle());
-      if (error) throw error;
-      if (client !== this.supabaseClient || this.presetsDirty) return;
-      const presets = data?.rows_data?.[0]?.presets;
-      if (!data) {
-        const result = await this.runCloudQuery(client.from("pt_daily_records").insert({ date: SHARED_PRESETS_RECORD,
-          rows_data: [{ presets: COLUMN_PRESETS }], total_count: 0, updated_at: new Date().toISOString() }));
-        if (result.error && result.error.code !== "23505") throw result.error;
-        return;
-      }
-      if (!presets || !Object.values(presets).every(values => Array.isArray(values) && values.every(value => typeof value === "string"))) return;
-      if (JSON.stringify(presets) === JSON.stringify(COLUMN_PRESETS)) return;
-      COLUMN_PRESETS = presets;
-      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
-      this.renderQuickChips();
-      this.refreshSearchSuggestions();
-    } catch (error) { this.showSaveIndicator("빠른 입력 도구 동기화 재시도 중", true); }
+  syncSharedPresets(options) {
+    return this.presetsDirty ? this.pushSharedPresets() : this.pullSharedPresets(options);
   }
 
-  async pushSharedPresets() {
+  reportPresetSyncFailure(error) {
+    this.presetsSyncFailed = true;
+    this.presetSyncLastError = String(error?.message || error || '클라우드 연결 실패');
+    this.showSaveIndicator('빠른 입력 도구 동기화 대기 · 연결되면 재시도', true);
+    if (this.elSaveStatus) this.elSaveStatus.title = this.presetSyncLastError;
+  }
+
+  completePresetSync() {
+    if (this.presetsSyncFailed && (!this.elSaveStatus || this.elSaveStatus.textContent.startsWith('빠른 입력 도구 동기화'))) {
+      if (this.elSaveStatus) this.elSaveStatus.title = '';
+      this.showSaveIndicator('빠른 입력 도구 동기화 완료');
+    }
+    this.presetsSyncFailed = false;
+    this.presetSyncLastError = null;
+  }
+
+  pullSharedPresets({force = false} = {}) {
     const client = this.supabaseClient;
-    if (!client || !this.presetsDirty || this.presetsPushing) return;
+    if (!client || this.presetsDirty || this.presetPushOperation?.client === client) return Promise.resolve();
+    if (this.presetPullOperation?.client === client) {
+      this.presetPullOperation.force ||= force;
+      return this.presetPullOperation.task;
+    }
+    const operation = {client,force};
+    this.presetPullOperation = operation;
+    operation.task = (async () => {
+      const snapshot = JSON.stringify(COLUMN_PRESETS), revision = this.presetEditRevision || 0;
+      const current = () => client === this.supabaseClient && this.presetPullOperation === operation &&
+        !this.presetsDirty && (this.presetEditRevision || 0) === revision && JSON.stringify(COLUMN_PRESETS) === snapshot;
+      try {
+        const cache = this.presetRemoteCache;
+        let data;
+        // Poll a tiny revision first once the full configuration is known.
+        // Missing/legacy revisions always fall back to reading all settings.
+        if (!operation.force && cache?.client === client && cache.version != null && cache.snapshot === snapshot && Date.now() - cache.readAt < 30000) {
+          const result = await this.runCloudQuery(client.from('pt_daily_records').select('updated_at').eq('date', SHARED_PRESETS_RECORD).maybeSingle());
+          if (result.error) throw result.error;
+          if (!current()) return;
+          if (!operation.force && result.data && Date.parse(result.data.updated_at) === cache.version) { this.completePresetSync(); return; }
+        }
+        const result = await this.runCloudQuery(client.from('pt_daily_records').select('rows_data, updated_at').eq('date', SHARED_PRESETS_RECORD).maybeSingle());
+        if (result.error) throw result.error;
+        if (!current()) return;
+        data = result.data;
+        if (!data) {
+          const updated_at = new Date().toISOString();
+          const seeded = await this.runCloudQuery(client.from('pt_daily_records').insert({date:SHARED_PRESETS_RECORD,
+            rows_data:[{presets:JSON.parse(snapshot)}],total_count:0,updated_at}));
+          if (seeded.error && seeded.error.code !== '23505') throw seeded.error;
+          if (!current()) return;
+          if (!seeded.error) { this.presetRemoteCache = {client,snapshot,version:Date.parse(updated_at),readAt:Date.now()}; this.completePresetSync(); }
+          return;
+        }
+        const presets = data.rows_data?.[0]?.presets;
+        if (!presets || typeof presets !== 'object' || Array.isArray(presets) ||
+            !Object.values(presets).every(values => Array.isArray(values) && values.every(value => typeof value === 'string'))) {
+          throw new Error('공유 빠른 입력 도구의 저장 형식을 확인해 주세요. 이 기기의 설정은 유지됩니다.');
+        }
+        const remote = JSON.stringify(presets);
+        if (remote !== snapshot) {
+          // Persist before publishing; a quota failure must leave the live list intact.
+          localStorage.setItem(PRESETS_STORAGE_KEY, remote);
+          COLUMN_PRESETS = presets;
+          this.renderQuickChips();
+          this.refreshSearchSuggestions();
+        }
+        this.presetRemoteCache = {client,snapshot:remote,version:Number.isFinite(Date.parse(data.updated_at)) ? Date.parse(data.updated_at) : null,readAt:Date.now()};
+        this.completePresetSync();
+      } catch (error) { if (current()) this.reportPresetSyncFailure(error); }
+      finally { if (this.presetPullOperation === operation) this.presetPullOperation = null; }
+    })();
+    return operation.task;
+  }
+
+  pushSharedPresets() {
+    const client = this.supabaseClient;
+    if (!client) return Promise.resolve();
+    if (this.presetPushOperation?.client === client) return this.presetPushOperation.task;
+    // A previous connection may still be writing to the same backend. Finish
+    // it before uploading through a new client so an old write cannot win late.
+    if (this.presetPushOperation) return this.presetPushOperation.task.then(() => this.pushSharedPresets());
+    if (!this.presetsDirty) return Promise.resolve();
+    clearTimeout(this.presetsSyncTimer);
+    const operation = {client};
+    this.presetPushOperation = operation;
     this.presetsPushing = true;
-    const snapshot = JSON.stringify(COLUMN_PRESETS);
-    try {
-      const { error } = await this.runCloudQuery(client.from("pt_daily_records").upsert({ date: SHARED_PRESETS_RECORD,
-        rows_data: [{ presets: JSON.parse(snapshot) }], total_count: 0, updated_at: new Date().toISOString() }));
-      if (error) throw error;
-      if (client !== this.supabaseClient) return;
-      if (JSON.stringify(COLUMN_PRESETS) === snapshot) {
-        this.presetsDirty = false; localStorage.removeItem("PT_PRESETS_PENDING");
+    operation.task = (async () => {
+      try {
+        // One request at a time; changes made during that request follow
+        // immediately as one latest snapshot, without waiting for a poll.
+        while (client === this.supabaseClient && this.presetPushOperation === operation && this.presetsDirty) {
+          const snapshot = JSON.stringify(COLUMN_PRESETS);
+          const updated_at = new Date(Math.max(Date.now(), (this.presetLastWriteAt || 0) + 1)).toISOString();
+          this.presetLastWriteAt = Date.parse(updated_at);
+          const {error} = await this.runCloudQuery(client.from('pt_daily_records').upsert({date:SHARED_PRESETS_RECORD,
+            rows_data:[{presets:JSON.parse(snapshot)}],total_count:0,updated_at}));
+          if (error) throw error;
+          if (client !== this.supabaseClient || this.presetPushOperation !== operation) return;
+          this.presetRemoteCache = {client,snapshot,version:Date.parse(updated_at),readAt:Date.now()};
+          if (JSON.stringify(COLUMN_PRESETS) === snapshot) {
+            localStorage.removeItem('PT_PRESETS_PENDING');
+            this.presetsDirty = false;
+          }
+          this.notifyCloudChange(SHARED_PRESETS_RECORD);
+        }
+        if (client === this.supabaseClient && this.presetPushOperation === operation) this.completePresetSync();
+      } catch (error) {
+        if (client === this.supabaseClient && this.presetPushOperation === operation) this.reportPresetSyncFailure(error);
+      } finally {
+        if (this.presetPushOperation === operation) { this.presetPushOperation = null; this.presetsPushing = false; }
       }
-      this.notifyCloudChange(SHARED_PRESETS_RECORD);
-    } catch (error) { this.showSaveIndicator("빠른 입력 도구 동기화 재시도 중", true); }
-    finally { this.presetsPushing = false; }
+    })();
+    return operation.task;
   }
 
   scheduleSupabaseSync(date = this.currentDate, persistBaseline = true) {

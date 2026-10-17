@@ -234,9 +234,9 @@ test('a superseded live refresh cannot release the busy flag of a newer session'
   app.setupNetworkSyncListeners = () => {};
   app.syncSharedColumnFormatting = () => {};
   app.syncStaffCountSettings = () => {};
-  app.pullFromCloud = () => {};
   const releases = [];
-  app.pullSharedPresets = () => new Promise(resolve => releases.push(resolve));
+  app.pullFromCloud = () => new Promise(resolve => releases.push(resolve));
+  app.pullSharedPresets = () => {};
   app.supabaseClient = {
     channel: () => ({ on() { return this; }, subscribe() {} }), removeChannel() {},
   };
