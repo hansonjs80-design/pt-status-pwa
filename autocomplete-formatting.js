@@ -140,7 +140,7 @@ class PTAutocompleteFormatting {
     value = String(value);
     element.style.color = color || '';
     element.style.fontWeight = fontWeight == null ? '' : String(fontWeight);
-    if (!value) { element.textContent = '빈칸'; return; }
+    if (!value) { element.textContent = '\u00A0'; return; }
     const row = { [colKey]: value, _textColors: { [colKey]: color }, _textStyles: { [colKey]: {fontWeight} }, _richText: { [colKey]: richText } };
     this.markCellFormatting(row, colKey, 'color');
     this.markCellFormatting(row, colKey, 'fontWeight');

@@ -19,6 +19,16 @@ test('automatic underline color uses the candidate base color across mixed chara
     assert.equal(nodes[1].style.textDecorationColor,'#0000ff');
   } finally {context.document=previous;}
 });
+
+test('empty autocomplete candidates render as blank without 빈칸 text', () => {
+  const instance = Object.create(context.App.prototype);
+  const element = { style: {} };
+  instance.getAutocompleteValueFormatting = () => ({ color: '', richText: null, fontWeight: null });
+  instance.renderAutocompleteText(element, 'prescription', '');
+  assert.equal(element.textContent, '\u00A0');
+  assert.notEqual(element.textContent, '빈칸');
+});
+
 test('font color indicator follows selection, applied colors and reset without coloring the A label', () => {
   const instance = Object.create(context.App.prototype);
   const icon = { style: { color: '#495057' } }, attributes = {};
