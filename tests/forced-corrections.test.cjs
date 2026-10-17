@@ -130,6 +130,47 @@ test('normal typing replaces immediately, protects late duplicate input and does
   assert.equal(input.value,'L/T');
 });
 
+test('tilde separates correction tokens without consuming either side or moving the caret past the replacement',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','gj','허');
+  for(const [value,caret,expected,end] of [
+    ['엉~gj',4,'엉~허',3], ['엉~~gj',5,'엉~~허',4],
+    ['엉~gj~무릎',4,'엉~허~무릎',3], ['gj~엉',2,'허~엉',1],
+  ]) {
+    const input=editor(value,caret);input._inputLanguage='eng';
+    assert.equal(app.updateForcedCorrection(input,'part'),true,value);
+    assert.equal(input.value,expected);assert.equal(input.selectionStart,end);assert.equal(input.selectionEnd,end);
+  }
+  for(const value of ['엉gj','엉~agj','엉~gjx']) assert.equal(app.findForcedCorrection(value,'part',value==='엉~gjx'?4:value.length),null);
+});
+
+test('explicit tilde rules, column overrides and exact spaces retain their matching priority',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','gj','허');
+  app.setForcedCorrection('part','gj','허리');
+  assert.equal(app.findForcedCorrection('엉~gj','part').value,'엉~허리');
+  assert.equal(app.findForcedCorrection('엉~gj','memo').value,'엉~허');
+  app.setForcedCorrection('part','엉~gj','엉덩이~허리');
+  assert.equal(app.findForcedCorrection('엉~gj','part').value,'엉덩이~허리');
+  app.setForcedCorrection('*','rt ','Rt. ');
+  assert.equal(app.findForcedCorrection('엉~rt','part'),null);
+  assert.equal(app.findForcedCorrection('엉~rt ','part').value,'엉~Rt. ');
+});
+
+test('tilde correction preserves native composition and Windows input handling',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','gj','허');
+  app.usesWindowsNativeInput=()=>true;
+  const windows=editor('엉~gj');windows._inputLanguage='eng';
+  assert.equal(app.updateForcedCorrection(windows,'part'),true);
+  assert.equal(windows.value,'엉~허');assert.equal(windows._inputLanguage,'eng','keep Windows native IME ownership');
+  app.setForcedCorrection('*','허','Lumbar');
+  const native=editor('엉~허');native._inputLanguage='kor';native.dataset.nativeComposing='true';
+  native._nativeCellComposition={prefix:'엉~',suffix:'',data:'허'};
+  assert.equal(app.updateForcedCorrection(native,'part'),true);
+  assert.equal(native.value,'엉~허','do not rewrite active native composition');
+  assert.equal(app.getCellEditorValue(native),'엉~Lumbar');
+  app.updateForcedCorrection(native,'part',{commit:true,nativeData:'허'});
+  assert.equal(native.value,'엉~Lumbar');assert.equal(native.selectionStart,'엉~Lumbar'.length);
+});
+
 test('native Korean correction is visible without mutating the live composition and commits once',()=>{
   const {app}=createApp();app.setForcedCorrection('*','ㅣ/ㅅ','L/T');
   const input=editor('ㅣ/ㅅ');input.dataset.nativeComposing='true';input._inputLanguage='kor';
