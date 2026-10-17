@@ -105,14 +105,32 @@ const SUMMARY_CLOSED_STORAGE_KEY = "device-summary-closed-v1";
 function loadColumnPresets() {
   try {
     const saved = localStorage.getItem(PRESETS_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) return PTPresetCandidates.normalizeStorage(JSON.parse(saved));
   } catch (_) {}
   return JSON.parse(JSON.stringify(DEFAULT_PRESETS));
 }
 
+function persistColumnPresets(presets) {
+  const normalized = PTPresetCandidates.normalizeStorage(presets);
+  const previous = localStorage.getItem(PRESETS_STORAGE_KEY);
+  const backupKey = PRESETS_STORAGE_KEY + '_LEGACY_CANDIDATE_IDS_V1';
+  if (previous && !localStorage.getItem(backupKey)) {
+    try {
+      const old = JSON.parse(previous);
+      if (PTPresetCandidates.normalizeStorage(old) !== old) localStorage.setItem(backupKey, previous);
+    } catch (error) {
+      // A failed backup must not replace the original settings.
+      if (error?.name !== 'SyntaxError') throw error;
+    }
+  }
+  localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
 function saveColumnPresets(presets) {
   try {
-    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    const normalized = persistColumnPresets(presets);
+    if (presets === COLUMN_PRESETS) COLUMN_PRESETS = normalized;
     window.ptApp?.schedulePresetSync();
   } catch (_) {}
 }

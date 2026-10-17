@@ -130,3 +130,68 @@ test('a failed optional broadcast does not report an acknowledged upload as fail
     assert.equal(h.db.get(date).rows_data[0].presets.memo[0],'저장 완료');
   }
 });
+
+test('styled candidate identities are JSONB safe and legacy hidden variants retain their exact styles',()=>{
+  const h=harness(),key='__query:memo:문',hidden='__hidden:memo:문';
+  const red=h.app.makePresetCandidate('문구',{color:'#ff0000',fontWeight:600,richText:null});
+  const blue=h.app.makePresetCandidate('문구',{color:'#0000ff',fontWeight:400,richText:null});
+  h.app.storePresetCandidates(key,[red,blue]);
+  const presets=h.context.getPresets();
+  presets[hidden]=['문구\u0000'+JSON.stringify(red._presetFormatting)];
+  const original=JSON.stringify(presets);
+  h.storage.set('PT_APP_CUSTOM_PRESETS_V1',original);
+  h.context.setPresets(h.context.loadColumnPresets());
+  const loaded=h.context.getPresets();
+  assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1'),original,'load leaves original storage untouched');
+  assert.equal(loaded[hidden][0],h.app.getPresetCandidateIdentity(red));
+  assert.ok(!loaded[hidden][0].includes('\u0000'));
+  assert.notEqual(h.app.getPresetCandidateIdentity(red),h.app.getPresetCandidateIdentity(blue));
+  const visible=h.app.getPresetCandidates(key).filter(item=>!loaded[hidden].includes(h.app.getPresetCandidateIdentity(item)));
+  assert.equal(visible.length,1);assert.equal(visible[0]._presetFormatting.color,'#0000ff');
+  h.context.saveColumnPresets(loaded);
+  assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1_LEGACY_CANDIDATE_IDS_V1'),original);
+  assert.equal(JSON.parse(h.storage.get('PT_APP_CUSTOM_PRESETS_V1'))[hidden][0],loaded[hidden][0]);
+  const first=h.storage.get('PT_APP_CUSTOM_PRESETS_V1');h.context.saveColumnPresets(loaded);
+  assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1'),first);
+  assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1_LEGACY_CANDIDATE_IDS_V1'),original);
+});
+
+test('pending legacy settings recover from JSONB rejection without dropping phrases or hidden styles',async()=>{
+  const h=harness(),format={color:'#ff0000',fontWeight:600,richText:null};
+  const legacy={memo:['문구','문구','띄어쓰기 '],'__hidden:memo:문':['문구\u0000'+JSON.stringify(format)],'__autocorrect:all':[' rt =>Rt. ']};
+  const original=JSON.stringify(legacy);h.storage.set('PT_APP_CUSTOM_PRESETS_V1',original);
+  h.edit(legacy);h.app.reportPresetSyncFailure({code:'22P05',message:'unsupported Unicode escape sequence'});
+  h.setHook(request=>{
+    if(request.record&&Object.values(request.record.rows_data[0].presets).some(values=>values.some(value=>value.includes('\u0000')))) {
+      throw Error('unsupported Unicode escape sequence');
+    }
+  });
+  await h.app.pushSharedPresets();
+  const saved=h.db.get(date).rows_data[0].presets;
+  assert.deepEqual(saved.memo,legacy.memo);assert.deepEqual(saved['__autocorrect:all'],legacy['__autocorrect:all']);
+  assert.equal(saved['__hidden:memo:문'][0],h.app.getPresetCandidateIdentity(h.app.makePresetCandidate('문구',format)));
+  assert.equal(h.app.presetsDirty,false);assert.equal(h.app.presetsSyncFailed,false);
+  assert.equal(h.storage.has('PT_PRESETS_PENDING'),false);assert.equal(h.requests.length,1);
+  assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1_LEGACY_CANDIDATE_IDS_V1'),original);
+});
+
+test('legacy migration backup failure retains the original settings and pending upload for retry',async()=>{
+  const h=harness(),legacy={memo:['문구'],'__hidden:memo:문':['문구\u0000{"fontWeight":600}']};
+  const original=JSON.stringify(legacy);h.storage.set('PT_APP_CUSTOM_PRESETS_V1',original);h.edit(legacy);
+  const setItem=h.context.localStorage.setItem;
+  h.context.localStorage.setItem=(key,value)=>{if(key.endsWith('_LEGACY_CANDIDATE_IDS_V1'))throw Error('quota');setItem(key,value);};
+  await h.app.pushSharedPresets();
+  assert.equal(h.requests.length,0);assert.equal(h.storage.get('PT_APP_CUSTOM_PRESETS_V1'),original);
+  assert.equal(h.app.presetsDirty,true);assert.equal(h.storage.get('PT_PRESETS_PENDING'),'1');
+  h.context.localStorage.setItem=setItem;await h.app.pushSharedPresets();assert.equal(h.app.presetsDirty,false);
+});
+
+test('remote legacy hidden identifiers are normalized without changing ordinary words or metadata',async()=>{
+  const h=harness(),legacy='문구\u0000{"fontWeight":600}',untouched='보통 문구';
+  h.seed({'__hidden:memo:문':[legacy,untouched],memo:['문구','문구'],extra:['문구\\u0000문자']});
+  await h.app.pullSharedPresets();
+  assert.ok(!h.context.getPresets()['__hidden:memo:문'][0].includes('\u0000'));
+  assert.equal(h.context.getPresets()['__hidden:memo:문'][1],untouched);
+  assert.equal(h.context.getPresets().memo.length,2);assert.equal(h.context.getPresets().extra[0],'문구\\u0000문자');
+  assert.equal(h.app.presetsSyncFailed,false);
+});

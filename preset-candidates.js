@@ -1,5 +1,36 @@
 // Keep legacy string lists readable while storing formatting per candidate variant.
 class PTPresetCandidates {
+  static candidateIdentity(value, formatting) {
+    // These identifiers are persisted in hidden lists and sent to JSONB.
+    // A NUL separator is valid in JavaScript but PostgreSQL rejects it.
+    return '__candidate:v1:' + JSON.stringify([String(value), formatting]);
+  }
+
+  static normalizeStorage(presets) {
+    if (!presets || typeof presets !== 'object' || Array.isArray(presets)) return presets;
+    let normalized = presets;
+    for (const [key, values] of Object.entries(presets)) {
+      if (!key.startsWith('__hidden:') || !Array.isArray(values)) continue;
+      let changed = false;
+      const migrated = values.map(value => {
+        if (typeof value !== 'string') return value;
+        const separator = value.indexOf('\u0000');
+        if (separator < 0) return value;
+        try {
+          const formatting = JSON.parse(value.slice(separator + 1));
+          if (!formatting || typeof formatting !== 'object' || Array.isArray(formatting)) return value;
+          changed = true;
+          return this.candidateIdentity(value.slice(0, separator), formatting);
+        } catch (_) { return value; }
+      });
+      if (changed) {
+        if (normalized === presets) normalized = {...presets};
+        normalized[key] = [...new Set(migrated)];
+      }
+    }
+    return normalized;
+  }
+
   getPresetCandidateFormatsKey(scope) { return `__candidateFormats:${JSON.stringify(scope)}`; }
 
   makePresetCandidate(value, formatting) {
@@ -9,7 +40,7 @@ class PTPresetCandidates {
   }
 
   getPresetCandidateIdentity(candidate) {
-    return candidate?._presetFormatting ? String(candidate) + '\u0000' + JSON.stringify(candidate._presetFormatting) : String(candidate);
+    return candidate?._presetFormatting ? PTPresetCandidates.candidateIdentity(candidate, candidate._presetFormatting) : String(candidate);
   }
 
   getRowAutocompleteFormatting(row, colKey) {

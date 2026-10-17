@@ -301,16 +301,16 @@ class PTCloudSync {
           if (!seeded.error) { this.presetRemoteCache = {client,snapshot,version:Date.parse(updated_at),readAt:Date.now()}; this.completePresetSync(); }
           return;
         }
-        const presets = data.rows_data?.[0]?.presets;
+        let presets = data.rows_data?.[0]?.presets;
         if (!presets || typeof presets !== 'object' || Array.isArray(presets) ||
             !Object.values(presets).every(values => Array.isArray(values) && values.every(value => typeof value === 'string'))) {
           throw new Error('공유 빠른 입력 도구의 저장 형식을 확인해 주세요. 이 기기의 설정은 유지됩니다.');
         }
+        presets = PTPresetCandidates.normalizeStorage(presets);
         const remote = JSON.stringify(presets);
         if (remote !== snapshot) {
           // Persist before publishing; a quota failure must leave the live list intact.
-          localStorage.setItem(PRESETS_STORAGE_KEY, remote);
-          COLUMN_PRESETS = presets;
+          COLUMN_PRESETS = persistColumnPresets(presets);
           this.renderQuickChips();
           this.refreshSearchSuggestions();
         }
@@ -339,6 +339,10 @@ class PTCloudSync {
         // One request at a time; changes made during that request follow
         // immediately as one latest snapshot, without waiting for a poll.
         while (client === this.supabaseClient && this.presetPushOperation === operation && this.presetsDirty) {
+          const normalized = PTPresetCandidates.normalizeStorage(COLUMN_PRESETS);
+          if (normalized !== COLUMN_PRESETS || localStorage.getItem(PRESETS_STORAGE_KEY) !== JSON.stringify(normalized)) {
+            COLUMN_PRESETS = persistColumnPresets(normalized);
+          }
           const snapshot = JSON.stringify(COLUMN_PRESETS);
           const updated_at = new Date(Math.max(Date.now(), (this.presetLastWriteAt || 0) + 1)).toISOString();
           this.presetLastWriteAt = Date.parse(updated_at);
