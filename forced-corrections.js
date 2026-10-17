@@ -62,17 +62,41 @@ class PTForcedCorrections {
     return rules;
   }
 
-  setForcedCorrection(scope, source, target, previous = null) {
+  setForcedCorrection(scope, source, target, previous = null, mergedRules = []) {
     source = String(source ?? '').normalize('NFC');
     target = String(target ?? '').normalize('NFC');
     if (!this.isForcedCorrectionScope(scope) ||
         !source.trim() || !target.trim() || source === target) return false;
-    if (previous) for (const oldSource of previous.storedSources || [previous.source]) delete COLUMN_PRESETS[this.getForcedCorrectionKey(previous.scope, oldSource)];
+    const presets = { ...COLUMN_PRESETS };
+    for (const rule of [previous, ...mergedRules].filter(Boolean)) {
+      for (const oldSource of rule.storedSources || [rule.source]) delete presets[this.getForcedCorrectionKey(rule.scope, oldSource)];
+    }
     // String arrays retain compatibility with existing backup and cloud records.
-    COLUMN_PRESETS[this.getForcedCorrectionKey(scope, source)] = [target];
+    presets[this.getForcedCorrectionKey(scope, source)] = [target];
+    // Publish only after storage accepts the edit. The editor reports failures
+    // instead of clearing the draft and silently claiming the rule was saved.
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    COLUMN_PRESETS = presets;
     this.forcedCorrectionMatchCache = null;
-    saveColumnPresets(COLUMN_PRESETS);
+    try { window.ptApp?.schedulePresetSync(); } catch (_) { /* Local save succeeded; dirty presets retry through live sync. */ }
     return true;
+  }
+
+  saveForcedCorrectionRule(scope, source, target, previous = null) {
+    source = String(source ?? '').normalize('NFC');
+    target = String(target ?? '').normalize('NFC');
+    if (!this.isForcedCorrectionScope(scope) || !source.trim() || !target.trim() || source === target) {
+      return { saved: false, message: '입력 문구와 변경 문구를 서로 다르게 입력해 주세요.' };
+    }
+    const previousSources = previous?.storedSources || (previous ? [previous.source] : []);
+    const matches = this.getGroupedForcedCorrectionRules().filter(rule => rule.scope === scope &&
+      !(previous?.scope === scope && rule.storedSources.some(value => previousSources.includes(value))) &&
+      rule.variants.includes(source));
+    if (matches.some(rule => rule.target !== target)) {
+      return { saved: false, message: '같은 적용 열에 다른 변경 문구로 이미 등록된 입력 문구입니다. 기존 규칙을 확인해 주세요.' };
+    }
+    const saved = this.setForcedCorrection(scope, source, target, previous, matches);
+    return { saved, merged: matches.length };
   }
 
   deleteForcedCorrection(scope, source, sources = [source]) {
@@ -211,9 +235,11 @@ class PTForcedCorrections {
     if (restoreFocus) document.getElementById('btnOpenForcedCorrectionManager')?.focus({preventScroll:true});
   }
 
-  setForcedCorrectionFeedback(message) {
+  setForcedCorrectionFeedback(message, { error = false } = {}) {
     const feedback = document.getElementById('forcedCorrectionFeedback');
     if (feedback) feedback.textContent = message;
+    const inline = document.getElementById('forcedCorrectionEditorFeedback');
+    if (inline) { inline.textContent = message; inline.hidden = false; inline.dataset.error = String(error); }
     this.setPresetManagerFeedback(message);
   }
 
@@ -243,7 +269,11 @@ class PTForcedCorrections {
     this.forcedCorrectionEditing = null;
     const source = document.getElementById('forcedCorrectionSource');
     const target = document.getElementById('forcedCorrectionTarget');
-    const updateVariants = () => this.updateForcedCorrectionCasePreview();
+    const updateVariants = () => {
+      this.updateForcedCorrectionCasePreview();
+      const feedback = document.getElementById('forcedCorrectionEditorFeedback');
+      if (feedback) feedback.hidden = true;
+    };
     source.oninput = target.oninput = updateVariants;
     source.value = target.value = '';
     const add = document.getElementById('btnAddForcedCorrection');
@@ -251,21 +281,21 @@ class PTForcedCorrections {
     add.onclick = () => {
       const editing = this.forcedCorrectionEditing;
       const normalizedSource = source.value.normalize('NFC');
-      const sameKey = editing?.scope === scope.value && (editing.storedSources || [editing.source]).includes(normalizedSource);
-      if (!sameKey && this.getGroupedForcedCorrectionRules().some(rule => rule.scope === scope.value && rule.variants.includes(normalizedSource) &&
-          !(editing?.scope === rule.scope && editing.source === rule.source))) {
-        this.setForcedCorrectionFeedback('같은 적용 열에 이미 등록된 입력 문구입니다. 목록에서 해당 규칙을 수정해 주세요.');
-        source.focus(); return;
+      let result;
+      try { result = this.saveForcedCorrectionRule(scope.value, source.value, target.value, editing); }
+      catch (error) {
+        this.setForcedCorrectionFeedback(`저장하지 못했습니다. 입력 내용은 유지됩니다. ${error.message}`, { error: true });
+        return;
       }
-      if (!this.setForcedCorrection(scope.value, source.value, target.value, editing)) {
-        this.setForcedCorrectionFeedback('입력 문구와 변경 문구를 서로 다르게 입력해 주세요.');
+      if (!result.saved) {
+        this.setForcedCorrectionFeedback(result.message, { error: true });
         (!source.value.trim() ? source : target).focus();
         return;
       }
       this.resetForcedCorrectionEditor();
       const shown = this.renderForcedCorrectionList();
       const outsideFilter = !shown.some(rule => rule.scope === scope.value && rule.source === normalizedSource);
-      this.setForcedCorrectionFeedback(`${editing ? '규칙을 수정했습니다.' : '규칙을 추가했습니다.'} ${outsideFilter ? '현재 검색·필터 조건에서는 보이지 않습니다.' : '선택한 적용 열을 유지합니다.'}`);
+      this.setForcedCorrectionFeedback(`${editing ? '규칙을 수정했습니다.' : '규칙을 추가했습니다.'} ${result.merged ? '같은 변경 문구의 중복 규칙을 합쳤습니다. ' : ''}${outsideFilter ? '현재 검색·필터 조건에서는 보이지 않습니다.' : '선택한 적용 열을 유지합니다.'}`);
       source.focus();
     };
     document.getElementById('btnCancelForcedCorrectionEdit').onclick = () => {

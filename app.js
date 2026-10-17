@@ -605,16 +605,16 @@ class PTApp {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  getSearchDataStore() {
+  getSearchDataStore({ rebasePending = false } = {}) {
     const history = { ...this.cloudSearchHistory };
     for (const [date, local] of Object.entries(this.dataStore || {})) {
       const remote = history[date];
-      if (!Array.isArray(remote) || date === this.currentDate ||
-          this.pendingSyncDates?.has(date) || this.activePushes?.has(date)) {
+      const base = this.syncBaselines?.get(date);
+      if (!Array.isArray(remote) || ((!rebasePending || !base?.length) && (date === this.currentDate ||
+          this.pendingSyncDates?.has(date) || this.activePushes?.has(date)))) {
         history[date] = local;
         continue;
       }
-      const base = this.syncBaselines?.get(date);
       if (base?.length) {
         // Search the latest server snapshot with any local edits layered on top.
         history[date] = this.mergeCloudRows(base, local, remote, { readOnly: true });

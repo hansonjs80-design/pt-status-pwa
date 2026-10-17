@@ -339,3 +339,37 @@ test('Backspace edits the corrected visible text and rejects the old native comm
  assert.equal(app.handleForcedCorrectionDelete(event,input),true);assert.equal(input.value,'L/');
  input.value='L/ㅅ';app.restoreHandledCellKey(input,{type:'input',inputType:'insertText',data:'ㅅ'});assert.equal(input.value,'L/');
 });
+
+test('editing away a leading space merges equivalent existing rules and their stored case pairs',()=>{
+  const {app}=createApp();
+  for(const source of [' DpDIR',' dPdir','DpDIR','dPdir'])app.setForcedCorrection('*',source,'예약');
+  const editing=app.getGroupedForcedCorrectionRules().find(rule=>rule.source===' DpDIR');
+  const result=app.saveForcedCorrectionRule('*','DpDIR','예약',editing);
+  assert.equal(result.saved,true);assert.equal(result.merged,1);
+  assert.equal(app.getForcedCorrectionRules().length,1);
+  assert.equal(app.findForcedCorrection('DpDIR','memo').value,'예약');
+  assert.equal(app.findForcedCorrection('dPdir','memo').value,'예약');
+  assert.equal(app.findForcedCorrection(' DpDIR','memo').value,' 예약','removed leading-space rule no longer consumes the space');
+});
+
+test('an inverse-case duplicate with a different target blocks the edit without changing any stored rules',()=>{
+  const {app}=createApp();app.setForcedCorrection('*',' DpDIR','예약');app.setForcedCorrection('*','dPdir','다른 결과');
+  const before=JSON.stringify(app.getForcedCorrectionRules());
+  const editing=app.getGroupedForcedCorrectionRules().find(rule=>rule.source===' DpDIR');
+  const result=app.saveForcedCorrectionRule('*','DpDIR','예약',editing);
+  assert.equal(result.saved,false);assert.match(result.message,/다른 변경 문구/);
+  assert.equal(JSON.stringify(app.getForcedCorrectionRules()),before);
+});
+
+test('a rule save failure retains the original rules and compiled matches for retry',()=>{
+  const {app,context}=createApp();app.setForcedCorrection('prescription',' DpDIR','예약');
+  const editing=app.getGroupedForcedCorrectionRules()[0];app.getApplicableForcedCorrectionRules('prescription');
+  const original=context.localStorage.setItem;
+  context.localStorage.setItem=()=>{throw Error('quota');};
+  assert.throws(()=>app.saveForcedCorrectionRule('prescription','DpDIR','예약',editing),/quota/);
+  assert.equal(app.getForcedCorrectionRules()[0].source,' DpDIR');
+  assert.equal(app.findForcedCorrection(' DpDIR','prescription').value,'예약');
+  context.localStorage.setItem=original;
+  assert.equal(app.saveForcedCorrectionRule('prescription','DpDIR','예약',editing).saved,true);
+  assert.equal(app.findForcedCorrection('DpDIR','prescription').value,'예약');
+});

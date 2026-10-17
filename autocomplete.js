@@ -254,6 +254,18 @@ class PTAutocomplete {
     const menu = document.createElement("div");
     menu.id = "cellAutocompleteMenu";
     menu.className = "cell-autocomplete-menu" + (colKey === "writer" ? " writer-picker-menu" : "");
+    const menuDate = this.currentDate;
+    const canUseMenu = () => {
+      if (input.isConnected === false || this.currentDate !== menuDate ||
+          document.getElementById('cellAutocompleteMenu') !== menu || this.autocompleteState?.input !== input) return false;
+      // Typing/forced correction can beat the short suggestion debounce. A
+      // mouse click on the old list must never commit or manage an old query.
+      if (this.getCellEditorValue(input) !== query) {
+        this.refreshSearchSuggestions();
+        return false;
+      }
+      return true;
+    };
 
     candidates.forEach((cand, idx) => {
       const itemEl = document.createElement("div");
@@ -275,6 +287,7 @@ class PTAutocomplete {
       editButton.addEventListener("mousedown", e => { e.preventDefault(); e.stopPropagation(); });
       editButton.addEventListener("click", e => {
         e.preventDefault(); e.stopPropagation();
+        if (!canUseMenu()) return;
         if (managedColumn) this.openAutocompletePresetManager(colKey, cand, input);
         else void this.editAutocompleteValue(colKey, cand, input);
       });
@@ -293,6 +306,7 @@ class PTAutocomplete {
 
       itemEl.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (!canUseMenu()) return;
         this._justCommittedFromAutocomplete = true;
         this.closeAutocompleteMenu();
         // Finalize on the original editor, before removing a live IME input.
@@ -385,6 +399,7 @@ class PTAutocomplete {
   async editAutocompleteValue(colKey, oldValue, input) {
     if (this.autocompleteRenameBusy) return;
     const throughDate = this.currentDate;
+    const managerContext = this.autocompleteManagerContext;
     const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
     const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색·두께 수정", oldValue,
       formatting.color, formatting.richText, formatting.fontWeight,
@@ -395,14 +410,17 @@ class PTAutocomplete {
     try {
       this.showSaveIndicator('전체 날짜 기록 확인 중…');
       const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText, edit.fontWeight, { throughDate });
-      // Do not let the existing editor restore the old text on blur.
-      if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
-      input?.blur();
-      this.closeAutocompleteMenu();
-      this.renderTable();
+      // A zero-match result may return after the user has started a different
+      // editor during the history read. Leave that editor and its menu alive.
+      if (!this.isEditingCell()) {
+        if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
+        input?.blur();
+        this.closeAutocompleteMenu();
+        this.renderTable();
+      }
       this.renderQuickChips();
       this.updateSidebarStats();
-      if (this.autocompleteManagerContext?.colKey === colKey) {
+      if (this.autocompleteManagerContext === managerContext && managerContext?.colKey === colKey) {
         this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
         this.autocompleteManagerContext.hidden = (this.autocompleteManagerContext.hidden || []).map(item => item === oldValue ? value.trim() : item);
         this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color, edit.richText, edit.fontWeight);
@@ -430,15 +448,9 @@ class PTAutocomplete {
     }
     const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();
     if (oldText === replacement && color === undefined && richText === undefined && fontWeight === undefined) return 0;
-    const source = this.getSearchDataStore();
-    // A bulk edit must incorporate the server snapshot just read, even for a
-    // pending/current date. Rebase local differences before applying the edit.
-    for (const [date, local] of Object.entries(this.dataStore || {})) {
-      const remote = this.cloudSearchHistory?.[date], base = this.syncBaselines?.get(date);
-      if (date <= throughDate && Array.isArray(local) && Array.isArray(remote) && base?.length) {
-        source[date] = this.mergeCloudRows(base, local, remote);
-      }
-    }
+    // Rebase even pending/current dates once. Read-only merging shares unchanged
+    // rows; only dates containing a match need a deep copy below.
+    const source = this.getSearchDataStore({ rebasePending: true });
     const changed = {}, baselines = new Map(this.syncBaselines || []);
     let count = 0;
     for (const [date, rows] of Object.entries(source)) {
@@ -501,19 +513,47 @@ class PTAutocomplete {
     if (!count && !presetChanged) return 0;
 
     // This backup covers records and presets only; no schema/Auth/Storage changes occur.
+    const originalRecords = JSON.stringify(this.dataStore);
+    const originalPresets = JSON.stringify(COLUMN_PRESETS);
+    const originalBaselines = JSON.stringify(Object.fromEntries(this.syncBaselines || []));
+    const assertUnchanged = () => {
+      if (this.supabaseClient !== client || JSON.stringify(this.dataStore) !== originalRecords ||
+          JSON.stringify(COLUMN_PRESETS) !== originalPresets ||
+          JSON.stringify(Object.fromEntries(this.syncBaselines || [])) !== originalBaselines ||
+          (typeof document !== 'undefined' && this.isEditingCell())) {
+        throw new Error('작업 중 기록이나 설정이 변경되어 일괄 수정을 중단했습니다. 최신 입력은 유지됩니다. 입력을 마친 뒤 다시 시도해 주세요.');
+      }
+    };
     const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
       oldValue: oldText, newValue: replacement, throughDate, color, richText, fontWeight, dataStore: this.dataStore,
       cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
       syncBaselines: Object.fromEntries(this.syncBaselines || []) });
     const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     await this.persistTextEditBackup(backupKey, backup);
+    assertUnchanged();
 
     const nextStore = { ...this.dataStore, ...changed };
-    const pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
     // Never publish a retry queue for records that failed to persist (e.g. quota).
-    await this.persistSyncBaselines(baselines);
-    await this.persistDataStore(nextStore);
-    localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
+    let pending;
+    try {
+      await this.persistSyncBaselines(baselines);
+      assertUnchanged();
+      await this.persistDataStore(nextStore);
+      assertUnchanged();
+      pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
+      localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
+    } catch (error) {
+      // A slow disk write can finish after another cell/save has changed the
+      // live data. Restore the latest live snapshots on disk before returning;
+      // never publish the stale plan or a retry queue for an aborted edit.
+      try {
+        await this.persistSyncBaselines();
+        await this.persistDataStore();
+      } catch (restoreError) {
+        error.message += `\n최신 기록 저장을 다시 확인해 주세요: ${restoreError.message}`;
+      }
+      throw error;
+    }
     this.dataStore = nextStore;
     this.invalidateAutocompleteHistory();
     this.syncBaselines = baselines;

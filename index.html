@@ -609,6 +609,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
             <button id="btnAddForcedCorrection" type="button" class="preset-action-btn">추가</button>
           </div>
           <p class="forced-correction-spacing-note">앞뒤 공백도 그대로 적용합니다. 목록의 ␠는 공백 한 칸입니다.</p>
+          <p id="forcedCorrectionEditorFeedback" class="forced-correction-editor-feedback" role="status" aria-live="polite" hidden></p>
         </section>
         <div class="forced-correction-search">
           <label for="forcedCorrectionSearch">목록 검색</label>

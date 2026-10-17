@@ -3036,6 +3036,9 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .forced-correction-editor-heading span { flex: 1; color: #718479; font-size: 11px; }
 #btnCancelForcedCorrectionEdit[hidden] { display: none; }
 .forced-correction-spacing-note { margin: 8px 0 0; color: #708379; font-size: 11px; line-height: 1.5; }
+.forced-correction-editor-feedback { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #e2f1e7; color: #235b38; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.forced-correction-editor-feedback[hidden] { display: none; }
+.forced-correction-editor-feedback[data-error="true"] { background: #fff0ed; color: #a12d20; }
 .forced-correction-search { display: flex; flex-shrink: 0; align-items: center; gap: 8px; margin: 14px 0 10px; }
 .forced-correction-search label { flex-shrink: 0; color: #526b5c; font-size: 13px; font-weight: 600; }
 .forced-correction-search input { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid #cbd8e5; border-radius: 6px; font: inherit; font-size: 13px; }

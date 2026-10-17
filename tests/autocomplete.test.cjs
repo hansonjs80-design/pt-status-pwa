@@ -808,3 +808,29 @@ test('query-specific whole formatting masks lower-priority character formatting'
   const formatted=app.getAutocompleteValueFormatting('memo','문구','문');
   assert.equal(formatted.color,null);assert.equal(formatted.fontWeight,400);assert.equal(formatted.richText,null);
 });
+
+test('stale autocomplete mouse actions refresh the visible query without committing or opening old settings', () => {
+  for(const change of ['typing','forced projection','detached editor','replaced menu','date']) {
+    let menu=null,committed=null,managed=0,refreshes=0;
+    const element=()=>({style:{},children:[],listeners:{},isConnected:true,offsetWidth:160,offsetHeight:100,
+      appendChild(child){this.children.push(child);},setAttribute(){},addEventListener(type,fn){this.listeners[type]=fn;},remove(){menu=null;}});
+    const document={createElement:element,getElementById:()=>menu,body:{appendChild(child){menu=child;}},addEventListener(){},removeEventListener(){}};
+    const window={addEventListener(){},removeEventListener(){},innerWidth:1000,innerHeight:800};
+    const app=createApp({'2026-09-30':[{}]}, {}, {document,window});
+    app.updateInlineAutocompletePreview=()=>{};app.moveAutocompleteSelection=()=>{};app.selectCell=()=>{};
+    app.refreshSearchSuggestions=()=>{refreshes++;};app.openAutocompletePresetManager=()=>{managed++;};
+    const cell={isConnected:true,getBoundingClientRect:()=>({left:100,top:100,bottom:130,width:100})};
+    const input={value:'La',dataset:{},isConnected:true,commitAutocompleteValue(value){committed=value;return true;}};
+    app.showAutocompleteMenu(0,'specialNote',cell,input,['Laser']);
+    const item=menu.children[1],button=item.children[1];
+    if(change==='typing')input.value='ICT';
+    if(change==='forced projection')input._forcedCorrectionProjection={value:'MW'};
+    if(change==='detached editor')input.isConnected=false;
+    if(change==='replaced menu')menu=element();
+    if(change==='date')app.currentDate='2026-10-01';
+    const event={preventDefault(){},stopPropagation(){}};
+    item.listeners.click(event);button.listeners.click(event);
+    assert.equal(committed,null,change);assert.equal(managed,0,change);
+    if(change==='typing'||change==='forced projection')assert.equal(refreshes,2,change);
+  }
+});

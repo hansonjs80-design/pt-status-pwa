@@ -1034,3 +1034,87 @@ test('writer border selection leaves Right to sheet navigation even with selecte
     assert.equal(app.isWriterRightExit({key:'ArrowRight'},input),true,'editing at the text end still commits and moves');
   }
 });
+
+test('bulk edits never replace newer input or preset changes made during an async save', async () => {
+  for (const stage of ['backup', 'baseline', 'records']) {
+    const {app,context,storage,queued}=createApp({'2026-10-04':[{name:'가상',part:'Lt. sh',memo:''}]},{part:['Lt. sh']});
+    let resume, entered;
+    const paused=new Promise(resolve=>{entered=resolve;});
+    const method={backup:'persistTextEditBackup',baseline:'persistSyncBaselines',records:'persistDataStore'}[stage];
+    const original=app[method].bind(app);
+    let first=true;
+    app[method]=async(...args)=>{
+      if(first){first=false;entered();await new Promise(resolve=>{resume=resolve;});}
+      return original(...args);
+    };
+    const edit=app.renameAutocompleteValue('part','Lt. sh','Lt. Sh');
+    await paused;
+    app.dataStore['2026-10-04'][0].memo='저장 중 새 입력';
+    app.dataStore['2026-10-05']=[{name:'새 가상환자'}];
+    app.syncBaselines.set('2026-10-05',[{name:'기준'}]);
+    app.pendingSyncDates.add('2026-10-05');
+    context.getPresets().part.push('새 후보');
+    resume();
+    await assert.rejects(edit,/작업 중.*변경/);
+    assert.equal(app.dataStore['2026-10-04'][0].part,'Lt. sh',stage);
+    assert.equal(app.dataStore['2026-10-04'][0].memo,'저장 중 새 입력',stage);
+    assert.equal(app.dataStore['2026-10-05'][0].name,'새 가상환자',stage);
+    assert.deepEqual(Array.from(context.getPresets().part),['Lt. sh','새 후보']);
+    assert.equal(app.pendingSyncDates.has('2026-10-05'),true);
+    assert.equal(queued.length,0);
+    if(stage!=='backup'){
+      assert.equal(JSON.parse(storage.get('PT_APP_DATA_STORAGE_V1'))['2026-10-04'][0].memo,'저장 중 새 입력');
+      assert.equal(JSON.parse(storage.get('PT_SYNC_BASELINES'))['2026-10-05'][0].name,'기준');
+    }
+  }
+});
+
+test('bulk history source rebases each date once without deep-cloning unchanged rows', async () => {
+  const {app}=createApp({'2026-10-03':[{name:'가상',part:'다른 문구'}],'2026-10-04':[{part:'Lt. sh'}]});
+  app.cloudSearchHistory=JSON.parse(JSON.stringify(app.dataStore));
+  app.syncBaselines=new Map(Object.entries(JSON.parse(JSON.stringify(app.dataStore))));
+  app.pendingSyncDates.add('2026-10-04');
+  const merge=app.mergeCloudRows.bind(app);let calls=0;
+  app.mergeCloudRows=(base,local,remote,options)=>{calls++;assert.equal(options?.readOnly,true);return merge(base,local,remote,options);};
+  assert.equal(await app.renameAutocompleteValue('part','Lt. sh','Lt. Sh'),1);
+  assert.equal(calls,2);
+  assert.equal(app.cloudSearchHistory['2026-10-03'][0].part,'다른 문구');
+});
+
+test('retry-queue storage failure restores original disk records before reporting a bulk-edit failure', async () => {
+  const {app,storage,context,queued}=createApp({'2026-10-04':[{name:'가상',memo:'기존'}]});
+  const original=context.localStorage.setItem;
+  context.localStorage.setItem=(key,value)=>{if(key==='PT_PENDING_DATES')throw new Error('queue quota');return original(key,value);};
+  await assert.rejects(app.renameAutocompleteValue('memo','기존','수정'),/queue quota/);
+  assert.equal(app.dataStore['2026-10-04'][0].memo,'기존');
+  assert.equal(JSON.parse(storage.get('PT_APP_DATA_STORAGE_V1'))['2026-10-04'][0].memo,'기존');
+  assert.equal(app.pendingSyncDates.size,0);
+  assert.equal(queued.length,0);
+});
+
+test('a completed no-match edit leaves a newer cell editor and manager context intact', async () => {
+  const {app}=createApp();
+  const originalContext={colKey:'part',items:['기존'],hidden:[]};
+  const newContext={colKey:'part',items:['다른 후보'],hidden:[]};
+  app.autocompleteManagerContext=originalContext;
+  app.getAutocompleteValueFormatting=()=>({});
+  app.openPresetTextColorEditor=async()=>({value:'수정'});
+  app.renameAutocompleteValue=async()=>{app.autocompleteManagerContext=newContext;return 0;};
+  app.isEditingCell=()=>true;
+  let renders=0,closed=0;
+  app.renderTable=()=>{renders++;};app.closeAutocompleteMenu=()=>{closed++;};
+  app.showSaveIndicator=()=>{};app.renderQuickChips=()=>{};app.updateSidebarStats=()=>{};
+  app.setAutocompleteValueColor=()=>{throw Error('must not overwrite newer manager');};
+  const input={value:'기존',blur(){throw Error('must not blur newer editor');}};
+  await app.editAutocompleteValue('part','기존',input);
+  assert.equal(renders,0);assert.equal(closed,0);assert.equal(input.value,'기존');
+  assert.equal(app.autocompleteManagerContext,newContext);assert.equal(app.autocompleteRenameBusy,false);
+});
+
+test('bulk rebasing preserves pending local deletions when no merge baseline exists', async () => {
+  const {app}=createApp({'2026-10-04':[]});
+  app.cloudSearchHistory={'2026-10-04':[{name:'가상',part:'기존'}]};
+  app.pendingSyncDates.add('2026-10-04');
+  assert.equal(await app.renameAutocompleteValue('part','기존','수정'),0);
+  assert.equal(app.dataStore['2026-10-04'].length,0);
+});
