@@ -12,6 +12,32 @@ function editor(value, caret=value.length) {
   return {value,selectionStart:caret,selectionEnd:caret,dataset:{},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
 }
 
+test('letter rules apply immediately after quantities while retaining numeric prefixes and the caret',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','qns','분');app.setForcedCorrection('*','mw','MW');
+  for(const [value,expected] of [['3qns','3분'],['15qns','15분'],['2.5qns','2.5분'],['3QNS','3분'],['３qns','３분'],['3mw','3MW']]) {
+    const input=editor(value);input._inputLanguage='native';
+    assert.equal(app.updateForcedCorrection(input,'memo'),true,value);
+    assert.equal(input.value,expected);assert.equal(input.selectionStart,expected.length);
+  }
+  const middle=editor('3qns / 확인',4);middle._inputLanguage='native';
+  assert.equal(app.updateForcedCorrection(middle,'memo'),true);assert.equal(middle.value,'3분 / 확인');assert.equal(middle.selectionStart,2);
+  for(const value of ['aqns','3aqns','3qnsa'])assert.equal(app.findForcedCorrection(value,'memo'),null,value);
+  assert.equal(app.findForcedCorrection('3qns4','memo',4),null,'keep the existing right boundary');
+  app.setForcedCorrection('*','10','열');assert.equal(app.findForcedCorrection('210','memo'),null,'do not replace a suffix of a number');
+});
+
+test('numeric-prefix matching retains longer-rule and column precedence, literal spaces and native composition',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','qns','분');app.setForcedCorrection('part','qns','분 부위');
+  assert.equal(app.findForcedCorrection('3qns','part').value,'3분 부위');
+  app.setForcedCorrection('*','3qns','삼 분');assert.equal(app.findForcedCorrection('3qns','memo').value,'삼 분');
+  app.deleteForcedCorrection('*','3qns');app.setForcedCorrection('*','rt ','Rt. ');
+  assert.equal(app.findForcedCorrection('3rt','memo'),null);assert.equal(app.findForcedCorrection('3rt ','memo').value,'3Rt. ');
+  app.setForcedCorrection('*','분','MIN');const input=editor('3분');input._inputLanguage='native';input.dataset.nativeComposing='true';
+  assert.equal(app.updateForcedCorrection(input,'memo'),true);assert.equal(input.value,'3분','leave native composition untouched');
+  assert.equal(app.getCellEditorValue(input),'3MIN');
+  assert.equal(app.updateForcedCorrection(input,'memo',{commit:true}),true);assert.equal(input.value,'3MIN');assert.equal(input.selectionStart,4);
+});
+
 test('one mixed-case rule recognizes its inverse and skips an inverse identical to the replacement',()=>{
   const {app}=createApp();app.setForcedCorrection('*','오Dj','오어');
   assert.equal(app.findForcedCorrection('오Dj','part').value,'오어');

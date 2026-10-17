@@ -135,9 +135,10 @@ class PTForcedCorrections {
     for (const rule of this.getApplicableForcedCorrectionRules(colKey)) {
       const start = caret - rule.source.length;
       if (start < 0 || value.slice(start, caret) !== rule.source) continue;
-      // Punctuation and symbols separate terms (La/mw → La/MW) without
-      // becoming part of a short rule. Longer explicit phrases still win.
-      if (start && !/^\s/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[start - 1])) continue;
+      // Numbers can directly precede a letter rule (3qns → 3분). Keep numeric
+      // rules intact (210 must not match 10), and let longer phrases win.
+      const afterNumber = start > 0 && /\p{Nd}/u.test(value[start - 1]) && /^[\p{L}\p{M}]/u.test(rule.source);
+      if (start && !afterNumber && !/^\s/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[start - 1])) continue;
       if (caret < value.length && !/\s$/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[caret])) continue;
       return {...rule, prefix: value.slice(0, start), suffix: value.slice(caret),
         value: value.slice(0, start) + rule.target + value.slice(caret), caret: start + rule.target.length};
