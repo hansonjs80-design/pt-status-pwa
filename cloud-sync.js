@@ -450,10 +450,10 @@ class PTCloudSync {
     this._manualDeletionWrite.catch(() => this.showSaveIndicator('수동 삭제 저장 확인 필요 · 동기화 보류', true));
   }
 
-  recordManualDateDeletion(previousPatients) {
-    if (previousPatients === '[]' || this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]) !== '[]') return;
+  recordManualDateDeletion(previousPatients, date = this.currentDate) {
+    if (previousPatients === '[]' || this.getPatientIdentitySnapshot(this.dataStore[date]) !== '[]') return;
     this.manualDateDeletions ||= new Map();
-    this.manualDateDeletions.set(this.currentDate, { patients: previousPatients });
+    this.manualDateDeletions.set(date, { patients: previousPatients });
     this.persistManualDateDeletions();
   }
 

@@ -233,7 +233,15 @@ class PTApp {
     // A commit/blur already saves the live rows; discard its trailing input save.
     clearTimeout(this._saveTimer);
     this._saveTimer = null;
-    if (this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]) !== '[]') this.invalidateManualDateDeletion(this.currentDate);
+    const currentPatients = this.getPatientIdentitySnapshot(this.dataStore[this.currentDate]);
+    if (currentPatients !== '[]') {
+      this.invalidateManualDateDeletion(this.currentDate);
+    } else if (!this.manualDateDeletions?.has(this.currentDate)) {
+      const baselinePatients = this.getPatientIdentitySnapshot(this.syncBaselines?.get(this.currentDate));
+      if (baselinePatients && baselinePatients !== '[]') {
+        this.recordManualDateDeletion(baselinePatients, this.currentDate);
+      }
+    }
     this.visitNameState ||= new WeakMap();
     this.visitTimeState ||= new WeakMap();
     for (const row of this.dataStore[this.currentDate] || []) {

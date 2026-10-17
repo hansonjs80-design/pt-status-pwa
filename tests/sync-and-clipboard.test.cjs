@@ -517,3 +517,36 @@ test('lunch line survives row deletion without being lost', () => {
   assert.equal(app.dataStore[date][0].name, '3행');
   assert.equal(app.dataStore[date][0]._lunchBefore, true);
 });
+
+test('cell edits clearing all patients authorize deliberate deletion and do not resurrect from cloud', async () => {
+  const date = '2026-09-30';
+  const db = new Map();
+  const disk = new Map();
+  const { app } = createApp(db);
+  app.syncStateDisk = async (key, value) => { if (value !== undefined) disk.set(key, value); return disk.get(key); };
+  app.dataStore[date] = [{ name: '', chartNo: '' }];
+
+  // 1. User types '홍길동' into the name cell:
+  app.dataStore[date][0].name = '홍길동';
+  app.saveDataStore();
+  await app.pushToCloud(date);
+  assert.equal(db.get(date).rows_data[0].name, '홍길동');
+
+  // 2. User deletes '홍길동' from the name cell:
+  app.dataStore[date][0].name = '';
+  app.saveDataStore();
+  assert.equal(app.manualDateDeletions?.has(date), true, 'clearing cell authorizes deliberate deletion');
+  await app.pushToCloud(date);
+
+  // Deleted text must stay deleted and not be resurrected from cloud:
+  assert.equal(app.dataStore[date][0].name, '');
+  assert.equal(db.get(date).rows_data[0]?.name || '', '');
+  assert.equal(app.manualDateDeletions?.has(date), false, 'successful sync consumes the deletion intent');
+
+  // 3. User re-enters a new name:
+  app.dataStore[date][0].name = '김철수';
+  app.saveDataStore();
+  assert.equal(app.manualDateDeletions?.has(date), false, 're-entering text invalidates deletion');
+  await app.pushToCloud(date);
+  assert.equal(db.get(date).rows_data[0].name, '김철수');
+});
