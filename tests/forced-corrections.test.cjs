@@ -12,6 +12,41 @@ function editor(value, caret=value.length) {
   return {value,selectionStart:caret,selectionEnd:caret,dataset:{},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
 }
 
+test('one mixed-case rule recognizes its inverse and skips an inverse identical to the replacement',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','오Dj','오어');
+  assert.equal(app.findForcedCorrection('오Dj','part').value,'오어');
+  assert.equal(app.findForcedCorrection('오dJ','part').value,'오어');
+  assert.equal(app.findForcedCorrection('오DJ','part'),null,'invert case rather than accept every permutation');
+  app.setForcedCorrection('*','mw','MW');
+  assert.equal(app.findForcedCorrection('mw','part').value,'MW');
+  assert.equal(app.findForcedCorrection('MW','part'),null);
+  assert.equal(app.getForcedCorrectionVariants({source:'허리',target:'Lumbar'}).length,1);
+});
+
+test('existing equivalent case pairs group for editing without rewriting presets and delete together',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','dh','오');app.setForcedCorrection('*','DH','오');
+  const before=JSON.stringify(app.getForcedCorrectionRules());
+  let groups=app.getGroupedForcedCorrectionRules();assert.equal(groups.length,1);
+  assert.equal(groups[0].storedSources.length,2);
+  assert.equal(JSON.stringify(app.getForcedCorrectionRules()),before);
+  app.setForcedCorrection('part','dh','오른쪽',groups[0]);
+  groups=app.getGroupedForcedCorrectionRules();assert.equal(groups.length,1);
+  assert.equal(app.findForcedCorrection('DH','part').value,'오른쪽');
+  assert.equal(app.findForcedCorrection('dh','memo'),null);
+  app.deleteForcedCorrection(groups[0].scope,groups[0].source,groups[0].storedSources);
+  assert.equal(app.getForcedCorrectionRules().length,0);
+});
+
+test('case-pair aliases respect explicit conflicts and column-specific precedence',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','dh','오');app.setForcedCorrection('*','DH','별도');
+  assert.equal(app.getGroupedForcedCorrectionRules().length,2);
+  assert.equal(app.findForcedCorrection('dh','part').value,'오');
+  assert.equal(app.findForcedCorrection('DH','part').value,'별도');
+  app.setForcedCorrection('part','dh','부위');
+  assert.equal(app.findForcedCorrection('DH','part').value,'부위');
+  assert.equal(app.findForcedCorrection('DH','memo').value,'별도');
+});
+
 test('forced corrections persist as preset strings with global rules and column overrides',()=>{
   const {app,storage}=createApp();
   assert.equal(app.setForcedCorrection('*','l/t','L/T'),true);
@@ -106,6 +141,46 @@ test('typing reuses compiled rules while local edits, deletion and incoming pres
   assert.equal(app.findForcedCorrection('code279','part').value,'TERM279');assert.equal(reads,3);
   context.setPresets({[app.getForcedCorrectionKey('*','code279')]:['REMOTE']});
   assert.equal(app.findForcedCorrection('code279','part').value,'REMOTE');assert.equal(reads,4);
+});
+
+test('manager scope filters combine with source, target and Korean scope searches without changing rules',()=>{
+  const {app}=createApp();
+  for(const [scope,source,target] of [['*','rt ','Rt. '],['prescription','chest','Chest HP'],['part','chest','Chest'],['!prescription','hp','온열']]) app.setForcedCorrection(scope,source,target);
+  const original=JSON.stringify(app.getForcedCorrectionRules());
+  const list=options=>app.getForcedCorrectionListView(options).filtered;
+  assert.equal(list({}).length,4);
+  assert.equal(list({scope:'*'}).length,1);
+  assert.equal(list({scope:'prescription',query:'cHeSt hP'}).length,1);
+  assert.equal(list({scope:'part',query:'HP'}).length,0);
+  assert.equal(list({scope:'!prescription',query:'온열'.normalize('NFD')})[0].source,'hp');
+  assert.equal(list({query:'처방열만'})[0].scope,'prescription');
+  assert.equal(list({query:'Rt.'})[0].source,'rt ');
+  assert.equal(JSON.stringify(app.getForcedCorrectionRules()),original);
+});
+
+test('manager sorts input, replacement, scope and registration in either direction with numeric ordering',()=>{
+  const {app}=createApp();
+  for(const [scope,source,target] of [['prescription','code10','C'],['part','code2','A'],['*','code1','B']]) app.setForcedCorrection(scope,source,target);
+  const sources=options=>Array.from(app.getForcedCorrectionListView(options).filtered,rule=>rule.source);
+  assert.deepEqual(sources({sort:'source'}),['code1','code2','code10']);
+  assert.deepEqual(sources({sort:'source',direction:'desc'}),['code10','code2','code1']);
+  assert.deepEqual(sources({sort:'target'}),['code2','code1','code10']);
+  assert.deepEqual(sources({sort:'target',direction:'desc'}),['code10','code1','code2']);
+  assert.deepEqual(sources({sort:'registered'}),['code10','code2','code1']);
+  assert.deepEqual(sources({sort:'registered',direction:'desc'}),['code1','code2','code10']);
+  assert.deepEqual(sources({sort:'scope',direction:'desc'}),sources({sort:'scope'}).reverse());
+});
+
+test('manager list reflects saved edits and deletions while correction precedence remains unchanged',()=>{
+  const {app}=createApp();app.setForcedCorrection('*','hp','공통');app.setForcedCorrection('prescription','hp','처방');
+  const rule=app.getForcedCorrectionListView({scope:'prescription'}).filtered[0];
+  app.setForcedCorrection('prescription','hp','새 처방',rule);
+  assert.equal(app.getForcedCorrectionListView({scope:'prescription',query:'새 처방'}).filtered[0].target,'새 처방');
+  assert.equal(app.findForcedCorrection('hp','prescription').value,'새 처방');
+  assert.equal(app.findForcedCorrection('hp','part').value,'공통');
+  app.deleteForcedCorrection('prescription','hp');
+  assert.equal(app.getForcedCorrectionListView({scope:'prescription'}).filtered.length,0);
+  assert.equal(app.findForcedCorrection('hp','prescription').value,'공통');
 });
 
 test('matching respects case and token boundaries and preserves surrounding text and caret',()=>{

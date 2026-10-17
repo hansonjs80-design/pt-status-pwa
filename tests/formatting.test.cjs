@@ -1300,3 +1300,16 @@ test('selected native text reads and removes its own underline while preserving 
     assert.ok(row._richText.memo.styles.slice(1,4).every(style=>!style?.underline));
   } finally {delete context.document;}
 });
+
+test('native Windows and macOS input-source shortcuts never apply formatting', () => {
+  const instance=Object.create(context.App.prototype);
+  try {
+    for(const platform of ['Win32','MacIntel']) {
+      context.navigator={platform};
+      for(const modifier of ['ctrlKey','metaKey']) {
+        const event={key:' ',code:'Space',[modifier]:true,preventDefault(){assert.fail('OS input-source shortcut was cancelled');}};
+        assert.equal(instance.handleTextFormattingShortcut(event),false);
+      }
+    }
+  } finally {delete context.navigator;}
+});

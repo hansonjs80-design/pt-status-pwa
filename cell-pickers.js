@@ -80,7 +80,7 @@ class PTCellPickers {
     }
     this.startInlineEdit(rowIdx, colKey, cellElement);
     const input = cellElement.querySelector("input");
-    if (input) this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, values, { includeTypedValue: false });
+    if (input) this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, values, { includeTypedValue: false, preferCurrentValue: true });
   }
 
   normalizePrescriptionInput(value) {

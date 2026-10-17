@@ -123,7 +123,7 @@ class PTSheetKeyboard {
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
-    if (this.usesWindowsNativeInput() && this.isHangulToggleKeyEvent(e)) return;
+    if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
     if (this.handleCellLanguageToggle(e)) return;
     if (this.consumePresetLeftRepeat(e)) return;
     if (this.handlePatientEditorSearchShortcut(e)) return;

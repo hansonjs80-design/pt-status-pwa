@@ -211,7 +211,7 @@ class PTAutocomplete {
     return results;
   }
 
-  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true } = {}) {
+  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true, preferCurrentValue = false } = {}) {
     const previous = this.autocompleteState;
     const query = this.getCellEditorValue(input);
     input.dataset.autocompleteQuery = query;
@@ -244,8 +244,9 @@ class PTAutocomplete {
       !(COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || []).includes(value) &&
       !(COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).some(hidden => hidden.toLowerCase() === value.toLowerCase()));
     const preferredIndex = preferred === undefined ? -1 : candidates.indexOf(preferred);
+    const currentValueIndex = preferCurrentValue ? candidates.indexOf(query.trim()) : -1;
     const currentWriterIndex = colKey === "writer" ? candidates.indexOf(this.normalizeWriterInput(query).trim()) : -1;
-    const selectedIndex = preservedIndex >= 0 ? preservedIndex : currentWriterIndex >= 0 ? currentWriterIndex : preferredIndex >= 0 ? preferredIndex
+    const selectedIndex = preservedIndex >= 0 ? preservedIndex : currentValueIndex >= 0 ? currentValueIndex : currentWriterIndex >= 0 ? currentWriterIndex : preferredIndex >= 0 ? preferredIndex
       : (showTypedValue && candidates.length > 1 ? 1 : 0);
     this.closeAutocompleteMenu();
     if (!candidates || candidates.length === 0) return;
@@ -384,14 +385,14 @@ class PTAutocomplete {
   async editAutocompleteValue(colKey, oldValue, input) {
     if (this.autocompleteRenameBusy) return;
     const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
-    const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색 수정", oldValue,
-      formatting.color, formatting.richText);
+    const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색·두께 수정", oldValue,
+      formatting.color, formatting.richText, formatting.fontWeight);
     if (!edit || !edit.value) return;
     const value = edit.value;
     this.autocompleteRenameBusy = true;
     try {
       this.showSaveIndicator('전체 날짜 기록 확인 중…');
-      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText);
+      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText, edit.fontWeight);
       // Do not let the existing editor restore the old text on blur.
       if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
       input?.blur();
@@ -402,17 +403,17 @@ class PTAutocomplete {
       if (this.autocompleteManagerContext?.colKey === colKey) {
         this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
         this.autocompleteManagerContext.hidden = (this.autocompleteManagerContext.hidden || []).map(item => item === oldValue ? value.trim() : item);
-        this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color, edit.richText);
+        this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color, edit.richText, edit.fontWeight);
         this.savePresetManagerItems(colKey);
         this.renderPresetManagerList();
       }
-      this.showSaveIndicator(`${count}개 셀 문구·글자색 수정 · 변경 전 백업 저장됨`);
+      this.showSaveIndicator(`${count}개 셀 문구·글자색·두께 수정 · 변경 전 백업 저장됨`);
     } catch (error) {
-      alert("문구·글자색 수정 실패: " + error.message);
+      alert("문구·글자색·두께 수정 실패: " + error.message);
     } finally { this.autocompleteRenameBusy = false; }
   }
 
-  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined) {
+  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined, fontWeight = undefined) {
     await this.syncBaselinesReady;
     const allowed = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
@@ -426,7 +427,7 @@ class PTAutocomplete {
       }
     }
     const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();
-    if (oldText === replacement && color === undefined && richText === undefined) return 0;
+    if (oldText === replacement && color === undefined && richText === undefined && fontWeight === undefined) return 0;
     const source = this.getSearchDataStore();
     const changed = {}, baselines = new Map(this.syncBaselines || []);
     let count = 0;
@@ -448,6 +449,7 @@ class PTAutocomplete {
           row._richText[colKey] = JSON.parse(JSON.stringify(richText));
           this.markCellFormatting(row, colKey, 'color');
         }
+        this.applyAutocompleteWeight(row, colKey, fontWeight);
         count++;
       }
       changed[date] = copy;
@@ -464,11 +466,12 @@ class PTAutocomplete {
       if (richText?.text === replacement && richText.colors?.length === replacement.length) presets[key] = richText.colors.map(color => color || '');
       else delete presets[key];
     }
+    this.writeAutocompleteWeight(presets, colKey, replacement, fontWeight, richText);
     if (!count && !presetChanged) return 0;
 
     // This backup covers records and presets only; no schema/Auth/Storage changes occur.
     const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
-      oldValue: oldText, newValue: replacement, color, richText, dataStore: this.dataStore,
+      oldValue: oldText, newValue: replacement, color, richText, fontWeight, dataStore: this.dataStore,
       cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
       syncBaselines: Object.fromEntries(this.syncBaselines || []) });
     const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -489,7 +492,7 @@ class PTAutocomplete {
       this.editHistory?.delete(date);
       this.scheduleSupabaseSync(date, false);
     }
-    if (presetChanged || color !== undefined || richText !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
+    if (presetChanged || color !== undefined || richText !== undefined || fontWeight !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
     return count;
   }
 

@@ -764,9 +764,11 @@ test('software input keyup switching keeps a native Korean composition through i
 });
 
 
-test('Windows Chrome and Edge leave native language keys and Latin input uncancelled', () => {
+test('Windows and macOS browsers leave native language keys and Latin input uncancelled', () => {
   const platforms=[
     {userAgentData:{platform:'Windows'},platform:'Win32'},
+    {platform:'MacIntel'},
+    {userAgentData:{platform:'macOS'}},
     {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0'},
     {platform:'Win32',userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0.0.0 Edg/140.0.0.0'},
   ];
@@ -792,9 +794,9 @@ test('Windows Chrome and Edge leave native language keys and Latin input uncance
   }
 });
 
-test('Windows follows native English Korean English transitions without any toggle key event', () => {
-  for(const column of ['no','chartNo','part','prescription','extra','memo','specialNote']) {
-    const {app,input}=editingFixture({column,value:'',environment:{navigator:{platform:'Win32'}}});
+test('Windows and macOS follow native English Korean English transitions without any toggle key event', () => {
+  for(const platform of ['Win32','MacIntel']) for(const column of ['no','chartNo','part','prescription','extra','memo','specialNote']) {
+    const {app,input}=editingFixture({column,value:'',environment:{navigator:{platform}}});
     input._listeners.keydown(keyEvent('p',{code:'KeyP'}));
     input.value='pt';input.setSelectionRange(2,2);
     input._listeners.beforeinput({type:'beforeinput',inputType:'insertText',data:'t'});
@@ -863,9 +865,9 @@ test('Windows detection handles Client Hints, Win32 and user-agent fallbacks', (
 });
 
 
-test('Windows names always compose Korean from English keys without changing other columns', () => {
-  for(const armed of [true,false]) {
-    const f=editingFixture({column:'name',armed,value:'',environment:{navigator:{platform:'Win32'}}});
+test('Windows and macOS names always compose Korean from English keys without changing other columns', () => {
+  for(const platform of ['Win32','MacIntel']) for(const armed of [true,false]) {
+    const f=editingFixture({column:'name',armed,value:'',environment:{navigator:{platform}}});
     const {app,input}=f;enableInputRepair(f);
     for(const signal of [{key:'HangulMode',code:'Lang1',keyCode:21},{key:'Alt',code:'AltRight',altKey:true}]) {
       input._listeners.keydown(keyEvent(signal.key,signal));

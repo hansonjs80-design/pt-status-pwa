@@ -104,60 +104,104 @@ class PTTableFormatting {
     return this.getAutocompleteColorKey(scope, value).replace('__color:', '__rich:');
   }
 
+  getAutocompleteWeightKey(scope, value) {
+    return this.getAutocompleteColorKey(scope, value).replace('__color:', '__weight:');
+  }
+
+  getAutocompleteRichWeightKey(scope, value) {
+    return this.getAutocompleteColorKey(scope, value).replace('__color:', '__richWeight:');
+  }
+
+  writeAutocompleteWeight(presets, scope, value, fontWeight, richText) {
+    if (fontWeight === undefined) return;
+    presets[this.getAutocompleteWeightKey(scope, value)] = [fontWeight == null ? '' : String(fontWeight)];
+    const key = this.getAutocompleteRichWeightKey(scope, value);
+    if (richText?.text === value && richText.styles?.some(style => style?.fontWeight != null)) {
+      presets[key] = Array.from({ length: value.length }, (_, i) => String(richText.styles[i]?.fontWeight ?? ''));
+    } else delete presets[key];
+  }
+
   getAutocompleteValueFormatting(colKey, value, query = null, excludedRow = null) {
-    // Applying the writer column color also governs future initials selected
-    // from its picker, rather than reviving a legacy per-initial preset color.
-    const writerColor = colKey === 'writer' && this.columnFormatting?.writer?.color;
-    if (writerColor?.resetRevision) return { color: writerColor.value || null, richText: null };
     const scopes = query ? [this.getAutocompleteRuleKey(colKey, query), colKey] : [colKey];
+    let colorEntry, colorRuns, weightEntry, weightRuns;
     for (const scope of scopes) {
-      const entry = COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)];
-      const colors = COLUMN_PRESETS[this.getAutocompleteRichKey(scope, value)];
-      if (entry || colors) return { color: entry?.[0] || null,
-        richText: colors?.length === value.length ? { text: value, colors: colors.map(color => color || null) } : null };
+      if (colorEntry === undefined && colorRuns === undefined) {
+        colorEntry = COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)];
+        colorRuns = COLUMN_PRESETS[this.getAutocompleteRichKey(scope, value)];
+      }
+      if (weightEntry === undefined && weightRuns === undefined) {
+        weightEntry = COLUMN_PRESETS[this.getAutocompleteWeightKey(scope, value)];
+        weightRuns = COLUMN_PRESETS[this.getAutocompleteRichWeightKey(scope, value)];
+      }
     }
-    const snapshot = this.getAutocompleteSearchSnapshot();
-    const row = this.getAutocompleteFormattingSource(snapshot, colKey, value, excludedRow);
-    if (row) {
-      const rich = this.getEffectiveCellRichText(row, colKey);
-      const validRich = rich?.text === String(row[colKey]) && Array.isArray(rich.colors);
-      const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;
-      // The latest matching record determines the candidate color, including
-      // a record that inherits the column default instead of an older color.
-      const offset = Math.max(0, String(row[colKey]).indexOf(value));
-      return { color: uniformColor || this.getCellFormatting(row, colKey, 'color') || null,
-        richText: validRich ? { text: value, colors: rich.colors.slice(offset, offset + value.length) } : null };
+    let row = null;
+    if (!colorEntry || !weightEntry) {
+      // A manager repaint can show many candidates while no cell editor owns a
+      // cached snapshot. Share one lookup for that repaint, then discard it.
+      const batch = this.autocompleteFormattingBatch;
+      const snapshot = batch ? (batch.snapshot ||= this.getAutocompleteSearchSnapshot()) : this.getAutocompleteSearchSnapshot();
+      row = this.getAutocompleteFormattingSource(snapshot, colKey, value, excludedRow);
     }
-    return { color: null, richText: null };
+    const rich = row && this.getEffectiveCellRichText(row, colKey);
+    const validRich = rich?.text === String(row?.[colKey]) && Array.isArray(rich.colors);
+    const offset = row ? Math.max(0, String(row[colKey]).indexOf(value)) : 0;
+    const colors = colorRuns?.length === value.length ? colorRuns.map(color => color || null)
+      : !colorEntry && validRich ? rich.colors.slice(offset, offset + value.length) : Array(value.length).fill(null);
+    const styles = Array.from({ length: value.length }, (_, i) => {
+      const weight = weightRuns?.length === value.length ? Number(weightRuns[i]) || null
+        : !weightEntry && validRich ? rich.styles?.[offset + i]?.fontWeight : null;
+      return weight ? { fontWeight: weight } : null;
+    });
+    const uniformColor = validRich && rich.colors.length && rich.colors.every(color => color && color === rich.colors[0]) ? rich.colors[0] : null;
+    const writerColor = colKey === 'writer' && this.columnFormatting?.writer?.color;
+    const color = writerColor?.resetRevision ? writerColor.value || null : colorEntry ? colorEntry[0] || null
+      : uniformColor || (row && this.getCellFormatting(row, colKey, 'color')) || null;
+    const fontWeight = weightEntry ? Number(weightEntry[0]) || null : (row && this.getCellFormatting(row, colKey, 'fontWeight')) || null;
+    const hasWeights = styles.some(Boolean);
+    const richText = colors.some(Boolean) || hasWeights ? { text: value, colors, ...(hasWeights ? { styles } : {}) } : null;
+    if (writerColor?.resetRevision && richText) richText.colors.fill(null);
+    return { color, richText: writerColor?.resetRevision && !hasWeights ? null : richText, fontWeight };
   }
 
   getAutocompleteValueColor(colKey, value, query = null, excludedRow = null) {
     return this.getAutocompleteValueFormatting(colKey, value, query, excludedRow).color;
   }
 
-  setAutocompleteValueColor(scope, value, color, richText = null) {
+  setAutocompleteValueColor(scope, value, color, richText = null, fontWeight = undefined) {
     COLUMN_PRESETS[this.getAutocompleteColorKey(scope, value)] = [color || ''];
     const key = this.getAutocompleteRichKey(scope, value);
     if (richText?.text === value && richText.colors?.length === value.length) COLUMN_PRESETS[key] = richText.colors.map(color => color || '');
     else delete COLUMN_PRESETS[key];
+    this.writeAutocompleteWeight(COLUMN_PRESETS, scope, value, fontWeight, richText);
     saveColumnPresets(COLUMN_PRESETS);
   }
 
+  applyAutocompleteWeight(row, colKey, fontWeight) {
+    if (fontWeight === undefined) return;
+    row._textStyles ||= {}; row._textStyles[colKey] ||= {};
+    if (fontWeight == null) delete row._textStyles[colKey].fontWeight;
+    else row._textStyles[colKey].fontWeight = Number(fontWeight);
+    this.markCellFormatting(row, colKey, 'fontWeight');
+  }
+
   applyAutocompleteColor(row, colKey, value, query) {
-    const { color, richText } = this.getAutocompleteValueFormatting(colKey, value, query, row);
+    const { color, richText, fontWeight } = this.getAutocompleteValueFormatting(colKey, value, query, row);
     row._textColors ||= {};
     if (color) row._textColors[colKey] = color; else delete row._textColors[colKey];
     if (row._richText) delete row._richText[colKey];
-    if (richText) { row._richText ||= {}; row._richText[colKey] = richText; }
+    if (richText) { row._richText ||= {}; row._richText[colKey] = JSON.parse(JSON.stringify(richText)); }
     this.markCellFormatting(row, colKey, 'color');
+    this.applyAutocompleteWeight(row, colKey, fontWeight);
   }
 
   renderAutocompleteText(element, colKey, value, query, excludedRow = null) {
-    const { color, richText } = this.getAutocompleteValueFormatting(colKey, value, query, excludedRow);
+    const { color, richText, fontWeight } = this.getAutocompleteValueFormatting(colKey, value, query, excludedRow);
     element.style.color = color || '';
+    element.style.fontWeight = fontWeight == null ? '' : String(fontWeight);
     if (!value) { element.textContent = '빈칸'; return; }
     const row = { [colKey]: value, _richText: { [colKey]: richText } };
     this.markCellFormatting(row, colKey, 'color');
+    this.markCellFormatting(row, colKey, 'fontWeight');
     this.renderColoredText(element, row, colKey);
   }
 
@@ -173,7 +217,7 @@ class PTTableFormatting {
     return channels?.length >= 3 ? '#' + channels.slice(0, 3).map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('') : '#000000';
   }
 
-  openPresetTextColorEditor(title, value, color, richText = null) {
+  openPresetTextColorEditor(title, value, color, richText = null, fontWeight = null) {
     return new Promise(resolve => {
       const previousFocus = document.activeElement;
       const overlay = document.createElement('div'); overlay.className = 'modal-overlay preset-color-editor';
@@ -184,22 +228,48 @@ class PTTableFormatting {
       const text = document.createElement('input'); text.type = 'text'; text.value = value; text.setAttribute('aria-label', '문구');
       let baseColor = color || null;
       let previousText = value;
+      let weights = Array.from({ length: value.length }, (_, i) => richText?.text === value ? richText.styles?.[i]?.fontWeight ?? null : null);
       let colors = richText?.text === value && richText.colors?.length === value.length ? [...richText.colors] : Array(value.length).fill(null);
       const label = document.createElement('label');
       const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = Boolean(color);
       label.append(enabled, document.createTextNode(' 전체 기본 글자색 지정'));
       const picker = document.createElement('input'); picker.type = 'color'; picker.value = this.toColorPickerValue(color); picker.setAttribute('aria-label', '글자색');
       const help = document.createElement('p'); help.className = 'preset-color-help';
-      help.textContent = '문구에서 원하는 글자를 선택하고 색을 고르세요. 글자마다 다른 색을 지정할 수 있습니다.';
-      const preview = document.createElement('div'); preview.className = 'preset-color-preview'; preview.setAttribute('aria-label', '글자색 미리보기');
+      help.textContent = '문구에서 원하는 글자를 선택하고 색이나 두께를 고르세요. 글자마다 다르게 지정할 수 있습니다.';
+      const preview = document.createElement('div'); preview.className = 'preset-color-preview'; preview.setAttribute('aria-label', '글자색·두께 미리보기');
+      const weightLabel = document.createElement('label'); weightLabel.className = 'preset-weight-controls';
+      weightLabel.append(document.createTextNode(' 글자 두께 '));
+      const weightPicker = document.createElement('select'); weightPicker.setAttribute('aria-label', '글자 두께');
+      for (const [number, caption] of [['', '열 기본값'], [400, '보통'], [500, '중간'], [600, '약간 굵게'], [700, '굵게'], [800, '더 굵게'], [900, '가장 굵게']]) {
+        const option = document.createElement('option'); option.value = String(number); option.textContent = caption; weightPicker.append(option);
+      }
+      weightPicker.value = fontWeight == null ? '' : String(fontWeight);
+      const weightApply = document.createElement('button'); weightApply.type = 'button'; weightApply.textContent = '선택 글자에 적용';
+      weightApply.onmousedown = event => event.preventDefault();
+      weightApply.onclick = () => {
+        if (text.selectionStart === text.selectionEnd) return;
+        for (let i = text.selectionStart; i < text.selectionEnd; i++) weights[i] = Number(weightPicker.value) || null;
+        updatePreview();
+      };
+      const weightAll = document.createElement('button'); weightAll.type = 'button'; weightAll.textContent = '전체 글자에 적용';
+      weightAll.onclick = () => { fontWeight = Number(weightPicker.value) || null; weights.fill(null); updatePreview(); };
+      weightPicker.onchange = () => {
+        const start = text.selectionStart, end = text.selectionEnd;
+        if (start !== end && !(start === 0 && end === text.value.length)) {
+          for (let i = start; i < end; i++) weights[i] = Number(weightPicker.value) || null;
+        } else { fontWeight = Number(weightPicker.value) || null; weights.fill(null); }
+        updatePreview();
+      };
+      weightLabel.append(weightPicker, weightApply, weightAll);
       const updatePreview = () => {
         text.style.color = enabled.checked ? baseColor || '' : '';
         preview.style.color = text.style.color;
+        text.style.fontWeight = preview.style.fontWeight = fontWeight == null ? '' : String(fontWeight);
         preview.replaceChildren();
         for (let i = 0; i < text.value.length;) {
           let end = i + 1;
-          while (end < text.value.length && colors[end] === colors[i]) end++;
-          const span = document.createElement('span'); span.textContent = text.value.slice(i, end); span.style.color = colors[i] || '';
+          while (end < text.value.length && colors[end] === colors[i] && weights[end] === weights[i]) end++;
+          const span = document.createElement('span'); span.textContent = text.value.slice(i, end); span.style.color = colors[i] || ''; span.style.fontWeight = weights[i] == null ? '' : String(weights[i]);
           preview.append(span); i = end;
         }
       };
@@ -218,6 +288,7 @@ class PTTableFormatting {
         while (suffix < previousText.length - start && suffix < text.value.length - start &&
           previousText[previousText.length - suffix - 1] === text.value[text.value.length - suffix - 1]) suffix++;
         colors.splice(start, previousText.length - start - suffix, ...Array(text.value.length - start - suffix).fill(null));
+        weights.splice(start, previousText.length - start - suffix, ...Array(text.value.length - start - suffix).fill(null));
         previousText = text.value; updatePreview();
       };
       const colorActions = document.createElement('div'); colorActions.className = 'preset-character-color-actions';
@@ -242,12 +313,14 @@ class PTTableFormatting {
         event.preventDefault();
         const trimmed = text.value.trim(), offset = text.value.indexOf(trimmed);
         const savedColors = colors.slice(Math.max(0, offset), Math.max(0, offset) + trimmed.length);
-        close({ value: trimmed, color: enabled.checked ? baseColor : null,
-          richText: savedColors.some(Boolean) ? { text: trimmed, colors: savedColors } : null });
+        const savedWeights = weights.slice(Math.max(0, offset), Math.max(0, offset) + trimmed.length);
+        const styles = savedWeights.map(weight => weight == null ? null : { fontWeight: weight });
+        close({ value: trimmed, color: enabled.checked ? baseColor : null, fontWeight,
+          richText: savedColors.some(Boolean) || savedWeights.some(Boolean) ? { text: trimmed, colors: savedColors, ...(savedWeights.some(Boolean) ? { styles } : {}) } : null });
       };
       overlay.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(null); } };
       overlay.onclick = event => { if (event.target === overlay) close(null); };
-      actions.append(cancel, save); form.append(heading, text, help, label, picker, colorActions, preview, actions); overlay.append(form); document.body.append(overlay);
+      actions.append(cancel, save); form.append(heading, text, help, label, picker, colorActions, weightLabel, preview, actions); overlay.append(form); document.body.append(overlay);
       updatePreview();
       text.focus(); text.select();
     });
@@ -909,6 +982,7 @@ class PTTableFormatting {
   }
 
   handleTextFormattingShortcut(event) {
+    if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(event)) return false;
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.isComposing || event.keyCode === 229) return false;
     const red = event.code === 'Space' || event.key === ' ';
     const bold = event.code === 'KeyB' || event.key?.toLowerCase() === 'b';

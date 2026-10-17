@@ -230,6 +230,14 @@ test('autocomplete refresh preserves the selected value until the query or edito
   assert.equal(app.getSelectedAutocompleteItem(), '이소림');
   input.value = '김'; show([]);
   assert.deepEqual(Array.from(app.autocompleteState.candidates), ['김']);
+  const prescriptionInput = { value: '사지', dataset: {} };
+  app.showAutocompleteMenu(0, 'prescription', cell, prescriptionInput, ['척추', '사지', '한랭'], { includeTypedValue: false, preferCurrentValue: true });
+  assert.equal(app.autocompleteState.selectedIndex, 1);
+  assert.equal(app.getSelectedAutocompleteItem(), '사지');
+  app.closeAutocompleteMenu();
+  prescriptionInput.value = '';
+  app.showAutocompleteMenu(0, 'prescription', cell, prescriptionInput, ['척추', '사지', '한랭'], { includeTypedValue: false, preferCurrentValue: true });
+  assert.equal(app.autocompleteState.selectedIndex, 0);
 });
 
 
@@ -751,4 +759,52 @@ test('lowercase input keeps registered case variants in the menu and commits the
     assert.equal(managed.query, 'mw');
     assert.deepEqual(Array.from(managed.items), ['MW', 'Mw', 'MW말고 ICT선호']);
   }
+});
+
+test('preset whole and character weights persist, render and apply with query precedence', () => {
+  const presets={specialNote:['허리핀']};
+  const app=createApp({},presets,{localStorage:{getItem(){return null;},setItem(){}}});
+  app.setAutocompleteValueColor('specialNote','허리핀','#123456',null,600);
+  const scope=app.getAutocompleteRuleKey('specialNote','허');
+  app.setAutocompleteValueColor(scope,'허리핀',null,{text:'허리핀',colors:[null,null,null],styles:[null,null,{fontWeight:900}]},400);
+  const formatting=app.getAutocompleteValueFormatting('specialNote','허리핀','허');
+  assert.equal(formatting.fontWeight,400);assert.equal(formatting.richText.styles[2].fontWeight,900);
+  assert.equal(app.getAutocompleteValueFormatting('specialNote','허리핀').fontWeight,600);
+  const row={specialNote:'허리핀'};app.applyAutocompleteColor(row,'specialNote','허리핀','허');
+  assert.equal(app.getCellFormatting(row,'specialNote','fontWeight'),400);
+  assert.equal(app.getEffectiveCellRichText(row,'specialNote').styles[2].fontWeight,900);
+  row._richText.specialNote.styles[2].fontWeight=500;
+  assert.equal(app.getAutocompleteValueFormatting('specialNote','허리핀','허').richText.styles[2].fontWeight,900);
+  app.setAutocompleteValueColor('specialNote','허리핀','#abcdef');
+  assert.equal(app.getAutocompleteValueFormatting('specialNote','허리핀').fontWeight,600,'color-only edits preserve weight');
+  const relaunched=createApp({},JSON.parse(JSON.stringify(presets)));
+  assert.equal(relaunched.getAutocompleteValueFormatting('specialNote','허리핀','허').fontWeight,400);
+});
+
+test('candidate weights inherit the latest formatted history record', () => {
+  const app=createApp({'2026-09-28':[{part:'허리',_textStyles:{part:{fontWeight:700}}}],'2026-09-29':[{part:'허리',_textStyles:{part:{fontWeight:500}}}]});
+  assert.equal(app.getAutocompleteValueFormatting('part','허리').fontWeight,500);
+  const target={part:'허리'};app.applyAutocompleteColor(target,'part','허리');
+  assert.equal(app.getCellFormatting(target,'part','fontWeight'),500);
+});
+
+test('history text edits persist weights only after the existing backup succeeds', async () => {
+  const presets={memo:['기존']};
+  const app=createApp({'2026-09-29':[{memo:'기존',_textStyles:{memo:{fontWeight:400}}}]},presets,{localStorage:{getItem(){return null;},setItem(){}}});
+  app.syncBaselines=new Map();app.pendingSyncDates=new Set();let backedUp=false;
+  app.persistTextEditBackup=async()=>{backedUp=true;};
+  app.persistSyncBaselines=async()=>{assert.equal(backedUp,true);};
+  app.persistDataStore=async()=>{assert.equal(backedUp,true);};
+  app.scheduleSupabaseSync=()=>{};
+  assert.equal(await app.renameAutocompleteValue('memo','기존','변경',null,null,800),1);
+  assert.equal(app.getCellFormatting(app.dataStore['2026-09-29'][0],'memo','fontWeight'),800);
+  assert.equal(app.getAutocompleteValueFormatting('memo','변경').fontWeight,800);
+});
+
+test('query-specific whole formatting masks lower-priority character formatting', () => {
+  const presets={};const app=createApp({},presets,{localStorage:{getItem(){return null;},setItem(){}}});
+  app.setAutocompleteValueColor('memo','문구','#ff0000',{text:'문구',colors:[null,'#0000ff'],styles:[null,{fontWeight:900}]},700);
+  app.setAutocompleteValueColor(app.getAutocompleteRuleKey('memo','문'),'문구',null,null,400);
+  const formatted=app.getAutocompleteValueFormatting('memo','문구','문');
+  assert.equal(formatted.color,null);assert.equal(formatted.fontWeight,400);assert.equal(formatted.richText,null);
 });

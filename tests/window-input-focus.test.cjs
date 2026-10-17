@@ -84,13 +84,13 @@ test('selection, date, and recovery changes invalidate an old return target', ()
   }
 });
 
-test('visibility return retries after focus is restored and leaves non-Windows input alone', () => {
+test('visibility return retries after focus is restored and leaves platforms without native input enabled alone', () => {
   const f = fixture(); f.cell.editor = f.editor(); f.document.activeElement = f.cell.editor;
   f.document.visibilityState = 'hidden'; f.document.focused = false; f.events.visibilitychange();
   f.cell.editor = null; f.document.activeElement = f.document.body;
   f.document.visibilityState = 'visible'; f.events.visibilitychange(); assert.equal(f.calls.length, 0);
   f.document.focused = true; f.tasks.forEach(task => task());
   assert.equal(f.document.activeElement, f.cell.editor);
-  const mac = fixture('MacIntel'); mac.events.blur(); mac.events.focus();
+  const mac = fixture('Linux x86_64'); mac.events.blur(); mac.events.focus();
   assert.equal(mac.calls.length, 0);
 });

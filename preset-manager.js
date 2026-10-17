@@ -373,98 +373,102 @@ class PTPresetManager {
   renderPresetManagerList() {
     const container = this.elPresetListContainer;
     if (!container) return;
-    const scrollTop = container.scrollTop;
-    const focusedRow = document.activeElement?.closest?.('#presetListContainer [data-preset-index]');
-    const focusedAction = focusedRow ? document.activeElement.dataset.presetAction : null;
-    const focusedIndex = Number(focusedRow?.dataset.presetIndex);
-    container.innerHTML = "";
+    const previousBatch = this.autocompleteFormattingBatch;
+    this.autocompleteFormattingBatch = {};
+    try {
+      const scrollTop = container.scrollTop;
+      const focusedRow = document.activeElement?.closest?.('#presetListContainer [data-preset-index]');
+      const focusedAction = focusedRow ? document.activeElement.dataset.presetAction : null;
+      const focusedIndex = Number(focusedRow?.dataset.presetIndex);
+      container.innerHTML = "";
 
-    const tab = this.activePresetTab;
-    const items = this.getPresetManagerItems(tab);
-    const count = document.getElementById("presetManagerCount");
-    if (count) count.textContent = items.length;
+      const tab = this.activePresetTab;
+      const items = this.getPresetManagerItems(tab);
+      const count = document.getElementById("presetManagerCount");
+      if (count) count.textContent = items.length;
 
-    if (items.length === 0) {
-      container.innerHTML = '<div class="preset-list-empty">등록된 문구가 없습니다.<br>위 입력칸에서 첫 문구를 추가해보세요.</div>';
-      if (focusedAction) this.elManagerNewPresetInput?.focus();
-      return;
-    }
-
-    items.forEach((val, idx) => {
-      const itemEl = document.createElement("div");
-      itemEl.className = "preset-list-item";
-      itemEl.dataset.presetIndex = idx;
-      const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
-      itemEl.classList.toggle("preset-candidate-hidden", hidden);
-      this.bindPresetDragRow(itemEl, tab, idx);
-
-      const numEl = document.createElement("span");
-      numEl.className = "preset-item-num";
-      numEl.textContent = `${idx + 1}.`;
-
-      const textEl = document.createElement("span");
-      textEl.className = "preset-item-text";
-      const label = val === "" ? "빈칸" : val;
-      this.renderAutocompleteText(textEl, tab, val, this.autocompleteManagerContext?.query);
-      if (hidden) textEl.append(document.createTextNode(' · 숨김'));
-      const itemColor = this.getAutocompleteValueColor(tab, val, this.autocompleteManagerContext?.query);
-      textEl.title = `${label} (더블클릭하여 수정)`;
-      textEl.style.cursor = "pointer";
-      textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
-
-      const actionsEl = document.createElement("div");
-      actionsEl.className = "preset-item-actions";
-      const colorPicker = document.createElement("input"); colorPicker.type = "color";
-      colorPicker.className = "preset-item-color"; colorPicker.value = this.toColorPickerValue(itemColor);
-      colorPicker.dataset.presetAction = "color";
-      colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
-      colorPicker.onchange = () => {
-        this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
-        this.renderPresetManagerList();
-      };
-      actionsEl.appendChild(colorPicker);
-      const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
-        this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.renderPresetManagerList();
-      });
-      actionsEl.appendChild(resetColor);
-
-      const btnUp = this.createPresetManagerAction("up", `${label} 위로 이동`, () => this.movePresetAt(tab, idx, -1));
-      btnUp.disabled = idx === 0;
-      const btnDown = this.createPresetManagerAction("down", `${label} 아래로 이동`, () => this.movePresetAt(tab, idx, 1));
-      btnDown.disabled = idx === items.length - 1;
-      actionsEl.append(btnUp, btnDown);
-      const btnEdit = this.createPresetManagerAction("edit", `${label} 문구·글자색 수정`, () => this.editPresetAt(tab, idx));
-      actionsEl.appendChild(btnEdit);
-      if (this.autocompleteManagerContext) {
-        const visibility = document.createElement("button");
-        visibility.type = "button"; visibility.className = "preset-action-btn";
-        visibility.textContent = hidden ? "표시" : "숨김";
-        visibility.setAttribute("aria-label", `${val} ${hidden ? "다시 표시" : "자동완성에서 숨김"}`);
-        visibility.onclick = () => this.togglePresetCandidateVisibility(tab, idx);
-        actionsEl.appendChild(visibility);
-        const historyEdit = document.createElement("button");
-        historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
-        historyEdit.textContent = "이전 기록 수정";
-        historyEdit.title = "모든 날짜의 같은 열에서 이 문구 수정";
-        historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
-        actionsEl.appendChild(historyEdit);
+      if (items.length === 0) {
+        container.innerHTML = '<div class="preset-list-empty">등록된 문구가 없습니다.<br>위 입력칸에서 첫 문구를 추가해보세요.</div>';
+        if (focusedAction) this.elManagerNewPresetInput?.focus();
+        return;
       }
 
-      // 삭제 버튼
-      const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.deletePresetAt(tab, idx));
-      actionsEl.appendChild(btnDel);
+      items.forEach((val, idx) => {
+        const itemEl = document.createElement("div");
+        itemEl.className = "preset-list-item";
+        itemEl.dataset.presetIndex = idx;
+        const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
+        itemEl.classList.toggle("preset-candidate-hidden", hidden);
+        this.bindPresetDragRow(itemEl, tab, idx);
 
-      itemEl.appendChild(numEl);
-      itemEl.appendChild(textEl);
-      itemEl.appendChild(actionsEl);
-      container.appendChild(itemEl);
-    });
-    container.scrollTop = scrollTop;
-    if (focusedAction) {
-      const row = container.querySelector(`[data-preset-index="${Math.min(focusedIndex, items.length - 1)}"]`);
-      const control = row?.querySelector(`[data-preset-action="${focusedAction}"]`);
-      (control?.disabled ? row.querySelector('[data-preset-action="edit"]') : control)?.focus({ preventScroll: true });
-    }
+        const numEl = document.createElement("span");
+        numEl.className = "preset-item-num";
+        numEl.textContent = `${idx + 1}.`;
+
+        const textEl = document.createElement("span");
+        textEl.className = "preset-item-text";
+        const label = val === "" ? "빈칸" : val;
+        this.renderAutocompleteText(textEl, tab, val, this.autocompleteManagerContext?.query);
+        if (hidden) textEl.append(document.createTextNode(' · 숨김'));
+        const itemColor = this.getAutocompleteValueColor(tab, val, this.autocompleteManagerContext?.query);
+        textEl.title = `${label} (더블클릭하여 수정)`;
+        textEl.style.cursor = "pointer";
+        textEl.addEventListener("dblclick", () => this.editPresetAt(tab, idx));
+
+        const actionsEl = document.createElement("div");
+        actionsEl.className = "preset-item-actions";
+        const colorPicker = document.createElement("input"); colorPicker.type = "color";
+        colorPicker.className = "preset-item-color"; colorPicker.value = this.toColorPickerValue(itemColor);
+        colorPicker.dataset.presetAction = "color";
+        colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
+        colorPicker.onchange = () => {
+          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
+          this.renderPresetManagerList();
+        };
+        actionsEl.appendChild(colorPicker);
+        const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
+          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.renderPresetManagerList();
+        });
+        actionsEl.appendChild(resetColor);
+
+        const btnUp = this.createPresetManagerAction("up", `${label} 위로 이동`, () => this.movePresetAt(tab, idx, -1));
+        btnUp.disabled = idx === 0;
+        const btnDown = this.createPresetManagerAction("down", `${label} 아래로 이동`, () => this.movePresetAt(tab, idx, 1));
+        btnDown.disabled = idx === items.length - 1;
+        actionsEl.append(btnUp, btnDown);
+        const btnEdit = this.createPresetManagerAction("edit", `${label} 문구·글자색·두께 수정`, () => this.editPresetAt(tab, idx));
+        actionsEl.appendChild(btnEdit);
+        if (this.autocompleteManagerContext) {
+          const visibility = document.createElement("button");
+          visibility.type = "button"; visibility.className = "preset-action-btn";
+          visibility.textContent = hidden ? "표시" : "숨김";
+          visibility.setAttribute("aria-label", `${val} ${hidden ? "다시 표시" : "자동완성에서 숨김"}`);
+          visibility.onclick = () => this.togglePresetCandidateVisibility(tab, idx);
+          actionsEl.appendChild(visibility);
+          const historyEdit = document.createElement("button");
+          historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
+          historyEdit.textContent = "이전 기록 수정";
+          historyEdit.title = "모든 날짜의 같은 열에서 이 문구 수정";
+          historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
+          actionsEl.appendChild(historyEdit);
+        }
+
+        // 삭제 버튼
+        const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.deletePresetAt(tab, idx));
+        actionsEl.appendChild(btnDel);
+
+        itemEl.appendChild(numEl);
+        itemEl.appendChild(textEl);
+        itemEl.appendChild(actionsEl);
+        container.appendChild(itemEl);
+      });
+      container.scrollTop = scrollTop;
+      if (focusedAction) {
+        const row = container.querySelector(`[data-preset-index="${Math.min(focusedIndex, items.length - 1)}"]`);
+        const control = row?.querySelector(`[data-preset-action="${focusedAction}"]`);
+        (control?.disabled ? row.querySelector('[data-preset-action="edit"]') : control)?.focus({ preventScroll: true });
+      }
+    } finally { this.autocompleteFormattingBatch = previousBatch; }
   }
 
   setPresetManagerFeedback(message) {
@@ -506,7 +510,7 @@ class PTPresetManager {
     if (curVal === undefined) return;
 
     const formatting = this.getAutocompleteValueFormatting(tab, curVal, this.autocompleteManagerContext?.query);
-    const edit = await this.openPresetTextColorEditor("자동완성 문구·글자색 수정", curVal, formatting.color, formatting.richText);
+    const edit = await this.openPresetTextColorEditor("자동완성 문구·글자색·두께 수정", curVal, formatting.color, formatting.richText, formatting.fontWeight);
     if (!edit) return;
     const trimmed = tab === "writer" ? this.normalizeWriterInput(edit.value) : edit.value;
     const context = this.autocompleteManagerContext;
@@ -516,8 +520,10 @@ class PTPresetManager {
     if (trimmed !== curVal && !this.getPresetManagerItems(tab).includes(curVal)) {
       delete COLUMN_PRESETS[this.getAutocompleteColorKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteRichKey(scope, curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteWeightKey(scope, curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(scope, curVal)];
     }
-    this.setAutocompleteValueColor(scope, trimmed, edit.color, edit.richText);
+    this.setAutocompleteValueColor(scope, trimmed, edit.color, edit.richText, edit.fontWeight);
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
@@ -534,6 +540,8 @@ class PTPresetManager {
       if (!items.includes(curVal)) {
         delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
         delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
+        delete COLUMN_PRESETS[this.getAutocompleteWeightKey(this.getPresetManagerKey(tab), curVal)];
+        delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(this.getPresetManagerKey(tab), curVal)];
       }
       this.savePresetManagerItems(tab);
       this.renderPresetManagerList();
