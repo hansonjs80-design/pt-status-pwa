@@ -131,23 +131,34 @@ class PTForcedCorrections {
     return cache.get(colKey);
   }
 
-  findForcedCorrection(value, colKey, caret = value.length) {
+  findForcedCorrection(value, colKey, caret = value.length, {foldCase = false} = {}) {
+    let matched = null;
     for (const rule of this.getApplicableForcedCorrectionRules(colKey)) {
+      if (matched && rule.source.length < matched.source.length) break;
       const start = caret - rule.source.length;
-      if (start < 0 || value.slice(start, caret) !== rule.source) continue;
+      if (start < 0) continue;
+      const entered = value.slice(start, caret);
+      if (foldCase ? entered.toLowerCase() !== rule.source.toLowerCase() : entered !== rule.source) continue;
       // Numbers can directly precede a letter rule (3qns → 3분). Keep numeric
       // rules intact (210 must not match 10), and let longer phrases win.
       const afterNumber = start > 0 && /\p{Nd}/u.test(value[start - 1]) && /^[\p{L}\p{M}]/u.test(rule.source);
       if (start && !afterNumber && !/^\s/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[start - 1])) continue;
       if (caret < value.length && !/\s$/.test(rule.source) && !/[\s\p{P}\p{S}]/u.test(value[caret])) continue;
-      return {...rule, prefix: value.slice(0, start), suffix: value.slice(caret),
+      const result = {...rule, prefix: value.slice(0, start), suffix: value.slice(caret),
         value: value.slice(0, start) + rule.target + value.slice(caret), caret: start + rule.target.length};
+      if (!foldCase) return result;
+      // Case fallback is only for whitespace typed after a replacement. Never
+      // guess when explicit case variants have different replacement targets.
+      if (matched && matched.target !== result.target) return null;
+      matched = result;
     }
-    return null;
+    return matched;
   }
 
   updateForcedCorrection(input, colKey, {commit = false, nativeData = null, deleting = false} = {}) {
     const previous = input._forcedCorrectionProjection;
+    const continuation = input._forcedCorrectionContinuation;
+    delete input._forcedCorrectionContinuation;
     const value = previous?.nativeKorean ? input.value : this.getCellEditorBaseValue(input);
     const range = input._nativeCellComposition;
     const caret = !this.usesNativeCellInput() && input._inputLanguage === 'eng' && typeof range?.data === 'string'
@@ -163,14 +174,32 @@ class PTForcedCorrections {
           : previous.englishToKorean ? this.convertEngToHangul(remaining) : remaining;
         correction = {...previous, value: previous.prefix + previous.target + rest + previous.suffix,
           caret: previous.prefix.length + previous.target.length + rest.length};
+        if (/\s$/u.test(rest)) {
+          const next = this.findForcedCorrection(correction.value, colKey, correction.caret) ||
+            this.findForcedCorrection(correction.value, colKey, correction.caret, {foldCase:true});
+          if (next) {
+            // Consume the new trigger into the native-to-visible mapping. A
+            // final/replayed IME event must not apply that trigger again.
+            const rawCaret = value.length - previous.suffix.length;
+            correction = {...correction, prefix:'', source:value.slice(0, rawCaret), suffix:value.slice(rawCaret),
+              target:next.value.slice(0, next.caret), value:next.value, caret:next.caret};
+          }
+        }
       }
     }
     if (!correction && !deleting && (input.selectionStart === input.selectionEnd || commit)) {
       correction = this.findForcedCorrection(value, colKey, caret);
+      if (!correction && continuation && caret > continuation.caret &&
+          value.slice(0, continuation.caret) === continuation.value.slice(0, continuation.caret) &&
+          value.slice(caret) === continuation.value.slice(continuation.caret) &&
+          /^\s+$/u.test(value.slice(continuation.caret, caret))) {
+        correction = this.findForcedCorrection(value, colKey, caret, {foldCase:true});
+      }
     }
     delete input._forcedCorrectionProjection;
     if (!correction) return false;
     input._forcedCorrectionApplied = true;
+    input._forcedCorrectionContinuation = {value:correction.value, caret:correction.caret};
     if (/^\s|\s$/.test(correction.target)) input._preserveBoundaryWhitespace = true;
     if (!previous) {
       const hangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11ff]/u;

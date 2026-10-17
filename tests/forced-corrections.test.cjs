@@ -12,6 +12,57 @@ function editor(value, caret=value.length) {
   return {value,selectionStart:caret,selectionEnd:caret,dataset:{},setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
 }
 
+test('a Korean-to-English projection can trigger a space rule without rewriting native composition',()=>{
+  for(const native of [true,false])for(const [source,target,spaced] of [['ㄱㅅ','Rt','Rt. '],['ㅣㅅ','Lt','Lt. ']]) {
+    const {app}=createApp();app.usesNativeCellInput=()=>native;
+    app.setForcedCorrection('*',source,target);app.setForcedCorrection('*',target.toLowerCase()+' ',spaced);
+    const input=editor(source);input._inputLanguage='kor';input.dataset.nativeComposing='true';
+    app.updateForcedCorrection(input,'part');assert.equal(app.getCellEditorValue(input),target);
+    input.value=source+' ';input.setSelectionRange(input.value.length,input.value.length);
+    app.updateForcedCorrection(input,'part');
+    assert.equal(input.value,source+' ','do not interrupt the native IME');
+    assert.equal(app.getCellEditorValue(input),spaced);
+    app.updateForcedCorrection(input,'part',{commit:true,nativeData:source+' '});
+    assert.equal(input.value,spaced);assert.equal(input.selectionStart,spaced.length);assert.equal(input._preserveBoundaryWhitespace,true);
+    input.value+=source+' ';app.restoreHandledCellKey(input,{type:'input',inputType:'insertText',data:source+' '});assert.equal(input.value,spaced);
+  }
+});
+
+test('a committed Korean correction permits its next literal space rule while ordinary matching stays case-sensitive',()=>{
+  const {app}=createApp();app.usesNativeCellInput=()=>true;
+  app.setForcedCorrection('*','ㄱㅅ','Rt');app.setForcedCorrection('*','rt ','Rt. ');
+  assert.equal(app.findForcedCorrection('Rt ','part'),null,'do not broaden ordinary case matching');
+  const input=editor('ㄱㅅ');input._inputLanguage='native';app.updateForcedCorrection(input,'part');
+  input.value+=' ';input.setSelectionRange(3,3);app.updateForcedCorrection(input,'part');assert.equal(input.value,'Rt. ');
+  input.value+=' ';input.setSelectionRange(5,5);app.updateForcedCorrection(input,'part');assert.equal(input.value,'Rt.  ','keep an intentional second space');
+  const edited=editor('ㄱㅅ');app.updateForcedCorrection(edited,'part');
+  edited.value='XRt ';edited.setSelectionRange(4,4);app.updateForcedCorrection(edited,'part');assert.equal(edited.value,'XRt ');
+});
+
+test('projected space rules retain prefix, suffix, caret and subsequent native letters exactly once',()=>{
+  const {app}=createApp();app.usesNativeCellInput=()=>true;
+  app.setForcedCorrection('*','ㄱㅅ','Rt');app.setForcedCorrection('*','Rt ','Rt. ');
+  const input=editor('앞 ㄱㅅ 뒤',4);input._inputLanguage='native';input.dataset.nativeComposing='true';
+  app.updateForcedCorrection(input,'part');input.value='앞 ㄱㅅ  뒤';input.setSelectionRange(5,5);app.updateForcedCorrection(input,'part');
+  assert.equal(app.getCellEditorValue(input),'앞 Rt.  뒤');
+  input.value='앞 ㄱㅅ ㅁ 뒤';input.setSelectionRange(6,6);app.updateForcedCorrection(input,'part');
+  assert.equal(app.getCellEditorValue(input),'앞 Rt. a 뒤');
+  app.updateForcedCorrection(input,'part',{commit:true});assert.equal(input.value,'앞 Rt. a 뒤');assert.equal(input.selectionStart,7);
+});
+
+test('whitespace continuation avoids ambiguous case rules and never chains an unchanged projected target',()=>{
+  const {app}=createApp();app.usesNativeCellInput=()=>true;
+  app.setForcedCorrection('*','ㄱㅅ','Rt');app.setForcedCorrection('*','Rt','다른 문구');
+  app.setForcedCorrection('*','rt ','Rt. ');app.setForcedCorrection('*','RT ','RIGHT ');
+  const projected=editor('ㄱㅅ');projected._inputLanguage='native';projected.dataset.nativeComposing='true';
+  app.updateForcedCorrection(projected,'part');app.updateForcedCorrection(projected,'part');
+  assert.equal(app.getCellEditorValue(projected),'Rt','no new typing means no chained replacement');
+  projected.value='ㄱㅅ ';projected.setSelectionRange(3,3);app.updateForcedCorrection(projected,'part');
+  assert.equal(app.getCellEditorValue(projected),'Rt ','conflicting targets must not be chosen by case fallback');
+  app.setForcedCorrection('part','Rt ','Rt. 부위 ');
+  app.updateForcedCorrection(projected,'part');assert.equal(app.getCellEditorValue(projected),'Rt. 부위 ','an exact column rule still wins');
+});
+
 test('letter rules apply immediately after quantities while retaining numeric prefixes and the caret',()=>{
   const {app}=createApp();app.setForcedCorrection('*','qns','분');app.setForcedCorrection('*','mw','MW');
   for(const [value,expected] of [['3qns','3분'],['15qns','15분'],['2.5qns','2.5분'],['3QNS','3분'],['３qns','３분'],['3mw','3MW']]) {
