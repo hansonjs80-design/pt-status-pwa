@@ -542,6 +542,8 @@ class PTDeviceLayout {
       table.insertBefore(group, table.firstChild);
     }
     const cols = [];
+    // Read visibility before changing widths to avoid one forced layout per column.
+    const visible = headers.map(th => window.getComputedStyle(th).display !== "none");
     let width = 0;
     for (let i = 0; i < headers.length; i++) {
       const th = headers[i];
@@ -558,7 +560,7 @@ class PTDeviceLayout {
         bHeaders[i].style.minWidth = `${columnWidth}px`;
         bHeaders[i].style.maxWidth = `${columnWidth}px`;
       }
-      if (window.getComputedStyle(th).display === "none") {
+      if (!visible[i]) {
         if (bHeaders[i]) bHeaders[i].style.display = "none";
         continue;
       }
@@ -568,7 +570,11 @@ class PTDeviceLayout {
       cols.push(col);
       width += columnWidth;
     }
-    group.replaceChildren(...cols);
+    const signature = cols.map(col => `${col.dataset.col}:${col.style.width}`).join('|');
+    if (group._columnWidthSignature !== signature) {
+      group.replaceChildren(...cols);
+      group._columnWidthSignature = signature;
+    }
     table.style.width = `${width}px`;
     table.style.minWidth = `${width}px`;
     table.style.maxWidth = `${width}px`;

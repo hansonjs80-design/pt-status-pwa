@@ -31,6 +31,50 @@ test('Excel TSV preserves empty cells, multiline cells and escaped quotes', () =
   const { app } = createApp();
   assert.deepEqual(clone(app.parseClipboardGrid('123\t가상\t\r\n456\t"두\n줄"\t"인용 ""문자"""\r\n')), [['123','가상',''],['456','두\n줄','인용 "문자"']]);
 });
+
+test('read-only search merges preserve sync semantics without changing any source records', () => {
+  const { app } = createApp();
+  const base = [{ name: '가상', memo: '이전', _textStyles: { name: { fontWeight: 600 } } }, { name: '둘째' }];
+  const remote = [{ ...clone(base[0]), part: '원격 부위' }, { name: '둘째', memo: '원격 메모' }];
+  const edited = clone(base);
+  edited[0].memo = '로컬 변경';
+  edited[0]._textStyles.name.fontWeight = 700;
+  delete edited[0].name;
+  for (const local of [clone(base), edited, edited.slice(0, 1), [...edited, { name: '추가' }]]) {
+    const original = clone({ base, local, remote });
+    const merged = app.mergeCloudRows(base, local, remote, { readOnly: true });
+    assert.deepEqual(clone(merged), clone(app.mergeCloudRows(base, local, remote)));
+    assert.deepEqual({ base, local, remote }, original);
+    assert.equal(merged[0].part, '원격 부위');
+  }
+  // Each lookup reads subsequent local and remote changes, without stale cached rows.
+  app.dataStore.old = clone(base); app.cloudSearchHistory = { old: remote };
+  app.syncBaselines.set('old', base);
+  assert.equal(app.getSearchDataStore().old[0].memo, '이전');
+  remote[0].memo = '새 원격';
+  assert.equal(app.getSearchDataStore().old[0].memo, '새 원격');
+  app.dataStore.old[0].memo = '새 로컬';
+  assert.equal(app.getSearchDataStore().old[0].memo, '새 로컬');
+});
+
+test('unchanged cloud polls skip baseline writes and rendering, while changed records still persist', async () => {
+  const db = new Map(), { app } = createApp(db), date = app.currentDate;
+  const rows = app.createDefaultEmptyRows(); rows[0].name = '가상';
+  app.dataStore[date] = clone(rows); app.syncBaselines.set(date, clone(rows));
+  db.set(date, { date, rows_data: clone(rows), updated_at: null });
+  let baselines = 0, records = 0, renders = 0;
+  app.persistSyncBaselines = async () => { baselines++; };
+  app.persistDataStore = async () => { records++; };
+  app.renderTable = () => { renders++; };
+  for (let i = 0; i < 3; i++) await app.pullFromCloud(date);
+  assert.deepEqual([baselines, records, renders], [0, 0, 0]);
+  db.get(date).rows_data[0].memo = '새 원격 기록';
+  await app.pullFromCloud(date);
+  assert.deepEqual([baselines, records, renders], [1, 1, 1]);
+  assert.equal(app.dataStore[date][0].memo, '새 원격 기록');
+  await app.pullFromCloud(date);
+  assert.deepEqual([baselines, records, renders], [1, 1, 1]);
+});
 test('two computers concurrently editing different cells retain both changes', async () => {
   const date='2026-09-30', db = new Map([[date, { date, rows_data: [{ name: '테스트', memo: '' }], updated_at: '2026-09-30T00:00:00.000Z' }]]);
   const a=createApp(db).app, b=createApp(db).app;
@@ -133,6 +177,8 @@ test('typing during asynchronous baseline persistence stays pending and is not o
   assert.equal(app.pendingSyncDates.has(date),true);
   assert.equal(app.dataStore[date][0].memo,'저장 도중 입력');
   app.pendingSyncDates.clear();
+  // A changed server baseline triggers persistence; identical polls now skip it.
+  db.get(date).rows_data[0].memo = '새 서버 변경';
   saving=new Promise(resolve=>{started=resolve;});
   const pull=app.pullFromCloud(date);
   await saving;app.dataStore[date][0].memo='수신 도중 입력';release();await pull;

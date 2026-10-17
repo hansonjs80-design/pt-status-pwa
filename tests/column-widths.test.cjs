@@ -56,6 +56,26 @@ function diskStore(disk = new Map()) {
   };
 }
 
+test('unchanged widths reuse the colgroup, while resizing and hidden columns update it', () => {
+  const { app, table, headers } = device();
+  const original = table.group.children;
+  app.syncMainColumnWidths();
+  assert.equal(table.group.children, original);
+  headers[2].style.width = '200px';
+  app.syncMainColumnWidths();
+  assert.notEqual(table.group.children, original);
+  assert.equal(table.style.width, '496px');
+  const resized = table.group.children;
+  app.syncMainColumnWidths();
+  assert.equal(table.group.children, resized);
+  headers[3].hidden = true; app.syncMainColumnWidths();
+  assert.equal(table.group.children.length, 3);
+  assert.equal(table.style.width, '348px');
+  headers[3].hidden = false; app.syncMainColumnWidths();
+  assert.equal(table.group.children.length, 4);
+  assert.equal(table.style.width, '496px');
+});
+
 test('pinching releases a column resize without blocking the gesture or resizing after a finger lifts', () => {
   for (const interruption of ['touchstart', 'touchmove', 'touchcancel']) {
     const { headers, listeners } = device();

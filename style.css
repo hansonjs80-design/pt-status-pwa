@@ -2241,8 +2241,9 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid #0002; cursor: pointer; }
 .color-swatch:hover, .color-swatch:focus-visible { outline: 2px solid #107c41; outline-offset: 1px; }
 .custom-color { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 12px; margin-top: 12px; }
-/* Replace the shared row boundary instead of drawing a second line inside it. */
-.excel-table tr:has(+ .excel-row.lunch-break-row) > :is(th, td):not(.cell-spacer):not(.col-spacer) {
+/* Mark the boundary once at render time. Sibling :has() selectors made each
+   cell focus recalculate styles across large, nested history tables. */
+.excel-table .before-lunch-row > :is(th, td):not(.cell-spacer):not(.col-spacer) {
   border-bottom: 0 !important;
 }
 .excel-table .excel-row.lunch-break-row > :is(th, td):not(.cell-spacer) {
@@ -2339,8 +2340,8 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .print-table thead { display: table-header-group; }
 .print-table thead th { font-size: 12px; white-space: nowrap; }
 .print-table td:nth-child(1), .print-table td:nth-child(2), .print-table td:nth-child(3), .print-table td:nth-child(4), .print-table td:nth-child(8) { white-space: nowrap; }
-.print-table tr:has(+ .print-lunch-row) > td,
-.print-table:has(tbody > .print-lunch-row:first-child) thead th { border-bottom: 0; }
+.print-table .before-lunch-row > td,
+.print-table thead.before-lunch-row th { border-bottom: 0; }
 .print-table .print-lunch-row td { border-top: 1.5px dashed #d93025; }
 .print-summary-bar { flex-wrap: wrap; gap: 6px; }
 @media print { @page { size: A4 landscape; margin: 8mm; } .preview-printable-area { padding: 0 !important; } }

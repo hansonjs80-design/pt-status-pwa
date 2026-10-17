@@ -508,15 +508,19 @@ class PTCloudSync {
         .map(([snapshot, selection]) => [remapped.get(snapshot), selection]));
   }
 
-  mergeCloudRows(base, local, remote) {
+  mergeCloudRows(base, local, remote, { readOnly = false } = {}) {
     if (!base || base.length === 0) return local;
-    const merged = JSON.parse(JSON.stringify(remote || []));
+    // Search only reads the result. Copy a row on change instead of cloning
+    // every historical cell and its formatting for each query/keystroke.
+    const merged = readOnly ? (remote || []).slice() : JSON.parse(JSON.stringify(remote || []));
     const maxLen = Math.max(local.length, merged.length, base.length);
     for (let i = 0; i < maxLen; i++) {
       const before = base[i] || {}, after = local[i] || {};
       merged[i] ||= {};
+      let copied = !readOnly;
       for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-        if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+        if (before[key] === after[key] || JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+        if (!copied) { merged[i] = { ...merged[i] }; copied = true; }
         if (key in after) merged[i][key] = after[key]; else delete merged[i][key];
       }
     }
@@ -703,8 +707,12 @@ class PTCloudSync {
         return;
       }
       if (data && Array.isArray(data.rows_data)) {
-        this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
-        await this.persistSyncBaselines();
+        // The two-second poll normally receives the same day. Avoid rewriting
+        // the entire multi-date baseline store while the user is navigating.
+        if (JSON.stringify(this.syncBaselines.get(dateStr)) !== JSON.stringify(data.rows_data)) {
+          this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
+          await this.persistSyncBaselines();
+        }
         if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
             localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
             (dateStr === this.currentDate && this.isEditingCell())) return;

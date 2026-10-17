@@ -617,7 +617,7 @@ class PTApp {
       const base = this.syncBaselines?.get(date);
       if (base?.length) {
         // Search the latest server snapshot with any local edits layered on top.
-        history[date] = this.mergeCloudRows(base, local, remote);
+        history[date] = this.mergeCloudRows(base, local, remote, { readOnly: true });
       } else if (local.some(row => ["name", "chartNo", "part", "prescription", "extra", "memo", "specialNote"]
         .some(key => String(row?.[key] ?? "").trim()))) {
         // Unsynced records without a baseline still belong to this device.

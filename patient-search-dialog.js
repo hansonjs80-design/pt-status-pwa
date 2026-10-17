@@ -73,6 +73,7 @@ class PTPatientSearchDialog {
     // Windows IME can replay F without marking it as a repeat after the editor
     // has gone. The same physical shortcut must not reopen the prompt.
     if (this.directHistorySearchKeyHeld) return;
+    this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     this.cancelSearchPromptSubmission();
     clearTimeout(this.searchPromptFocusTimer);
@@ -419,9 +420,19 @@ class PTPatientSearchDialog {
   async searchPatientHistory(query, targetRowIdx) {
     this.closeSearchPromptModal();
     const requestId = this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
-    const lookup = this.preparePatientHistorySearch(query, targetRowIdx);
-    const { searchStore, exists } = lookup?.then ? await lookup : lookup;
-    if (requestId !== this.patientHistorySearchRequestId) return false;
+    const date = this.currentDate;
+    let result;
+    try {
+      const lookup = this.preparePatientHistorySearch(query, targetRowIdx);
+      result = lookup?.then ? await lookup : lookup;
+    } catch (_) {
+      if (requestId === this.patientHistorySearchRequestId && date === this.currentDate) {
+        this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
+      }
+      return false;
+    }
+    if (requestId !== this.patientHistorySearchRequestId || date !== this.currentDate) return false;
+    const { searchStore, exists } = result;
     // A repeated IME shortcut can open a prompt while cloud history is loading.
     if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
     if (!exists) {

@@ -121,7 +121,7 @@ class PTSheetSelection {
     this.elSheetContainer.classList.toggle("has-cell-range", minRow !== maxRow || minCol !== maxCol);
 
     // Clear previous range highlight classes
-    document.querySelectorAll(".excel-cell").forEach((c) => {
+    document.querySelectorAll(".excel-cell.range-selected").forEach((c) => {
       c.classList.remove(
         "range-selected",
         "range-border-top",

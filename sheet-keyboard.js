@@ -273,8 +273,8 @@ class PTSheetKeyboard {
       // 일반 셀 선택 상태에서 방향키 이동
       else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         this.isCrossDateRowSelected = false;
-        this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
-        this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
+        this.elTableBody.querySelectorAll(".cross-date-num.selected, .cross-date-num.header-active").forEach(th => th.classList.remove("selected", "header-active"));
+        this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
 
         if (e.key === "ArrowDown" && selection.endRow >= this.crossDateResults.length - 1) {
           // ★ 이전 날짜 마지막 행의 셀에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행의 동일 열로 이동!

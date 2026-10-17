@@ -21,6 +21,7 @@ class PTTableView {
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const colLetters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
     const newPatientFlags = this.getNewPatientRowFlags(rows);
+    document.querySelector(".business-headers-row")?.classList.toggle("before-lunch-row", Boolean(rows[0]?._lunchBefore));
 
     rows.forEach((row, rowIdx) => {
       const tr = document.createElement("tr");
@@ -28,6 +29,7 @@ class PTTableView {
       tr.dataset.rowIdx = rowIdx;
       tr.classList.toggle("new-patient-row", newPatientFlags[rowIdx]);
       tr.classList.toggle("lunch-break-row", Boolean(row._lunchBefore));
+      tr.classList.toggle("before-lunch-row", Boolean(rows[rowIdx + 1]?._lunchBefore));
 
       // Row Number Header (1, 2, 3...)
       const excelRowNum = BASE_ROW_NUMBER + rowIdx;
@@ -230,7 +232,7 @@ class PTTableView {
     this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
     this.historyApplyTarget = { date: this.currentDate, rowIdx, rows: this.getCurrentRows(), row: this.getCurrentRows()[rowIdx], colKey };
-    this.elTableBody.querySelectorAll(".history-apply-btn").forEach(button => { button.disabled = false; });
+    this.elTableBody.querySelectorAll(".history-apply-btn:disabled").forEach(button => { button.disabled = false; });
     this.selectedRowIdx = rowIdx;
     this.selectedColKey = null;
 

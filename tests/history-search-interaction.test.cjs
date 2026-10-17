@@ -46,6 +46,45 @@ function createSearchPrompt(storage = new Map()) {
   return { app, context, card, storage, events, windowEvents, move };
 }
 
+test('a late direct search cannot replace a new prompt or a different date', async () => {
+  for (const action of ['prompt', 'date']) for (const exists of [true, false]) {
+    const { app } = createSearchPrompt();
+    let finish;
+    app.preparePatientHistorySearch = () => new Promise(resolve => { finish = resolve; });
+    app.searchAllDates = app.showSearchNotFoundModal = () => assert.fail('stale lookup must not render');
+    const pending = app.searchPatientHistory('이전 검색', 0);
+    if (action === 'prompt') app.openSearchPromptModal(0, '새 검색');
+    else app.currentDate = '2026-10-05';
+    finish({ searchStore: {}, exists });
+    assert.equal(await pending, false);
+    if (action === 'prompt') {
+      assert.equal(app.elSearchPromptModal.style.display, 'flex');
+      assert.equal(app.elSearchPromptInput.value, '새 검색');
+    }
+  }
+});
+
+test('direct search rejection reports once, permits retry and ignores stale errors', async () => {
+  const { app } = createSearchPrompt();
+  let notices = 0, searches = 0;
+  app.showSaveIndicator = () => { notices++; };
+  app.showSearchNotFoundModal = () => assert.fail('failed lookup is not an empty result');
+  app.searchAllDates = () => { searches++; };
+  app.preparePatientHistorySearch = async () => { throw Error('lookup failed'); };
+  assert.equal(await app.searchPatientHistory('가상', 0), false);
+  assert.equal(notices, 1);
+  app.preparePatientHistorySearch = () => ({ searchStore: {}, exists: true });
+  assert.equal(await app.searchPatientHistory('가상', 0), true);
+  assert.equal(searches, 1);
+  let fail;
+  app.preparePatientHistorySearch = () => new Promise((_, reject) => { fail = reject; });
+  const pending = app.searchPatientHistory('이전', 0);
+  app.openSearchPromptModal(0, '새 검색'); fail(Error('late failure'));
+  assert.equal(await pending, false);
+  assert.equal(notices, 1);
+  assert.equal(app.elSearchPromptModal.style.display, 'flex');
+});
+
 test('search prompt remembers a dragged location after closing and after restarting the app', () => {
   const first = createSearchPrompt();
   first.app.openSearchPromptModal(0, '가상환자');

@@ -15,10 +15,12 @@ class PTDocumentTools {
 
     const summary = this.getDailySummary(rows);
     this.elPrintTableBody.replaceChildren();
+    this.elPrintTableBody.closest("table")?.querySelector("thead")?.classList.toggle("before-lunch-row", Boolean(rows[0]?._lunchBefore));
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    for (const row of rows) {
+    for (const [index, row] of rows.entries()) {
       const tr = document.createElement("tr");
       if (row._lunchBefore) tr.className = "print-lunch-row";
+      tr.classList.toggle("before-lunch-row", Boolean(rows[index + 1]?._lunchBefore));
       for (const key of keys) {
         const td = document.createElement("td");
         td.textContent = String(row[key] ?? "");

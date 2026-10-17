@@ -243,9 +243,9 @@ class PTHistorySearch {
     this.crossDateSelection = null;
     this.isSelectingCrossDate = false;
     this.elTableBody?.querySelectorAll(".cross-date-row-selected").forEach(row => row.classList.remove("cross-date-row-selected"));
-    this.elTableBody?.querySelectorAll(".cross-date-num").forEach(header => header.classList.remove("selected", "header-active"));
+    this.elTableBody?.querySelectorAll(".cross-date-num.selected, .cross-date-num.header-active").forEach(header => header.classList.remove("selected", "header-active"));
     if (this.elFormulaInput) this.elFormulaInput.readOnly = false;
-    this.elTableBody?.querySelectorAll(".cross-date-cell").forEach(cell => {
+    this.elTableBody?.querySelectorAll(".cross-date-cell.range-selected").forEach(cell => {
       cell.classList.remove("range-selected", "range-border-top", "range-border-bottom", "range-border-left", "range-border-right");
     });
   }
@@ -402,6 +402,7 @@ class PTHistorySearch {
     this.elBtnClearSearch.style.display = q ? "block" : "none";
 
     if (q) { this.searchAllDates(this.elSearchInput.value.trim()); return; }
+    this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     // 교차 날짜 임시 행 제거
     this.clearCrossDateRows();
 

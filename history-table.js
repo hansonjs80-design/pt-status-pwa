@@ -9,12 +9,12 @@ class PTHistoryTable {
     this.selectCrossDateCell(idx, 9, true);
     this.isSelectingCrossDate = false; // 마우스 이동 시 임의 선택 방지
 
-    this.elTableBody.querySelectorAll(".cross-date-row").forEach(r => r.classList.remove("cross-date-row-selected"));
+    this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
     const tr = this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${idx}"]`)
       || this.elTableBody.querySelector(`[data-cross-idx="${idx}"]`)?.closest("tr");
     tr?.classList.add("cross-date-row-selected");
 
-    this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
+    this.elTableBody.querySelectorAll(".cross-date-num.selected, .cross-date-num.header-active").forEach(th => th.classList.remove("selected", "header-active"));
     const th = tr?.querySelector(".cross-date-num");
     th?.classList.add("selected", "header-active");
     th?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -49,12 +49,6 @@ class PTHistoryTable {
       colgroup = document.createElement("colgroup");
       innerTable.insertBefore(colgroup, innerTable.firstChild);
     }
-    if (colgroup.replaceChildren) {
-      colgroup.replaceChildren();
-    } else {
-      while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
-    }
-
     // 메인 테이블 비즈니스 헤더의 모든 14개 열과 1:1로 정확하게 col 및 셀 너비 동기화 (비율 축소 없이 1:1 절대값 적용)
     const headerThs = Array.from(bHeadersRow.children);
     const colWidths = headerThs.map((th) => {
@@ -63,6 +57,13 @@ class PTHistoryTable {
       const rect = th.getBoundingClientRect();
       return rect.width;
     });
+    const signature = colWidths.join(',');
+    // ResizeObserver also runs after focus/scroll layout. Rebuilding every
+    // history cell's widths when nothing changed stalls keyboard navigation.
+    if (innerTable._columnWidthSignature === signature) return;
+    innerTable._columnWidthSignature = signature;
+    if (colgroup.replaceChildren) colgroup.replaceChildren();
+    else while (colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
 
     // 숨긴 열과 colspan으로 생긴 빈 공간을 제외한 실제 열 너비 합을 사용한다.
     const visibleCount = colWidths.filter(w => w > 0).length;
@@ -381,9 +382,11 @@ class PTHistoryTable {
     };
     syncHistoryLayout();
     requestAnimationFrame(() => {
+      if (document.getElementById("crossDateInnerTable") !== innerTable) return;
       syncHistoryLayout();
       if (typeof ResizeObserver !== "undefined") {
         this.historyLayoutObserver = new ResizeObserver(() => {
+          if (document.getElementById("crossDateInnerTable") !== innerTable) return;
           this.syncCrossDateColWidths();
           this.updateCrossDateStickyOffsets();
         });
@@ -399,7 +402,7 @@ class PTHistoryTable {
     // 4) 현재 날짜 포함 검색에서는 가장 최근의 이전 날짜 내역을 우선 선택
     const restoreHistoryScroll = () => {
       const wrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
-      if (wrap && preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {
+      if (wrap === scrollWrap && preservedHistoryScrollTop !== undefined && preservedHistoryScrollTop !== null) {
         wrap.scrollTop = preservedHistoryScrollTop;
       }
     };
@@ -413,8 +416,7 @@ class PTHistoryTable {
       this.isSelectingCrossDate = false;
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(() => {
-          const scrollWrap = typeof document !== "undefined" && typeof document?.getElementById === "function" ? document.getElementById("crossDateScrollWrap") : null;
-          if (scrollWrap && !this._isPasting) {
+          if (document.getElementById("crossDateScrollWrap") === scrollWrap && !this._isPasting) {
             if (previousIdx >= 0) this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${previousIdx}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
             else scrollWrap.scrollTop = scrollWrap.scrollHeight;
           }

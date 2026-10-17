@@ -82,6 +82,8 @@ class PTDateNavigation {
   }
 
   setDate(dateStr) {
+    this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
+    if (this.elSearchPromptModal?.style.display === 'flex') this.closeSearchPromptModal();
     const focusRequest = this._dateFocusRequest = {};
     const dateChanged = this.currentDate !== dateStr;
     if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
