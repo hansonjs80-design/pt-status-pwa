@@ -384,15 +384,17 @@ class PTAutocomplete {
 
   async editAutocompleteValue(colKey, oldValue, input) {
     if (this.autocompleteRenameBusy) return;
+    const throughDate = this.currentDate;
     const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
     const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색·두께 수정", oldValue,
-      formatting.color, formatting.richText, formatting.fontWeight);
+      formatting.color, formatting.richText, formatting.fontWeight,
+      { description: `${throughDate.replace(/-/g, '.')} 및 이전 날짜의 같은 열에서 “${oldValue}”와 일치하는 셀을 수정합니다.` });
     if (!edit || !edit.value) return;
     const value = edit.value;
     this.autocompleteRenameBusy = true;
     try {
       this.showSaveIndicator('전체 날짜 기록 확인 중…');
-      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText, edit.fontWeight);
+      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText, edit.fontWeight, { throughDate });
       // Do not let the existing editor restore the old text on blur.
       if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
       input?.blur();
@@ -407,13 +409,13 @@ class PTAutocomplete {
         this.savePresetManagerItems(colKey);
         this.renderPresetManagerList();
       }
-      this.showSaveIndicator(`${count}개 셀 문구·글자색·두께 수정 · 변경 전 백업 저장됨`);
+      this.showSaveIndicator(`${throughDate}까지 ${count}개 셀 수정 · 변경 전 백업 저장됨`);
     } catch (error) {
       alert("문구·글자색·두께 수정 실패: " + error.message);
     } finally { this.autocompleteRenameBusy = false; }
   }
 
-  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined, fontWeight = undefined) {
+  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined, fontWeight = undefined, { throughDate = this.currentDate } = {}) {
     await this.syncBaselinesReady;
     const allowed = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote"];
     if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
@@ -429,9 +431,18 @@ class PTAutocomplete {
     const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();
     if (oldText === replacement && color === undefined && richText === undefined && fontWeight === undefined) return 0;
     const source = this.getSearchDataStore();
+    // A bulk edit must incorporate the server snapshot just read, even for a
+    // pending/current date. Rebase local differences before applying the edit.
+    for (const [date, local] of Object.entries(this.dataStore || {})) {
+      const remote = this.cloudSearchHistory?.[date], base = this.syncBaselines?.get(date);
+      if (date <= throughDate && Array.isArray(local) && Array.isArray(remote) && base?.length) {
+        source[date] = this.mergeCloudRows(base, local, remote);
+      }
+    }
     const changed = {}, baselines = new Map(this.syncBaselines || []);
     let count = 0;
     for (const [date, rows] of Object.entries(source)) {
+      if (date > throughDate || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
       if (!Array.isArray(rows)) continue;
       if (!rows.some(row => String(row?.[colKey] ?? "").trim() === oldText)) continue;
       const copy = JSON.parse(JSON.stringify(rows));
@@ -453,13 +464,23 @@ class PTAutocomplete {
         count++;
       }
       changed[date] = copy;
-      if (!Object.hasOwn(this.dataStore, date) || !baselines.has(date)) {
+      if (Array.isArray(this.cloudSearchHistory?.[date]) || !baselines.has(date)) {
+        // The new intent is relative to the fresh server data, not an older
+        // baseline whose value may happen to equal the requested replacement.
         baselines.set(date, JSON.parse(JSON.stringify(this.cloudSearchHistory?.[date] || rows)));
       }
     }
     const presets = JSON.parse(JSON.stringify(COLUMN_PRESETS));
-    const presetChanged = (presets[colKey] || []).some(value => String(value).trim() === oldText);
-    if (presetChanged) presets[colKey] = [...new Set(presets[colKey].map(value => String(value).trim() === oldText ? replacement : value))];
+    let presetChanged = false;
+    const scopes = new Set([colKey]);
+    for (const [key, values] of Object.entries(presets)) {
+      if (!Array.isArray(values) || !(key === colKey || key.startsWith(`__query:${colKey}:`) ||
+          key.startsWith(`__hidden:${colKey}:`) || key === `__columnHidden:${colKey}`)) continue;
+      if (!values.some(value => String(value).trim() === oldText)) continue;
+      presets[key] = [...new Set(values.map(value => String(value).trim() === oldText ? replacement : value))];
+      presetChanged = true;
+      if (key.startsWith('__query:')) scopes.add(key);
+    }
     if (color !== undefined) presets[this.getAutocompleteColorKey(colKey, replacement)] = [color || ""];
     if (richText !== undefined || color !== undefined) {
       const key = this.getAutocompleteRichKey(colKey, replacement);
@@ -467,11 +488,21 @@ class PTAutocomplete {
       else delete presets[key];
     }
     this.writeAutocompleteWeight(presets, colKey, replacement, fontWeight, richText);
+    for (const scope of scopes) {
+      if (scope === colKey) continue;
+      if (color !== undefined) presets[this.getAutocompleteColorKey(scope, replacement)] = [color || ''];
+      if (richText !== undefined || color !== undefined) {
+        const key = this.getAutocompleteRichKey(scope, replacement);
+        if (richText?.text === replacement && richText.colors?.length === replacement.length) presets[key] = richText.colors.map(color => color || '');
+        else delete presets[key];
+      }
+      this.writeAutocompleteWeight(presets, scope, replacement, fontWeight, richText);
+    }
     if (!count && !presetChanged) return 0;
 
     // This backup covers records and presets only; no schema/Auth/Storage changes occur.
     const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
-      oldValue: oldText, newValue: replacement, color, richText, fontWeight, dataStore: this.dataStore,
+      oldValue: oldText, newValue: replacement, throughDate, color, richText, fontWeight, dataStore: this.dataStore,
       cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
       syncBaselines: Object.fromEntries(this.syncBaselines || []) });
     const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -484,6 +515,7 @@ class PTAutocomplete {
     await this.persistDataStore(nextStore);
     localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
     this.dataStore = nextStore;
+    this.invalidateAutocompleteHistory();
     this.syncBaselines = baselines;
     this.pendingSyncDates = pending;
     for (const date of Object.keys(changed)) {

@@ -217,7 +217,7 @@ class PTTableFormatting {
     return channels?.length >= 3 ? '#' + channels.slice(0, 3).map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('') : '#000000';
   }
 
-  openPresetTextColorEditor(title, value, color, richText = null, fontWeight = null) {
+  openPresetTextColorEditor(title, value, color, richText = null, fontWeight = null, { description = '' } = {}) {
     return new Promise(resolve => {
       const previousFocus = document.activeElement;
       const overlay = document.createElement('div'); overlay.className = 'modal-overlay preset-color-editor';
@@ -225,6 +225,7 @@ class PTTableFormatting {
       overlay.setAttribute('aria-label', title);
       const form = document.createElement('form'); form.className = 'modal-card';
       const heading = document.createElement('h2'); heading.textContent = title;
+      const scopeNote = document.createElement('p'); scopeNote.className = 'preset-color-help'; scopeNote.textContent = description; scopeNote.hidden = !description;
       const text = document.createElement('input'); text.type = 'text'; text.value = value; text.setAttribute('aria-label', '문구');
       let baseColor = color || null;
       let previousText = value;
@@ -320,7 +321,7 @@ class PTTableFormatting {
       };
       overlay.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); close(null); } };
       overlay.onclick = event => { if (event.target === overlay) close(null); };
-      actions.append(cancel, save); form.append(heading, text, help, label, picker, colorActions, weightLabel, preview, actions); overlay.append(form); document.body.append(overlay);
+      actions.append(cancel, save); form.append(heading, scopeNote, text, help, label, picker, colorActions, weightLabel, preview, actions); overlay.append(form); document.body.append(overlay);
       updatePreview();
       text.focus(); text.select();
     });

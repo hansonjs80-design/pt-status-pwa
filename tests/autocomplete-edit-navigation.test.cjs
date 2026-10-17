@@ -28,6 +28,19 @@ function createApp(dataStore = {}, presets = {}) {
   return { app, storage, context, queued };
 }
 
+test('history edits include the selected date and all earlier dates, leaving future records untouched', async () => {
+  const {app,context,queued}=createApp({
+    '2024-01-01':[{part:'Lt. sh'}], '2026-10-04':[{part:'Lt. sh'}], '2026-10-05':[{part:'Lt. sh'}],
+  },{part:['Lt. sh'],'__query:part:lt':['Lt. sh'],'__query:part:l':['Lt. sh','別'], '__hidden:part:l':['Lt. sh']});
+  assert.equal(await app.renameAutocompleteValue('part','Lt. sh','Lt. Shoulder',null,null,600),2);
+  assert.equal(app.dataStore['2024-01-01'][0].part,'Lt. Shoulder');
+  assert.equal(app.dataStore['2026-10-04'][0].part,'Lt. Shoulder');
+  assert.equal(app.dataStore['2026-10-05'][0].part,'Lt. sh');
+  assert.equal(queued.includes('2026-10-05'),false);
+  assert.deepEqual(Array.from(context.getPresets()['__query:part:l']),['Lt. Shoulder','別']);
+  assert.deepEqual(Array.from(context.getPresets()['__hidden:part:l']),['Lt. Shoulder']);
+});
+
 test('Enter activates editing in all six selected text columns with or without content', () => {
   for(const colKey of ['no','chartNo','name','part','memo','specialNote']) for(const value of ['', '기존 내용']) {
     const {app}=createApp({'2026-10-04':[{[colKey]:value}]});

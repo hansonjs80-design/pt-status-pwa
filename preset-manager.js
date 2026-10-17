@@ -238,7 +238,7 @@ class PTPresetManager {
     if (description) {
       description.dataset.defaultText ||= description.textContent;
       description.textContent = context
-        ? `“${context.query}” 입력 시 표시할 후보입니다. ‘이전 기록 수정’은 모든 날짜의 같은 열에 적용됩니다.`
+        ? `“${context.query}” 입력 시 표시할 후보입니다. ‘이전 기록 수정’은 선택한 날짜와 그 이전 기록의 같은 열에 적용됩니다.`
         : description.dataset.defaultText;
     }
     const tabs = this.elPresetManagerModal?.querySelector(".preset-tabs");
@@ -448,7 +448,7 @@ class PTPresetManager {
           const historyEdit = document.createElement("button");
           historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
           historyEdit.textContent = "이전 기록 수정";
-          historyEdit.title = "모든 날짜의 같은 열에서 이 문구 수정";
+          historyEdit.title = "선택한 날짜와 그 이전 기록의 같은 열에서 이 문구 수정";
           historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
           actionsEl.appendChild(historyEdit);
         }

@@ -86,6 +86,25 @@ test('two computers concurrently editing different cells retain both changes', a
   assert.equal(a.dataStore[date][0].memo, '메모');
 });
 
+test('history edits use the freshly read server baseline, including dates with pending local edits', async () => {
+  for (const pending of [false, true]) {
+    const date='2026-09-30';
+    const baseline=[{name:'가상',part:'Lt. Sh',memo:'',extra:'',_textStyles:{part:{fontWeight:600}}}];
+    const remote=[{name:'가상',part:'Lt. sh',memo:'',extra:'다른 기기 변경',_textStyles:{part:{fontWeight:400}}}];
+    const db=new Map([[date,{date,rows_data:clone(remote),updated_at:null}]]),{app}=createApp(db);
+    app.currentDate='2026-10-17';app.dataStore[date]=clone(baseline);app.dataStore[date][0].memo='미전송 로컬 메모';
+    app.syncBaselines.set(date,clone(baseline));if(pending)app.pendingSyncDates.add(date);
+    app.loadSearchHistory=async()=>{app.cloudSearchHistory={[date]:clone(db.get(date).rows_data)};return true;};
+    app.scheduleSupabaseSync=()=>{};
+    assert.equal(await app.renameAutocompleteValue('part','Lt. sh','Lt. Sh',null,null,600),1);
+    await app.pushToCloud(date);
+    assert.equal(db.get(date).rows_data[0].part,'Lt. Sh','an edit equal to the old baseline must still upload');
+    assert.equal(db.get(date).rows_data[0]._textStyles.part.fontWeight,600);
+    assert.equal(db.get(date).rows_data[0].memo,'미전송 로컬 메모');
+    assert.equal(db.get(date).rows_data[0].extra,'다른 기기 변경');
+  }
+});
+
 test('stale bulk retry dates without local records cannot erase populated cloud dates', async () => {
   const date='2026-06-08',record={date,rows_data:[{name:'가상 보존',chartNo:'TEST',memo:'기록'}],updated_at:'2026-10-10T00:00:00Z'};
   for (const local of [undefined,[],[{}],[{prescription:'수정 문구'}]]) {
