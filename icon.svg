@@ -2,13 +2,14 @@
   <defs>
     <linearGradient id="sheet" x2="1" y2="1"><stop stop-color="#26a866"/><stop offset="1" stop-color="#107c41"/></linearGradient>
     <linearGradient id="badge" x2="1" y2="1"><stop stop-color="#117a43"/><stop offset="1" stop-color="#064c2b"/></linearGradient>
-    <filter id="shadow" x="-25%" y="-25%" width="160%" height="165%"><feDropShadow dx="5" dy="10" stdDeviation="8" flood-color="#002d18" flood-opacity=".35"/></filter>
+    <filter id="shadow" x="-10%" y="-10%" width="125%" height="125%"><feDropShadow dx="2" dy="2" stdDeviation="2" flood-color="#002d18" flood-opacity=".35"/></filter>
   </defs>
-  <rect x="80" y="38" width="396" height="420" rx="58" fill="url(#sheet)"/>
-  <rect x="125" y="96" width="304" height="307" rx="18" fill="#f3faf5"/>
-  <path d="M125 158h304M125 219h304M125 280h304M125 341h304M201 96v307M277 96v307M353 96v307" fill="none" stroke="#abd2ba" stroke-width="5"/>
-  <path d="M143 96h268q18 0 18 18v44H125v-44q0-18 18-18" fill="#bde4ca"/>
-  <rect x="22" y="245" width="248" height="211" rx="29" fill="url(#badge)" filter="url(#shadow)"/>
-  <path d="M48 253h191" stroke="#60c68b" stroke-width="4" opacity=".65"/>
-  <text x="146" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="124" font-weight="800" letter-spacing="-4" fill="#fff">PT</text>
+  <!-- Keep the artwork within 8px of the canvas edge for desktop/taskbar use. -->
+  <rect x="62" y="8" width="442" height="496" rx="60" fill="url(#sheet)"/>
+  <rect x="112" y="69" width="342" height="362" rx="18" fill="#f3faf5"/>
+  <path d="M112 141h342M112 213h342M112 285h342M112 357h342M197 69v362M283 69v362M369 69v362" fill="none" stroke="#abd2ba" stroke-width="5"/>
+  <path d="M130 69h306q18 0 18 18v54H112V87q0-18 18-18" fill="#bde4ca"/>
+  <rect x="8" y="242" width="292" height="262" rx="34" fill="url(#badge)" filter="url(#shadow)"/>
+  <path d="M39 252h230" stroke="#60c68b" stroke-width="4" opacity=".65"/>
+  <text x="154" y="427" text-anchor="middle" font-family="Arial, sans-serif" font-size="154" font-weight="800" letter-spacing="-4" fill="#fff">PT</text>
 </svg>

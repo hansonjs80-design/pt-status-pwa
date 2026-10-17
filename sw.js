@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v415';
+const CACHE_NAME = 'pt-status-pwa-v416';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -31,9 +31,12 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './local-tools.js',
   './manifest.json',
-  './icon.svg',
-  './icon-192.png',
-  './icon-512.png'
+  './icon.svg?v=416',
+  './icon-32.png?v=416',
+  './icon-48.png?v=416',
+  './icon-192.png?v=416',
+  './icon-256.png?v=416',
+  './icon-512.png?v=416'
 ];
 
 self.addEventListener('install', (event) => {
