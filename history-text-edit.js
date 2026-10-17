@@ -5,7 +5,7 @@ class PTHistoryTextEdit {
     const throughDate = this.currentDate;
     const managerContext = this.autocompleteManagerContext;
     const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
-    const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색·두께 수정", oldValue,
+    const edit = await this.openPresetTextColorEditor("이전 기록 문구·서식 수정", oldValue,
       formatting.color, formatting.richText, formatting.fontWeight,
       { description: `${throughDate.replace(/-/g, '.')} 및 이전 날짜의 같은 열에서 “${oldValue}”와 일치하는 셀을 수정합니다.` });
     if (!edit || !edit.value) return;
@@ -33,10 +33,12 @@ class PTHistoryTextEdit {
         this.setAutocompleteValueColor(this.autocompleteManagerContext.key, replacement, edit.color, edit.richText, edit.fontWeight);
         this.savePresetManagerItems(colKey);
         this.renderPresetManagerList();
+      } else if (!this.autocompleteManagerContext && this.activePresetTab === colKey && this.elPresetManagerModal?.style.display === 'flex') {
+        this.renderPresetManagerList();
       }
       this.showSaveIndicator(`${throughDate}까지 ${count}개 셀 수정 · 변경 전 백업 저장됨`);
     } catch (error) {
-      alert("문구·글자색·두께 수정 실패: " + error.message);
+      alert("문구·서식 수정 실패: " + error.message);
     } finally { this.autocompleteRenameBusy = false; }
   }
 
@@ -133,6 +135,7 @@ class PTHistoryTextEdit {
         else delete presets[key];
       }
       this.writeAutocompleteWeight(presets, colKey, replacement, fontWeight, richText);
+      this.writeAutocompleteRichStyles(presets, colKey, replacement, richText);
       for (const scope of scopes) {
         if (scope === colKey) continue;
         if (color !== undefined) presets[this.getAutocompleteColorKey(scope, replacement)] = [color || ''];
@@ -142,6 +145,7 @@ class PTHistoryTextEdit {
           else delete presets[key];
         }
         this.writeAutocompleteWeight(presets, scope, replacement, fontWeight, richText);
+        this.writeAutocompleteRichStyles(presets, scope, replacement, richText);
       }
     }
     if (!count && !presetChanged) return 0;

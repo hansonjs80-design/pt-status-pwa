@@ -6,6 +6,19 @@ const context = vm.createContext({ window: { addEventListener() {} }, localStora
 vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
 const app = Object.create(context.App.prototype);
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('automatic underline color uses the candidate base color across mixed character colors', () => {
+  const instance=Object.create(context.App.prototype), previous=context.document;
+  const nodes=[];const element={style:{},append(node){nodes.push(node);}};
+  context.document={createElement:()=>({style:{}})};
+  try {
+    instance.getAutocompleteValueFormatting=()=>({color:'#0000ff',fontWeight:500,
+      richText:{text:'AB',colors:['#ff0000',null],styles:[{underline:{style:'single',color:null}},{underline:{style:'single',color:null}}]}});
+    instance.renderAutocompleteText(element,'memo','AB');
+    assert.equal(nodes[0].style.textDecorationColor,'#0000ff');
+    assert.equal(nodes[1].style.textDecorationColor,'#0000ff');
+  } finally {context.document=previous;}
+});
 test('font color indicator follows selection, applied colors and reset without coloring the A label', () => {
   const instance = Object.create(context.App.prototype);
   const icon = { style: { color: '#495057' } }, attributes = {};

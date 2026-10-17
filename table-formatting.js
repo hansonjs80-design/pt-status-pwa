@@ -613,6 +613,19 @@ class PTTableFormatting {
     return false;
   }
 
+  getChangeCaseOptions() {
+    return [
+      { key: 'sentence', label: '문장의 첫 글자를 대문자로' },
+      { key: 'uppercase', label: '대문자로' },
+      { key: 'capitalize', label: '각 단어를 대문자로' },
+      { key: 'firstWordUppercase', label: '첫 문장을 대문자로' },
+      { key: 'lastWordUppercase', label: '마지막 문장을 대문자로' },
+      { key: 'firstWord', label: '앞단어만 대문자로' },
+      { key: 'lowercase', label: '소문자로' },
+      { key: 'toggle', label: '대/소문자 전환' }
+    ];
+  }
+
   openChangeCaseMenu(anchor) {
     this.captureTextColorSelection();
     if (!this.prepareFormattingMenu('changeCase', anchor)) return;
@@ -630,16 +643,7 @@ class PTTableFormatting {
     popup.setAttribute('role', 'dialog');
     popup.setAttribute('aria-label', '대/소문자 바꾸기');
 
-    const options = [
-      { key: 'sentence', label: '문장의 첫 글자를 대문자로' },
-      { key: 'uppercase', label: '대문자로' },
-      { key: 'capitalize', label: '각 단어를 대문자로' },
-      { key: 'firstWordUppercase', label: '첫 문장을 대문자로' },
-      { key: 'lastWordUppercase', label: '마지막 문장을 대문자로' },
-      { key: 'firstWord', label: '앞단어만 대문자로' },
-      { key: 'lowercase', label: '소문자로' },
-      { key: 'toggle', label: '대/소문자 전환' }
-    ];
+    const options = this.getChangeCaseOptions();
 
     const close = () => {
       popup.remove();

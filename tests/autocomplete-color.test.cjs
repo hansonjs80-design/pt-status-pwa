@@ -18,6 +18,27 @@ function createApp(dataStore = {}, presets = {}, environment = {}) {
   return { app, storage, context };
 }
 
+test('autocomplete saves and reloads underline and highlight independently from color and weight', () => {
+  const {app,context} = createApp({}, {memo:['La/mw']});
+  const rich={text:'La/mw',colors:Array(5).fill(null),styles:[null,null,null,
+    {underline:{style:'double',color:'#ff0000',thickness:1.5},highlight:'#ffff00',fontWeight:700},
+    {underline:{style:'double',color:'#ff0000',thickness:1.5},highlight:'#ffff00',fontWeight:700}]};
+  app.setAutocompleteValueColor('memo','La/mw','#000000',rich,500);
+  const reloaded=createApp({},JSON.parse(JSON.stringify(context.getPresets()))).app;
+  const row={memo:'La/mw'};reloaded.applyAutocompleteColor(row,'memo','La/mw');
+  assert.deepEqual(JSON.parse(JSON.stringify(row._richText.memo)),rich);
+  assert.equal(reloaded.getCellFormatting(row,'memo','fontWeight'),500);
+  reloaded.setAutocompleteValueColor('memo','La/mw','#0000ff');
+  assert.equal(reloaded.getAutocompleteValueFormatting('memo','La/mw').richText.styles[3].highlight,'#ffff00');
+});
+
+test('explicitly clearing candidate styles does not inherit an older record underline or highlight', () => {
+  const {app}=createApp({'2025-09-09':[{memo:'문구',_richText:{memo:{text:'문구',colors:[null,null],styles:[{highlight:'#ffff00',underline:{style:'single'}},null]}}}]});
+  assert.equal(app.getAutocompleteValueFormatting('memo','문구').richText.styles[0].highlight,'#ffff00');
+  app.setAutocompleteValueColor('memo','문구',null,null,null);
+  assert.equal(app.getAutocompleteValueFormatting('memo','문구').richText,null);
+});
+
 test('autocomplete carries historical color without letting the live input become its own source', () => {
   const target = { memo: '충 완료', _textColors: { memo: '#000000', name: '#00ff00' } };
   const source = { memo: '충 완료', _textColors: { memo: '#ff0000' }, _formatRevisions: { memo: { color: 'column' } } };

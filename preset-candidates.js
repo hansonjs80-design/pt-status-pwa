@@ -25,7 +25,12 @@ class PTPresetCandidates {
     const text = String(value), format = this.getAutocompleteValueFormatting(colKey, value, query);
     const colors = Array.from({length:text.length}, (_, i) => String(format.richText?.colors?.[i] || format.color || '').toLowerCase());
     const weights = Array.from({length:text.length}, (_, i) => Number(format.richText?.styles?.[i]?.fontWeight ?? format.fontWeight) || null);
-    return JSON.stringify([text, colors, weights, text.length ? null : [format.color,format.fontWeight]]);
+    const styles = Array.from({length:text.length}, (_, i) => {
+      const style = format.richText?.styles?.[i], line = style?.underline;
+      return [String(style?.highlight || '').toLowerCase() || null, Number(style?.fontSize) || null,
+        line ? [line.style, String(line.color || '').toLowerCase() || null, this.getUnderlineThickness(line)] : null];
+    });
+    return JSON.stringify([text, colors, weights, styles, text.length ? null : [format.color,format.fontWeight]]);
   }
 
   expandHistoricalPresetVariants(snapshot, colKey, items) {

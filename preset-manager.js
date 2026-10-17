@@ -521,7 +521,7 @@ class PTPresetManager {
     if (curVal === undefined) return;
 
     const formatting = this.getAutocompleteValueFormatting(tab, curVal, this.autocompleteManagerContext?.query);
-    const edit = await this.openPresetTextColorEditor("자동완성 문구·글자색·두께 수정", curVal, formatting.color, formatting.richText, formatting.fontWeight);
+    const edit = await this.openPresetTextColorEditor("자동완성 문구·서식 수정", curVal, formatting.color, formatting.richText, formatting.fontWeight);
     if (!edit) return;
     const trimmed = tab === "writer" ? this.normalizeWriterInput(edit.value) : edit.value;
     const context = this.autocompleteManagerContext;
@@ -537,6 +537,7 @@ class PTPresetManager {
       delete COLUMN_PRESETS[this.getAutocompleteRichKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteWeightKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(scope, curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichStyleKey(scope, curVal)];
     }
     this.setAutocompleteValueColor(scope, replacement, edit.color, edit.richText, edit.fontWeight);
     this.savePresetManagerItems(tab);
@@ -557,6 +558,7 @@ class PTPresetManager {
         delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
         delete COLUMN_PRESETS[this.getAutocompleteWeightKey(this.getPresetManagerKey(tab), curVal)];
         delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(this.getPresetManagerKey(tab), curVal)];
+        delete COLUMN_PRESETS[this.getAutocompleteRichStyleKey(this.getPresetManagerKey(tab), curVal)];
       }
       this.savePresetManagerItems(tab);
       this.renderPresetManagerList();
@@ -591,7 +593,7 @@ class PTPresetManager {
       delete COLUMN_PRESETS[context.key];
       delete COLUMN_PRESETS[this.getPresetCandidateFormatsKey(context.key)];
       delete COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)];
-      for (const key of Object.keys(COLUMN_PRESETS)) if (['__color:', '__rich:'].some(prefix => key.startsWith(`${prefix}${JSON.stringify(context.key)}:`))) delete COLUMN_PRESETS[key];
+      for (const key of Object.keys(COLUMN_PRESETS)) if (['__color:', '__rich:', '__weight:', '__richWeight:', '__richStyle:'].some(prefix => key.startsWith(`${prefix}${JSON.stringify(context.key)}:`))) delete COLUMN_PRESETS[key];
       context.hidden = [];
       const typed = this.assembleHangul(context.query);
       context.items = this.getAutocompleteSuggestions(context.colKey, context.query, true).filter(value => value !== context.query && value !== typed);
@@ -601,7 +603,7 @@ class PTPresetManager {
     }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
       const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) =>
-        key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__candidateFormats:"__query:') || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
+        key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || ['__candidateFormats:', '__color:', '__rich:', '__weight:', '__richWeight:', '__richStyle:'].some(prefix => key.startsWith(`${prefix}"__query:`))));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();

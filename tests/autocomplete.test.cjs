@@ -919,3 +919,11 @@ test('writer picker retains style variants and honors the existing writer color 
   app.columnFormatting={writer:{color:{value:'#008800',resetRevision:'reset'}}};
   assert.deepEqual(Array.from(values,value=>app.getAutocompleteValueFormatting('writer',value).color),['#008800','#008800']);
 });
+
+test('equal wording with different underline or highlight is not merged',()=>{
+  const app=createApp({});
+  const candidate=style=>app.makePresetCandidate('문구',{color:null,fontWeight:400,richText:{text:'문구',colors:[null,null],styles:[style,null]}});
+  const single=candidate({underline:{style:'single'}}),same=candidate({underline:{style:'single',color:null,thickness:1}});
+  const double=candidate({underline:{style:'double'}}),highlight=candidate({highlight:'#ffff00'});
+  assert.equal(app.deduplicatePresetCandidates('memo',[single,same,double,highlight]).length,3);
+});

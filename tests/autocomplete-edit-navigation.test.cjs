@@ -1155,3 +1155,21 @@ test('bulk history edits still change all matching records while preserving the 
   assert.equal(app.getAutocompleteValueFormatting('memo',variants[0]).color,'#0000ff');
   assert.equal(app.getAutocompleteValueFormatting('memo',variants[1]).color,'#00ff00');
 });
+
+test('bulk phrase editing carries underline and highlight into prior records and plain preset metadata',async()=>{
+  const {app}=createApp({'2026-10-04':[{memo:'La/mw'}],'2026-10-03':[{memo:'La/mw'}]},{memo:['La/mw']});
+  const rich={text:'La/MW',colors:Array(5).fill(null),styles:Array.from({length:5},()=>({highlight:'#ffff00',underline:{style:'wavy',color:null,thickness:1.5}}))};
+  assert.equal(await app.renameAutocompleteValue('memo','La/mw','La/MW',null,rich,500),2);
+  for(const rows of Object.values(app.dataStore)) assert.deepEqual(JSON.parse(JSON.stringify(rows[0]._richText.memo)),rich);
+  assert.deepEqual(JSON.parse(JSON.stringify(app.getAutocompleteValueFormatting('memo','La/MW').richText)),rich);
+});
+
+test('a global preset manager immediately refreshes after a prior-record format edit',async()=>{
+  const {app}=createApp({'2026-10-04':[{memo:'문구'}]}, {memo:['문구']});
+  app.openPresetTextColorEditor=async()=>({value:'수정',color:null,fontWeight:500,richText:null});
+  app.isEditingCell=()=>false;app.elPresetManagerModal={style:{display:'flex'}};app.activePresetTab='memo';
+  app.renderTable=app.closeAutocompleteMenu=app.renderQuickChips=app.updateSidebarStats=app.showSaveIndicator=()=>{};
+  let renders=0;app.renderPresetManagerList=()=>{renders++;};
+  await app.editAutocompleteValue('memo','문구',null);
+  assert.equal(renders,1);assert.equal(app.getPresetManagerItems('memo')[0],'수정');
+});
