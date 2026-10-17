@@ -1118,3 +1118,40 @@ test('bulk rebasing preserves pending local deletions when no merge baseline exi
   assert.equal(await app.renameAutocompleteValue('part','기존','수정'),0);
   assert.equal(app.dataStore['2026-10-04'].length,0);
 });
+
+test('a later unchanged autosave cannot silently supersede an unpublished bulk-edit disk snapshot', async()=>{
+  for(const stage of ['persistDataStore','persistSyncBaselines']) {
+    const {app}=createApp({'2026-10-04':[{name:'가상',memo:'기존'}]});
+    app._recordsOnDisk=true;app._baselinesOnDisk=true;const disk=new Map();
+    app.syncStateDisk=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+    app.persistTextEditBackup=async()=>{};
+    const persist=app[stage].bind(app);let raced=false;
+    app[stage]=(...args)=>{
+      const pending=persist(...args);
+      if(args[0]!==undefined&&!raced){raced=true;void Promise.resolve().then(()=>persist());}
+      return pending;
+    };
+    await assert.rejects(app.renameAutocompleteValue('memo','기존','수정'),/작업 중.*변경/);
+    assert.equal(app.dataStore['2026-10-04'][0].memo,'기존');
+    assert.equal(JSON.parse(disk.get('records'))['2026-10-04'][0].memo,'기존');
+    assert.equal(app.pendingSyncDates.size,0);
+  }
+});
+
+test('bulk history edits still change all matching records while preserving the other configured candidate style',async()=>{
+  const rows=[
+    {name:'가상1',memo:'같은문구',_textColors:{memo:'#0000ff'},_textStyles:{memo:{fontWeight:400}}},
+    {name:'가상2',memo:'같은문구',_textColors:{memo:'#ff0000'},_textStyles:{memo:{fontWeight:700}}},
+  ];
+  const {app}=createApp({'2026-10-04':rows},{memo:['같은문구']});
+  app.setAutocompleteValueColor('memo','같은문구','#0000ff',null,400);
+  const red=app.makePresetCandidate('같은문구',{color:'#ff0000',fontWeight:700,richText:null});
+  app.storePresetCandidates('memo',['같은문구',red]);
+  assert.equal(await app.renameAutocompleteValue('memo',red,'같은문구','#00ff00',null,600),2);
+  assert.equal(app.getCellFormatting(app.dataStore['2026-10-04'][0],'memo','color'),'#00ff00');
+  assert.equal(app.getCellFormatting(app.dataStore['2026-10-04'][0],'memo','fontWeight'),600);
+  assert.equal(app.getCellFormatting(app.dataStore['2026-10-04'][1],'memo','color'),'#00ff00');
+  const variants=app.getPresetCandidates('memo');assert.equal(variants.length,2);
+  assert.equal(app.getAutocompleteValueFormatting('memo',variants[0]).color,'#0000ff');
+  assert.equal(app.getAutocompleteValueFormatting('memo',variants[1]).color,'#00ff00');
+});

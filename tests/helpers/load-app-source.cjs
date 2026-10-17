@@ -4,16 +4,20 @@ const { resolve } = require('node:path');
 // Use the same local script order as index.html, without starting the UI.
 module.exports = [
   'history-search.js',
+  'preset-candidates.js',
+  'autocomplete-formatting.js',
   'table-formatting.js',
   'summary.js',
   'cell-input-tools.js',
   'device-layout.js',
   'sheet-clock.js',
   'document-tools.js',
+  'local-record-store.js',
   'cloud-sync.js',
   'context-menu.js',
   'preset-manager.js',
   'forced-corrections.js',
+  'history-text-edit.js',
   'autocomplete.js',
   'cell-editor.js',
   'sheet-selection.js',
@@ -26,6 +30,7 @@ module.exports = [
   'date-navigation.js',
   'table-view.js',
   'cell-pickers.js',
+  'patient-search-index.js',
   'patient-search-dialog.js',
   'history-table.js',
   'app.js'

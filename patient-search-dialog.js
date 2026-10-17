@@ -70,6 +70,7 @@ class PTPatientSearchDialog {
   }
 
   openSearchPromptModal(targetRowIdx, initialQuery) {
+    this.searchPromptHistoryIndex = null;
     // Windows IME can replay F without marking it as a repeat after the editor
     // has gone. The same physical shortcut must not reopen the prompt.
     if (this.directHistorySearchKeyHeld) return;
@@ -96,6 +97,7 @@ class PTPatientSearchDialog {
   }
 
   closeSearchPromptModal() {
+    this.searchPromptHistoryIndex = null;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     this.cancelSearchPromptSubmission();
     clearTimeout(this.searchPromptFocusTimer);
@@ -250,40 +252,6 @@ class PTPatientSearchDialog {
         option.scrollIntoView({ block: "nearest" });
       }
     });
-  }
-
-  // 검색어 종류에 맞춰 성함 또는 차트번호 후보만 보여준다.
-  getSearchPromptSuggestions(query) {
-    if (!query || !query.trim()) return [];
-    const q = query.trim().toLowerCase();
-    const searchByChart = /^[a-z0-9-]+$/i.test(q) && /\d/.test(q);
-    const seen = new Set();
-    const results = [];
-
-    // name, chartNo 두 컬럼에서 후보 수집 (최신 날짜 우선)
-    const searchStore = this.getSearchDataStore();
-    const cutoffDate = typeof this.getSearchCutoffDate === "function" ? this.getSearchCutoffDate() : null;
-    const dateKeys = [this.currentDate, ...Object.keys(searchStore).filter(d => d !== this.currentDate && (!cutoffDate || d >= cutoffDate)).sort().reverse()];
-
-    for (const dateKey of dateKeys) {
-      const rows = searchStore[dateKey];
-      if (!Array.isArray(rows)) continue;
-      for (const row of rows) {
-        const name = String(row?.name ?? "").trim();
-        const chartNo = String(row?.chartNo ?? "").trim();
-        for (const val of searchByChart ? [chartNo] : [name]) {
-          if (!val) continue;
-          const key = val.toLowerCase();
-          if (seen.has(key)) continue;
-          if (searchByChart ? key.includes(q) : this.matchesHangulPrefix(val, q, true)) {
-            seen.add(key);
-            results.push({ value: val, name: name || "", chartNo: chartNo || "" });
-            if (results.length >= 10) return results;
-          }
-        }
-      }
-    }
-    return results;
   }
 
   closeSearchPromptAutocomplete() {

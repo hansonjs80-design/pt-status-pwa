@@ -594,13 +594,13 @@ class PTCellEditor {
       // Candidates omit boundary spaces for matching. Confirming the same
       // visible wording must retain the literal spaces from the correction.
       const keepLiteral = input._preserveBoundaryWhitespace && forcedVal !== undefined && String(forcedVal).trim() === liveValue.trim();
-      let finalVal = forcedVal !== undefined && !keepLiteral ? forcedVal : this.assembleCellEditorText(input, liveValue);
+      let finalVal = forcedVal !== undefined && !keepLiteral ? String(forcedVal) : this.assembleCellEditorText(input, liveValue);
       input.nativeLanguagePreview?.remove();
       finalVal = this.normalizeCellEditorValue(input, finalVal, colKey);
       this.endNativeCellEditing(input);
       this.updateEditorTextColors(rows[rowIdx], colKey, finalVal);
       rows[rowIdx][colKey] = finalVal;
-      if (forcedVal !== undefined) this.applyAutocompleteColor(rows[rowIdx], colKey, finalVal, input.dataset.autocompleteQuery);
+      if (forcedVal !== undefined) this.applyAutocompleteColor(rows[rowIdx], colKey, forcedVal?._presetFormatting ? forcedVal : finalVal, input.dataset.autocompleteQuery);
       const compound = this.applyCompoundPatientInput(rows[rowIdx], colKey, finalVal);
       if (compound) {
         for (const key of ["chartNo", "name"]) {

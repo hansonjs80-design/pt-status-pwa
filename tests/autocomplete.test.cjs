@@ -834,3 +834,88 @@ test('stale autocomplete mouse actions refresh the visible query without committ
     if(change==='typing'||change==='forced projection')assert.equal(refreshes,2,change);
   }
 });
+
+test('editing a phrase retains same-text candidates with different formatting', async()=>{
+  const saved=[];const app=createApp({}, {specialNote:['허리핀*','허리핀*','허리핀* ' ,'MW','mw']},
+    {localStorage:{getItem(){return null;},setItem(_key,value){saved.push(JSON.parse(value));}}});
+  const initial=app.getPresetManagerItems('specialNote');
+  assert.deepEqual(Array.from(initial),['허리핀*','허리핀* ','MW','mw']);
+  const key=app.getAutocompleteRuleKey('specialNote','허리');
+  app.autocompleteManagerContext={colKey:'specialNote',key,query:'허리',items:['허리핀*','허리핀**','허리는 진료먼저'],hidden:['허리핀**','허리핀**']};
+  app.renderPresetManagerList=app.renderQuickChips=app.showSaveIndicator=()=>{};
+  app.openPresetTextColorEditor=async()=>({value:'허리핀*',color:'#123456',fontWeight:600});
+  await app.editPresetAt('specialNote',1);
+  assert.deepEqual(Array.from(app.getPresetManagerItems('specialNote'),String),['허리핀*','허리핀*','허리는 진료먼저']);
+  assert.deepEqual(saved.at(-1)[key],['허리핀*','허리핀*','허리는 진료먼저']);
+  assert.equal(saved.at(-1)[app.getAutocompleteHiddenKey(key)].length,1);
+  assert.equal(app.getAutocompleteValueFormatting('specialNote',app.getPresetManagerItems('specialNote')[1],'허리').fontWeight,600);
+  assert.equal(app.getAutocompleteValueFormatting('specialNote',app.getPresetManagerItems('specialNote')[1],'허리').color,'#123456');
+});
+
+test('a focused search prompt reuses prior-date candidates but retains live edits and invalidates on history or filter changes',()=>{
+  const app=createApp({'2026-09-30':[{name:'오늘가상',chartNo:'001'}],'2026-09-29':[{name:'과거가상',chartNo:'002'}]});
+  app.elSearchPromptModal={style:{display:'flex'}};let reads=0,cutoff=null;
+  const getStore=app.getSearchDataStore.bind(app);app.getSearchDataStore=()=>{reads++;return getStore();};app.getSearchCutoffDate=()=>cutoff;
+  assert.equal(app.getSearchPromptSuggestions('과거')[0].value,'과거가상');
+  app.getSearchPromptSuggestions('002');app.getSearchPromptSuggestions('없는환자');assert.equal(reads,1);
+  app.dataStore['2026-09-30'][0].name='오늘수정';assert.equal(app.getSearchPromptSuggestions('오늘수')[0].value,'오늘수정');assert.equal(reads,1);
+  app.dataStore['2026-09-29'][0].name='과거수정';app.invalidateAutocompleteHistory();
+  assert.equal(app.getSearchPromptSuggestions('과거수')[0].value,'과거수정');assert.equal(reads,2);
+  cutoff='2026-09-30';assert.equal(app.getSearchPromptSuggestions('과거').length,0);assert.equal(reads,3);
+  app.elSearchPromptModal.style.display='none';app.getSearchPromptSuggestions('오늘');app.getSearchPromptSuggestions('오늘');assert.equal(reads,5);
+});
+
+test('same text with different whole or character formatting survives save, reload, hide, reorder and deletion',()=>{
+  const saved=[];const presets={specialNote:['동일문구']};
+  const app=createApp({},presets,{localStorage:{getItem(){return null;},setItem(_key,value){saved.push(JSON.parse(value));}},confirm:()=>true});
+  app.setAutocompleteValueColor('specialNote','동일문구','#0000ff',null,400);
+  const key=app.getAutocompleteRuleKey('specialNote','동일');
+  const red=app.makePresetCandidate('동일문구',{color:'#ff0000',fontWeight:700,richText:null});
+  const redAgain=app.makePresetCandidate('동일문구',{color:'#ff0000',fontWeight:700,richText:null});
+  app.autocompleteManagerContext={colKey:'specialNote',query:'동일',key,items:['동일문구',red,redAgain],hidden:[]};
+  app.renderPresetManagerList=app.renderQuickChips=app.showSaveIndicator=app.setPresetManagerFeedback=()=>{};
+  app.savePresetManagerItems('specialNote');
+  assert.equal(app.getPresetManagerItems('specialNote').length,2);
+  const reloaded=createApp({},saved.at(-1));
+  const candidates=reloaded.getAutocompleteSuggestions('specialNote','동일');
+  assert.deepEqual(Array.from(candidates,String),['동일문구','동일문구']);
+  assert.deepEqual(Array.from(candidates,item=>reloaded.getAutocompleteValueFormatting('specialNote',item,'동일').fontWeight),[400,700]);
+  app.togglePresetCandidateVisibility('specialNote',1);
+  assert.equal(app.getAutocompleteSuggestions('specialNote','동일').length,1);
+  app.togglePresetCandidateVisibility('specialNote',1);
+  app.movePresetAt('specialNote',1,-1);
+  assert.equal(app.getAutocompleteValueFormatting('specialNote',app.getPresetManagerItems('specialNote')[0],'동일').fontWeight,700);
+  app.deletePresetAt('specialNote',0);
+  assert.equal(app.getAutocompleteValueFormatting('specialNote',app.getPresetManagerItems('specialNote')[0],'동일').color,'#0000ff');
+});
+
+test('equivalent whole and per-character styles merge but a different character style remains separate',()=>{
+  const app=createApp({}, {memo:['문구']});
+  app.setAutocompleteValueColor('memo','문구','#ff0000',null,700);
+  const same=app.makePresetCandidate('문구',{color:null,fontWeight:null,richText:{text:'문구',colors:['#ff0000','#ff0000'],styles:[{fontWeight:700},{fontWeight:700}]}});
+  const different=app.makePresetCandidate('문구',{color:'#ff0000',fontWeight:700,richText:{text:'문구',colors:[null,'#0000ff']}});
+  assert.equal(app.deduplicatePresetCandidates('memo',['문구',same,different]).length,2);
+});
+
+test('historical text with distinct colors and weights supplies distinct candidates without duplicating equal styles',()=>{
+  const app=createApp({'2026-09-29':[
+    {memo:'문구',_textColors:{memo:'#0000ff'},_textStyles:{memo:{fontWeight:400}}},
+    {memo:'문구',_textColors:{memo:'#ff0000'},_textStyles:{memo:{fontWeight:700}}},
+    {memo:'문구',_textColors:{memo:'#ff0000'},_textStyles:{memo:{fontWeight:700}}},
+  ]});
+  const values=app.getAutocompleteSuggestions('memo','문');
+  assert.equal(values.length,2);
+  assert.deepEqual(Array.from(values,String),['문구','문구']);
+  assert.deepEqual(Array.from(values,value=>app.getAutocompleteValueFormatting('memo',value).fontWeight),[400,700]);
+});
+
+test('writer picker retains style variants and honors the existing writer color reset',()=>{
+  const app=createApp({}, {writer:['J']});
+  app.setAutocompleteValueColor('writer','J','#ff0000',null,400);
+  app.storePresetCandidates('writer',['J',app.makePresetCandidate('J',{color:'#0000ff',fontWeight:700,richText:null})]);
+  const values=app.getWriterPresetValues();
+  assert.equal(values.length,2);
+  assert.deepEqual(Array.from(values,value=>app.getAutocompleteValueFormatting('writer',value).fontWeight),[400,700]);
+  app.columnFormatting={writer:{color:{value:'#008800',resetRevision:'reset'}}};
+  assert.deepEqual(Array.from(values,value=>app.getAutocompleteValueFormatting('writer',value).color),['#008800','#008800']);
+});

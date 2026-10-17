@@ -116,10 +116,22 @@ test('new detail items save their color and editing changes only that candidate,
   await app.editPresetAt('memo', 1);
   assert.equal(JSON.stringify(context.getPresets()), saved);
   app.autocompleteManagerContext.items.push('충 치료 대기');
-  app.deletePresetAt('memo', 1);
+  assert.deepEqual(Array.from(app.getPresetManagerItems('memo')), ['충 완료', '충 치료 대기']);
   assert.equal(app.getAutocompleteValueColor('memo', '충 치료 대기', '충'), '#0000ff');
   app.deletePresetAt('memo', 1);
   assert.equal(context.getPresets()[app.getAutocompleteColorKey(key, '충 치료 대기')], undefined);
+});
+
+test('adding identical wording with another color creates a variant without changing the original', () => {
+  const picker = {value:'#0000ff'}, checked = {checked:true};
+  const {app} = createApp({}, {memo:['문구']}, {document:{getElementById:id=>id==='managerNewPresetColorEnabled'?checked:picker}});
+  app.setAutocompleteValueColor('memo','문구','#ff0000');
+  app.activePresetTab='memo';app.elManagerNewPresetInput={value:'문구',focus(){}};
+  app.addPresetFromManager();
+  assert.equal(app.getPresetManagerItems('memo').length,2);
+  assert.deepEqual(Array.from(app.getPresetManagerItems('memo'),value=>app.getAutocompleteValueColor('memo',value)),['#ff0000','#0000ff']);
+  app.elManagerNewPresetInput.value='문구';app.addPresetFromManager();
+  assert.equal(app.getPresetManagerItems('memo').length,2);
 });
 
 test('restoring one detail list clears only its colors and restoring general presets preserves other detail colors', () => {

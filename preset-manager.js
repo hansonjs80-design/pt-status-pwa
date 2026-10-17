@@ -11,8 +11,9 @@ class PTPresetManager {
   togglePresetCandidateVisibility(tab, index) {
     const context = this.autocompleteManagerContext;
     if (!context || context.colKey !== tab) return;
-    const value = context.items[index];
-    if (value === undefined) return;
+    const candidate = context.items[index];
+    if (candidate === undefined) return;
+    const value = this.getPresetCandidateIdentity(candidate);
     context.hidden ||= [];
     context.hidden = context.hidden.includes(value) ? context.hidden.filter(item => item !== value) : [...context.hidden, value];
     this.savePresetManagerItems(tab);
@@ -25,14 +26,20 @@ class PTPresetManager {
 
   getPresetManagerItems(tab) {
     const context = this.autocompleteManagerContext;
-    return context?.colKey === tab ? context.items : (COLUMN_PRESETS[tab] ||= []);
+    if (context?.colKey !== tab) COLUMN_PRESETS[tab] ||= [];
+    const items = context?.colKey === tab ? context.items : this.getPresetCandidates(tab);
+    const unique = this.deduplicatePresetCandidates(tab, items, context?.query);
+    // Keep first occurrence/order and the live array. Only equal wording AND
+    // effective character formatting merge; styled variants remain separate.
+    if (unique.length !== items.length) items.splice(0, items.length, ...unique);
+    return items;
   }
 
   savePresetManagerItems(tab) {
-    COLUMN_PRESETS[this.getPresetManagerKey(tab)] = [...this.getPresetManagerItems(tab)];
+    this.storePresetCandidates(this.getPresetManagerKey(tab), this.getPresetManagerItems(tab));
     const context = this.autocompleteManagerContext;
     if (context?.colKey === tab) {
-      context.hidden = (context.hidden || []).filter(value => context.items.includes(value));
+      context.hidden = [...new Set(context.hidden || [])].filter(value => context.items.some(item => this.getPresetCandidateIdentity(item) === value));
       COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)] = [...context.hidden];
     }
     saveColumnPresets(COLUMN_PRESETS);
@@ -43,7 +50,7 @@ class PTPresetManager {
     const shown = this.autocompleteState?.colKey === colKey && this.autocompleteState?.query === query
       ? this.autocompleteState.candidates : this.getAutocompleteSuggestions(colKey, query, true);
     const key = this.getAutocompleteRuleKey(colKey, query);
-    const items = Object.hasOwn(COLUMN_PRESETS, key) ? [...COLUMN_PRESETS[key]]
+    const items = Object.hasOwn(COLUMN_PRESETS, key) ? [...this.getPresetCandidates(key)]
       : [...new Set(shown.filter(item => colKey === "name" || item === value ||
         (COLUMN_PRESETS[colKey] || []).includes(item) || (item !== query && item !== this.assembleHangul(query))))];
     input?.blur?.();
@@ -397,7 +404,7 @@ class PTPresetManager {
         const itemEl = document.createElement("div");
         itemEl.className = "preset-list-item";
         itemEl.dataset.presetIndex = idx;
-        const hidden = this.autocompleteManagerContext?.hidden?.includes(val) || false;
+        const hidden = this.autocompleteManagerContext?.hidden?.includes(this.getPresetCandidateIdentity(val)) || false;
         itemEl.classList.toggle("preset-candidate-hidden", hidden);
         this.bindPresetDragRow(itemEl, tab, idx);
 
@@ -407,7 +414,7 @@ class PTPresetManager {
 
         const textEl = document.createElement("span");
         textEl.className = "preset-item-text";
-        const label = val === "" ? "빈칸" : val;
+        const label = String(val) === "" ? "빈칸" : String(val);
         this.renderAutocompleteText(textEl, tab, val, this.autocompleteManagerContext?.query);
         if (hidden) textEl.append(document.createTextNode(' · 숨김'));
         const itemColor = this.getAutocompleteValueColor(tab, val, this.autocompleteManagerContext?.query);
@@ -423,11 +430,12 @@ class PTPresetManager {
         colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
         colorPicker.onchange = () => {
           this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
+          this.savePresetManagerItems(tab);
           this.renderPresetManagerList();
         };
         actionsEl.appendChild(colorPicker);
         const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
-          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.renderPresetManagerList();
+          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.savePresetManagerItems(tab); this.renderPresetManagerList();
         });
         actionsEl.appendChild(resetColor);
 
@@ -487,14 +495,17 @@ class PTPresetManager {
     const val = this.activePresetTab === "writer" ? this.normalizeWriterInput(rawValue) : rawValue;
     const tab = this.activePresetTab;
     const items = this.getPresetManagerItems(tab);
-    if (items.includes(val)) {
+    const color = typeof document !== "undefined" && document.getElementById("managerNewPresetColorEnabled")?.checked
+      ? document.getElementById("managerNewPresetColor").value : undefined;
+    const candidate = color !== undefined && items.some(item => String(item) === val)
+      ? this.makePresetCandidate(val, {color, fontWeight:null, richText:null}) : val;
+    const key = this.getPresetCandidateFormatKey(tab, candidate, this.autocompleteManagerContext?.query);
+    if (items.some(item => String(item) === val && this.getPresetCandidateFormatKey(tab, item, this.autocompleteManagerContext?.query) === key)) {
       this.setPresetManagerFeedback("이미 등록된 문구입니다. 목록에서 수정할 수 있습니다.");
       this.elManagerNewPresetInput.focus(); return;
     }
-    items.push(val);
-    if (typeof document !== "undefined" && document.getElementById("managerNewPresetColorEnabled")?.checked) {
-      this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, document.getElementById("managerNewPresetColor").value);
-    }
+    items.push(candidate);
+    if (color !== undefined) this.setAutocompleteValueColor(this.getPresetManagerKey(tab), candidate, color);
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
@@ -514,16 +525,20 @@ class PTPresetManager {
     if (!edit) return;
     const trimmed = tab === "writer" ? this.normalizeWriterInput(edit.value) : edit.value;
     const context = this.autocompleteManagerContext;
-    if (context?.colKey === tab) context.hidden = (context.hidden || []).map(value => value === curVal ? trimmed : value);
-    this.getPresetManagerItems(tab)[index] = trimmed;
+    const items = this.getPresetManagerItems(tab);
+    const formattingKey = this.getPresetCandidateFormatKey(tab, this.makePresetCandidate(trimmed, edit), context?.query);
+    const collision = items.some((item, i) => i !== index && String(item) === trimmed && this.getPresetCandidateFormatKey(tab, item, context?.query) !== formattingKey);
+    const replacement = curVal?._presetFormatting || collision ? this.makePresetCandidate(trimmed, {color:edit.color || null,richText:edit.richText || null,fontWeight:edit.fontWeight ?? null}) : trimmed;
+    if (context?.colKey === tab) context.hidden = (context.hidden || []).map(value => value === this.getPresetCandidateIdentity(curVal) ? this.getPresetCandidateIdentity(replacement) : value);
+    items[index] = replacement;
     const scope = this.getPresetManagerKey(tab);
-    if (trimmed !== curVal && !this.getPresetManagerItems(tab).includes(curVal)) {
+    if (String(trimmed) !== String(curVal) && !this.getPresetManagerItems(tab).some(item => String(item) === String(curVal))) {
       delete COLUMN_PRESETS[this.getAutocompleteColorKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteRichKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteWeightKey(scope, curVal)];
       delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(scope, curVal)];
     }
-    this.setAutocompleteValueColor(scope, trimmed, edit.color, edit.richText, edit.fontWeight);
+    this.setAutocompleteValueColor(scope, replacement, edit.color, edit.richText, edit.fontWeight);
     this.savePresetManagerItems(tab);
     this.renderPresetManagerList();
     this.renderQuickChips();
@@ -537,7 +552,7 @@ class PTPresetManager {
     if (confirm(`"${curVal}" 항목을 삭제하시겠습니까?`)) {
       const items = this.getPresetManagerItems(tab);
       items.splice(index, 1);
-      if (!items.includes(curVal)) {
+      if (!items.some(item => String(item) === String(curVal))) {
         delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
         delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
         delete COLUMN_PRESETS[this.getAutocompleteWeightKey(this.getPresetManagerKey(tab), curVal)];
@@ -574,6 +589,7 @@ class PTPresetManager {
     if (context) {
       if (!confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
       delete COLUMN_PRESETS[context.key];
+      delete COLUMN_PRESETS[this.getPresetCandidateFormatsKey(context.key)];
       delete COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)];
       for (const key of Object.keys(COLUMN_PRESETS)) if (['__color:', '__rich:'].some(prefix => key.startsWith(`${prefix}${JSON.stringify(context.key)}:`))) delete COLUMN_PRESETS[key];
       context.hidden = [];
@@ -585,7 +601,7 @@ class PTPresetManager {
     }
     if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
       const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) =>
-        key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
+        key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || key.startsWith('__candidateFormats:"__query:') || key.startsWith('__color:"__query:') || key.startsWith('__rich:"__query:')));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
       saveColumnPresets(COLUMN_PRESETS);
       this.renderPresetManagerList();

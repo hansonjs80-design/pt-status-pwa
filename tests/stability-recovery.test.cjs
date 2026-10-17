@@ -323,3 +323,63 @@ test('explicit save cancels the trailing input save and restores exact undo stat
   assert.equal(saves,1);assert.equal(timers.size,0);assert.equal(app._saveTimer,null);
   assert.equal(buttons.btnUndo.disabled,true);assert.equal(app.getEditHistory().undo.length,0);
 });
+
+test('slow storage keeps one active write and only the newest waiting snapshot for each data kind', async () => {
+  for(const kind of ['records','baselines']) {
+    const {app}=harness();app._recordsOnDisk=true;app._baselinesOnDisk=true;
+    const disk=new Map(),writes=[],releases=[];
+    app.syncStateDisk=async(key,value)=>{
+      if(value!==undefined){writes.push(JSON.parse(value));await new Promise(resolve=>releases.push(resolve));disk.set(key,value);}
+      return disk.get(key);
+    };
+    const save=i=>{
+      const records={'2026-10-15':[{name:'가상',memo:String(i)}]};
+      return kind==='records'?app.persistDataStore(records):app.persistSyncBaselines(new Map(Object.entries(records)));
+    };
+    const first=save(0);await drain();
+    let finished=0;const waiting=Array.from({length:100},(_,i)=>save(i+1).then(()=>{finished++;}));
+    await drain();assert.equal(writes.length,1);assert.equal(finished,0);
+    releases[0]();await first;await drain();
+    assert.equal(writes.length,2);assert.equal(writes[1]['2026-10-15'][0].memo,'100',kind);
+    assert.equal(finished,0,'superseded requests must wait for the latest snapshot to be verified');
+    releases[1]();await Promise.all(waiting);await drain();
+    assert.equal(writes.length,2);assert.equal(finished,100);
+    assert.equal(JSON.parse(disk.get(kind))['2026-10-15'][0].memo,'100');
+  }
+});
+
+test('a failed active write does not block the newest queued save or a later retry', async () => {
+  const {app}=harness();app._recordsOnDisk=true;
+  let failFirst,releaseLatest;const writes=[];let disk;
+  app.syncStateDisk=async(_key,value)=>{
+    if(value!==undefined){writes.push(value);if(writes.length===1)await new Promise((_,reject)=>{failFirst=reject;});
+      else if(writes.length===2)await new Promise(resolve=>{releaseLatest=resolve;});disk=value;}
+    return disk;
+  };
+  const first=app.persistDataStore({'2026-10-15':[{memo:'first'}]});
+  const rejected=assert.rejects(first,/temporary write failure/);await drain();
+  const queued=[app.persistDataStore({'2026-10-15':[{memo:'middle'}]}),app.persistDataStore({'2026-10-15':[{memo:'latest'}]})];
+  failFirst(Error('temporary write failure'));await rejected;await drain();
+  assert.equal(writes.length,2);assert.equal(JSON.parse(writes[1])['2026-10-15'][0].memo,'latest');
+  releaseLatest();await Promise.all(queued);
+  await app.persistDataStore({'2026-10-15':[{memo:'retry'}]});
+  assert.equal(JSON.parse(disk)['2026-10-15'][0].memo,'retry');
+});
+
+test('verification failure rejects every coalesced caller and leaves both storage queues reusable', async()=>{
+  const {app}=harness();app._recordsOnDisk=true;app._baselinesOnDisk=true;
+  let release,first=true,fail=false;const disk=new Map();
+  app.syncStateDisk=async(key,value)=>{
+    if(value!==undefined){if(key==='records'&&first){first=false;await new Promise(resolve=>{release=resolve;});}disk.set(key,value);}
+    return fail&&key==='records'&&value===undefined?'unverified':disk.get(key);
+  };
+  const active=app.persistDataStore({'2026-10-15':[{memo:'active'}]});await drain();
+  const waiting=[app.persistDataStore({'2026-10-15':[{memo:'middle'}]}),app.persistDataStore({'2026-10-15':[{memo:'latest'}]})];
+  const settled=Promise.allSettled(waiting);
+  await app.persistSyncBaselines(new Map([['2026-10-15',[]]]));
+  assert.ok(disk.has('baselines'),'a blocked record write must not block baseline storage');
+  release();await active;fail=true;
+  const results=await settled;assert.equal(results.every(result=>result.status==='rejected'&&/검증/.test(result.reason.message)),true);
+  fail=false;await app.persistDataStore({'2026-10-15':[{memo:'retry'}]});
+  assert.equal(JSON.parse(disk.get('records'))['2026-10-15'][0].memo,'retry');
+});

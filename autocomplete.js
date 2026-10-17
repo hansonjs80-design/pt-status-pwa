@@ -66,14 +66,14 @@ class PTAutocomplete {
     const ruleKey = this.getAutocompleteRuleKey(colKey, rawQuery);
     if (Object.hasOwn(COLUMN_PRESETS, ruleKey)) {
       const hidden = COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || [];
-      const values = COLUMN_PRESETS[ruleKey].filter(value => !hidden.includes(value) && !columnHidden.has(value.trim().toLowerCase()));
+      const values = this.deduplicatePresetCandidates(colKey, this.getPresetCandidates(ruleKey), rawQuery).filter(value => !hidden.includes(this.getPresetCandidateIdentity(value)) && !columnHidden.has(value.trim().toLowerCase()));
       if (["part", "chartNo"].includes(colKey)) {
         const typed = this.assembleHangul(rawQuery).trim();
-        return [typed, ...values.filter(value => value !== typed)];
+        return this.deduplicatePresetCandidates(colKey, [typed, ...values], rawQuery);
       }
       return values;
     }
-    const presets = [...new Set(COLUMN_PRESETS[colKey] || [])];
+    const presets = this.deduplicatePresetCandidates(colKey, this.getPresetCandidates(colKey), rawQuery);
     // An initial-specific list also supplies candidates as its syllable grows
     // (ㅇ → 아 → 안). An explicitly edited list for the exact query above wins.
     const rulePrefix = `__query:${colKey}:`;
@@ -82,8 +82,8 @@ class PTAutocomplete {
       const sourceQuery = key.slice(rulePrefix.length);
       if (!sourceQuery || !this.matchesHangulPrefix(query, sourceQuery, true)) continue;
       const hidden = new Set(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || []);
-      for (const value of values) {
-        if (!hidden.has(value) && !presets.includes(value)) presets.push(value);
+      for (const value of this.getPresetCandidates(key)) {
+        if (!hidden.has(this.getPresetCandidateIdentity(value)) && !presets.some(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(value))) presets.push(value);
       }
     }
     const presetSet = new Set(presets);
@@ -208,10 +208,11 @@ class PTAutocomplete {
       }
     }
 
-    return results;
+    return this.expandHistoricalPresetVariants(snapshot,colKey,results);
   }
 
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true, preferCurrentValue = false } = {}) {
+    candidates = this.deduplicatePresetCandidates(colKey, candidates || [], this.getCellEditorValue(input));
     const previous = this.autocompleteState;
     const query = this.getCellEditorValue(input);
     input.dataset.autocompleteQuery = query;
@@ -219,7 +220,7 @@ class PTAutocomplete {
     const showTypedValue = includeTypedValue && ["name", "part", "extra", "memo", "specialNote"].includes(colKey) && Boolean(typedValue);
     // Matching ignores case, but choosing a candidate must retain its spelling:
     // the typed "mw" and the registered "MW" are different selectable values.
-    if (showTypedValue) candidates = [typedValue, ...candidates.filter(value => value !== typedValue)];
+    if (showTypedValue) candidates = this.deduplicatePresetCandidates(colKey, [typedValue, ...candidates], query);
     const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
       previous.colKey === colKey && previous.query === query;
     // Ending IME composition while browsing must not remove pending-initial
@@ -229,22 +230,28 @@ class PTAutocomplete {
         this.matchesHangulPrefix(value, query, true) && !this.matchesHangulPrefix(value, query, false));
       if (pendingMatches.length) {
         const retained = previous.candidates.filter(value => candidates.includes(value) || pendingMatches.includes(value));
-        candidates = [...new Set([...retained, ...candidates, ...pendingMatches])];
+        candidates = this.deduplicatePresetCandidates(colKey,[...retained, ...candidates, ...pendingMatches],query);
       }
     }
     // Delayed IME/input events and cloud refreshes must not reset keyboard selection.
     if (sameQuery && candidates?.length === previous.candidates.length &&
-        candidates.every((candidate, index) => candidate === previous.candidates[index]) &&
+        candidates.every((candidate, index) => this.getPresetCandidateIdentity(candidate) === this.getPresetCandidateIdentity(previous.candidates[index])) &&
         document.getElementById("cellAutocompleteMenu")) { this.updateInlineAutocompletePreview(); return; }
     const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
-    const preservedIndex = sameQuery ? candidates?.indexOf(selectedValue) : -1;
+    const preservedIndex = sameQuery ? candidates?.findIndex(value => this.getPresetCandidateIdentity(value) === this.getPresetCandidateIdentity(selectedValue)) : -1;
     const ruleKey = this.getAutocompleteRuleKey(colKey, query);
-    const registered = COLUMN_PRESETS[ruleKey] || COLUMN_PRESETS[colKey] || [];
-    const preferred = registered.find(value => candidates.includes(value) &&
+    const registered = this.getPresetCandidates(Object.hasOwn(COLUMN_PRESETS, ruleKey) ? ruleKey : colKey);
+    const preferred = registered.find(value => candidates.some(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(value)) &&
       !(COLUMN_PRESETS[this.getAutocompleteHiddenKey(ruleKey)] || []).includes(value) &&
       !(COLUMN_PRESETS[`__columnHidden:${colKey}`] || []).some(hidden => hidden.toLowerCase() === value.toLowerCase()));
-    const preferredIndex = preferred === undefined ? -1 : candidates.indexOf(preferred);
-    const currentValueIndex = preferCurrentValue ? candidates.indexOf(query.trim()) : -1;
+    const preferredIndex = preferred === undefined ? -1 : candidates.findIndex(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(preferred));
+    let currentValueIndex = preferCurrentValue ? candidates.findIndex(value => String(value) === query.trim()) : -1;
+    if (preferCurrentValue && candidates.filter(value => String(value) === query.trim()).length > 1) {
+      const row = this.getCurrentRows()[rowIdx];
+      const key = row && this.getPresetCandidateFormatKey(colKey,this.makePresetCandidate(query.trim(),this.getRowAutocompleteFormatting(row,colKey)));
+      const match = candidates.findIndex(value => String(value) === query.trim() && this.getPresetCandidateFormatKey(colKey,value,query) === key);
+      if (match >= 0) currentValueIndex = match;
+    }
     const currentWriterIndex = colKey === "writer" ? candidates.indexOf(this.normalizeWriterInput(query).trim()) : -1;
     const selectedIndex = preservedIndex >= 0 ? preservedIndex : currentValueIndex >= 0 ? currentValueIndex : currentWriterIndex >= 0 ? currentWriterIndex : preferredIndex >= 0 ? preferredIndex
       : (showTypedValue && candidates.length > 1 ? 1 : 0);
@@ -315,7 +322,7 @@ class PTAutocomplete {
           input.value = cand;
           const rows = this.getCurrentRows();
           if (rows[rowIdx]) {
-            rows[rowIdx][colKey] = cand;
+            rows[rowIdx][colKey] = String(cand);
             this.applyAutocompleteColor(rows[rowIdx], colKey, cand, query);
             this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
             this.renderColoredText(cellElement, rows[rowIdx], colKey);
@@ -323,7 +330,7 @@ class PTAutocomplete {
           this.saveDataStore();
           if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         }
-        if (cand === "") this.selectAutocompleteRightCell(rowIdx, colKey);
+        if (String(cand) === "") this.selectAutocompleteRightCell(rowIdx, colKey);
         else this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
           this.focusSelectedCellEditor();
@@ -394,205 +401,6 @@ class PTAutocomplete {
       window.visualViewport?.removeEventListener("scroll", positionMenu);
       document.removeEventListener("scroll", scrollListener, true);
     };
-  }
-
-  async editAutocompleteValue(colKey, oldValue, input) {
-    if (this.autocompleteRenameBusy) return;
-    const throughDate = this.currentDate;
-    const managerContext = this.autocompleteManagerContext;
-    const formatting = this.getAutocompleteValueFormatting(colKey, oldValue, this.autocompleteManagerContext?.query || this.autocompleteState?.query);
-    const edit = await this.openPresetTextColorEditor("이전 기록 문구·글자색·두께 수정", oldValue,
-      formatting.color, formatting.richText, formatting.fontWeight,
-      { description: `${throughDate.replace(/-/g, '.')} 및 이전 날짜의 같은 열에서 “${oldValue}”와 일치하는 셀을 수정합니다.` });
-    if (!edit || !edit.value) return;
-    const value = edit.value;
-    this.autocompleteRenameBusy = true;
-    try {
-      this.showSaveIndicator('전체 날짜 기록 확인 중…');
-      const count = await this.renameAutocompleteValue(colKey, oldValue, value.trim(), edit.color, edit.richText, edit.fontWeight, { throughDate });
-      // A zero-match result may return after the user has started a different
-      // editor during the history read. Leave that editor and its menu alive.
-      if (!this.isEditingCell()) {
-        if (input && input.value.trim() === oldValue.trim()) input.value = value.trim();
-        input?.blur();
-        this.closeAutocompleteMenu();
-        this.renderTable();
-      }
-      this.renderQuickChips();
-      this.updateSidebarStats();
-      if (this.autocompleteManagerContext === managerContext && managerContext?.colKey === colKey) {
-        this.autocompleteManagerContext.items = this.autocompleteManagerContext.items.map(item => item === oldValue ? value.trim() : item);
-        this.autocompleteManagerContext.hidden = (this.autocompleteManagerContext.hidden || []).map(item => item === oldValue ? value.trim() : item);
-        this.setAutocompleteValueColor(this.autocompleteManagerContext.key, value.trim(), edit.color, edit.richText, edit.fontWeight);
-        this.savePresetManagerItems(colKey);
-        this.renderPresetManagerList();
-      }
-      this.showSaveIndicator(`${throughDate}까지 ${count}개 셀 수정 · 변경 전 백업 저장됨`);
-    } catch (error) {
-      alert("문구·글자색·두께 수정 실패: " + error.message);
-    } finally { this.autocompleteRenameBusy = false; }
-  }
-
-  async renameAutocompleteValue(colKey, oldValue, newValue, color = undefined, richText = undefined, fontWeight = undefined, { throughDate = this.currentDate } = {}) {
-    await this.syncBaselinesReady;
-    const allowed = ["name", "chartNo", "part", "prescription", "extra", "writer", "memo", "specialNote"];
-    if (!allowed.includes(colKey) || !newValue.trim()) throw new Error("수정할 문구를 입력하세요.");
-    const client = this.supabaseClient;
-    if (client) {
-      if (this.searchHistoryRequest) await this.searchHistoryRequest;
-      if (!await this.loadSearchHistory(true, { allDates: true }) || this.supabaseClient !== client) {
-        const reason = this.supabaseClient !== client ? '클라우드 연결이 변경되었습니다.'
-          : this.searchHistoryLoadError?.message || '클라우드에 연결할 수 없습니다.';
-        throw new Error(`전체 날짜 기록 확인 실패: ${reason}\n기록은 변경하지 않았습니다. 잠시 후 ‘이전 기록 수정’을 다시 눌러 주세요.`);
-      }
-    }
-    const oldText = String(oldValue).trim(), replacement = colKey === "writer" ? this.normalizeWriterInput(newValue.trim()) : newValue.trim();
-    if (oldText === replacement && color === undefined && richText === undefined && fontWeight === undefined) return 0;
-    // Rebase even pending/current dates once. Read-only merging shares unchanged
-    // rows; only dates containing a match need a deep copy below.
-    const source = this.getSearchDataStore({ rebasePending: true });
-    const changed = {}, baselines = new Map(this.syncBaselines || []);
-    let count = 0;
-    for (const [date, rows] of Object.entries(source)) {
-      if (date > throughDate || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-      if (!Array.isArray(rows)) continue;
-      if (!rows.some(row => String(row?.[colKey] ?? "").trim() === oldText)) continue;
-      const copy = JSON.parse(JSON.stringify(rows));
-      for (const row of copy) {
-        if (!row || String(row[colKey] ?? "").trim() !== oldText) continue;
-        row[colKey] = replacement;
-        if (row._richText) delete row._richText[colKey];
-        if (color !== undefined) {
-          row._textColors ||= {};
-          if (color) row._textColors[colKey] = color; else delete row._textColors[colKey];
-          this.markCellFormatting(row, colKey, "color");
-        }
-        if (richText?.text === replacement && richText.colors?.length === replacement.length) {
-          row._richText ||= {};
-          row._richText[colKey] = JSON.parse(JSON.stringify(richText));
-          this.markCellFormatting(row, colKey, 'color');
-        }
-        this.applyAutocompleteWeight(row, colKey, fontWeight);
-        count++;
-      }
-      changed[date] = copy;
-      if (Array.isArray(this.cloudSearchHistory?.[date]) || !baselines.has(date)) {
-        // The new intent is relative to the fresh server data, not an older
-        // baseline whose value may happen to equal the requested replacement.
-        baselines.set(date, JSON.parse(JSON.stringify(this.cloudSearchHistory?.[date] || rows)));
-      }
-    }
-    const presets = JSON.parse(JSON.stringify(COLUMN_PRESETS));
-    let presetChanged = false;
-    const scopes = new Set([colKey]);
-    for (const [key, values] of Object.entries(presets)) {
-      if (!Array.isArray(values) || !(key === colKey || key.startsWith(`__query:${colKey}:`) ||
-          key.startsWith(`__hidden:${colKey}:`) || key === `__columnHidden:${colKey}`)) continue;
-      if (!values.some(value => String(value).trim() === oldText)) continue;
-      presets[key] = [...new Set(values.map(value => String(value).trim() === oldText ? replacement : value))];
-      presetChanged = true;
-      if (key.startsWith('__query:')) scopes.add(key);
-    }
-    if (color !== undefined) presets[this.getAutocompleteColorKey(colKey, replacement)] = [color || ""];
-    if (richText !== undefined || color !== undefined) {
-      const key = this.getAutocompleteRichKey(colKey, replacement);
-      if (richText?.text === replacement && richText.colors?.length === replacement.length) presets[key] = richText.colors.map(color => color || '');
-      else delete presets[key];
-    }
-    this.writeAutocompleteWeight(presets, colKey, replacement, fontWeight, richText);
-    for (const scope of scopes) {
-      if (scope === colKey) continue;
-      if (color !== undefined) presets[this.getAutocompleteColorKey(scope, replacement)] = [color || ''];
-      if (richText !== undefined || color !== undefined) {
-        const key = this.getAutocompleteRichKey(scope, replacement);
-        if (richText?.text === replacement && richText.colors?.length === replacement.length) presets[key] = richText.colors.map(color => color || '');
-        else delete presets[key];
-      }
-      this.writeAutocompleteWeight(presets, scope, replacement, fontWeight, richText);
-    }
-    if (!count && !presetChanged) return 0;
-
-    // This backup covers records and presets only; no schema/Auth/Storage changes occur.
-    const originalRecords = JSON.stringify(this.dataStore);
-    const originalPresets = JSON.stringify(COLUMN_PRESETS);
-    const originalBaselines = JSON.stringify(Object.fromEntries(this.syncBaselines || []));
-    const assertUnchanged = () => {
-      if (this.supabaseClient !== client || JSON.stringify(this.dataStore) !== originalRecords ||
-          JSON.stringify(COLUMN_PRESETS) !== originalPresets ||
-          JSON.stringify(Object.fromEntries(this.syncBaselines || [])) !== originalBaselines ||
-          (typeof document !== 'undefined' && this.isEditingCell())) {
-        throw new Error('작업 중 기록이나 설정이 변경되어 일괄 수정을 중단했습니다. 최신 입력은 유지됩니다. 입력을 마친 뒤 다시 시도해 주세요.');
-      }
-    };
-    const backup = JSON.stringify({ createdAt: new Date().toISOString(), column: colKey,
-      oldValue: oldText, newValue: replacement, throughDate, color, richText, fontWeight, dataStore: this.dataStore,
-      cloudSearchHistory: this.cloudSearchHistory || {}, presets: COLUMN_PRESETS,
-      syncBaselines: Object.fromEntries(this.syncBaselines || []) });
-    const backupKey = `PT_TEXT_EDIT_BACKUP_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await this.persistTextEditBackup(backupKey, backup);
-    assertUnchanged();
-
-    const nextStore = { ...this.dataStore, ...changed };
-    // Never publish a retry queue for records that failed to persist (e.g. quota).
-    let pending;
-    try {
-      await this.persistSyncBaselines(baselines);
-      assertUnchanged();
-      await this.persistDataStore(nextStore);
-      assertUnchanged();
-      pending = new Set([...(this.pendingSyncDates || []), ...Object.keys(changed)]);
-      localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...pending]));
-    } catch (error) {
-      // A slow disk write can finish after another cell/save has changed the
-      // live data. Restore the latest live snapshots on disk before returning;
-      // never publish the stale plan or a retry queue for an aborted edit.
-      try {
-        await this.persistSyncBaselines();
-        await this.persistDataStore();
-      } catch (restoreError) {
-        error.message += `\n최신 기록 저장을 다시 확인해 주세요: ${restoreError.message}`;
-      }
-      throw error;
-    }
-    this.dataStore = nextStore;
-    this.invalidateAutocompleteHistory();
-    this.syncBaselines = baselines;
-    this.pendingSyncDates = pending;
-    for (const date of Object.keys(changed)) {
-      this.cloudSearchHistory ||= {};
-      this.cloudSearchHistory[date] = JSON.parse(JSON.stringify(changed[date]));
-      this.editHistory?.delete(date);
-      this.scheduleSupabaseSync(date, false);
-    }
-    if (presetChanged || color !== undefined || richText !== undefined || fontWeight !== undefined) { COLUMN_PRESETS = presets; saveColumnPresets(COLUMN_PRESETS); }
-    return count;
-  }
-
-  async migrateTextEditBackups(store) {
-    const keys = Array.from({ length: localStorage.length || 0 }, (_, idx) => localStorage.key(idx))
-      .filter(key => key?.startsWith("PT_TEXT_EDIT_BACKUP_"));
-    for (const key of keys) {
-      const backup = localStorage.getItem(key);
-      JSON.parse(backup);
-      await store(key, backup);
-      if (await store(key) !== backup) throw new Error("기존 문구 백업 이전 검증에 실패했습니다.");
-      // Release the small settings store only after the complete backup is verified.
-      localStorage.removeItem(key);
-    }
-  }
-
-  async persistTextEditBackup(key, backup) {
-    const tools = window.ptLocalTools;
-    if (tools?.store) {
-      const store = tools.store.bind(tools);
-      await this.migrateTextEditBackups(store);
-      await store(key, backup);
-      if (await store(key) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
-    } else {
-      localStorage.setItem(key, backup);
-      if (localStorage.getItem(key) !== backup) throw new Error("변경 전 백업 검증에 실패했습니다.");
-    }
-    JSON.parse(backup);
   }
 
   moveAutocompleteSelection(direction) {

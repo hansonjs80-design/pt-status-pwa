@@ -1076,7 +1076,7 @@ class PTApp {
 }
 
 // Install feature methods before the app starts. Preserve class method descriptors.
-for (const feature of [PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools, PTHolidayCalendar,
+for (const feature of [PTPresetCandidates, PTLocalRecordStore, PTHistoryTextEdit, PTAutocompleteFormatting, PTPatientSearchIndex, PTHistorySearch, PTTableFormatting, PTSummary, PTCellInputTools, PTHolidayCalendar,
   PTDeviceLayout, PTDocumentTools, PTCloudSync, PTContextMenu, PTPresetManager, PTForcedCorrections,
   PTAutocomplete, PTCellEditor, PTSheetSelection, PTSheetActions, PTSheetKeyboard, PTColumnSettings, PTStaffCalendarSettings,
   PTAppEvents, PTDateNavigation, PTTableView, PTCellPickers, PTPatientSearchDialog, PTHistoryTable]) {

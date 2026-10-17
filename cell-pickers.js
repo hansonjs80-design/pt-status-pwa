@@ -1,8 +1,11 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCellPickers {
   getWriterPresetValues() {
-    return [...new Set((COLUMN_PRESETS.writer || [])
-      .map(value => this.normalizeWriterInput(value).trim()))];
+    return this.deduplicatePresetCandidates('writer', this.getPresetCandidates('writer')
+      .map(value => {
+        const normalized = this.normalizeWriterInput(String(value)).trim();
+        return value?._presetFormatting ? this.makePresetCandidate(normalized, value._presetFormatting) : normalized;
+      }));
   }
 
   isPresetLeftExit(event, colKey) {
@@ -53,8 +56,8 @@ class PTCellPickers {
   }
 
   getPresetPickerValues(colKey) {
-    return [...new Set((COLUMN_PRESETS[colKey] || [])
-      .map(value => String(value ?? "").trim()))];
+    return this.deduplicatePresetCandidates(colKey, this.getPresetCandidates(colKey)
+      .map(value => value?._presetFormatting ? value : String(value ?? "").trim()));
   }
 
   handlePrescriptionPickerShortcut(event, rowIdx, cellElement) {
