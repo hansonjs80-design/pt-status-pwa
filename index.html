@@ -6,21 +6,30 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=437">
+  <link rel="manifest" href="manifest.json?v=438">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=437">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=437">
+  <link rel="apple-touch-icon" href="icon-192.png?v=438">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=438">
 
   <script>
     if ('serviceWorker' in navigator) {
+      function flushPanelStatesBeforeReload() {
+        try {
+          if (window.ptApp && typeof window.ptApp.flushDevicePanelStates === 'function') {
+            window.ptApp.flushDevicePanelStates();
+          }
+        } catch (_) {}
+      }
       navigator.serviceWorker.addEventListener('controllerchange', function() {
+        flushPanelStatesBeforeReload();
         window.location.reload();
       });
       navigator.serviceWorker.addEventListener('message', function(e) {
         if (e.data && (e.data.type === 'SW_ACTIVATED' || e.data.type === 'FORCE_RELOAD')) {
+          flushPanelStatesBeforeReload();
           window.location.reload();
         }
       });
@@ -38,25 +47,39 @@
     (function() {
       try {
         function readState(key, legacyClosed) {
+          var best = null;
+          function consider(s) {
+            if (s && typeof s.closed === 'boolean' && Number.isFinite(s.updatedAt)) {
+              if (!best || s.updatedAt > best.updatedAt) best = s;
+            }
+          }
           try {
             var s = JSON.parse(localStorage.getItem(key + '_SNAPSHOT') || 'null');
-            if (s && typeof s.closed === 'boolean' && Number.isFinite(s.updatedAt)) return s;
+            consider(s);
+          } catch (_) {}
+          try {
+            var ss = JSON.parse(sessionStorage.getItem(key + '_SNAPSHOT') || 'null');
+            consider(ss);
           } catch (_) {}
           try {
             var cookieKey = key + '_STATE=';
             var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
-            var best = null;
             for (var i = 0; i < matches.length; i++) {
               try {
                 var parsed = JSON.parse(decodeURIComponent(matches[i].slice(cookieKey.length)));
-                if (parsed && typeof parsed.closed === 'boolean' && Number.isFinite(parsed.updatedAt)) {
-                  if (!best || parsed.updatedAt >= best.updatedAt) best = parsed;
-                }
+                consider(parsed);
               } catch (_) {}
             }
-            if (best) return best;
           } catch (_) {}
-          try { return { closed: localStorage.getItem(key) === legacyClosed }; } catch (_) {}
+          if (best) {
+            try { localStorage.setItem(key + '_SNAPSHOT', JSON.stringify(best)); } catch (_) {}
+            try { sessionStorage.setItem(key + '_SNAPSHOT', JSON.stringify(best)); } catch (_) {}
+            return best;
+          }
+          try {
+            var legacy = localStorage.getItem(key);
+            if (legacy !== null) return { closed: legacy === legacyClosed };
+          } catch (_) {}
           return { closed: false };
         }
         var summary = readState('device-summary-closed-v1', '1');

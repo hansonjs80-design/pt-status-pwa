@@ -288,6 +288,7 @@ test('summary sidebar toggle persists closed state per device in localStorage an
 function deviceSummaryHarness() {
   const storage = new Map();
   const disk = new Map();
+  const session = new Map();
   const sidebar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } } };
   const toolbar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } }, contains:()=>false, setAttribute(){} };
   const toolbarButton = { setAttribute(){}, addEventListener(){}, focus(){} };
@@ -300,6 +301,11 @@ function deviceSummaryHarness() {
       setItem: (key, value) => { if (failLocal) throw Error('quota'); storage.set(key, value); },
       removeItem: key => storage.delete(key),
     },
+    sessionStorage: {
+      getItem: key => session.get(key) || null,
+      setItem: (key, value) => session.set(key, value),
+      removeItem: key => session.delete(key),
+    },
     console,
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', ctx);
@@ -310,7 +316,7 @@ function deviceSummaryHarness() {
   });
   const create = () => { const app = Object.create(ctx.App.prototype); app.syncMainColumnWidths = () => {}; return app; };
   const store = async (key, value) => { if (value !== undefined) disk.set(key, structuredClone(value)); return disk.get(key); };
-  return { storage, disk, sidebar, toolbar, cookies, create, store, failLocal() { failLocal = true; } };
+  return { storage, session, disk, sidebar, toolbar, cookies, create, store, failLocal() { failLocal = true; } };
 }
 
 test('summary closed state survives restart with full localStorage and remains device-local', async () => {
@@ -525,6 +531,79 @@ test('device-remembered summary and toolbar collapsed state syncs with documentE
   assert.equal(again.isSummaryClosed(), false, '앱 재실행 시 현황창 열림 상태 복원');
   assert.equal(h.sidebar.classList.closed, false, '현황창 DOM 열림 유지');
   assert.equal(h.toolbar.classList.closed, false, '빠른도구 DOM 열림 유지');
+});
+
+test('device panel states survive code update reload and retain state via multi-tier fallback (sessionStorage, localStorage, cookie, disk)', async () => {
+  const h = deviceSummaryHarness();
+  const sessionStore = new Map();
+  h.sessionStorage = {
+    getItem: key => sessionStore.get(key) || null,
+    setItem: (key, val) => sessionStore.set(key, String(val)),
+    removeItem: key => sessionStore.delete(key),
+  };
+
+  const app1 = h.create();
+  app1.initSummaryToggle();
+  app1.initToolbarActionsToggle();
+
+  // 사용자가 빠른 도구와 현황창을 모두 접어둠
+  app1.setSummaryClosed(true);
+  app1.setToolbarActionsClosed(true);
+  assert.equal(app1.isSummaryClosed(), true);
+
+  // 코드 업데이트 직전 flushDevicePanelStates 시뮬레이션
+  app1.flushDevicePanelStates();
+
+  // 코드 업데이트 상황: 캐시 교체 및 페이지 리로드 시뮬레이션
+  // localStorage의 SNAPSHOT이 일시적으로 날아가더라도 sessionStorage나 쿠키, 디스크에 보존됨
+  h.storage.delete('device-summary-closed-v1_SNAPSHOT');
+  h.storage.delete('PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT');
+
+  const reloaded = h.create();
+  // 동기 인스턴스 초기화
+  reloaded.initSummaryToggle();
+  reloaded.initToolbarActionsToggle();
+
+  // 쿠키 및 세션스토리지를 통해 닫힘 상태가 유지됨
+  assert.equal(reloaded.isSummaryClosed(), true, '코드 업데이트 후 세션/쿠키 폴백으로 현황창 닫힘 유지');
+  assert.equal(h.sidebar.classList.closed, true, '현황창 DOM 닫힘 유지');
+  assert.equal(h.toolbar.classList.closed, true, '빠른도구 DOM 접힘 유지');
+
+  // 비동기 IndexedDB 복원 실행 시에도 기존 상태 보존 확인
+  await reloaded.restoreDeviceSummaryState(h.store);
+  await reloaded.restoreDeviceToolbarState(h.store);
+  assert.equal(reloaded.isSummaryClosed(), true, 'IndexedDB 복원 후에도 현황창 닫힘 상태 완벽 보존');
+  assert.equal(h.sidebar.classList.closed, true, '복원 후 현황창 DOM 클래스 닫힘 유지');
+  assert.equal(h.toolbar.classList.closed, true, '복원 후 빠른도구 DOM 클래스 접힘 유지');
+});
+
+test('disk state is not overwritten by blank initial state when local storage is cleared across updates', async () => {
+  const h = deviceSummaryHarness();
+  const app = h.create();
+  await app.restoreDeviceSummaryState(h.store);
+  await app.restoreDeviceToolbarState(h.store);
+
+  // 사용자가 현황창을 닫고 디스크에 기록됨
+  app.setSummaryClosed(true);
+  app.setToolbarActionsClosed(true);
+  await app.summaryStateWrite;
+  await app.toolbarStateWrite;
+
+  // 기기에서 업데이트나 브라우저 재설정 등으로 로컬 스토리지와 쿠키가 모두 비워진 극단적 상황 시뮬레이션
+  h.storage.clear();
+  h.cookies.clear();
+
+  const restarted = h.create();
+  restarted.initSummaryToggle();
+  restarted.initToolbarActionsToggle();
+
+  // 로컬 스토리지가 비었어도 restoreDeviceSummaryState가 실행되면 디스크(IndexedDB)의 유효한 설정이 복원되어야 함
+  await restarted.restoreDeviceSummaryState(h.store);
+  await restarted.restoreDeviceToolbarState(h.store);
+
+  assert.equal(restarted.isSummaryClosed(), true, '디스크의 유효한 닫힘 설정이 복원됨');
+  assert.equal(h.sidebar.classList.closed, true, 'DOM 클래스도 닫힘 상태로 동기화됨');
+  assert.equal(h.toolbar.classList.closed, true, '빠른도구 DOM 클래스도 접힘 상태로 동기화됨');
 });
 
 test('monthly summary table merges weekday averages into bottom average row and hides deselected weekdays', () => {

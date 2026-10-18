@@ -63,13 +63,26 @@ class PTDeviceLayout {
   }
 
   readDevicePanelState(key, legacyClosed, property = 'closed') {
-    let snapshot = null;
+    let best = null;
+    const consider = candidate => {
+      if (candidate && typeof candidate[property] === 'boolean' && Number.isFinite(candidate.updatedAt)) {
+        if (!best || candidate.updatedAt > best.updatedAt) best = candidate;
+      }
+    };
+
+    // 1. localStorage SNAPSHOT
     try {
       const saved = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt)) snapshot = saved;
+      consider(saved);
     } catch (_) {}
-    // These tiny, device-local settings need a synchronous fallback when record
-    // storage is full and the app closes before an IndexedDB write can finish.
+
+    // 2. sessionStorage SNAPSHOT (코드 업데이트 / PWA 갱신 새로고침 시 세션 보호)
+    try {
+      const sessionSaved = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null');
+      consider(sessionSaved);
+    } catch (_) {}
+
+    // 3. Cookie STATE (도메인 단위 기기 백업)
     try {
       const cookieKey = `${key}_STATE=`;
       const matches = String(document.cookie || '').split(';')
@@ -78,29 +91,44 @@ class PTDeviceLayout {
       for (const raw of matches) {
         try {
           const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
-          if (typeof saved?.[property] === 'boolean' && Number.isFinite(saved.updatedAt)) {
-            if (!snapshot || saved.updatedAt >= snapshot.updatedAt) snapshot = saved;
-          }
+          consider(saved);
         } catch (_) {}
       }
     } catch (_) {}
-    if (snapshot) return snapshot;
-    try { return { [property]: localStorage.getItem(key) === legacyClosed, updatedAt: 0 }; }
-    catch (_) { return { [property]: false, updatedAt: 0 }; }
+
+    if (best) {
+      // 자가 치유(Self-healing): 최신 스냅샷을 다른 저장소에도 즉시 동기화
+      try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
+      try { sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
+      return best;
+    }
+
+    // 4. 레거시 키 호환 fallback
+    try {
+      const legacy = localStorage.getItem(key);
+      if (legacy !== null) {
+        const closed = legacy === legacyClosed;
+        return { [property]: closed, updatedAt: 0 };
+      }
+    } catch (_) {}
+
+    return { [property]: false, updatedAt: 0 };
   }
 
   persistDevicePanelCookie(key, snapshot) {
     try {
       const encoded = encodeURIComponent(JSON.stringify(snapshot));
-      document.cookie = `${key}_STATE=${encoded}; Path=/; Max-Age=31536000; SameSite=Strict`;
+      // 항상 루트(/) 단일 경로로 저장하여 서브패스 쿠키 충돌 방지
+      document.cookie = `${key}_STATE=${encoded}; Path=/; Max-Age=31536000; SameSite=Lax`;
       if (typeof window !== "undefined" && window.location?.pathname && window.location.pathname !== "/") {
-        document.cookie = `${key}_STATE=${encoded}; Max-Age=31536000; SameSite=Strict`;
+        document.cookie = `${key}_STATE=; Path=${window.location.pathname}; Max-Age=0; SameSite=Lax`;
       }
     } catch (_) {}
   }
 
   readDeviceSummaryState() {
-    return this.readDevicePanelState(SUMMARY_CLOSED_STORAGE_KEY, '1');
+    const key = typeof SUMMARY_CLOSED_STORAGE_KEY !== "undefined" ? SUMMARY_CLOSED_STORAGE_KEY : "device-summary-closed-v1";
+    return this.readDevicePanelState(key, '1');
   }
 
   isSummaryClosed() {
@@ -108,11 +136,13 @@ class PTDeviceLayout {
   }
 
   persistLocalSummaryState(snapshot) {
-    this.persistDevicePanelCookie(SUMMARY_CLOSED_STORAGE_KEY, snapshot);
-    try { localStorage.setItem(`${SUMMARY_CLOSED_STORAGE_KEY}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
+    const key = typeof SUMMARY_CLOSED_STORAGE_KEY !== "undefined" ? SUMMARY_CLOSED_STORAGE_KEY : "device-summary-closed-v1";
+    this.persistDevicePanelCookie(key, snapshot);
+    try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
+    try { sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot)); } catch (_) {}
     try {
-      if (snapshot.closed) localStorage.setItem(SUMMARY_CLOSED_STORAGE_KEY, "1");
-      else localStorage.removeItem(SUMMARY_CLOSED_STORAGE_KEY);
+      if (snapshot.closed) localStorage.setItem(key, "1");
+      else localStorage.removeItem(key);
     } catch (_) {}
   }
 
@@ -134,9 +164,11 @@ class PTDeviceLayout {
     let persisted = null;
     try { persisted = await store("device-summary-state-v1"); } catch (_) {}
     const local = this.deviceSummaryState || this.readDeviceSummaryState();
-    // Never undo a toggle made while the disk state is still loading.
-    if (!this.summaryStateChanged && typeof persisted?.closed === "boolean" &&
-        Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= local.updatedAt) {
+    // 로컬 스냅샷이 없거나 초기값(updatedAt 0)이고 디스크에 유효한 스냅샷이 있다면 무조건 디스크 복원 우선
+    const shouldUsePersisted = !this.summaryStateChanged && typeof persisted?.closed === "boolean" &&
+      Number.isFinite(persisted.updatedAt) && (persisted.updatedAt >= (local.updatedAt || 0) || (local.updatedAt === 0 && persisted.updatedAt > 0));
+
+    if (shouldUsePersisted) {
       this.deviceSummaryState = persisted;
       this.persistLocalSummaryState(persisted);
       this.setSummaryClosed(persisted.closed, false);
@@ -213,6 +245,7 @@ class PTDeviceLayout {
   persistLocalToolbarState(snapshot) {
     this.persistDevicePanelCookie('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', snapshot);
     try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT", JSON.stringify(snapshot)); } catch (_) {}
+    try { sessionStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1_SNAPSHOT", JSON.stringify(snapshot)); } catch (_) {}
     try { localStorage.setItem("PT_TOOLBAR_ACTIONS_COLLAPSED_V1", String(snapshot.closed)); } catch (_) {}
   }
 
@@ -234,8 +267,10 @@ class PTDeviceLayout {
     let persisted = null;
     try { persisted = await store("device-toolbar-state-v1"); } catch (_) {}
     const local = this.deviceToolbarState || this.readDeviceToolbarState();
-    if (!this.toolbarStateChanged && typeof persisted?.closed === "boolean" &&
-        Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= local.updatedAt) {
+    const shouldUsePersisted = !this.toolbarStateChanged && typeof persisted?.closed === "boolean" &&
+      Number.isFinite(persisted.updatedAt) && (persisted.updatedAt >= (local.updatedAt || 0) || (local.updatedAt === 0 && persisted.updatedAt > 0));
+
+    if (shouldUsePersisted) {
       this.deviceToolbarState = persisted;
       this.persistLocalToolbarState(persisted);
       this.setToolbarActionsClosed(persisted.closed, false);
@@ -245,6 +280,19 @@ class PTDeviceLayout {
       this.queueDeviceToolbarState(local);
       await this.toolbarStateWrite;
     }
+  }
+
+  flushDevicePanelStates() {
+    try {
+      const summary = this.deviceSummaryState || this.readDeviceSummaryState();
+      this.persistLocalSummaryState(summary);
+      if (this.summaryStateStore) this.queueDeviceSummaryState(summary);
+    } catch (_) {}
+    try {
+      const toolbar = this.deviceToolbarState || this.readDeviceToolbarState();
+      this.persistLocalToolbarState(toolbar);
+      if (this.toolbarStateStore) this.queueDeviceToolbarState(toolbar);
+    } catch (_) {}
   }
 
   initToolbarActionsToggle() {

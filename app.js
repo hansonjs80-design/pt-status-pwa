@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v437";
+  static VERSION = "v438";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -1167,6 +1167,10 @@ class PTApp {
 
   async applyUpdate() {
     try {
+      this.flushDevicePanelStates?.();
+    } catch (_) {}
+
+    try {
       if ("serviceWorker" in navigator) {
         const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
         if (reg?.waiting) {
@@ -1174,6 +1178,7 @@ class PTApp {
           navigator.serviceWorker.addEventListener("controllerchange", () => {
             if (!reloaded) {
               reloaded = true;
+              try { this.flushDevicePanelStates?.(); } catch (_) {}
               window.location.reload();
             }
           }, { once: true });
@@ -1183,6 +1188,7 @@ class PTApp {
           setTimeout(() => {
             if (!reloaded) {
               reloaded = true;
+              try { this.flushDevicePanelStates?.(); } catch (_) {}
               window.location.reload();
             }
           }, 600);
@@ -1191,7 +1197,10 @@ class PTApp {
           await reg.update().catch(() => {});
           if (reg.waiting) {
             reg.waiting.postMessage({ type: "SKIP_WAITING" });
-            setTimeout(() => window.location.reload(), 300);
+            setTimeout(() => {
+              try { this.flushDevicePanelStates?.(); } catch (_) {}
+              window.location.reload();
+            }, 300);
             return;
           }
         }
@@ -1210,12 +1219,19 @@ class PTApp {
   }
 
   initPWA() {
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", () => {
+        try { this.flushDevicePanelStates?.(); } catch (_) {}
+      });
+    }
+
     if (!("serviceWorker" in navigator)) return;
 
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
       refreshing = true;
+      try { this.flushDevicePanelStates?.(); } catch (_) {}
       window.location.reload();
     });
 
