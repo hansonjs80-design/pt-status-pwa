@@ -543,8 +543,9 @@
     open(defaultTab = 'backup') {
       this.dialog?.remove();
       const dialog = document.createElement('dialog');
+      dialog.className = 'device-settings-dialog';
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v434';
+      const currentVersion = this.app?.appVersion || 'v435';
       dialog.innerHTML = `
         <header>
           <div class="device-settings-title-group">
@@ -552,14 +553,14 @@
             <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
             <button type="button" class="device-settings-update-badge" data-apply-update hidden title="클릭하여 지금 새로고침">🔄 업데이트 필요 (새로고침)</button>
           </div>
-          <button data-close aria-label="닫기">×</button>
+          <button data-close class="device-settings-close-btn" aria-label="닫기">×</button>
         </header>
         <div class="device-settings-update-banner" data-update-banner hidden role="alert">
           <div class="device-settings-update-info">
             <span class="device-settings-update-icon">🔔</span>
-            <div>
+            <div class="device-settings-update-text">
               <strong>새로운 업데이트가 준비되었습니다!</strong>
-              <p>최신 기능을 반영하려면 지금 새로고침하거나 앱을 다시 실행해 주세요.</p>
+              <span>최신 기능을 반영하려면 지금 새로고침하거나 앱을 다시 실행해 주세요.</span>
             </div>
           </div>
           <button type="button" class="device-settings-update-btn" data-apply-update>지금 새로고침</button>
@@ -712,42 +713,52 @@
       // 업데이트 알림 및 새로고침 동작 바인딩
       const updateBanner = dialog.querySelector('[data-update-banner]');
       const updateBadge = dialog.querySelector('.device-settings-update-badge');
-      const showUpdateNotice = () => {
-        if (updateBanner) updateBanner.hidden = false;
-        if (updateBadge) updateBadge.hidden = false;
+      const setUpdateNoticeVisible = (visible) => {
+        if (updateBanner) updateBanner.hidden = !visible;
+        if (updateBadge) updateBadge.hidden = !visible;
       };
 
       dialog.querySelectorAll('[data-apply-update]').forEach(btn => {
-        btn.onclick = () => {
-          if (this.app && typeof this.app.applyUpdate === 'function') {
-            this.app.applyUpdate();
-          } else if (typeof window !== 'undefined') {
-            window.location.reload();
+        btn.onclick = async () => {
+          btn.disabled = true;
+          const origText = btn.textContent;
+          btn.textContent = '적용 중...';
+          try {
+            if (this.app && typeof this.app.applyUpdate === 'function') {
+              await this.app.applyUpdate();
+            } else if (typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          } catch (e) {
+            btn.disabled = false;
+            btn.textContent = origText;
           }
         };
       });
 
       if (this.app?.isUpdateAvailable) {
-        showUpdateNotice();
+        setUpdateNoticeVisible(true);
       }
 
       if (this.app && typeof this.app.checkForUpdate === 'function') {
         this.app.checkForUpdate().then(hasUpdate => {
-          if (hasUpdate) showUpdateNotice();
+          setUpdateNoticeVisible(Boolean(hasUpdate));
         }).catch(() => {});
       } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistration().then(reg => {
           if (reg?.waiting) {
-            showUpdateNotice();
+            setUpdateNoticeVisible(true);
           } else if (reg && typeof reg.update === 'function') {
             reg.update().then(() => {
-              if (reg.waiting) showUpdateNotice();
+              setUpdateNoticeVisible(Boolean(reg.waiting));
             }).catch(() => {});
+          } else {
+            setUpdateNoticeVisible(false);
           }
         }).catch(() => {});
       }
 
-      const onUpdateFound = () => showUpdateNotice();
+      const onUpdateFound = () => setUpdateNoticeVisible(true);
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('pt-app-update-available', onUpdateFound, { once: true });
         dialog.addEventListener('close', () => {

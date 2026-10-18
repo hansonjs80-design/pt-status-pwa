@@ -69,3 +69,16 @@ test('manifest and icon requests use network first to pick up icon changes witho
   assert.equal(fetchedUrl.url, 'https://example.test/manifest.json?v=434');
 });
 
+test('reload navigation requests fetch from network to pick up new releases upon refresh', async () => {
+  let fetchedUrl = null;
+  const networkHTML = { status: 200, clone() { return this; } };
+  const handlers = worker({
+    caches: { open: async () => ({ put: async () => {} }), match: async () => assert.fail('should not use cache first for reload') },
+    fetch: async req => { fetchedUrl = req; return networkHTML; }
+  });
+  let response;
+  handlers.fetch({ request: { method: 'GET', mode: 'navigate', cache: 'reload', url: 'https://example.test/?_reload=123' }, respondWith(value) { response = value; } });
+  const result = await response;
+  assert.equal(result, networkHTML);
+});
+

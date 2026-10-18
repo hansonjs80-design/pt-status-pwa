@@ -6,13 +6,32 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=434">
+  <link rel="manifest" href="manifest.json?v=435">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=434">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=434">
+  <link rel="apple-touch-icon" href="icon-192.png?v=435">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=435">
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        window.location.reload();
+      });
+      navigator.serviceWorker.addEventListener('message', function(e) {
+        if (e.data && (e.data.type === 'SW_ACTIVATED' || e.data.type === 'FORCE_RELOAD')) {
+          window.location.reload();
+        }
+      });
+      if (window.location.search && (window.location.search.indexOf('_v=') !== -1 || window.location.search.indexOf('_reload=') !== -1)) {
+        try {
+          var clean = window.location.pathname + window.location.hash;
+          window.history.replaceState(null, '', clean);
+        } catch (_) {}
+      }
+    }
+  </script>
 
   <link rel="stylesheet" href="style.css">
   <script>

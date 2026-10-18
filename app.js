@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v434";
+  static VERSION = "v435";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -1142,7 +1142,10 @@ class PTApp {
     if (!("serviceWorker" in navigator)) return false;
     try {
       const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
-      if (!reg) return false;
+      if (!reg) {
+        this.isUpdateAvailable = false;
+        return false;
+      }
       this.swRegistration = reg;
       if (reg.waiting) {
         this.isUpdateAvailable = true;
@@ -1155,22 +1158,55 @@ class PTApp {
         window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
         return true;
       }
-    } catch (_) {}
-    return Boolean(this.isUpdateAvailable);
+      this.isUpdateAvailable = false;
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
-  applyUpdate() {
-    if (!("serviceWorker" in navigator)) {
-      window.location.reload();
-      return;
-    }
-    const reg = this.swRegistration;
-    if (reg?.waiting) {
-      reg.waiting.postMessage({ type: "SKIP_WAITING" });
-    }
-    setTimeout(() => {
-      window.location.reload();
-    }, 150);
+  async applyUpdate() {
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
+        if (reg?.waiting) {
+          let reloaded = false;
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (!reloaded) {
+              reloaded = true;
+              window.location.reload();
+            }
+          }, { once: true });
+
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+
+          setTimeout(() => {
+            if (!reloaded) {
+              reloaded = true;
+              window.location.reload();
+            }
+          }, 600);
+          return;
+        } else if (reg) {
+          await reg.update().catch(() => {});
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            setTimeout(() => window.location.reload(), 300);
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (_) {}
+
+    const cleanUrl = window.location.href.split("#")[0].split("?")[0];
+    window.location.replace(cleanUrl + "?_v=" + Date.now());
   }
 
   initPWA() {

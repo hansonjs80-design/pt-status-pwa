@@ -253,6 +253,7 @@ test('device settings dialog renders current app version badge in header', () =>
  l.open('backup');
 
  assert.ok(l.dialog, 'dialog should be created');
+ assert.equal(l.dialog.className, 'device-settings-dialog', 'dialog should have device-settings-dialog class');
  assert.match(l.dialog.innerHTML, /현재 버전: v433/);
  assert.match(l.dialog.innerHTML, /device-settings-version-badge/);
  assert.match(l.dialog.innerHTML, /data-update-banner/);
