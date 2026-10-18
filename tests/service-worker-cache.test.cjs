@@ -7,7 +7,7 @@ const path = require('node:path');
 function worker(overrides = {}, selfOverrides = {}) {
   const handlers = {};
   const self = { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {}, ...selfOverrides };
-  const context = vm.createContext({ self, ...overrides });
+  const context = vm.createContext({ self, URL: globalThis.URL, ...overrides });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8'), context);
   return handlers;
 }
@@ -52,5 +52,20 @@ test('service worker handles SKIP_WAITING message from client', () => {
   assert.ok(handlers.message, 'message event listener must be registered');
   handlers.message({ data: { type: 'SKIP_WAITING' } });
   assert.strictEqual(skipWaitingCalled, true, 'skipWaiting must be called when receiving SKIP_WAITING message');
+});
+
+test('manifest and icon requests use network first to pick up icon changes without reinstallation', async () => {
+  let fetchedUrl = null;
+  const networkResponse = { status: 200, clone() { return this; } };
+  let cachePut = null;
+  const handlers = worker({
+    caches: { open: async () => ({ put: async (req, res) => { cachePut = req; } }), match: async () => assert.fail('should not use cache first') },
+    fetch: async req => { fetchedUrl = req; return networkResponse; }
+  });
+  let response;
+  handlers.fetch({ request: { method: 'GET', url: 'https://example.test/manifest.json?v=434' }, respondWith(value) { response = value; } });
+  const result = await response;
+  assert.equal(result, networkResponse);
+  assert.equal(fetchedUrl.url, 'https://example.test/manifest.json?v=434');
 });
 

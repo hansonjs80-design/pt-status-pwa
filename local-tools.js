@@ -544,15 +544,26 @@
       this.dialog?.remove();
       const dialog = document.createElement('dialog');
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v433';
+      const currentVersion = this.app?.appVersion || 'v434';
       dialog.innerHTML = `
         <header>
           <div class="device-settings-title-group">
             <h2>이 컴퓨터 설정</h2>
             <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
+            <button type="button" class="device-settings-update-badge" data-apply-update hidden title="클릭하여 지금 새로고침">🔄 업데이트 필요 (새로고침)</button>
           </div>
           <button data-close aria-label="닫기">×</button>
         </header>
+        <div class="device-settings-update-banner" data-update-banner hidden role="alert">
+          <div class="device-settings-update-info">
+            <span class="device-settings-update-icon">🔔</span>
+            <div>
+              <strong>새로운 업데이트가 준비되었습니다!</strong>
+              <p>최신 기능을 반영하려면 지금 새로고침하거나 앱을 다시 실행해 주세요.</p>
+            </div>
+          </div>
+          <button type="button" class="device-settings-update-btn" data-apply-update>지금 새로고침</button>
+        </div>
         <nav>
           <button data-tab="rows">기본 행</button>
           <button data-tab="display">화면</button>
@@ -697,6 +708,53 @@
 
       document.body.append(dialog);
       dialog.showModal();
+
+      // 업데이트 알림 및 새로고침 동작 바인딩
+      const updateBanner = dialog.querySelector('[data-update-banner]');
+      const updateBadge = dialog.querySelector('.device-settings-update-badge');
+      const showUpdateNotice = () => {
+        if (updateBanner) updateBanner.hidden = false;
+        if (updateBadge) updateBadge.hidden = false;
+      };
+
+      dialog.querySelectorAll('[data-apply-update]').forEach(btn => {
+        btn.onclick = () => {
+          if (this.app && typeof this.app.applyUpdate === 'function') {
+            this.app.applyUpdate();
+          } else if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        };
+      });
+
+      if (this.app?.isUpdateAvailable) {
+        showUpdateNotice();
+      }
+
+      if (this.app && typeof this.app.checkForUpdate === 'function') {
+        this.app.checkForUpdate().then(hasUpdate => {
+          if (hasUpdate) showUpdateNotice();
+        }).catch(() => {});
+      } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg?.waiting) {
+            showUpdateNotice();
+          } else if (reg && typeof reg.update === 'function') {
+            reg.update().then(() => {
+              if (reg.waiting) showUpdateNotice();
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
+      const onUpdateFound = () => showUpdateNotice();
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('pt-app-update-available', onUpdateFound, { once: true });
+        dialog.addEventListener('close', () => {
+          window.removeEventListener('pt-app-update-available', onUpdateFound);
+        }, { once: true });
+      }
+
       dialog.querySelector('[data-staff-count-settings]').onclick = () => this.app.openStaffCountSettings();
       dialog.querySelector('[data-status]').textContent = this.status;
 

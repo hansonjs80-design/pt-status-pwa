@@ -139,10 +139,12 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v433";
+  static VERSION = "v434";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
+    this.isUpdateAvailable = false;
+    this.swRegistration = null;
     this.initDevicePlatformAppearance();
     window.ptApp = this;
     this.dataStore = this.loadDataStore();
@@ -1136,6 +1138,41 @@ class PTApp {
     });
   }
 
+  async checkForUpdate() {
+    if (!("serviceWorker" in navigator)) return false;
+    try {
+      const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
+      if (!reg) return false;
+      this.swRegistration = reg;
+      if (reg.waiting) {
+        this.isUpdateAvailable = true;
+        window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
+        return true;
+      }
+      await reg.update().catch(() => {});
+      if (reg.waiting || (reg.installing && reg.installing.state === "installed")) {
+        this.isUpdateAvailable = true;
+        window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
+        return true;
+      }
+    } catch (_) {}
+    return Boolean(this.isUpdateAvailable);
+  }
+
+  applyUpdate() {
+    if (!("serviceWorker" in navigator)) {
+      window.location.reload();
+      return;
+    }
+    const reg = this.swRegistration;
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+    setTimeout(() => {
+      window.location.reload();
+    }, 150);
+  }
+
   initPWA() {
     if (!("serviceWorker" in navigator)) return;
 
@@ -1151,12 +1188,19 @@ class PTApp {
       reg.update().catch(() => {});
     };
 
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js")
+    const registerSW = () => {
+      navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
         .then((reg) => {
-          console.log("PT Status PWA Service Worker Registered", reg.scope);
+          this.swRegistration = reg;
+          window.ptSwRegistration = reg;
+
+          const onWaitingFound = () => {
+            this.isUpdateAvailable = true;
+            window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
+          };
 
           if (reg.waiting) {
+            onWaitingFound();
             reg.waiting.postMessage({ type: "SKIP_WAITING" });
           }
 
@@ -1165,6 +1209,7 @@ class PTApp {
             if (!newWorker) return;
             newWorker.addEventListener("statechange", () => {
               if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                onWaitingFound();
                 newWorker.postMessage({ type: "SKIP_WAITING" });
               }
             });
@@ -1177,10 +1222,17 @@ class PTApp {
             if (document.visibilityState === "visible") checkUpdate(reg);
           });
           window.addEventListener("focus", () => checkUpdate(reg));
+          window.addEventListener("pageshow", () => checkUpdate(reg));
           window.addEventListener("online", () => checkUpdate(reg));
         })
         .catch((err) => console.log("SW Registration Failed", err));
-    });
+    };
+
+    if (typeof document !== "undefined" && (document.readyState === "complete" || document.readyState === "interactive")) {
+      registerSW();
+    } else if (typeof window !== "undefined") {
+      window.addEventListener("load", registerSW, { once: true });
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v433';
+const CACHE_NAME = 'pt-status-pwa-v434';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -43,12 +43,19 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './local-tools.js',
   './manifest.json',
-  './icon.svg?v=416',
-  './icon-32.png?v=416',
-  './icon-48.png?v=416',
-  './icon-192.png?v=416',
-  './icon-256.png?v=416',
-  './icon-512.png?v=416'
+  './manifest.json?v=434',
+  './icon.svg?v=434',
+  './icon-32.png?v=434',
+  './icon-48.png?v=434',
+  './icon-192.png?v=434',
+  './icon-256.png?v=434',
+  './icon-512.png?v=434',
+  './icon.svg',
+  './icon-32.png',
+  './icon-48.png',
+  './icon-192.png',
+  './icon-256.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -75,7 +82,24 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  
+
+  const reqUrl = event.request.url || '';
+  const isManifestOrIcon = reqUrl.includes('manifest.json') || reqUrl.includes('/icon');
+
+  if (isManifestOrIcon) {
+    // Network First for manifest and icons so icon/metadata changes update without reinstalling
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(async (cachedResponse) => {
       if (!cachedResponse && event.request.mode === 'navigate') {

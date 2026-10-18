@@ -255,4 +255,87 @@ test('device settings dialog renders current app version badge in header', () =>
  assert.ok(l.dialog, 'dialog should be created');
  assert.match(l.dialog.innerHTML, /현재 버전: v433/);
  assert.match(l.dialog.innerHTML, /device-settings-version-badge/);
+ assert.match(l.dialog.innerHTML, /data-update-banner/);
+});
+
+test('device settings shows update banner and triggers applyUpdate when update is available', async () => {
+ function createMockElement(tag = 'div') {
+   const el = {
+     tagName: tag.toUpperCase(),
+     innerHTML: '',
+     textContent: '',
+     value: '',
+     checked: false,
+     hidden: true,
+     dataset: {},
+     classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+     style: {},
+     remove() {},
+     showModal() {},
+     close() {},
+     click() {},
+     appendChild() {},
+     append() {},
+     addEventListener() {},
+     querySelector() { return createMockElement(); },
+     querySelectorAll() { return []; }
+   };
+   return el;
+ }
+ const banner = createMockElement('div');
+ const badge = createMockElement('button');
+ const applyButtons = [createMockElement('button'), createMockElement('button')];
+ const fakeDoc = {
+   createElement(tag) {
+     const el = createMockElement(tag);
+     el.querySelector = (sel) => {
+       if (sel === '[data-update-banner]') return banner;
+       if (sel === '.device-settings-update-badge') return badge;
+       return createMockElement();
+     };
+     el.querySelectorAll = (sel) => {
+       if (sel === '[data-apply-update]') return applyButtons;
+       return [];
+     };
+     return el;
+   },
+   body: createMockElement('body')
+ };
+ const window = { addEventListener() {}, ptSheetClock: { enabled: true } };
+ vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+   window,
+   document: fakeDoc,
+   Blob,
+   TextEncoder,
+   Date,
+   localStorage: { getItem() { return null; } },
+   setTimeout
+ });
+ const { LocalTools } = window.PTLocalTools;
+ const l = Object.create(LocalTools.prototype);
+ let updateApplied = 0;
+ l.app = {
+   appVersion: 'v434',
+   isUpdateAvailable: true,
+   applyUpdate() { updateApplied++; },
+   checkForUpdate: async () => true,
+   getDefaultRowCount() { return 120; }
+ };
+ l.settings = {};
+ l.status = '';
+ l.applySettingsToDialog = () => {};
+ l.bindDialogEvents = () => {};
+ l.updateScheduleSummary = () => {};
+ l.renderHistory = () => {};
+ l.renderExportHistory = () => {};
+ l.updateUsagePanel = () => {};
+
+ l.open('backup');
+
+ assert.equal(banner.hidden, false, 'update banner should be shown');
+ assert.equal(badge.hidden, false, 'update badge should be shown');
+
+ // 사용자가 지금 새로고침 버튼을 눌렀을 때
+ applyButtons[0].onclick();
+ assert.equal(updateApplied, 1, 'applyUpdate should be called');
 });
