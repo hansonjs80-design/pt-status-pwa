@@ -129,11 +129,11 @@ class PTContextMenu {
         this.selectRowRange(rowIdx, rowIdx);
       }
 
-      this.contextTarget = { type: "row", rowIdx, rowRange: this.selectedRowRange };
+      this.contextTarget = { type: "row", rowIdx, rowRange: this.selectedRowRange, cellElement: null };
 
       rowOnlyItems.forEach((el) => el.classList.remove("hidden"));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
-      this.showContextMenu(e.clientX, e.clientY);
+      this.showContextMenu(e.clientX, e.clientY, null);
     } else if (thCol) {
       // 2) Right Click on Column Header (열 헤더 우클릭)
       const colKey = thCol.dataset.col;
@@ -142,23 +142,23 @@ class PTContextMenu {
 
       e.preventDefault?.();
       this.updateContextMenuItemsForTextMode(false);
-      this.contextTarget = { type: "col", colKey, colLetter };
+      this.contextTarget = { type: "col", colKey, colLetter, cellElement: null };
       const index = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"].indexOf(colKey);
       if (!this.selectedColumnRange || index < this.selectedColumnRange.minCol || index > this.selectedColumnRange.maxCol) this.selectEntireColumn(colKey, colLetter);
 
       rowOnlyItems.forEach((el) => el.classList.add("hidden"));
       colOnlyItems.forEach((el) => el.classList.remove("hidden"));
-      this.showContextMenu(e.clientX, e.clientY);
+      this.showContextMenu(e.clientX, e.clientY, null);
     } else if (thCorner) {
       // 3) Right Click on Corner Header (시트 전체 선택)
       e.preventDefault?.();
       this.updateContextMenuItemsForTextMode(false);
-      this.contextTarget = { type: "corner" };
+      this.contextTarget = { type: "corner", cellElement: null };
       this.selectAllCells();
 
       rowOnlyItems.forEach((el) => el.classList.add("hidden"));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
-      this.showContextMenu(e.clientX, e.clientY);
+      this.showContextMenu(e.clientX, e.clientY, null);
     } else if (tdCell) {
       // 4) Right Click on General Cell (일반 셀 우클릭)
       e.preventDefault?.();
@@ -184,6 +184,12 @@ class PTContextMenu {
         const rows = this.getCurrentRows();
         if (rows[rowIdx]) rows[rowIdx][colKey] = val;
 
+        // 좌측 정렬 보장
+        activeInput.style.textAlign = "left";
+        if (!["no", "gender", "writer"].includes(colKey)) {
+          tdCell.style.textAlign = "left";
+        }
+
         this.textEditorState = {
           input: activeInput,
           rowIdx,
@@ -192,7 +198,8 @@ class PTContextMenu {
           start: Math.min(start, end),
           end: Math.max(start, end),
           selectedText,
-          fullText: val
+          fullText: val,
+          cellElement: tdCell
         };
 
         if (selectedText) {
@@ -205,14 +212,14 @@ class PTContextMenu {
           };
         }
 
-        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: true };
+        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: true, cellElement: tdCell };
 
         // 텍스트 편집 특화 컨텍스트 메뉴로 UI 전환
         this.updateContextMenuItemsForTextMode(true, selectedText, start);
       } else {
         // 일반 셀 그리드 선택 모드
         this.textEditorState = null;
-        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: false };
+        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: false, cellElement: tdCell };
 
         const inRange = this.selectedRange &&
           rowIdx >= this.selectedRange.minRow && rowIdx <= this.selectedRange.maxRow &&
@@ -228,7 +235,7 @@ class PTContextMenu {
         this.updateContextMenuItemsForTextMode(false);
       }
 
-      this.showContextMenu(e.clientX, e.clientY);
+      this.showContextMenu(e.clientX, e.clientY, tdCell);
     }
   }
 
@@ -289,7 +296,7 @@ class PTContextMenu {
     }
   }
 
-  showContextMenu(clientX, clientY) {
+  showContextMenu(clientX, clientY, targetCell = null) {
     if (!this.elContextMenu) return;
     this._contextMenuOpenedAt = Date.now();
     const menu = this.elContextMenu;
@@ -297,21 +304,54 @@ class PTContextMenu {
     menu.style.visibility = "hidden";
 
     const menuRect = menu.getBoundingClientRect();
-    const menuWidth = menu.offsetWidth || menuRect.width || 220;
+    const menuWidth = menu.offsetWidth || menuRect.width || 230;
     const menuHeight = menu.offsetHeight || menuRect.height || 280;
+    const SAFE_MARGIN = 14;
+
+    const cellEl = targetCell || this.contextTarget?.cellElement ||
+      (this.contextTarget?.type === "cell" ? this.elTableBody?.querySelector(`[data-row="${this.contextTarget.rowIdx}"][data-col="${this.contextTarget.colKey}"]`) : null);
+    const cellRect = cellEl ? cellEl.getBoundingClientRect() : null;
 
     let posX = clientX;
     let posY = clientY;
 
-    if (posX + menuWidth > window.innerWidth) {
-      posX = window.innerWidth - menuWidth - 8;
-    }
-    if (posY + menuHeight > window.innerHeight) {
-      posY = window.innerHeight - menuHeight - 8;
+    if (cellRect) {
+      // 셀을 가리지 않도록 위치 선정
+      // 1. 가로 위치: 마우스 클릭 X좌표를 기준으로 하되 화면 우측 끝 검사
+      posX = Math.min(clientX, window.innerWidth - menuWidth - SAFE_MARGIN);
+      posX = Math.max(SAFE_MARGIN, posX);
+
+      // 2. 세로 위치: 셀 내용을 가리지 않도록 셀 아래 또는 위로 똑똑하게 배치
+      const spaceBelow = window.innerHeight - cellRect.bottom;
+      const spaceAbove = cellRect.top;
+
+      if (spaceBelow >= menuHeight + SAFE_MARGIN || spaceBelow >= spaceAbove) {
+        // 셀 바로 아래 배치 (셀 안의 글자가 그대로 보임)
+        posY = cellRect.bottom + 4;
+        if (posY + menuHeight > window.innerHeight - SAFE_MARGIN) {
+          posY = window.innerHeight - menuHeight - SAFE_MARGIN;
+        }
+      } else {
+        // 셀 바로 위 배치 (셀 안의 글자가 그대로 보임)
+        posY = cellRect.top - menuHeight - 4;
+        if (posY < SAFE_MARGIN) {
+          posY = SAFE_MARGIN;
+        }
+      }
+    } else {
+      // 셀이 없는 일반 헤더/여백 우클릭: 화면 끝 검사
+      if (posX + menuWidth > window.innerWidth - SAFE_MARGIN) {
+        posX = window.innerWidth - menuWidth - SAFE_MARGIN;
+      }
+      if (posY + menuHeight > window.innerHeight - SAFE_MARGIN) {
+        posY = window.innerHeight - menuHeight - SAFE_MARGIN;
+      }
+      posX = Math.max(SAFE_MARGIN, posX);
+      posY = Math.max(SAFE_MARGIN, posY);
     }
 
-    menu.style.left = `${Math.max(8, posX)}px`;
-    menu.style.top = `${Math.max(8, posY)}px`;
+    menu.style.left = `${Math.round(posX)}px`;
+    menu.style.top = `${Math.round(posY)}px`;
     menu.style.visibility = "visible";
   }
 
@@ -436,13 +476,64 @@ class PTContextMenu {
     if (!state) return;
 
     const modal = document.getElementById("quickTextEditModal");
+    const card = modal?.querySelector(".quick-text-card");
     const targetEl = document.getElementById("quickTextTarget");
     const inputEl = document.getElementById("quickTextInput");
-    if (!modal || !targetEl || !inputEl) return;
+    if (!modal || !card || !targetEl || !inputEl) return;
 
     targetEl.textContent = state.selectedText || state.fullText || "";
     inputEl.value = state.selectedText || "";
-    modal.style.display = "flex";
+    modal.style.display = "block";
+
+    // 대상 셀 찾기
+    const cell = state.input?.closest(".excel-cell") ||
+      state.cellElement ||
+      this.contextTarget?.cellElement ||
+      this.elTableBody?.querySelector(`[data-row="${state.rowIdx}"][data-col="${state.colKey}"]`);
+    const cellRect = cell ? cell.getBoundingClientRect() : null;
+
+    // 카드 크기 측정 및 뷰포트 클램프
+    const cardWidth = Math.min(360, window.innerWidth - 32);
+    card.style.width = `${cardWidth}px`;
+    const cardHeight = card.offsetHeight || 190;
+    const SAFE_MARGIN = 16;
+
+    let top = 0;
+    let left = 0;
+
+    if (cellRect) {
+      // 1. 가로 위치: 셀 좌측에 맞추되 화면 우측 끝에 가려지지 않도록 안전 클램프
+      left = cellRect.left;
+      if (left + cardWidth > window.innerWidth - SAFE_MARGIN) {
+        left = window.innerWidth - cardWidth - SAFE_MARGIN;
+      }
+      left = Math.max(SAFE_MARGIN, left);
+
+      // 2. 세로 위치: 해당 셀을 전혀 가리지 않도록 셀의 바로 아래 또는 바로 위로 배치!
+      const spaceBelow = window.innerHeight - cellRect.bottom;
+      const spaceAbove = cellRect.top;
+
+      if (spaceBelow >= cardHeight + SAFE_MARGIN || spaceBelow >= spaceAbove) {
+        // 셀 바로 아래 배치 (셀 안의 글자가 그대로 보임!)
+        top = cellRect.bottom + 8;
+        if (top + cardHeight > window.innerHeight - 12) {
+          top = window.innerHeight - cardHeight - 12;
+        }
+      } else {
+        // 셀 바로 위 배치 (셀 안의 글자가 그대로 보임!)
+        top = cellRect.top - cardHeight - 8;
+        if (top < 12) {
+          top = 12;
+        }
+      }
+    } else {
+      // 폴백: 화면 중앙 안전 여백 배치
+      left = Math.max(SAFE_MARGIN, (window.innerWidth - cardWidth) / 2);
+      top = Math.max(12, (window.innerHeight - cardHeight) / 2);
+    }
+
+    card.style.left = `${Math.round(left)}px`;
+    card.style.top = `${Math.round(top)}px`;
 
     setTimeout(() => {
       inputEl.focus();
@@ -478,6 +569,14 @@ class PTContextMenu {
       const rows = this.getCurrentRows();
       if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
 
+      // 좌측 정렬 유지 보장
+      editor.style.textAlign = "left";
+      const cell = editor.closest(".excel-cell");
+      if (cell && !["no", "gender", "writer"].includes(state.colKey)) {
+        cell.style.textAlign = "left";
+        cell.dataset.cellAlignment = "left";
+      }
+
       editor.dispatchEvent(new Event("input", { bubbles: true }));
       editor.focus({ preventScroll: true });
       editor.setSelectionRange(start, start + replacement.length);
@@ -499,6 +598,14 @@ class PTContextMenu {
       editor.value = nextVal;
       const rows = this.getCurrentRows();
       if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+
+      // 좌측 정렬 유지 보장
+      editor.style.textAlign = "left";
+      const cell = editor.closest(".excel-cell");
+      if (cell && !["no", "gender", "writer"].includes(state.colKey)) {
+        cell.style.textAlign = "left";
+        cell.dataset.cellAlignment = "left";
+      }
 
       editor.dispatchEvent(new Event("input", { bubbles: true }));
       editor.focus({ preventScroll: true });
@@ -581,6 +688,14 @@ class PTContextMenu {
     editor.value = nextVal;
     const rows = this.getCurrentRows();
     if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+
+    // 좌측 정렬 유지 보장
+    editor.style.textAlign = "left";
+    const cell = editor.closest(".excel-cell");
+    if (cell && !["no", "gender", "writer"].includes(state.colKey)) {
+      cell.style.textAlign = "left";
+      cell.dataset.cellAlignment = "left";
+    }
 
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     editor.focus({ preventScroll: true });

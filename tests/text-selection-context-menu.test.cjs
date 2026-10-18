@@ -30,9 +30,9 @@ test('PTContextMenu text selection mode logic', () => {
 
   menu.elContextMenu = {
     style: {},
-    getBoundingClientRect: () => ({ width: 200, height: 200 }),
-    offsetWidth: 200,
-    offsetHeight: 200,
+    getBoundingClientRect: () => ({ width: 220, height: 280 }),
+    offsetWidth: 220,
+    offsetHeight: 280,
     querySelector: (sel) => {
       if (sel === '#menuTextSelectionHeader') return headerEl;
       if (sel === '#menuSelectionPreview') return previewEl;
@@ -50,32 +50,43 @@ test('PTContextMenu text selection mode logic', () => {
     querySelectorAll: () => []
   };
 
+  const tdCell = {
+    dataset: { row: '0', col: 'memo', colIdx: '8' },
+    style: {},
+    getBoundingClientRect: () => ({ top: 100, bottom: 130, left: 200, right: 350, width: 150, height: 30 }),
+    closest: (sel) => sel === '.excel-cell' ? tdCell : null
+  };
+
   const mockInput = {
     value: '테스트 메모 텍스트',
+    style: {},
     selectionStart: 4,
     selectionEnd: 6,
     setSelectionRange(s, e) { this.selectionStart = s; this.selectionEnd = e; },
     focus() {},
     dispatchEvent() {},
     matches: () => true,
-    isConnected: true
-  };
-
-  const tdCell = {
-    dataset: { row: '0', col: 'memo', colIdx: '8' },
-    querySelector: (sel) => sel.includes('input:not(.is-armed)') ? mockInput : null,
+    isConnected: true,
     closest: (sel) => sel === '.excel-cell' ? tdCell : null
   };
+
+  tdCell.querySelector = (sel) => sel.includes('input:not(.is-armed)') ? mockInput : null;
 
   menu.captureTextColorSelection = () => {};
   let selectCellCalled = false;
   menu.selectCell = () => { selectCellCalled = true; };
 
+  // Set mock window dimensions
+  global.window = {
+    innerWidth: 1000,
+    innerHeight: 800
+  };
+
   // Context menu on active text editor
   menu.handleTableContextMenu({
     target: mockInput,
-    clientX: 100,
-    clientY: 100,
+    clientX: 250,
+    clientY: 115,
     preventDefault: () => {}
   });
 
@@ -86,22 +97,54 @@ test('PTContextMenu text selection mode logic', () => {
   assert.strictEqual(menu.textEditorState.start, 4);
   assert.strictEqual(menu.textEditorState.end, 6);
 
-  // verify quick text edit replacement
+  // verify menu positioning does not obscure cell (placed below cell)
+  assert.strictEqual(menu.elContextMenu.style.top, `${130 + 4}px`, 'Context menu should be placed right below the cell to avoid obscuring it');
+
+  // verify quick text edit replacement & left-alignment enforcement
   let historyCaptured = false;
   menu.captureHistory = () => { historyCaptured = true; };
   menu.showSaveIndicator = () => {};
 
-  // Mock quick edit input
+  // Mock quick edit DOM
   const quickInput = { value: '치료내용' };
-  global.document = {
-    getElementById: (id) => id === 'quickTextInput' ? quickInput : null
+  const targetEl = { textContent: '' };
+  const cardEl = { style: {}, offsetHeight: 180 };
+  const modalEl = {
+    style: {},
+    querySelector: (sel) => sel === '.quick-text-card' ? cardEl : null
   };
 
+  global.document = {
+    getElementById: (id) => {
+      if (id === 'quickTextInput') return quickInput;
+      if (id === 'quickTextTarget') return targetEl;
+      if (id === 'quickTextEditModal') return modalEl;
+      return null;
+    }
+  };
+
+  // Open quick text edit dialog
+  menu.openQuickTextEditDialog();
+  assert.strictEqual(modalEl.style.display, 'block');
+  assert.strictEqual(cardEl.style.top, `${130 + 8}px`, 'Quick text card should be placed below the target cell to keep cell text visible');
+  assert.strictEqual(cardEl.style.left, `${200}px`, 'Quick text card left should align with cell left');
+
+  // Apply replacement
   menu.applyQuickTextEdit();
   assert.strictEqual(mockInput.value, '테스트 치료내용 텍스트');
   assert.strictEqual(mockRows[0].memo, '테스트 치료내용 텍스트');
   assert.strictEqual(mockInput.selectionStart, 4);
   assert.strictEqual(mockInput.selectionEnd, 4 + '치료내용'.length);
+  assert.strictEqual(mockInput.style.textAlign, 'left', 'Input text-align should be explicitly left');
+  assert.strictEqual(tdCell.style.textAlign, 'left', 'Cell text-align should be explicitly left');
+
+  // Test boundary clamping when near the screen right edge
+  menu.showContextMenu(990, 750, tdCell);
+  const leftNum = parseInt(menu.elContextMenu.style.left, 10);
+  const topNum = parseInt(menu.elContextMenu.style.top, 10);
+  assert.ok(leftNum <= 1000 - 220 - 14, 'Context menu should be clamped within right viewport boundary');
+  assert.ok(topNum <= 800 - 280 - 14, 'Context menu should be clamped within bottom viewport boundary');
 
   delete global.document;
+  delete global.window;
 });
