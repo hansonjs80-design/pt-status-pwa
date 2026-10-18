@@ -6,13 +6,13 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=436">
+  <link rel="manifest" href="manifest.json?v=437">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=436">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=436">
+  <link rel="apple-touch-icon" href="icon-192.png?v=437">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=437">
 
   <script>
     if ('serviceWorker' in navigator) {
@@ -262,15 +262,21 @@
           </div>
         </div>
 
-        <div class="summary-section">
-          <h4>작성 이니셜 집계</h4>
+        <details class="summary-section summary-accordion">
+          <summary class="summary-accordion-header">
+            <h4>작성 이니셜 집계</h4>
+            <span class="summary-accordion-icon" aria-hidden="true">▾</span>
+          </summary>
           <ul class="stat-list" id="statWriterList"></ul>
-        </div>
+        </details>
 
-        <div class="summary-section">
-          <h4>추가 사항 집계</h4>
+        <details class="summary-section summary-accordion">
+          <summary class="summary-accordion-header">
+            <h4>추가 사항 집계</h4>
+            <span class="summary-accordion-icon" aria-hidden="true">▾</span>
+          </summary>
           <ul class="stat-list" id="statExtraList"></ul>
-        </div>
+        </details>
 
         <div class="summary-section">
           <h4>처방별 집계</h4>

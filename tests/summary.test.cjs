@@ -527,3 +527,107 @@ test('device-remembered summary and toolbar collapsed state syncs with documentE
   assert.equal(h.toolbar.classList.closed, false, '빠른도구 DOM 열림 유지');
 });
 
+test('monthly summary table merges weekday averages into bottom average row and hides deselected weekdays', () => {
+  function createMockElement(tag, text, className) {
+    const children = [];
+    const el = {
+      tagName: tag.toUpperCase(),
+      textContent: text || '',
+      className: className || '',
+      dataset: {},
+      attributes: {},
+      children,
+      append(...args) {
+        for (const arg of args) children.push(arg);
+      },
+      appendChild(child) {
+        children.push(child);
+        return child;
+      },
+      replaceChildren(...args) {
+        children.length = 0;
+        for (const arg of args) children.push(arg);
+      },
+      setAttribute(k, v) { el.attributes[k] = String(v); },
+      getAttribute(k) { return el.attributes[k]; },
+      addEventListener() {},
+      remove() {},
+      querySelectorAll() { return []; },
+      querySelector() { return null; },
+    };
+    return el;
+  }
+
+  const statCard = createMockElement('div', '', 'stat-card');
+  const sidebar = createMockElement('aside', '', 'excel-sidebar');
+  sidebar.id = 'summarySidebar';
+  sidebar.classList = { toggle() {}, contains() { return false; }, add() {}, delete() {} };
+  sidebar.querySelector = (sel) => (sel === '.stat-card' ? statCard : null);
+  sidebar.append(statCard);
+  statCard.after = (newEl) => { sidebar.append(newEl); };
+
+  const testDoc = {
+    createElement: (tag) => createMockElement(tag),
+    getElementById: (id) => {
+      if (id === 'summarySidebar') return sidebar;
+      if (id === 'summaryAnalytics') return sidebar.children.find(c => c.id === 'summaryAnalytics') || null;
+      return null;
+    },
+    querySelectorAll: () => [],
+    querySelector: () => null,
+  };
+
+  const testContext = vm.createContext({
+    document: testDoc,
+    window: { addEventListener() {} },
+    localStorage: { getItem() { return null; }, setItem() {}, removeItem() {} },
+  });
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', testContext);
+  const instance = Object.create(testContext.App.prototype);
+  instance.currentDate = '2026-10-18';
+  instance.summaryMonth = '2026-10';
+  instance.dataStore = {
+    '2026-10-05': [{ name: '환자1' }], // 월요일 (1)
+    '2026-10-06': [{ name: '환자2' }], // 화요일 (2)
+    '2026-10-11': [{ name: '환자3' }], // 일요일 (0)
+  };
+
+  // 1. 모든 요일 선택 시
+  const dates = instance.getSummaryDates('month', true);
+  const selectedDates = dates;
+  const summary = instance.getDailySummary(selectedDates.flatMap(e => e.rows));
+  instance.renderSummaryAnalytics('month', dates, selectedDates, summary);
+
+  const panel = sidebar.children.find(c => c.id === 'summaryAnalytics');
+  assert.ok(panel);
+  const tablesContainer = panel.children.find(c => c.className === 'summary-average-tables');
+  assert.ok(tablesContainer);
+
+  // 별도의 '요일별 일평균 · 선택한 주 기준' 테이블 제목은 없어야 함
+  const titles = tablesContainer.children.filter(c => c.tagName === 'H5').map(c => c.textContent);
+  assert.ok(!titles.includes('요일별 일평균 · 선택한 주 기준'), '별도 요일별 일평균 테이블은 없어야 함');
+  assert.ok(titles.some(t => t.includes('주별·요일별 일평균')), '주별·요일별 일평균 테이블 존재');
+
+  // 테이블 내부에 맨 아래 행이 '평균'이어야 함
+  const scroll = tablesContainer.children.find(c => c.className === 'summary-table-scroll');
+  const table = scroll.children.find(c => c.tagName === 'TABLE');
+  const tbody = table.children.find(c => c.tagName === 'TBODY');
+  const lastRow = tbody.children[tbody.children.length - 1];
+  assert.equal(lastRow.children[0].textContent, '평균', '마지막 행의 제목은 평균');
+  assert.equal(lastRow.className, 'summary-row-highlight', '평균 행에 하이라이트 클래스 적용');
+
+  // 2. 일요일(0) 제외 시
+  instance.summaryWeekdays = [1, 2, 3, 4, 5, 6];
+  const datesFiltered = instance.getSummaryDates('month', true);
+  instance.renderSummaryAnalytics('month', dates, datesFiltered, summary);
+
+  const panel2 = sidebar.children.find(c => c.id === 'summaryAnalytics');
+  const tablesContainer2 = panel2.children.find(c => c.className === 'summary-average-tables');
+  const scroll2 = tablesContainer2.children.find(c => c.className === 'summary-table-scroll');
+  const table2 = scroll2.children.find(c => c.tagName === 'TABLE');
+  const thead2 = table2.children.find(c => c.tagName === 'THEAD');
+  const headerRow = thead2.children[0];
+  const headers = headerRow.children.map(th => th.textContent);
+  assert.ok(!headers.includes('일'), '제외된 일요일 열은 헤더에 포함되지 않아야 함');
+  assert.ok(headers.includes('월'), '선택된 월요일 열은 헤더에 포함됨');
+});

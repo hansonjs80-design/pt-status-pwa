@@ -267,25 +267,35 @@ class PTSummary {
         headers.forEach(text => { const th = create("th", text); th.scope = "col"; headings.append(th); });
         head.append(headings); table.append(head); const body = create("tbody");
         rows.forEach(values => {
-          const row = create("tr"); values.forEach((text, index) => {
+          const row = create("tr");
+          if (values[0] === "평균" || values[0] === "합계" || values[0] === "월평균") {
+            row.className = "summary-row-highlight";
+          }
+          values.forEach((text, index) => {
             const el = create(index === 0 ? "th" : "td", text); if (!index) el.scope = "row"; row.append(el);
           }); body.append(row);
         }); table.append(body); scroll.append(table); tables.append(scroll);
       };
       if (period === "month") {
-        const days = [1,2,3,4,5,6,0];
-        render("요일별 일평균 · 선택한 주 기준", ["항목", ...days.map(day => "일월화수목금토"[day])],
-          selectedMetrics.map(metric => [metric.label, ...days.map(day => stats(selectedDates.filter(entry => entry.weekday === day), metric).average)]));
+        const days = [1,2,3,4,5,6,0].filter(day => !this.summaryWeekdays || this.summaryWeekdays.includes(day));
         for (const metric of selectedMetrics) {
           const first = new Date(`${this.summaryMonth || this.currentDate.slice(0,7)}-01T00:00:00Z`);
           const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth()+1, 0));
           const count = Math.ceil((last.getUTCDate()+(first.getUTCDay()+6)%7)/7);
           const weeks = Array.from({length:count}, (_,i) => i+1).filter(week => !this.summaryWeeks || this.summaryWeeks.includes(week));
+          const weekRows = weeks.map(week => {
+            const group = selectedDates.filter(entry => entry.week === week), total = stats(group, metric);
+            return [`${week}주`, ...days.map(day => stats(group.filter(entry => entry.weekday === day), metric).average), total.sum.toLocaleString("ko-KR"), total.average];
+          });
+          const metricTotal = stats(selectedDates, metric);
+          const avgRow = [
+            "평균",
+            ...days.map(day => stats(selectedDates.filter(entry => entry.weekday === day), metric).average),
+            this.formatSummaryAverage(metricTotal.sum, context.weeks),
+            metricTotal.average
+          ];
           render(`주별·요일별 일평균 · ${metric.label}`, ["주", ...days.map(day => "일월화수목금토"[day]), "주 합계", "일평균"],
-            weeks.map(week => {
-              const group = selectedDates.filter(entry => entry.week === week), total = stats(group, metric);
-              return [`${week}주`, ...days.map(day => stats(group.filter(entry => entry.weekday === day), metric).average), total.sum.toLocaleString("ko-KR"), total.average];
-            }));
+            [...weekRows, avgRow]);
         }
       } else {
         const months = Array.from({length:12}, (_,i) => i+1).filter(month => !this.summaryYearMonth || month === this.summaryYearMonth);
