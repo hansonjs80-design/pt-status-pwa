@@ -388,13 +388,16 @@ class PTContextMenu {
 
     // 2. Formatting & cell/row actions
     const targetRow = this.contextTarget?.rowIdx ?? this.selectedRowIdx ?? (this.activeCell ? this.activeCell.rowIdx : 0);
-    const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
+    const targetCol = this.contextTarget?.colKey ?? this.selectedColKey ?? (this.activeCell ? this.activeCell.colKey : null);
+    const targetCell = this.contextTarget?.cellElement ||
+      (targetRow != null && targetCol ? (this.elTableBody || this.elSheetContainer)?.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`) : null) ||
+      (this.activeCell ? (this.elTableBody || this.elSheetContainer)?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"]`) : null);
 
     switch (action) {
       case "find": {
         if (this.contextTarget?.type !== "cell" || !["chartNo", "name"].includes(targetCol)) break;
         document.activeElement?.blur();
-        const cell = this.elSheetContainer.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`);
+        const cell = targetCell || this.elSheetContainer.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`);
         if (cell) {
            this.selectCell(targetRow, targetCol, cell, false);
            this.findActiveCell();
@@ -403,25 +406,25 @@ class PTContextMenu {
       }
       case "font-size":
       case "font-weight":
-        this.openColumnTypographyMenu(action === "font-size" ? "fontSize" : "fontWeight");
+        this.openColumnTypographyMenu(action === "font-size" ? "fontSize" : "fontWeight", targetCell || menuItem);
         break;
       case "change-case":
-        this.openChangeCaseMenu(menuItem || document.getElementById("btnChangeCase") || this.elContextMenu);
+        this.openChangeCaseMenu(targetCell || menuItem || document.getElementById("btnChangeCase") || this.elContextMenu);
         break;
       case "font-color":
-        this.openFontColorMenu(document.getElementById("btnFontColor"));
+        this.openFontColorMenu(targetCell || menuItem || document.getElementById("btnFontColor"));
         break;
       case "background-color":
-        this.openFontColorMenu(document.getElementById("btnBackgroundColor"), "backgroundColor");
+        this.openFontColorMenu(targetCell || menuItem || document.getElementById("btnBackgroundColor"), "backgroundColor");
         break;
       case "underline":
         this.toggleUnderline();
         break;
       case "underline-menu":
-        this.openUnderlineMenu(menuItem || document.getElementById("btnUnderlineMenu"));
+        this.openUnderlineMenu(targetCell || menuItem || document.getElementById("btnUnderlineMenu"));
         break;
       case "text-highlight":
-        this.openFontColorMenu(menuItem || document.getElementById("btnTextHighlight"), "highlight");
+        this.openFontColorMenu(targetCell || menuItem || document.getElementById("btnTextHighlight"), "highlight");
         break;
       case "lunch-line":
         this.toggleLunchLine(targetRow);

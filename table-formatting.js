@@ -350,6 +350,63 @@ class PTTableFormatting {
     this.updateAlignmentIndicator();
   }
 
+  positionFormattingPopup(popup, anchor) {
+    if (!popup) return;
+    const resolvedAnchor = anchor || this.contextTarget?.cellElement ||
+      (this.activeCell ? (this.elTableBody || this.elSheetContainer)?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"]`) : null) ||
+      this.elContextMenu ||
+      document.body;
+
+    if (!resolvedAnchor?.getBoundingClientRect) return;
+
+    const rect = resolvedAnchor.getBoundingClientRect();
+    const isToolbarButton = resolvedAnchor.classList?.contains?.('history-button') ||
+      resolvedAnchor.classList?.contains?.('tool-btn') ||
+      Boolean(resolvedAnchor.id && resolvedAnchor.id.startsWith('btn'));
+
+    const margin = 8;
+    const gap = 4;
+    const menuWidth = popup.offsetWidth || 286;
+    const menuHeight = popup.offsetHeight || 320;
+
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - margin) {
+      left = window.innerWidth - menuWidth - margin;
+    }
+    left = Math.max(margin, left);
+
+    let top = 0;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+
+    if (isToolbarButton) {
+      top = rect.bottom + gap;
+      if (top + menuHeight > window.innerHeight - margin) {
+        top = Math.max(margin, window.innerHeight - menuHeight - margin);
+      }
+    } else {
+      if (spaceBelow >= menuHeight + gap || spaceBelow >= spaceAbove) {
+        top = rect.bottom + gap;
+        if (top + menuHeight > window.innerHeight - margin) {
+          top = Math.max(margin, window.innerHeight - menuHeight - margin);
+        }
+      } else {
+        top = rect.top - menuHeight - gap;
+        if (top < margin) {
+          top = margin;
+        }
+      }
+    }
+
+    popup.style.left = `${Math.round(left)}px`;
+    popup.style.top = `${Math.round(top)}px`;
+
+    if (menuHeight > window.innerHeight - margin * 2) {
+      popup.style.maxHeight = `${window.innerHeight - margin * 2}px`;
+      popup.style.overflowY = 'auto';
+    }
+  }
+
   prepareFormattingMenu(property, anchor) {
     const popup = document.getElementById('fontColorMenu') || document.getElementById('columnTypographyMenu');
     const repeated = Boolean(anchor && popup?._formatAnchor === anchor && popup?._formatProperty === property);
@@ -385,10 +442,13 @@ class PTTableFormatting {
       popup.append(button);
     }
     popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
-    const rect = anchor.getBoundingClientRect();
-    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
-    const outside = event => { if (!popup.contains(event.target) && !anchor.contains(event.target)) close(); };
+    const positionMenu = () => {
+      if (!popup.isConnected) return;
+      this.positionFormattingPopup(popup, anchor);
+    };
+    positionMenu();
+    const outside = event => { if (!popup.contains(event.target) && !anchor?.contains?.(event.target)) close(); };
+    const scrollListener = event => { if (!popup.contains(event.target)) positionMenu(); };
     popup.onkeydown = event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); close(); (nativeEditor?.isConnected ? nativeEditor : anchor).focus({preventScroll:true}); }
@@ -400,7 +460,13 @@ class PTTableFormatting {
       }
     };
     document.addEventListener('mousedown', outside);
-    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+    window.addEventListener('resize', positionMenu);
+    document.addEventListener('scroll', scrollListener, true);
+    this.typographyCleanup = () => {
+      document.removeEventListener('mousedown', outside);
+      window.removeEventListener('resize', positionMenu);
+      document.removeEventListener('scroll', scrollListener, true);
+    };
     if (!nativeEditor) (popup.querySelector('.is-current') || popup.querySelector('button')).focus();
   }
 
@@ -676,12 +742,17 @@ class PTTableFormatting {
     popup.onmousedown = event => event.preventDefault();
     document.body.append(popup);
 
-    const rect = anchor ? anchor.getBoundingClientRect() : (this.elContextMenu || document.body).getBoundingClientRect();
-    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
+    const positionMenu = () => {
+      if (!popup.isConnected) return;
+      this.positionFormattingPopup(popup, anchor);
+    };
+    positionMenu();
 
     const outside = event => {
-      if (!popup.contains(event.target) && !anchor?.contains(event.target)) close();
+      if (!popup.contains(event.target) && !anchor?.contains?.(event.target)) close();
+    };
+    const scrollListener = event => {
+      if (!popup.contains(event.target)) positionMenu();
     };
 
     popup.onkeydown = event => {
@@ -702,7 +773,13 @@ class PTTableFormatting {
     };
 
     document.addEventListener('mousedown', outside);
-    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+    window.addEventListener('resize', positionMenu);
+    document.addEventListener('scroll', scrollListener, true);
+    this.typographyCleanup = () => {
+      document.removeEventListener('mousedown', outside);
+      window.removeEventListener('resize', positionMenu);
+      document.removeEventListener('scroll', scrollListener, true);
+    };
 
     const initial = popup.querySelector('.is-current') || popup.querySelector('button');
     if (!nativeEditor) initial?.focus();
@@ -734,13 +811,22 @@ class PTTableFormatting {
       popup.append(button);
     }
     popup.onmousedown = event => event.preventDefault(); document.body.append(popup);
-    const rect = (anchor || this.elContextMenu).getBoundingClientRect();
-    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(anchor ? rect.bottom + 6 : rect.top, innerHeight - popup.offsetHeight - 8))}px`;
-    const outside = event => { if (!popup.contains(event.target) && !anchor?.contains(event.target)) close(); };
+    const positionMenu = () => {
+      if (!popup.isConnected) return;
+      this.positionFormattingPopup(popup, anchor);
+    };
+    positionMenu();
+    const outside = event => { if (!popup.contains(event.target) && !anchor?.contains?.(event.target)) close(); };
     const escape = event => { event.stopPropagation(); if (event.key === "Escape") { close(); this.elSheetContainer.focus(); } };
+    const scrollListener = event => { if (!popup.contains(event.target)) positionMenu(); };
     document.addEventListener("mousedown", outside); popup.addEventListener("keydown", escape);
-    this.typographyCleanup = () => document.removeEventListener("mousedown", outside);
+    window.addEventListener("resize", positionMenu);
+    document.addEventListener("scroll", scrollListener, true);
+    this.typographyCleanup = () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("scroll", scrollListener, true);
+    };
     const initial = popup.querySelector(".is-current") || popup.querySelector("button");
     if (!document.activeElement?.matches?.('.cell-input-element:not(.is-armed)')) initial.focus();
     initial.scrollIntoView({ block: "nearest" });
@@ -1166,12 +1252,21 @@ class PTTableFormatting {
     popup.onmousedown = event => { if (!event.target.matches('input[type="color"]')) event.preventDefault(); };
     popup.onkeydown = event => { event.stopPropagation(); if (event.key === 'Escape') { close(); anchor.focus(); } };
     document.body.append(popup);
-    const rect = anchor.getBoundingClientRect();
-    popup.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - popup.offsetWidth - 8))}px`;
-    popup.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - popup.offsetHeight - 8))}px`;
-    const outside = event => { if (!popup.contains(event.target) && !anchor.contains(event.target)) close(); };
+    const positionMenu = () => {
+      if (!popup.isConnected) return;
+      this.positionFormattingPopup(popup, anchor);
+    };
+    positionMenu();
+    const outside = event => { if (!popup.contains(event.target) && !anchor?.contains?.(event.target)) close(); };
+    const scrollListener = event => { if (!popup.contains(event.target)) positionMenu(); };
     document.addEventListener('mousedown', outside);
-    this.typographyCleanup = () => document.removeEventListener('mousedown', outside);
+    window.addEventListener('resize', positionMenu);
+    document.addEventListener('scroll', scrollListener, true);
+    this.typographyCleanup = () => {
+      document.removeEventListener('mousedown', outside);
+      window.removeEventListener('resize', positionMenu);
+      document.removeEventListener('scroll', scrollListener, true);
+    };
   }
 
   setHighlightBrush(color) {
@@ -1373,13 +1468,26 @@ class PTTableFormatting {
     const picker = document.createElement("input"); picker.type = "color"; picker.value = this.normalizeColumnColor(status.value) || "#000000"; picker.setAttribute("aria-label", isHighlight ? "맞춤 형광펜 색상" : isBackground ? "맞춤 셀 배경색" : "맞춤 글자색"); picker.oninput = () => apply(picker.value); custom.appendChild(picker); menu.appendChild(custom);
     menu.onmousedown = event => { if (event.target !== picker) event.preventDefault(); };
     document.body.appendChild(menu);
-    const rect = anchor.getBoundingClientRect(); menu.style.left = `${Math.max(6, Math.min(rect.left, innerWidth - menu.offsetWidth - 6))}px`;
-    menu.style.top = `${Math.max(6, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 6))}px`;
-    const close = event => { if (!menu.contains(event.target) && !anchor.contains(event.target)) this.closeFontColorMenu(); };
+    const positionMenu = () => {
+      if (!menu.isConnected) return;
+      this.positionFormattingPopup(menu, anchor);
+    };
+    positionMenu();
+    const close = event => { if (!menu.contains(event.target) && !anchor?.contains?.(event.target)) this.closeFontColorMenu(); };
     const escape = event => { if (event.key === "Escape") this.closeFontColorMenu(); };
+    const scrollListener = event => {
+      if (!menu.contains(event.target)) positionMenu();
+    };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", escape);
-    this.fontColorMenuCleanup = () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); };
+    window.addEventListener("resize", positionMenu);
+    document.addEventListener("scroll", scrollListener, true);
+    this.fontColorMenuCleanup = () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("resize", positionMenu);
+      document.removeEventListener("scroll", scrollListener, true);
+    };
   }
 
   // =============================================================================
