@@ -545,7 +545,7 @@
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v435';
+      const currentVersion = this.app?.appVersion || 'v436';
       dialog.innerHTML = `
         <header>
           <div class="device-settings-title-group">

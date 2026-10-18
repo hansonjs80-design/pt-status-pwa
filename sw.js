@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v435';
+const CACHE_NAME = 'pt-status-pwa-v436';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -47,13 +47,13 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './local-tools.js',
   './manifest.json',
-  './manifest.json?v=435',
-  './icon.svg?v=435',
-  './icon-32.png?v=435',
-  './icon-48.png?v=435',
-  './icon-192.png?v=435',
-  './icon-256.png?v=435',
-  './icon-512.png?v=435',
+  './manifest.json?v=436',
+  './icon.svg?v=436',
+  './icon-32.png?v=436',
+  './icon-48.png?v=436',
+  './icon-192.png?v=436',
+  './icon-256.png?v=436',
+  './icon-512.png?v=436',
   './icon.svg',
   './icon-32.png',
   './icon-48.png',
@@ -111,32 +111,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 새로고침 요청이거나 강제 리로드 쿼리가 붙은 경우 네트워크 우선
-  const isReload = event.request.cache === 'reload' ||
-                   reqUrl.includes('_reload=') ||
-                   reqUrl.includes('force_update=');
-
-  if (isReload && event.request.mode === 'navigate') {
+  // HTML 네비게이션(페이지 접속 / 새로고침): Network First with Cache Fallback
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', responseToCache));
-        }
-        return networkResponse;
-      }).catch(() => caches.match('./index.html'))
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
 
+  // 정적 리소스(JS, CSS 등): Cache First
   event.respondWith(
-    caches.match(event.request).then(async (cachedResponse) => {
-      if (!cachedResponse && event.request.mode === 'navigate') {
-        cachedResponse = await caches.match('./index.html');
-      }
+    caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Keep each installed release intact. Mixing newly fetched scripts into
-        // an older release can skip device settings restoration during startup.
         return cachedResponse;
       }
       return fetch(event.request).then((networkResponse) => {
@@ -148,11 +142,6 @@ self.addEventListener('fetch', (event) => {
           cache.put(event.request, responseToCache);
         });
         return networkResponse;
-      }).catch(() => {
-        // Fallback for html navigation
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
       });
     })
   );

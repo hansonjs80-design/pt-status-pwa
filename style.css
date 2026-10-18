@@ -2566,7 +2566,7 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .device-settings-footer { margin-top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 16px; }
 .device-settings-footer small { color: #66796d; font-size: 11px; overflow-wrap: anywhere; }
 .device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
-.device-settings-dialog { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; margin: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; color: #263d30; box-shadow: 0 16px 70px #0003; }
+.device-settings-dialog { position: fixed; inset: 0; margin: auto; width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; background: #ffffff; color: #263d30; box-shadow: 0 16px 70px rgba(0, 0, 0, 0.2); z-index: 2000; }
 .device-settings-dialog::backdrop { background: #13251d66; }
 .device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .device-settings-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }

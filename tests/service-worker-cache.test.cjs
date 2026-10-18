@@ -35,15 +35,28 @@ test('new app releases bypass stale HTTP cache when installing every bundled ass
   assert.ok(requests.every(r => r.cache === 'reload'));
 });
 
-test('navigation with a new query uses the HTML bundled with the installed scripts', async () => {
+test('navigation falls back to installed bundled HTML when offline or network fails', async () => {
   const installedHTML = { release: 'installed HTML' };
   const handlers = worker({
     caches: { match: async request => request === './index.html' ? installedHTML : undefined },
-    fetch: () => assert.fail('navigation must not mix new HTML into the old installed release'),
+    fetch: async () => { throw new Error('network offline'); },
   });
   let response;
   handlers.fetch({ request: { method: 'GET', mode: 'navigate', url: 'https://example.test/?new-query' }, respondWith(value) { response = value; } });
   assert.equal(await response, installedHTML);
+});
+
+test('navigation online fetches fresh HTML from network to apply updates upon refresh', async () => {
+  const freshHTML = { status: 200, clone() { return this; } };
+  let putCalled = false;
+  const handlers = worker({
+    caches: { open: async () => ({ put: async () => { putCalled = true; } }), match: async () => undefined },
+    fetch: async () => freshHTML,
+  });
+  let response;
+  handlers.fetch({ request: { method: 'GET', mode: 'navigate', url: 'https://example.test/' }, respondWith(value) { response = value; } });
+  assert.equal(await response, freshHTML);
+  assert.equal(putCalled, true);
 });
 
 test('service worker handles SKIP_WAITING message from client', () => {
