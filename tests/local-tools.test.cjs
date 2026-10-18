@@ -200,3 +200,59 @@ test('backup pauses outside work hours when workHoursOnly is enabled', async () 
  // 근무 시간 내이므로 백업 실행되어야 함
  assert.equal(backups, 1);
 });
+
+test('device settings dialog renders current app version badge in header', () => {
+ function createMockElement(tag = 'div') {
+   const el = {
+     tagName: tag.toUpperCase(),
+     innerHTML: '',
+     textContent: '',
+     value: '',
+     checked: false,
+     dataset: {},
+     classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+     style: {},
+     remove() {},
+     showModal() {},
+     close() {},
+     click() {},
+     appendChild() {},
+     append() {},
+     addEventListener() {},
+     querySelector() { return createMockElement(); },
+     querySelectorAll() { return []; }
+   };
+   return el;
+ }
+ const fakeDoc = {
+   createElement(tag) { return createMockElement(tag); },
+   body: createMockElement('body')
+ };
+ const window = { addEventListener() {}, ptSheetClock: { enabled: true } };
+ vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+   window,
+   document: fakeDoc,
+   Blob,
+   TextEncoder,
+   Date,
+   localStorage: { getItem() { return null; } },
+   setTimeout
+ });
+ const { LocalTools } = window.PTLocalTools;
+ const l = Object.create(LocalTools.prototype);
+ l.app = { appVersion: 'v433', getDefaultRowCount() { return 120; } };
+ l.settings = {};
+ l.status = '';
+ l.applySettingsToDialog = () => {};
+ l.bindDialogEvents = () => {};
+ l.updateScheduleSummary = () => {};
+ l.renderHistory = () => {};
+ l.renderExportHistory = () => {};
+ l.updateUsagePanel = () => {};
+
+ l.open('backup');
+
+ assert.ok(l.dialog, 'dialog should be created');
+ assert.match(l.dialog.innerHTML, /현재 버전: v433/);
+ assert.match(l.dialog.innerHTML, /device-settings-version-badge/);
+});

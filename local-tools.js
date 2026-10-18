@@ -544,10 +544,13 @@
       this.dialog?.remove();
       const dialog = document.createElement('dialog');
       this.dialog = dialog;
-      dialog.className = 'device-settings-dialog';
+      const currentVersion = this.app?.appVersion || 'v433';
       dialog.innerHTML = `
         <header>
-          <h2>이 컴퓨터 설정</h2>
+          <div class="device-settings-title-group">
+            <h2>이 컴퓨터 설정</h2>
+            <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
+          </div>
           <button data-close aria-label="닫기">×</button>
         </header>
         <nav>

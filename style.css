@@ -2568,8 +2568,10 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 .device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
 .device-settings-dialog { width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; margin: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; color: #263d30; box-shadow: 0 16px 70px #0003; }
 .device-settings-dialog::backdrop { background: #13251d66; }
-.device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; }
-.device-settings-dialog h2 { font-size: 20px; }
+.device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.device-settings-title-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.device-settings-dialog h2 { font-size: 20px; margin: 0; }
+.device-settings-version-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; background: #e9f4ed; color: #107c41; font-size: 12px; font-weight: 700; border: 1px solid #b8dcce; letter-spacing: -0.2px; line-height: 1.3; }
 .device-settings-dialog nav { display: flex; gap: 6px; margin: 18px 0; border-bottom: 1px solid #e1e9e4; padding-bottom: 10px; }
 .device-settings-dialog nav .active { background: #107c41; color: #fff; }
 .device-settings-dialog section { display: flex; flex-wrap: wrap; gap: 12px; }
