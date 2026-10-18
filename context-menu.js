@@ -10,9 +10,9 @@ class PTContextMenu {
     });
     this.initCellLongPressMenu();
 
-    // Keep the editor's selected text until the formatting action consumes it.
+    // Prevent losing focus from the active cell editor when clicking context menu items
     this.elContextMenu.addEventListener("mousedown", (e) => {
-      if (e.target.closest('[data-action="underline"], [data-action="text-highlight"]')) e.preventDefault();
+      e.preventDefault();
     });
 
     // Context menu item click dispatcher
@@ -24,6 +24,37 @@ class PTContextMenu {
       const action = actionItem.dataset.action;
       this.executeContextAction(action, actionItem);
       this.hideContextMenu();
+    });
+
+    this.initQuickTextEditModal();
+  }
+
+  initQuickTextEditModal() {
+    const modal = document.getElementById("quickTextEditModal");
+    if (!modal) return;
+
+    const btnClose = document.getElementById("btnQuickTextClose");
+    const btnCancel = document.getElementById("btnQuickTextCancel");
+    const btnApply = document.getElementById("btnQuickTextApply");
+    const input = document.getElementById("quickTextInput");
+
+    const closeHandler = () => this.closeQuickTextEditDialog();
+    btnClose?.addEventListener("click", closeHandler);
+    btnCancel?.addEventListener("click", closeHandler);
+    btnApply?.addEventListener("click", () => this.applyQuickTextEdit());
+
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.applyQuickTextEdit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeQuickTextEditDialog();
+      }
+    });
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) this.closeQuickTextEditDialog();
     });
   }
 
@@ -72,11 +103,11 @@ class PTContextMenu {
 
   handleTableContextMenu(e) {
     this.captureTextColorSelection();
-    if (e.target.closest(".cross-date-row")) { e.preventDefault(); return; }
-    const thRow = e.target.closest("th.row-num");
-    const thCol = e.target.closest("th.col-letter, th.b-header");
-    const thCorner = e.target.closest("#cornerHeader");
-    const tdCell = e.target.closest(".excel-cell");
+    if (e.target?.closest?.(".cross-date-row")) { e.preventDefault?.(); return; }
+    const thRow = e.target?.closest?.("th.row-num");
+    const thCol = e.target?.closest?.("th.col-letter, th.b-header");
+    const thCorner = e.target?.closest?.("#cornerHeader");
+    const tdCell = e.target?.closest?.(".excel-cell");
 
     this.elContextMenu.querySelector('[data-action="find"]').classList.toggle("hidden",
       !tdCell || !["chartNo", "name"].includes(tdCell.dataset.col));
@@ -85,11 +116,11 @@ class PTContextMenu {
 
     if (thRow) {
       // 1) Right Click on Row Number Header (행 헤더 우클릭)
-      e.preventDefault();
+      e.preventDefault?.();
+      this.updateContextMenuItemsForTextMode(false);
       const tr = thRow.closest("tr");
       const rowIdx = parseInt(tr.dataset.rowIdx, 10);
 
-      // Keep multi-selection if right-clicked inside the current selected row range
       const inRowRange = this.selectedRowRange &&
         rowIdx >= this.selectedRowRange.minRow &&
         rowIdx <= this.selectedRowRange.maxRow;
@@ -100,7 +131,6 @@ class PTContextMenu {
 
       this.contextTarget = { type: "row", rowIdx, rowRange: this.selectedRowRange };
 
-      // Show Row items (위에 행 1개 삽입, 아래에 행 1개 삽입, 행 데이터 삭제, 행 삭제)
       rowOnlyItems.forEach((el) => el.classList.remove("hidden"));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
       this.showContextMenu(e.clientX, e.clientY);
@@ -110,18 +140,19 @@ class PTContextMenu {
       const colLetter = thCol.dataset.colLetter || "";
       if (!colKey || ["del", "spacer"].includes(colKey)) return;
 
-      e.preventDefault();
+      e.preventDefault?.();
+      this.updateContextMenuItemsForTextMode(false);
       this.contextTarget = { type: "col", colKey, colLetter };
       const index = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"].indexOf(colKey);
       if (!this.selectedColumnRange || index < this.selectedColumnRange.minCol || index > this.selectedColumnRange.maxCol) this.selectEntireColumn(colKey, colLetter);
 
-      // Show Column items
       rowOnlyItems.forEach((el) => el.classList.add("hidden"));
       colOnlyItems.forEach((el) => el.classList.remove("hidden"));
       this.showContextMenu(e.clientX, e.clientY);
     } else if (thCorner) {
       // 3) Right Click on Corner Header (시트 전체 선택)
-      e.preventDefault();
+      e.preventDefault?.();
+      this.updateContextMenuItemsForTextMode(false);
       this.contextTarget = { type: "corner" };
       this.selectAllCells();
 
@@ -130,42 +161,144 @@ class PTContextMenu {
       this.showContextMenu(e.clientX, e.clientY);
     } else if (tdCell) {
       // 4) Right Click on General Cell (일반 셀 우클릭)
-      e.preventDefault();
+      e.preventDefault?.();
       const rowIdx = parseInt(tdCell.dataset.row, 10);
       const colKey = tdCell.dataset.col;
       const colIdx = parseInt(tdCell.dataset.colIdx, 10);
 
-      this.contextTarget = { type: "cell", rowIdx, colKey, colIdx };
+      // Check if this cell is actively being edited
+      const activeInput = tdCell.querySelector("input:not(.is-armed)");
+      const isEditingThisCell = Boolean(activeInput) && (
+        (this.activeCell?.rowIdx === rowIdx && this.activeCell?.colKey === colKey) ||
+        document.activeElement === activeInput
+      );
 
-      // Keep multi-selection if right-clicked inside the current selected range
-      const inRange = this.selectedRange &&
-        rowIdx >= this.selectedRange.minRow && rowIdx <= this.selectedRange.maxRow &&
-        colIdx >= this.selectedRange.minCol && colIdx <= this.selectedRange.maxCol;
+      if (isEditingThisCell && activeInput) {
+        // 셀 안에 커서가 활성화되어 있는 상태 (인라인 텍스트 편집 모드)
+        const start = activeInput.selectionStart ?? 0;
+        const end = activeInput.selectionEnd ?? 0;
+        const val = activeInput.value ?? "";
+        const selectedText = start !== end ? val.slice(Math.min(start, end), Math.max(start, end)) : "";
 
-      const hasTextSelection = this.textColorSelection?.rowIdx === rowIdx &&
-        this.textColorSelection?.colKey === colKey;
-      if ((!inRange && !hasTextSelection) || this.selectedColumnRange) {
-        this.selectCell(rowIdx, colKey, tdCell, false);
+        // 모델 데이터 동기화
+        const rows = this.getCurrentRows();
+        if (rows[rowIdx]) rows[rowIdx][colKey] = val;
+
+        this.textEditorState = {
+          input: activeInput,
+          rowIdx,
+          colKey,
+          colIdx,
+          start: Math.min(start, end),
+          end: Math.max(start, end),
+          selectedText,
+          fullText: val
+        };
+
+        if (selectedText) {
+          this.textColorSelection = {
+            rowIdx,
+            colKey,
+            start: Math.min(start, end),
+            end: Math.max(start, end),
+            text: val
+          };
+        }
+
+        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: true };
+
+        // 텍스트 편집 특화 컨텍스트 메뉴로 UI 전환
+        this.updateContextMenuItemsForTextMode(true, selectedText, start);
+      } else {
+        // 일반 셀 그리드 선택 모드
+        this.textEditorState = null;
+        this.contextTarget = { type: "cell", rowIdx, colKey, colIdx, isTextEdit: false };
+
+        const inRange = this.selectedRange &&
+          rowIdx >= this.selectedRange.minRow && rowIdx <= this.selectedRange.maxRow &&
+          colIdx >= this.selectedRange.minCol && colIdx <= this.selectedRange.maxCol;
+
+        const hasTextSelection = this.textColorSelection?.rowIdx === rowIdx &&
+          this.textColorSelection?.colKey === colKey;
+
+        if ((!inRange && !hasTextSelection) || this.selectedColumnRange) {
+          this.selectCell(rowIdx, colKey, tdCell, false);
+        }
+
+        this.updateContextMenuItemsForTextMode(false);
       }
 
-      // Hide row/col exclusive items
+      this.showContextMenu(e.clientX, e.clientY);
+    }
+  }
+
+  updateContextMenuItemsForTextMode(isTextMode, selectedText = "", cursorIndex = 0) {
+    if (!this.elContextMenu) return;
+
+    const header = this.elContextMenu.querySelector("#menuTextSelectionHeader");
+    const preview = this.elContextMenu.querySelector("#menuSelectionPreview");
+    const length = this.elContextMenu.querySelector("#menuSelectionLength");
+    const btnEdit = this.elContextMenu.querySelector('[data-action="edit-selected-text"]');
+    const btnDelete = this.elContextMenu.querySelector('[data-action="delete-selected-text"]');
+    const btnSelectAll = this.elContextMenu.querySelector('[data-action="select-all-text"]');
+    const divider = this.elContextMenu.querySelector("#menuTextDivider");
+    const itemCut = this.elContextMenu.querySelector('[data-action="cut"]');
+    const itemCopy = this.elContextMenu.querySelector('[data-action="copy"]');
+    const itemClear = this.elContextMenu.querySelector('[data-action="clear-contents"]');
+    const rowOnlyItems = this.elContextMenu.querySelectorAll(".row-only-item");
+    const colOnlyItems = this.elContextMenu.querySelectorAll(".col-only-item");
+
+    if (isTextMode) {
+      // 텍스트 편집 모드
+      if (header) {
+        header.classList.remove("hidden");
+        if (selectedText) {
+          preview.textContent = `"${selectedText.length > 14 ? selectedText.slice(0, 14) + '...' : selectedText}"`;
+          length.textContent = `${selectedText.length}자`;
+        } else {
+          preview.textContent = "(커서 위치)";
+          length.textContent = `${cursorIndex}번째`;
+        }
+      }
+
+      btnEdit?.classList.toggle("hidden", !selectedText);
+      btnDelete?.classList.toggle("hidden", !selectedText);
+      btnSelectAll?.classList.remove("hidden");
+      divider?.classList.remove("hidden");
+
+      if (itemCut) itemCut.querySelector(".menu-label").textContent = selectedText ? "선택 글자 잘라내기" : "잘라내기";
+      if (itemCopy) itemCopy.querySelector(".menu-label").textContent = selectedText ? "선택 글자 복사" : "복사";
+
+      itemClear?.classList.add("hidden");
+      rowOnlyItems.forEach((el) => el.classList.add("hidden"));
+      colOnlyItems.forEach((el) => el.classList.add("hidden"));
+    } else {
+      // 일반 셀/헤더 모드
+      header?.classList.add("hidden");
+      btnEdit?.classList.add("hidden");
+      btnDelete?.classList.add("hidden");
+      btnSelectAll?.classList.add("hidden");
+      divider?.classList.add("hidden");
+
+      if (itemCut) itemCut.querySelector(".menu-label").textContent = "잘라내기";
+      if (itemCopy) itemCopy.querySelector(".menu-label").textContent = "복사";
+
+      itemClear?.classList.remove("hidden");
       rowOnlyItems.forEach((el) => el.classList.toggle("hidden", !["delete-row", "lunch-line"].includes(el.dataset.action)));
       colOnlyItems.forEach((el) => el.classList.add("hidden"));
-      this.showContextMenu(e.clientX, e.clientY);
     }
   }
 
   showContextMenu(clientX, clientY) {
     if (!this.elContextMenu) return;
+    this._contextMenuOpenedAt = Date.now();
     const menu = this.elContextMenu;
     menu.style.display = "block";
     menu.style.visibility = "hidden";
 
     const menuRect = menu.getBoundingClientRect();
-    // The opening animation scales the visual rect; use the full layout size
-    // so the menu still fits when the animation finishes.
-    const menuWidth = menu.offsetWidth || menuRect.width || 210;
-    const menuHeight = menu.offsetHeight || menuRect.height || 260;
+    const menuWidth = menu.offsetWidth || menuRect.width || 220;
+    const menuHeight = menu.offsetHeight || menuRect.height || 280;
 
     let posX = clientX;
     let posY = clientY;
@@ -189,6 +322,31 @@ class PTContextMenu {
   }
 
   executeContextAction(action, menuItem = null) {
+    // 1. Text editing mode actions
+    if (this.contextTarget?.isTextEdit && this.textEditorState) {
+      switch (action) {
+        case "edit-selected-text":
+          this.openQuickTextEditDialog();
+          return;
+        case "delete-selected-text":
+          this.deleteSelectedText();
+          return;
+        case "select-all-text":
+          this.selectAllText();
+          return;
+        case "cut":
+          this.cutTextSelection();
+          return;
+        case "copy":
+          this.copyTextSelection();
+          return;
+        case "paste":
+          this.pasteIntoTextEditor();
+          return;
+      }
+    }
+
+    // 2. Formatting & cell/row actions
     const targetRow = this.contextTarget?.rowIdx ?? this.selectedRowIdx ?? (this.activeCell ? this.activeCell.rowIdx : 0);
     const targetCol = this.contextTarget?.colKey ?? this.selectedColKey;
 
@@ -270,4 +428,164 @@ class PTContextMenu {
     }
   }
 
+  // =========================================================================
+  // Text Editing Actions & Quick Edit Modal Helpers
+  // =========================================================================
+  openQuickTextEditDialog() {
+    const state = this.textEditorState;
+    if (!state) return;
+
+    const modal = document.getElementById("quickTextEditModal");
+    const targetEl = document.getElementById("quickTextTarget");
+    const inputEl = document.getElementById("quickTextInput");
+    if (!modal || !targetEl || !inputEl) return;
+
+    targetEl.textContent = state.selectedText || state.fullText || "";
+    inputEl.value = state.selectedText || "";
+    modal.style.display = "flex";
+
+    setTimeout(() => {
+      inputEl.focus();
+      inputEl.select();
+    }, 40);
+  }
+
+  closeQuickTextEditDialog() {
+    const modal = document.getElementById("quickTextEditModal");
+    if (modal) modal.style.display = "none";
+
+    const editor = this.textEditorState?.input;
+    if (editor && editor.isConnected) {
+      editor.focus({ preventScroll: true });
+    }
+  }
+
+  applyQuickTextEdit() {
+    const state = this.textEditorState;
+    const inputEl = document.getElementById("quickTextInput");
+    if (!state || !inputEl) return;
+
+    const replacement = inputEl.value;
+    const editor = state.input;
+    if (editor && editor.isConnected) {
+      this.captureHistory?.();
+      const val = editor.value || "";
+      const start = Math.min(state.start, val.length);
+      const end = Math.min(state.end, val.length);
+      const nextVal = val.slice(0, start) + replacement + val.slice(end);
+
+      editor.value = nextVal;
+      const rows = this.getCurrentRows();
+      if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(start, start + replacement.length);
+      this.showSaveIndicator("선택 글자가 수정되었습니다.");
+    }
+    this.closeQuickTextEditDialog();
+  }
+
+  deleteSelectedText() {
+    const state = this.textEditorState;
+    const editor = state?.input;
+    if (editor && editor.isConnected) {
+      this.captureHistory?.();
+      const val = editor.value || "";
+      const start = Math.min(state.start, val.length);
+      const end = Math.min(state.end, val.length);
+      const nextVal = val.slice(0, start) + val.slice(end);
+
+      editor.value = nextVal;
+      const rows = this.getCurrentRows();
+      if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+
+      editor.dispatchEvent(new Event("input", { bubbles: true }));
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(start, start);
+      this.showSaveIndicator("선택 글자가 삭제되었습니다.");
+    }
+  }
+
+  selectAllText() {
+    const state = this.textEditorState;
+    const editor = state?.input;
+    if (editor && editor.isConnected) {
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(0, editor.value.length);
+      this.captureTextColorSelection();
+    }
+  }
+
+  cutTextSelection() {
+    const state = this.textEditorState;
+    const textToCut = state?.selectedText;
+    if (!textToCut) {
+      this.cutSelection();
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(textToCut).catch(() => {});
+    }
+    this.clipboardBuffer = textToCut;
+    this.deleteSelectedText();
+    this.showSaveIndicator("선택 글자가 잘라내기 되었습니다.");
+  }
+
+  copyTextSelection() {
+    const state = this.textEditorState;
+    const textToCopy = state?.selectedText;
+    if (!textToCopy) {
+      this.copySelection();
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(textToCopy).catch(() => {});
+    }
+    this.clipboardBuffer = textToCopy;
+    this.showSaveIndicator("선택 글자가 복사되었습니다.");
+    if (state.input?.isConnected) {
+      state.input.focus({ preventScroll: true });
+      state.input.setSelectionRange(state.start, state.end);
+    }
+  }
+
+  async pasteIntoTextEditor() {
+    const state = this.textEditorState;
+    const editor = state?.input;
+    if (!editor || !editor.isConnected) {
+      this.pasteSelection();
+      return;
+    }
+    let text = "";
+    if (navigator.clipboard?.readText) {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch (e) {
+        text = this.clipboardBuffer || "";
+      }
+    } else {
+      text = this.clipboardBuffer || "";
+    }
+    if (!text) {
+      this.showSaveIndicator("붙여넣을 텍스트가 없습니다.", true);
+      return;
+    }
+
+    this.captureHistory?.();
+    const val = editor.value || "";
+    const start = state.start ?? editor.selectionStart ?? val.length;
+    const end = state.end ?? editor.selectionEnd ?? val.length;
+    const nextVal = val.slice(0, start) + text + val.slice(end);
+
+    editor.value = nextVal;
+    const rows = this.getCurrentRows();
+    if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    editor.focus({ preventScroll: true });
+    const nextCaret = start + text.length;
+    editor.setSelectionRange(nextCaret, nextCaret);
+    this.showSaveIndicator("붙여넣기 완료");
+  }
 }

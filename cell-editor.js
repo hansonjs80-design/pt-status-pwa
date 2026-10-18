@@ -332,7 +332,7 @@ class PTCellEditor {
     input.classList.remove("is-armed");
     input.refreshEditorColors?.();
     const colKey = input.closest(".excel-cell")?.dataset.col;
-    if (this.isKoreanPreferredColumn(colKey)) this.initMemoInput(input);
+    if (!input.lang && this.isKoreanPreferredColumn(colKey)) this.initMemoInput(input);
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
@@ -401,7 +401,13 @@ class PTCellEditor {
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
     for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, e => {
-      if (event === "keyup" && this.isKoreanPreferredColumn(colKey) && this.toggleCellInputLanguage(e, input)) return;
+      if (event === "keyup" && this.isKoreanPreferredColumn(colKey)) {
+        if (this.isHangulToggleKeyEvent(e)) {
+          input._lastHangulToggleAt = Date.now();
+          this._lastHangulToggleAt = Date.now();
+        }
+        if (this.toggleCellInputLanguage(e, input)) return;
+      }
       input.refreshEditorColors();
       this.updateInlineAutocompletePreview();
       this.refreshNativeLanguagePreview(input);
@@ -566,6 +572,7 @@ class PTCellEditor {
       input.dataset.composing = "false";
       input.dataset.nativeComposing = "false";
       this.refreshNativeLanguagePreview(input);
+      if (colKey !== "writer") this.normalizeCompletedHangulInput(input);
       repairCompletedInput();
       if (this._justCommittedFromAutocomplete) return;
       const val = input.value;
@@ -649,16 +656,15 @@ class PTCellEditor {
     });
 
     input.addEventListener("contextmenu", event => {
-      refreshPendingAutocomplete();
-      if (!this.isAutocompleteOpen()) return;
-      event.preventDefault(); event.stopPropagation();
-      const chosen = this.getSelectedAutocompleteItem();
-      this._justCommittedFromAutocomplete = true;
-      composing = false; input.dataset.composing = "false";
+      // 자동완성 팝업이 열려있다면 닫아주어 우클릭 차단 방지
       this.closeAutocompleteMenu();
-      commitAndBlur(chosen);
-      this.selectCell(rowIdx, colKey, cellElement, false);
-      this.focusSelectedCellEditor();
+      event.preventDefault();
+      event.stopPropagation();
+      // 현재 에디터 최신 텍스트를 모델 데이터에 반영
+      const liveVal = this.getCellEditorValue(input);
+      if (rows[rowIdx]) rows[rowIdx][colKey] = liveVal;
+      // 컨텍스트 메뉴 명시적 호출
+      this.handleTableContextMenu(event);
     });
 
     input.addEventListener("keydown", (e) => {
@@ -670,7 +676,11 @@ class PTCellEditor {
         // OS input-source changes may produce no keyboard event at all. Trust
         // beforeinput/composition instead of a separate application language.
         this.clearKoreanKeyBuffer(input);
-        if (this.isHangulToggleKeyEvent(e)) return;
+        if (this.isHangulToggleKeyEvent(e)) {
+          input._lastHangulToggleAt = Date.now();
+          this._lastHangulToggleAt = Date.now();
+          return;
+        }
         this.releaseNavigationInputGuard(input, e);
         const nativeKey = e.isComposing || e.keyCode === 229;
         if (!["Shift", "Control", "Alt", "Meta"].includes(e.key) &&

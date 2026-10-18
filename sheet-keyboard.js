@@ -123,7 +123,12 @@ class PTSheetKeyboard {
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
-    if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
+    if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) {
+      this._lastHangulToggleAt = Date.now();
+      const cellInput = this.elTableBody?.querySelector(`[data-row="${this.activeCell?.rowIdx}"][data-col="${this.activeCell?.colKey}"] input`);
+      if (cellInput) cellInput._lastHangulToggleAt = Date.now();
+      return;
+    }
     if (this.handleCellLanguageToggle(e)) return;
     if (this.consumePresetLeftRepeat(e)) return;
     if (this.handleForcedCorrectionShortcut(e)) return;

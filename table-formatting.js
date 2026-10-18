@@ -748,9 +748,16 @@ class PTTableFormatting {
 
   captureTextColorSelection() {
     this.textColorSelection = null;
-    const input = document.activeElement;
-    if (!this.activeCell || !input?.matches(".cell-input-element:not(.is-armed)") || input.selectionStart === input.selectionEnd) return;
-    this.textColorSelection = { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd };
+    let input = document.activeElement;
+    if (!input?.matches?.(".cell-input-element:not(.is-armed)") && this.activeCell) {
+      input = this.elTableBody?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"] input:not(.is-armed)`);
+    }
+    if (!this.activeCell || !input?.matches?.(".cell-input-element:not(.is-armed)") || input.selectionStart === input.selectionEnd) return;
+    const start = Math.min(input.selectionStart, input.selectionEnd);
+    const end = Math.max(input.selectionStart, input.selectionEnd);
+    const rows = this.getCurrentRows();
+    if (rows[this.activeCell.rowIdx]) rows[this.activeCell.rowIdx][this.activeCell.colKey] = input.value;
+    this.textColorSelection = { ...this.activeCell, text: input.value, start, end };
   }
 
   handleTextFormattingShortcut(event) {
@@ -836,16 +843,22 @@ class PTTableFormatting {
 
   applySelectedTextStyle(property, value) {
     if (typeof document === 'undefined') return false;
-    const input = document.activeElement;
+    let input = document.activeElement;
+    if (!input?.matches?.('.cell-input-element:not(.is-armed)') && this.activeCell) {
+      input = this.elTableBody?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"] input:not(.is-armed)`);
+    }
     const selection = this.textColorSelection;
     const live = this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)')
       && input.selectionStart !== input.selectionEnd
-      ? { ...this.activeCell, text: input.value, start: input.selectionStart, end: input.selectionEnd } : null;
+      ? { ...this.activeCell, text: input.value, start: Math.min(input.selectionStart, input.selectionEnd), end: Math.max(input.selectionStart, input.selectionEnd) } : null;
     const target = live || selection;
     this.textColorSelection = null;
     if (!target || this.crossDateSelection || this.activeCell?.rowIdx !== target.rowIdx || this.activeCell?.colKey !== target.colKey) return false;
     const row = this.getCurrentRows()[target.rowIdx];
-    if (!row || String(row[target.colKey] ?? '') !== target.text) return false;
+    if (!row) return false;
+    if (String(row[target.colKey] ?? '') !== target.text) {
+      row[target.colKey] = target.text;
+    }
     this.captureHistory?.();
     if (property === 'color') {
       this.setPartialTextColor(row, target.colKey, target.start, target.end, value);

@@ -444,6 +444,7 @@ class PTAppEvents {
     // Close modal & context menu on escape
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        this.closeQuickTextEditDialog?.();
         this.closeGenderDropdown();
         this.hideContextMenu();
         this.closePreviewModal();
@@ -457,6 +458,7 @@ class PTAppEvents {
 
     // Close context menu on outside click
     document.addEventListener("click", (e) => {
+      if (Date.now() - (this._contextMenuOpenedAt || 0) < 350) return;
       if (this.elContextMenu && !this.elContextMenu.contains(e.target)) {
         this.hideContextMenu();
       }

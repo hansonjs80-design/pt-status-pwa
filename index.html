@@ -453,6 +453,31 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
 
   <!-- Excel Right-Click Context Menu -->
   <div class="excel-context-menu" id="excelContextMenu" style="display: none;">
+    <!-- Text editing specific header and primary actions -->
+    <div class="menu-selection-header hidden" id="menuTextSelectionHeader">
+      <div class="selection-badge">선택 글자</div>
+      <div class="selection-preview-wrap">
+        <span class="selection-preview" id="menuSelectionPreview">""</span>
+        <span class="selection-length" id="menuSelectionLength">0자</span>
+      </div>
+    </div>
+    <div class="menu-item text-only-item primary-action hidden" data-action="edit-selected-text">
+      <span class="menu-icon">✏️</span>
+      <span class="menu-label">선택 글자 수정...</span>
+      <span class="menu-shortcut">Enter</span>
+    </div>
+    <div class="menu-item text-only-item hidden" data-action="delete-selected-text">
+      <span class="menu-icon">⌫</span>
+      <span class="menu-label">선택 글자 삭제</span>
+      <span class="menu-shortcut">Del</span>
+    </div>
+    <div class="menu-item text-only-item hidden" data-action="select-all-text">
+      <span class="menu-icon">🔤</span>
+      <span class="menu-label">전체 선택</span>
+      <span class="menu-shortcut">Ctrl+A</span>
+    </div>
+    <div class="menu-divider text-only-item hidden" id="menuTextDivider"></div>
+
     <div class="menu-item" data-action="cut">
       <span class="menu-icon">✂️</span>
       <span class="menu-label">잘라내기</span>
@@ -477,7 +502,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
     <div class="menu-item" data-action="text-highlight"><span class="menu-icon" aria-hidden="true">🖍️</span><span class="menu-label">형광펜</span><span class="menu-shortcut">Ctrl/Cmd+E</span></div>
     <div class="menu-item" data-action="change-case"><span class="menu-icon" aria-hidden="true" style="font-weight:700;font-size:13px;letter-spacing:-0.5px;">Aa</span><span class="menu-label">대/소문자 바꾸기</span></div>
     <div class="menu-item row-only-item" data-action="lunch-line"><span class="menu-icon" aria-hidden="true">🍽️</span><span class="menu-label">점심시간 설정 / 해제</span></div>
-    <div class="menu-item" data-action="clear-contents">
+    <div class="menu-item cell-grid-only-item" data-action="clear-contents">
       <span class="menu-icon">🧹</span>
       <span class="menu-label">내용 지우기</span>
       <span class="menu-shortcut">Del</span>
@@ -515,6 +540,32 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
     <div class="menu-item col-only-item" data-action="sort-col-desc">
       <span class="menu-icon">🔽</span>
       <span class="menu-label">내림차순 정렬</span>
+    </div>
+  </div>
+
+  <!-- 선택 글자 빠른 수정 미니 모달 -->
+  <div class="modal-overlay quick-text-modal-overlay" id="quickTextEditModal" style="display:none;">
+    <div class="modal-card quick-text-card" role="dialog" aria-modal="true" aria-labelledby="quickTextTitle">
+      <div class="modal-header quick-text-header">
+        <h3 class="modal-title quick-text-title" id="quickTextTitle">
+          <span class="quick-title-icon">✏️</span> 선택 글자 수정
+        </h3>
+        <button type="button" class="btn-modal-close" id="btnQuickTextClose" aria-label="닫기">✕</button>
+      </div>
+      <div class="quick-text-body">
+        <div class="quick-text-preview-row">
+          <span class="quick-text-label">선택한 글자</span>
+          <span class="quick-text-target" id="quickTextTarget"></span>
+        </div>
+        <div class="quick-text-input-row">
+          <label for="quickTextInput" class="quick-text-label">바꿀 내용</label>
+          <input type="text" id="quickTextInput" class="quick-text-input" placeholder="새로운 내용을 입력하세요..." spellcheck="false" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-footer quick-text-footer">
+        <button type="button" class="btn-cancel" id="btnQuickTextCancel">취소 (Esc)</button>
+        <button type="button" class="btn-confirm" id="btnQuickTextApply">수정 적용 (Enter)</button>
+      </div>
     </div>
   </div>
 

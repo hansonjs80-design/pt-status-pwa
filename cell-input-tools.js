@@ -434,12 +434,46 @@ class PTCellInputTools {
     glyph.append(canvas,text);return glyph;
   }
 
+  repairDroppedEnglishInitial(str) {
+    if (!str || typeof str !== 'string') return str;
+    const ENG_TO_CHO = {
+      r:0, R:1, s:2, e:3, E:4, f:5, a:6, q:7, Q:8, t:9, T:10, d:11, w:12, W:13, c:14, z:15, x:16, v:17, g:18
+    };
+    return str.replace(/(^|[^a-zA-Z0-9])([rRseEfaqQtTdwWczxvg])([가-힣\u314F-\u3163])/g, (match, prefix, letter, hangulChar) => {
+      const choIndex = ENG_TO_CHO[letter] ?? ENG_TO_CHO[letter.toLowerCase()];
+      if (choIndex === undefined) return match;
+      const code = hangulChar.charCodeAt(0);
+
+      if (code >= 0xAC00 && code <= 0xD7A3) {
+        const offset = code - 0xAC00;
+        const currentCho = Math.floor(offset / (21 * 28));
+        const jung = Math.floor((offset % (21 * 28)) / 28);
+        const jong = offset % 28;
+
+        if (currentCho === 11) {
+          return prefix + String.fromCharCode(0xAC00 + (choIndex * 21 + jung) * 28 + jong);
+        }
+        if (currentCho === choIndex) {
+          return prefix + hangulChar;
+        }
+      }
+
+      if (code >= 0x314F && code <= 0x3163) {
+        const jung = code - 0x314F;
+        return prefix + String.fromCharCode(0xAC00 + (choIndex * 21 + jung) * 28);
+      }
+
+      return match;
+    });
+  }
+
   assembleCellEditorText(input, value) {
-    const prefix = input._forcedCorrectionPrefix;
+    const prefix = input?._forcedCorrectionPrefix;
     // The replaced word is already committed. New Korean letters compose only
     // with the following draft, never with the final syllable of that word.
-    return prefix && value.startsWith(prefix)
+    const text = prefix && value.startsWith(prefix)
       ? prefix + this.assembleHangul(value.slice(prefix.length).normalize('NFC')) : this.assembleHangul(value.normalize('NFC'));
+    return this.repairDroppedEnglishInitial(text);
   }
 
   normalizeCompletedHangulInput(input) {
