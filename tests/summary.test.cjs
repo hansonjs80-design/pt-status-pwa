@@ -606,6 +606,46 @@ test('disk state is not overwritten by blank initial state when local storage is
   assert.equal(h.toolbar.classList.closed, true, '빠른도구 DOM 클래스도 접힘 상태로 동기화됨');
 });
 
+test('closing panels and closing app immediately (stale disk open state) preserves closed state on relaunch', async () => {
+  const h = deviceSummaryHarness();
+
+  // 1. 과거에 디스크에 '열림' 상태(closed: false)가 저장되어 있던 상황
+  await h.store("device-summary-state-v1", { closed: false, updatedAt: 1000 });
+  await h.store("device-toolbar-state-v1", { closed: false, updatedAt: 1000 });
+
+  // 2. 사용자가 창을 열어서 사용하다가 창들을 닫음
+  const app1 = h.create();
+  app1.initSummaryToggle();
+  app1.initToolbarActionsToggle();
+
+  app1.setSummaryClosed(true);
+  app1.setToolbarActionsClosed(true);
+
+  // 3. 사용자가 곧바로 앱을 종료함: sessionStorage 초기화되고 디스크에는 과거 값 남아있음
+  // (앱 재시작 시뮬레이션)
+  const app2 = h.create();
+  app2.initSummaryToggle();
+  app2.initToolbarActionsToggle();
+
+  assert.equal(app2.isSummaryClosed(), true, '재실행 시 로컬 스토리지 닫힘 상태 즉시 유지');
+  assert.equal(h.sidebar.classList.closed, true);
+  assert.equal(h.toolbar.classList.closed, true);
+
+  // 비동기 IndexedDB 복원이 뒤늦게 실행되더라도, 디스크의 과거 열림 상태로 덮어쓰지 않아야 함!
+  await app2.restoreDeviceSummaryState(h.store);
+  await app2.restoreDeviceToolbarState(h.store);
+
+  assert.equal(app2.isSummaryClosed(), true, '비동기 디스크 복원 후에도 닫힘 상태 완벽 보존');
+  assert.equal(h.sidebar.classList.closed, true);
+  assert.equal(h.toolbar.classList.closed, true);
+
+  // 디스크 또한 최신 로컬 상태(closed: true)로 자동 동기화(write-back)되었는지 확인
+  const diskSummary = await h.store("device-summary-state-v1");
+  const diskToolbar = await h.store("device-toolbar-state-v1");
+  assert.equal(diskSummary.closed, true, '디스크에 최신 닫힘 상태 동기화 완료');
+  assert.equal(diskToolbar.closed, true, '디스크에 최신 도구 접힘 상태 동기화 완료');
+});
+
 test('monthly summary table merges weekday averages into bottom average row and hides deselected weekdays', () => {
   function createMockElement(tag, text, className) {
     const children = [];

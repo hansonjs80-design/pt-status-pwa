@@ -63,47 +63,45 @@ class PTDeviceLayout {
   }
 
   readDevicePanelState(key, legacyClosed, property = 'closed') {
-    let best = null;
-    const consider = candidate => {
-      if (candidate && typeof candidate[property] === 'boolean' && Number.isFinite(candidate.updatedAt)) {
-        if (!best || candidate.updatedAt > best.updatedAt) best = candidate;
-      }
-    };
-
-    // 1. localStorage SNAPSHOT
+    // 1. localStorage SNAPSHOT 최우선 확인 (가장 정확한 사용자 로컬 조작 기록)
     try {
       const saved = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      consider(saved);
+      if (saved && typeof saved[property] === 'boolean' && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
+        return saved;
+      }
     } catch (_) {}
 
-    // 2. sessionStorage SNAPSHOT (코드 업데이트 / PWA 갱신 새로고침 시 세션 보호)
+    // 2. sessionStorage SNAPSHOT 확인 (새로고침 / 코드 업데이트 시 세션 보호)
     try {
       const sessionSaved = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      consider(sessionSaved);
+      if (sessionSaved && typeof sessionSaved[property] === 'boolean' && Number.isFinite(sessionSaved.updatedAt) && sessionSaved.updatedAt > 0) {
+        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(sessionSaved)); } catch (_) {}
+        return sessionSaved;
+      }
     } catch (_) {}
 
-    // 3. Cookie STATE (도메인 단위 기기 백업)
+    // 3. Cookie STATE 확인 (로컬 스토리지가 비었을 때의 fallback)
     try {
       const cookieKey = `${key}_STATE=`;
       const matches = String(document.cookie || '').split(';')
         .map(value => value.trim())
         .filter(value => value.startsWith(cookieKey));
+      let bestCookie = null;
       for (const raw of matches) {
         try {
           const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
-          consider(saved);
+          if (saved && typeof saved[property] === 'boolean' && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
+            if (!bestCookie || saved.updatedAt > bestCookie.updatedAt) bestCookie = saved;
+          }
         } catch (_) {}
+      }
+      if (bestCookie) {
+        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(bestCookie)); } catch (_) {}
+        return bestCookie;
       }
     } catch (_) {}
 
-    if (best) {
-      // 자가 치유(Self-healing): 최신 스냅샷을 다른 저장소에도 즉시 동기화
-      try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
-      try { sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
-      return best;
-    }
-
-    // 4. 레거시 키 호환 fallback
+    // 4. 레거시 단일 키 호환 fallback
     try {
       const legacy = localStorage.getItem(key);
       if (legacy !== null) {
@@ -164,9 +162,12 @@ class PTDeviceLayout {
     let persisted = null;
     try { persisted = await store("device-summary-state-v1"); } catch (_) {}
     const local = this.deviceSummaryState || this.readDeviceSummaryState();
-    // 로컬 스냅샷이 없거나 초기값(updatedAt 0)이고 디스크에 유효한 스냅샷이 있다면 무조건 디스크 복원 우선
-    const shouldUsePersisted = !this.summaryStateChanged && typeof persisted?.closed === "boolean" &&
-      Number.isFinite(persisted.updatedAt) && (persisted.updatedAt >= (local.updatedAt || 0) || (local.updatedAt === 0 && persisted.updatedAt > 0));
+
+    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt) && local.updatedAt > 0;
+    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt) && persisted.updatedAt > 0;
+
+    // 디스크 복원은 로컬 스냅샷이 없거나 디스크가 로컬보다 엄격히 더 최신일 때만 적용!
+    const shouldUsePersisted = !this.summaryStateChanged && isPersistedValid && (!isLocalValid || persisted.updatedAt > local.updatedAt);
 
     if (shouldUsePersisted) {
       this.deviceSummaryState = persisted;
@@ -267,8 +268,11 @@ class PTDeviceLayout {
     let persisted = null;
     try { persisted = await store("device-toolbar-state-v1"); } catch (_) {}
     const local = this.deviceToolbarState || this.readDeviceToolbarState();
-    const shouldUsePersisted = !this.toolbarStateChanged && typeof persisted?.closed === "boolean" &&
-      Number.isFinite(persisted.updatedAt) && (persisted.updatedAt >= (local.updatedAt || 0) || (local.updatedAt === 0 && persisted.updatedAt > 0));
+
+    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt) && local.updatedAt > 0;
+    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt) && persisted.updatedAt > 0;
+
+    const shouldUsePersisted = !this.toolbarStateChanged && isPersistedValid && (!isLocalValid || persisted.updatedAt > local.updatedAt);
 
     if (shouldUsePersisted) {
       this.deviceToolbarState = persisted;

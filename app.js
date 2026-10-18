@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v438";
+  static VERSION = "v439";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -1220,9 +1220,16 @@ class PTApp {
 
   initPWA() {
     if (typeof window !== "undefined") {
-      window.addEventListener("beforeunload", () => {
+      const handleFlush = () => {
         try { this.flushDevicePanelStates?.(); } catch (_) {}
-      });
+      };
+      window.addEventListener("beforeunload", handleFlush);
+      window.addEventListener("pagehide", handleFlush);
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") handleFlush();
+        });
+      }
     }
 
     if (!("serviceWorker" in navigator)) return;
