@@ -363,9 +363,10 @@ class PTAppEvents {
     this.initSummaryToggle();
 
     // Keyboard Shortcuts
-    // Intercept search before native editor/IME bubbling can lose its target.
+    // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
       if (this._recordsRestorePending) return;
+      if (!e.defaultPrevented && this.handleForcedCorrectionShortcut(e)) return;
       if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
       // Input-source shortcuts win over formatting (Ctrl+Space was also red).
       if (this.handleCellLanguageToggle(e)) return;

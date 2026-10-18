@@ -126,6 +126,7 @@ class PTSheetKeyboard {
     if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
     if (this.handleCellLanguageToggle(e)) return;
     if (this.consumePresetLeftRepeat(e)) return;
+    if (this.handleForcedCorrectionShortcut(e)) return;
     if (this.handlePatientEditorSearchShortcut(e)) return;
     if (e.key === "Escape" && this.activeCell) {
       const editingCell = e.target?.closest?.(".excel-cell");
@@ -349,6 +350,9 @@ class PTSheetKeyboard {
       this.findActiveCell();
       return;
     }
+
+    // Forced Correction Manager (Ctrl+L / Cmd+L)
+    if (this.handleForcedCorrectionShortcut(e)) return;
 
     // 8) Insert Row (Ctrl + '+' or Ctrl + '=' or Ctrl + Shift + '=')
     if (isCtrlOrMeta && (e.key === "+" || e.key === "=" || e.code === "Equal" || e.code === "NumpadAdd")) {

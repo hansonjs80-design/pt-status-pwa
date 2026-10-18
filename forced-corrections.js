@@ -250,6 +250,9 @@ class PTForcedCorrections {
   openForcedCorrectionManager() {
     const modal = document.getElementById('forcedCorrectionModal');
     if (!modal) return;
+    if (typeof document !== 'undefined' && document.activeElement && !modal.contains(document.activeElement)) {
+      this._forcedCorrectionPreviousFocus = document.activeElement;
+    }
     clearTimeout(this.presetManagerFocusTimer);
     modal.style.display = 'flex';
     this.updateForcedCorrectionManager();
@@ -262,7 +265,20 @@ class PTForcedCorrections {
     if (!modal || modal.style.display !== 'flex') return;
     modal.style.display = 'none';
     if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
-    if (restoreFocus) document.getElementById('btnOpenForcedCorrectionManager')?.focus({preventScroll:true});
+    if (restoreFocus) {
+      const prev = this._forcedCorrectionPreviousFocus;
+      this._forcedCorrectionPreviousFocus = null;
+      if (prev && typeof document !== 'undefined' && document.contains?.(prev) && typeof prev.focus === 'function' && !modal.contains(prev)) {
+        prev.focus({ preventScroll: true });
+      } else if (this.activeCell && typeof document !== 'undefined') {
+        const { rowIdx, colKey } = this.activeCell;
+        const cell = document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
+        if (cell) cell.focus({ preventScroll: true });
+        else this.elSheetContainer?.focus?.({ preventScroll: true });
+      } else {
+        document.getElementById('btnOpenForcedCorrectionManager')?.focus({ preventScroll: true });
+      }
+    }
   }
 
   setForcedCorrectionFeedback(message, { error = false } = {}) {
@@ -387,6 +403,12 @@ class PTForcedCorrections {
     const modal = document.getElementById('forcedCorrectionModal');
     modal.onclick = event => { if (event.target === modal) this.closeForcedCorrectionManager(); };
     modal.onkeydown = event => {
+      if (this.isForcedCorrectionShortcut?.(event)) {
+        event.stopPropagation();
+        event.preventDefault();
+        this.closeForcedCorrectionManager();
+        return;
+      }
       if (event.key === 'Escape') {
         event.stopPropagation();
         if (!event.isComposing && event.keyCode !== 229) {

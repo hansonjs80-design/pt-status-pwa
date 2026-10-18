@@ -1346,7 +1346,7 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
   box-shadow: 0 4px 14px rgba(16, 80, 42, 0.14);
   border-radius: 6px;
   z-index: 3500;
-  max-height: 220px;
+  max-height: min(85vh, 600px);
   overflow-y: auto;
   font-size: 12.5px;
   padding: 4px;

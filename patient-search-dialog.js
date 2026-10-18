@@ -224,7 +224,7 @@ class PTPatientSearchDialog {
       menu.style.left = `${rect.left}px`;
       menu.style.top = `${rect.bottom + 4}px`;
       menu.style.width = `${rect.width}px`;
-      menu.style.maxHeight = `${Math.max(40, Math.min(220, window.innerHeight - rect.bottom - 12))}px`;
+      menu.style.maxHeight = `${Math.max(40, Math.min(480, window.innerHeight - rect.bottom - 12))}px`;
     };
     position();
     this._searchPromptACPosition = position;

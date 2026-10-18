@@ -927,3 +927,30 @@ test('equal wording with different underline or highlight is not merged',()=>{
   const double=candidate({underline:{style:'double'}}),highlight=candidate({highlight:'#ffff00'});
   assert.equal(app.deduplicatePresetCandidates('memo',[single,same,double,highlight]).length,3);
 });
+
+test('autocomplete menu uses full available viewport height instead of capping at 220px', () => {
+  let menu = null;
+  const element = () => ({
+    style: {}, children: [], isConnected: true, offsetWidth: 160, offsetHeight: 100,
+    appendChild(child) { this.children.push(child); },
+    setAttribute() {}, addEventListener() {}, remove() { menu = null; },
+  });
+  const document = {
+    createElement: element, getElementById: () => menu,
+    body: { appendChild(child) { menu = child; } },
+    addEventListener() {}, removeEventListener() {},
+  };
+  const window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1200, innerHeight: 900 };
+  const app = createApp({}, {}, { document, window });
+  app.moveAutocompleteSelection = () => {};
+  const cell = { isConnected: true, getBoundingClientRect: () => ({ left: 200, top: 200, bottom: 230, right: 350, width: 150, height: 30 }) };
+  const input = { value: '', dataset: {} };
+
+  app.showAutocompleteMenu(0, 'extra', cell, input, ['충격파', '도수', '이온', '운동치료', '크라이오', '견인']);
+
+  assert.ok(menu, 'menu must be created');
+  const maxHeight = parseInt(menu.style.maxHeight, 10);
+  assert.ok(maxHeight > 220, `maxHeight (${maxHeight}px) should exceed the old 220px limit`);
+  assert.equal(maxHeight, 900 - 230 - 4 - 6); // bottom - rect.bottom - gap - margin
+});
+

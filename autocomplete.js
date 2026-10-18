@@ -368,9 +368,9 @@ class PTAutocomplete {
       menu.style.left = `${Math.max(left + margin, Math.min(rect.left, right - menu.offsetWidth - margin))}px`;
       const below = Math.max(0, bottom - Math.max(top, rect.bottom) - gap - margin);
       const above = Math.max(0, Math.min(bottom, rect.top) - top - gap - margin);
-      // Prescription lists can use all available space instead of scrolling
-      // after 220px. Other pickers retain their compact height.
-      const maxHeight = colKey === "prescription" ? Math.max(below, above) : 220;
+      // Autocomplete lists can use all available viewport space instead of scrolling
+      // after 220px.
+      const maxHeight = Math.max(below, above);
       menu.style.maxHeight = `${maxHeight}px`;
       const naturalHeight = menu.offsetHeight;
       const useBelow = naturalHeight <= below || below >= above;

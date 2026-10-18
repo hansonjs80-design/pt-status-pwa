@@ -450,3 +450,49 @@ test('a rule save failure retains the original rules and compiled matches for re
   assert.equal(app.saveForcedCorrectionRule('prescription','DpDIR','예약',editing).saved,true);
   assert.equal(app.findForcedCorrection('DpDIR','prescription').value,'예약');
 });
+
+test('Ctrl/Cmd + L shortcut recognizes English and Korean IME keys and toggles forced correction manager', () => {
+  const { app, context } = createApp();
+
+  // 1. isForcedCorrectionShortcut checks
+  assert.equal(app.isForcedCorrectionShortcut({ ctrlKey: true, key: 'l' }), true);
+  assert.equal(app.isForcedCorrectionShortcut({ metaKey: true, key: 'L' }), true);
+  assert.equal(app.isForcedCorrectionShortcut({ ctrlKey: true, code: 'KeyL', key: 'Process', isComposing: true }), true);
+  assert.equal(app.isForcedCorrectionShortcut({ metaKey: true, key: 'ㅣ' }), true);
+  assert.equal(app.isForcedCorrectionShortcut({ ctrlKey: true, key: 'l', altKey: true }), false);
+  assert.equal(app.isForcedCorrectionShortcut({ ctrlKey: true, key: 'l', shiftKey: true }), false);
+  assert.equal(app.isForcedCorrectionShortcut({ key: 'l' }), false);
+
+  // 2. handleForcedCorrectionShortcut opens when closed
+  let opened = false, closed = false, blurred = false;
+  let prevented = false, stopped = false;
+  const evt = {
+    ctrlKey: true,
+    key: 'l',
+    preventDefault() { prevented = true; },
+    stopPropagation() { stopped = true; }
+  };
+
+  app.openForcedCorrectionManager = () => { opened = true; };
+  app.closeForcedCorrectionManager = () => { closed = true; };
+
+  assert.equal(app.handleForcedCorrectionShortcut(evt), true);
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+  assert.equal(opened, true);
+  assert.equal(closed, false);
+
+  // 3. handleForcedCorrectionShortcut toggles (closes) when modal is already flex
+  const modal = { style: { display: 'flex' } };
+  context.document = { getElementById: id => (id === 'forcedCorrectionModal' ? modal : null) };
+
+  opened = false;
+  prevented = false;
+  stopped = false;
+  assert.equal(app.handleForcedCorrectionShortcut(evt), true);
+  assert.equal(prevented, true);
+  assert.equal(stopped, true);
+  assert.equal(closed, true);
+  assert.equal(opened, false);
+});
+

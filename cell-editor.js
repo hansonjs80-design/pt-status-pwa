@@ -833,6 +833,7 @@ class PTCellEditor {
       if (colKey === "writer" && !e.isComposing && e.keyCode !== 229) delete input.dataset.writerKeyValue;
       // Search must run on the first press, even before IME composition ends.
       if (this.isSearchShortcut(e)) { this.handleGlobalKeyDown(e); return; }
+      if (this.handleForcedCorrectionShortcut(e)) return;
       if (this.handleCellRowSelectShortcut(e)) return;
       const escapePressed = e.key === "Escape" || e.code === "Escape" || e.keyCode === 27;
       const directCommit = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey &&

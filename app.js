@@ -378,6 +378,31 @@ class PTApp {
       (e.key.toLowerCase() === "f" || e.code === "KeyF");
   }
 
+  isForcedCorrectionShortcut(e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+    const key = (e.key || "").toLowerCase();
+    return key === "l" || e.code === "KeyL" || key === "ㅣ";
+  }
+
+  handleForcedCorrectionShortcut(e) {
+    if (!this.isForcedCorrectionShortcut(e)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    const modal = typeof document === "undefined" ? null : document.getElementById?.("forcedCorrectionModal");
+    if (modal && modal.style.display === "flex") {
+      this.closeForcedCorrectionManager();
+    } else {
+      if (typeof document !== "undefined") {
+        this._forcedCorrectionPreviousFocus = document.activeElement;
+        if (document.activeElement?.matches?.("input, textarea")) {
+          document.activeElement.blur();
+        }
+      }
+      this.openForcedCorrectionManager();
+    }
+    return true;
+  }
+
   handleCellRowSelectShortcut(e) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey ||
         (e.key.toLowerCase() !== "a" && e.code !== "KeyA")) return false;
