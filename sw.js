@@ -1,4 +1,11 @@
-const CACHE_NAME = 'pt-status-pwa-v432';
+const CACHE_NAME = 'pt-status-pwa-v433';
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

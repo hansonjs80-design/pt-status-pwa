@@ -1134,13 +1134,50 @@ class PTApp {
   }
 
   initPWA() {
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js")
-          .then((reg) => console.log("PT Status PWA Service Worker Registered", reg.scope))
-          .catch((err) => console.log("SW Registration Failed", err));
-      });
-    }
+    if (!("serviceWorker" in navigator)) return;
+
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    const checkUpdate = (reg) => {
+      if (!reg) return;
+      reg.update().catch(() => {});
+    };
+
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js")
+        .then((reg) => {
+          console.log("PT Status PWA Service Worker Registered", reg.scope);
+
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: "SKIP_WAITING" });
+          }
+
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                newWorker.postMessage({ type: "SKIP_WAITING" });
+              }
+            });
+          });
+
+          checkUpdate(reg);
+          setInterval(() => checkUpdate(reg), 60 * 1000);
+
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") checkUpdate(reg);
+          });
+          window.addEventListener("focus", () => checkUpdate(reg));
+          window.addEventListener("online", () => checkUpdate(reg));
+        })
+        .catch((err) => console.log("SW Registration Failed", err));
+    });
   }
 }
 

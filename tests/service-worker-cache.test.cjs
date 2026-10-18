@@ -4,9 +4,10 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function worker(overrides) {
+function worker(overrides = {}, selfOverrides = {}) {
   const handlers = {};
-  const context = vm.createContext({ self: { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {} }, ...overrides });
+  const self = { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {}, ...selfOverrides };
+  const context = vm.createContext({ self, ...overrides });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8'), context);
   return handlers;
 }
@@ -44,3 +45,12 @@ test('navigation with a new query uses the HTML bundled with the installed scrip
   handlers.fetch({ request: { method: 'GET', mode: 'navigate', url: 'https://example.test/?new-query' }, respondWith(value) { response = value; } });
   assert.equal(await response, installedHTML);
 });
+
+test('service worker handles SKIP_WAITING message from client', () => {
+  let skipWaitingCalled = false;
+  const handlers = worker({}, { skipWaiting: () => { skipWaitingCalled = true; } });
+  assert.ok(handlers.message, 'message event listener must be registered');
+  handlers.message({ data: { type: 'SKIP_WAITING' } });
+  assert.strictEqual(skipWaitingCalled, true, 'skipWaiting must be called when receiving SKIP_WAITING message');
+});
+
