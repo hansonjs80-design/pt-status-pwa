@@ -211,7 +211,7 @@ class PTAutocomplete {
     return this.expandHistoricalPresetVariants(snapshot,colKey,results);
   }
 
-  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true, preferCurrentValue = false } = {}) {
+  showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true, preferCurrentValue = false, isPresetPicker = false } = {}) {
     candidates = this.deduplicatePresetCandidates(colKey, candidates || [], this.getCellEditorValue(input));
     const previous = this.autocompleteState;
     const query = this.getCellEditorValue(input);
@@ -349,7 +349,8 @@ class PTAutocomplete {
       input,
       candidates,
       query,
-      selectedIndex
+      selectedIndex,
+      isPresetPicker: Boolean(isPresetPicker)
     };
     this.updateInlineAutocompletePreview();
 

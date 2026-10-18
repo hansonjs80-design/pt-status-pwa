@@ -846,11 +846,28 @@ class PTApp {
     const cell = input.closest(".excel-cell");
     const colKey = cell?.dataset.col;
     if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
+
+    const isPresetPicker = Boolean(input.dataset?.presetPickerMode === "true" || this.autocompleteState?.isPresetPicker);
+    if (isPresetPicker && ["prescription", "extra", "writer"].includes(colKey)) {
+      const values = colKey === "writer" ? this.getWriterPresetValues() : this.getPresetPickerValues(colKey);
+      if (values.length) {
+        this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, values, {
+          includeTypedValue: false,
+          preferCurrentValue: true,
+          isPresetPicker: true
+        });
+      }
+      return;
+    }
+
     const query = this.getCellEditorValue(input);
     const koreanComposing = input._inputLanguage !== "eng" && !input._forcedCorrectionProjection && input.dataset.composing === "true";
     const suggestions = this.getAutocompleteSuggestions(colKey, query, koreanComposing);
-    if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
-    else this.closeAutocompleteMenu();
+    if (suggestions.length || (["name", "part", "extra", "memo", "specialNote"].includes(colKey) && query.trim())) {
+      this.showAutocompleteMenu(Number(cell.dataset.row), colKey, cell, input, suggestions);
+    } else if (!isPresetPicker && (query.trim() || !this.isAutocompleteOpen())) {
+      this.closeAutocompleteMenu();
+    }
   }
 
   ensureDatalists() {

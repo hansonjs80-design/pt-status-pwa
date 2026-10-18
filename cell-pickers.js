@@ -48,7 +48,10 @@ class PTCellPickers {
     }
     this.startInlineEdit(rowIdx, "writer", cellElement);
     const input = cellElement.querySelector("input");
-    if (input) this.showAutocompleteMenu(rowIdx, "writer", cellElement, input, values);
+    if (input) {
+      if (input.dataset) input.dataset.presetPickerMode = "true";
+      this.showAutocompleteMenu(rowIdx, "writer", cellElement, input, values, { isPresetPicker: true });
+    }
   }
 
   getPrescriptionPresetValues() {
@@ -83,7 +86,10 @@ class PTCellPickers {
     }
     this.startInlineEdit(rowIdx, colKey, cellElement);
     const input = cellElement.querySelector("input");
-    if (input) this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, values, { includeTypedValue: false, preferCurrentValue: true });
+    if (input) {
+      if (input.dataset) input.dataset.presetPickerMode = "true";
+      this.showAutocompleteMenu(rowIdx, colKey, cellElement, input, values, { includeTypedValue: false, preferCurrentValue: true, isPresetPicker: true });
+    }
   }
 
   normalizePrescriptionInput(value) {

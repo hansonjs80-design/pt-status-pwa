@@ -524,6 +524,8 @@ class PTCellEditor {
       }
     });
     input.addEventListener("input", (e) => {
+      if (input.dataset) delete input.dataset.presetPickerMode;
+      if (this.autocompleteState) this.autocompleteState.isPresetPicker = false;
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
       const handledKey = this.restoreHandledCellKey(input, e);
       if (handledKey) composing = false;

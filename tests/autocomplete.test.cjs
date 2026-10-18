@@ -954,3 +954,52 @@ test('autocomplete menu uses full available viewport height instead of capping a
   assert.equal(maxHeight, 900 - 230 - 4 - 6); // bottom - rect.bottom - gap - margin
 });
 
+test('prescription and extra preset pickers stay open during background refreshSearchSuggestions', () => {
+  for (const colKey of ['prescription', 'extra']) {
+    let menu = null, closed = 0;
+    const element = () => ({
+      style: {}, children: [], isConnected: true, offsetWidth: 160, offsetHeight: 100,
+      appendChild(child) { this.children.push(child); },
+      setAttribute() {}, addEventListener() {}, remove() { menu = null; },
+      matches(selector) { return selector.includes('cell-input-element'); },
+      closest() { return cell; },
+      value: '', dataset: {}
+    });
+    const input = element();
+    const cell = {
+      isConnected: true,
+      dataset: { col: colKey, row: '0' },
+      querySelector(sel) { return sel === 'input' ? input : null; },
+      getBoundingClientRect: () => ({ left: 200, top: 200, bottom: 230, right: 350, width: 150, height: 30 })
+    };
+    const document = {
+      activeElement: input,
+      createElement: element,
+      getElementById: id => (id === 'cellAutocompleteMenu' ? menu : null),
+      body: { appendChild(child) { menu = child; } },
+      addEventListener() {}, removeEventListener() {},
+    };
+    const window = { addEventListener() {}, removeEventListener() {}, innerWidth: 1200, innerHeight: 900 };
+    const presets = { [colKey]: ['항목1', '항목2', '항목3'] };
+    const app = createApp({ '2026-09-30': [{ [colKey]: '' }] }, presets, { document, window });
+    app.startInlineEdit = () => {};
+    app.moveAutocompleteSelection = () => {};
+    const originalClose = app.closeAutocompleteMenu;
+    app.closeAutocompleteMenu = () => { closed++; originalClose.call(app); };
+
+    // 1. 피커 오픈
+    app.openPresetPicker(0, colKey, cell);
+    assert.ok(menu, 'picker menu should be open');
+    assert.equal(input.dataset.presetPickerMode, 'true');
+    assert.equal(app.autocompleteState.isPresetPicker, true);
+    assert.equal(app.isAutocompleteOpen(), true);
+
+    // 2. 1~2초 후 백그라운드 동기화나 검색 기록 로드로 refreshSearchSuggestions()가 호출되었을 때
+    app.refreshSearchSuggestions();
+    assert.ok(menu, 'picker menu should remain open after background refreshSearchSuggestions');
+    assert.equal(app.isAutocompleteOpen(), true);
+    assert.deepEqual(Array.from(app.autocompleteState.candidates), ['항목1', '항목2', '항목3']);
+  }
+});
+
+
