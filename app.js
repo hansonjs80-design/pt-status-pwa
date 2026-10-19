@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v450";
+  static VERSION = "v451";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -791,8 +791,15 @@ class PTApp {
           entries = await this.readSearchHistoryPages(client, 'date, rows_data, updated_at', cutoffDate, null, allDates ? 20 : 200);
           if (!entries) return false;
         }
+        const patientKeys = ['gender','chartNo','name','part','extra','memo','specialNote'];
         for (const entry of entries) {
           if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) {
+            for (const row of entry.rows_data) {
+              const prescription = String(row?.prescription ?? '').trim();
+              if (prescription.includes('한랭') && !patientKeys.some(k => String(row[k] ?? '').trim())) {
+                row.prescription = '';
+              }
+            }
             history[entry.date] = entry.rows_data;
             versions[entry.date] = entry.updated_at || null;
           }

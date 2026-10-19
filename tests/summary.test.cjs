@@ -808,3 +808,33 @@ test('monthly summary table merges weekday averages into bottom average row and 
   assert.ok(!headers.includes('일'), '제외된 일요일 열은 헤더에 포함되지 않아야 함');
   assert.ok(headers.includes('월'), '선택된 월요일 열은 헤더에 포함됨');
 });
+
+test('hanraeng bug rows without patient details are excluded from daily and period summary counts', () => {
+  // 1. 환자 정보 없이 처방에만 "한랭 ( ICE / Laser )" 또는 "한랭"이 있고 작성자 이니셜이나 행 번호만 있는 유령 행
+  const testRows = [
+    // 정상 환자 1: 성함 + 처방 한랭
+    { name: '김환자', chartNo: '1001', prescription: '한랭 ( ICE / Laser )', gender: 'M', writer: 'J' },
+    // 정상 환자 2: 부위 + 처방 한랭
+    { part: '요추', prescription: '한랭', writer: 'J' },
+    // 정상 환자 3: 일반 치료
+    { name: '이환자', prescription: '사지 ( HP / Laser )', gender: 'F', writer: 'J' },
+    // 버그 행들: 환자 정보(성함, 차트번호, 부위, 추가사항, 성별, 메모 등)가 전무하고 처방에만 한랭 + 기본 writer
+    { no: 4, prescription: '한랭 ( ICE / Laser )', writer: 'J', memo: '' },
+    { no: 5, prescription: '한랭', writer: 'J' },
+    { prescription: '한랭 ( ICE / Laser )' },
+    { no: 7, prescription: '  한랭  ', writer: '' },
+    // 완전 빈 행
+    { no: 8, writer: 'J' },
+  ];
+
+  const daily = app.getDailySummary(testRows);
+  // 정상 환자 3명만 집계되어야 함 (버그 행 4개는 완전 배제)
+  assert.equal(daily.total, 3, '총 환자 수는 정상 환자 3명이어야 함');
+  assert.equal(daily.prescriptions.get('한랭 ( ICE / Laser )'), 1, '한랭 ( ICE / Laser ) 처방은 정상 환자 1건만 카운트');
+  assert.equal(daily.prescriptions.get('한랭'), 1, '한랭 처방은 정상 환자 1건만 카운트');
+  assert.equal(daily.prescriptions.get('사지 ( HP / Laser )'), 1, '일반 처방 1건 카운트');
+  assert.equal(daily.male, 1);
+  assert.equal(daily.female, 1);
+  assert.equal(daily.unknown, 1); // 요추 부위만 있는 환자 1명
+});
+

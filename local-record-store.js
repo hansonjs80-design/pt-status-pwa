@@ -238,40 +238,46 @@ class PTLocalRecordStore {
    * @returns {boolean} 데이터가 실제로 변경되었으면 true
    */
   cleanupHanraengBugRows() {
-    const CLEANUP_KEY = 'PT_HANRAENG_CLEANUP_V2';
+    const CLEANUP_KEY = 'PT_HANRAENG_CLEANUP_V3';
     try { if (localStorage.getItem(CLEANUP_KEY) === '1') return false; } catch (_) {}
 
-    // dataStore가 아직 비어 있으면(IndexedDB 로드 전) 플래그를 세우지 않고 건너뜀
-    const dates = Object.keys(this.dataStore);
-    if (dates.length === 0) return false;
+    // dataStore와 cloudSearchHistory 모두 확인
+    const dates = Object.keys(this.dataStore || {});
+    const cloudDates = Object.keys(this.cloudSearchHistory || {});
+    if (dates.length === 0 && cloudDates.length === 0) return false;
 
-    const contentKeys = ['no','gender','chartNo','name','part','extra','writer','memo','specialNote','visitTime'];
+    const patientKeys = ['gender','chartNo','name','part','extra','memo','specialNote'];
     let totalCleaned = 0;
 
-    for (const [date, rows] of Object.entries(this.dataStore)) {
-      if (!Array.isArray(rows)) continue;
+    const cleanRows = (rows, date = null) => {
+      if (!Array.isArray(rows)) return 0;
       let cleaned = 0;
       for (let i = rows.length - 1; i >= 0; i--) {
         const row = rows[i];
-        const prescription = String(row.prescription ?? '').trim();
+        const prescription = String(row?.prescription ?? '').trim();
         if (!prescription.includes('한랭')) continue;
 
-        // 다른 모든 내용 필드가 비어 있는지 확인
-        const hasOtherContent = contentKeys.some(key => String(row[key] ?? '').trim());
-        if (!hasOtherContent) {
+        // 실제 환자 진료 필드(성함, 차트번호, 부위, 추가사항 등)가 비어 있는지 확인
+        const hasPatientContent = patientKeys.some(key => String(row[key] ?? '').trim());
+        if (!hasPatientContent) {
           row.prescription = '';
           cleaned++;
         }
       }
-      if (cleaned > 0) {
-        if (typeof this.normalizeRowAllocation === 'function') {
-          this.normalizeRowAllocation(rows, date, true);
-        }
-        totalCleaned += cleaned;
+      if (cleaned > 0 && date && typeof this.normalizeRowAllocation === 'function') {
+        this.normalizeRowAllocation(rows, date, true);
       }
+      return cleaned;
+    };
+
+    for (const [date, rows] of Object.entries(this.dataStore || {})) {
+      totalCleaned += cleanRows(rows, date);
+    }
+    for (const [, rows] of Object.entries(this.cloudSearchHistory || {})) {
+      cleanRows(rows);
     }
 
-    // 데이터를 실제로 처리했으면 플래그 설정 (빈 dataStore에서는 설정하지 않음)
+    // 데이터를 실제로 처리했으면 플래그 설정 (빈 저장소에서는 설정하지 않음)
     try { localStorage.setItem(CLEANUP_KEY, '1'); } catch (_) {}
 
     if (totalCleaned > 0) {

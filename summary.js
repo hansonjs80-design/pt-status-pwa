@@ -2,7 +2,14 @@
 class PTSummary {
   getDailySummary(rows = this.getCurrentRows()) {
     const text = value => String(value ?? "").trim();
-    const records = rows.filter(row => row && ["name", "chartNo", "part", "prescription", "extra"]
+    // 환자 정보(성함, 차트번호, 부위, 추가사항, 성별, 메모, 특이사항)가 전혀 없고
+    // 오직 처방열에만 "한랭"이 들어있는 버그 행(ghost row) 판별
+    const patientKeys = ["name", "chartNo", "part", "extra", "gender", "memo", "specialNote"];
+    const isHanraengBugRow = row => {
+      const p = text(row?.prescription);
+      return p.includes("한랭") && !patientKeys.some(k => text(row[k]));
+    };
+    const records = rows.filter(row => row && !isHanraengBugRow(row) && ["name", "chartNo", "part", "prescription", "extra"]
       .some(key => text(row[key])));
     const summary = { total: records.length, male: 0, female: 0, unknown: 0,
       writers: new Map(), writerContentCounts: new Map(),

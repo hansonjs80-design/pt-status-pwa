@@ -25,12 +25,12 @@ class PTDeviceLayout {
   normalizeRowAllocation(rows, date, compact = false) {
     const count = this.getDefaultRowCount(date);
     const contentKeys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
-    const nonPrescriptionKeys = ['no','gender','chartNo','name','part','extra','writer','memo','specialNote','visitTime'];
-    // 영구 방어: 처방열에만 '한랭'이 있고 다른 필드가 모두 비어있는 버그 행 자동 정리
+    const patientContentKeys = ['gender','chartNo','name','part','extra','memo','specialNote'];
+    // 영구 방어: 처방열에만 '한랭'이 있고 실제 환자 필드가 모두 비어있는 버그 행 자동 정리 (writer/no 등 기본값 제외)
     for (let i = rows.length - 1; i >= 0; i--) {
       const row = rows[i];
-      const prescription = String(row.prescription ?? '').trim();
-      if (prescription.includes('한랭') && !nonPrescriptionKeys.some(k => String(row[k] ?? '').trim())) {
+      const prescription = String(row?.prescription ?? '').trim();
+      if (prescription.includes('한랭') && !patientContentKeys.some(k => String(row[k] ?? '').trim())) {
         row.prescription = '';
       }
     }
