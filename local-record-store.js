@@ -238,7 +238,7 @@ class PTLocalRecordStore {
    * @returns {boolean} 데이터가 실제로 변경되었으면 true
    */
   cleanupHanraengBugRows() {
-    const CLEANUP_KEY = 'PT_HANRAENG_CLEANUP_V1';
+    const CLEANUP_KEY = 'PT_HANRAENG_CLEANUP_V2';
     try { if (localStorage.getItem(CLEANUP_KEY) === '1') return false; } catch (_) {}
 
     // dataStore가 아직 비어 있으면(IndexedDB 로드 전) 플래그를 세우지 않고 건너뜀

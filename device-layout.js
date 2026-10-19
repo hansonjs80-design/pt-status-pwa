@@ -25,6 +25,15 @@ class PTDeviceLayout {
   normalizeRowAllocation(rows, date, compact = false) {
     const count = this.getDefaultRowCount(date);
     const contentKeys = ['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime'];
+    const nonPrescriptionKeys = ['no','gender','chartNo','name','part','extra','writer','memo','specialNote','visitTime'];
+    // 영구 방어: 처방열에만 '한랭'이 있고 다른 필드가 모두 비어있는 버그 행 자동 정리
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row = rows[i];
+      const prescription = String(row.prescription ?? '').trim();
+      if (prescription.includes('한랭') && !nonPrescriptionKeys.some(k => String(row[k] ?? '').trim())) {
+        row.prescription = '';
+      }
+    }
     const lastContent = rows.findLastIndex(row => contentKeys.some(key => String(row[key] ?? '').trim()));
     const lastProtected = rows.findLastIndex(row => Object.entries(row).some(([key,value]) =>
       key !== 'date' && value != null && value !== '' &&
@@ -642,12 +651,25 @@ class PTDeviceLayout {
     // widths. Hiding visitTime in history must never redistribute that space.
     this.hasFixedColumnWidths = true;
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
-      const width = saved[th.dataset.col];
+      const col = th.dataset.col;
+      const width = saved[col];
       if (Number.isFinite(width) && width > 0) {
         th.style.width = `${width}px`;
         th.style.minWidth = `${width}px`;
+        th.style.maxWidth = `${width}px`;
+      } else {
+        // 저장된 너비가 없으면 현재 HTML 기본 너비를 측정하여 보존
+        const measured = parseFloat(th.style.width) || th.getBoundingClientRect().width;
+        if (Number.isFinite(measured) && measured > 0 && col) {
+          saved[col] = measured;
+        }
       }
     });
+    // 읽은 너비를 인메모리 캐시에 반영하여 flush 시 참조 가능
+    this.deviceColumnWidths = { ...saved };
+    if (!this.columnWidthsUpdatedAt) {
+      this.columnWidthsUpdatedAt = this.readDeviceColumnWidths().updatedAt || 0;
+    }
     this.syncMainColumnWidths();
   }
 
