@@ -324,6 +324,8 @@ class PTDeviceLayout {
 
   initToolbarActionsToggle() {
     this.deviceToolbarState = this.readDeviceToolbarState();
+    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시되므로 유효한 타임스탬프 보장
+    if (!this.deviceToolbarState.updatedAt) this.deviceToolbarState.updatedAt = Date.now();
     this.setToolbarActionsClosed(this.deviceToolbarState.closed, false);
     // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
     this.persistLocalToolbarState(this.deviceToolbarState);
@@ -341,6 +343,8 @@ class PTDeviceLayout {
 
   initSummaryToggle() {
     this.deviceSummaryState = this.readDeviceSummaryState();
+    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시되므로 유효한 타임스탬프 보장
+    if (!this.deviceSummaryState.updatedAt) this.deviceSummaryState.updatedAt = Date.now();
     this.setSummaryClosed(this.deviceSummaryState.closed, false);
     // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
     this.persistLocalSummaryState(this.deviceSummaryState);
@@ -628,9 +632,10 @@ class PTDeviceLayout {
     const localKeyCount = Object.keys(saved || {}).length;
     const persistedKeyCount = Object.keys(persisted?.widths || {}).length;
 
+    // IndexedDB(persisted)가 빈 widths인데 로컬에 유효한 widths가 있으면 로컬 우선
     const shouldUsePersisted = !this.columnWidthsChanged &&
       persisted?.widths && typeof persisted.widths === 'object' && Number.isFinite(persisted.updatedAt) &&
-      (persistedKeyCount > 0 || localKeyCount === 0) &&
+      (persistedKeyCount > 0) &&
       (persisted.updatedAt >= localUpdatedAt || (localUpdatedAt === 0 && persisted.updatedAt > 0));
 
     if (shouldUsePersisted) {
@@ -641,8 +646,10 @@ class PTDeviceLayout {
       this.syncCrossDateColWidths();
     } else if (localKeyCount > 0) {
       this.deviceColumnWidths = { ...saved };
+      const ts = this.columnWidthsUpdatedAt || localUpdatedAt || Date.now();
+      this.columnWidthsUpdatedAt = ts;
       this.applySavedColumnWidths();
-      this.queueDeviceColumnWidths({ widths: saved, updatedAt: this.columnWidthsUpdatedAt || localUpdatedAt || Date.now() });
+      this.queueDeviceColumnWidths({ widths: saved, updatedAt: ts });
       await this.columnWidthsWrite;
     }
   }
@@ -676,10 +683,12 @@ class PTDeviceLayout {
     if (!this.columnWidthsUpdatedAt) {
       this.columnWidthsUpdatedAt = this.readDeviceColumnWidths().updatedAt || 0;
     }
+    // updatedAt가 0이면 restoreDeviceColumnWidths에서 빈 IndexedDB에 밀릴 수 있으므로 보정
+    if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = Date.now();
     // 측정한 너비를 즉시 localStorage/sessionStorage/Cookie에 저장하여
     // 앱 종료 후 다시 열어도 열 너비가 복원되도록 보장
     if (anyMeasured || Object.keys(saved).length > 0) {
-      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
+      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt };
       this.persistLocalColumnWidths(snapshot);
     }
     this.syncMainColumnWidths();
