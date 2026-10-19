@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-function device(storage = new Map(), extraHeaders = []) {
+function device(storage = new Map(), extraHeaders = [], sessionMap = new Map(), cookieObj = { value: '' }) {
   const listeners = {};
   const table = { style: {}, group: null, querySelector() { return this.group; }, insertBefore(group) { this.group = group; } };
   const headers = [ ['', 48], ['name', 100], ['part', 130], ['visitTime', 148], ...extraHeaders ].map(([col, width]) => ({
@@ -16,10 +16,22 @@ function device(storage = new Map(), extraHeaders = []) {
     body: { style: {} }, addEventListener(name, fn) { listeners[name] = fn; },
     querySelectorAll(selector) { return selector.endsWith('th.col-letter') ? headers.slice(1) : headers; },
     getElementById() { return table; },
+    get cookie() { return cookieObj.value; },
+    set cookie(v) {
+      if (typeof v === 'string') {
+        const [pair] = v.split(';');
+        if (pair) {
+          const [k] = pair.split('=');
+          const existing = (cookieObj.value || '').split(';').map(s => s.trim()).filter(s => s && !s.startsWith(k + '='));
+          cookieObj.value = [...existing, pair.trim()].join('; ');
+        }
+      }
+    }
   };
   const context = vm.createContext({
     document, window: { addEventListener() {}, getComputedStyle(th) { return { display: th.hidden ? 'none' : 'table-cell', width: th.style.width }; } },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
+    sessionStorage: { getItem: key => sessionMap.get(key) || null, setItem: (key, value) => sessionMap.set(key, value) },
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
   const app = Object.create(context.App.prototype);
@@ -237,3 +249,35 @@ test('resizing spacer preserves other saved widths despite rendered width differ
   assert.equal(restarted.headers[1].style.width, '153.5px');
   assert.equal(restarted.headers[2].style.width, '130px');
 });
+
+test('flushDevicePanelStates flushes current column widths synchronously to storage snapshot', () => {
+  const first = device();
+  first.app.saveColumnWidth('part', 215);
+  assert.equal(first.app.getSavedColumnWidths().part, 215);
+  // flushDevicePanelStates 실행
+  first.app.flushDevicePanelStates();
+  const raw = first.storage.get('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT');
+  assert.ok(raw, 'snapshot should be saved');
+  const snapshot = JSON.parse(raw);
+  assert.equal(snapshot.widths.part, 215);
+  assert.ok(snapshot.updatedAt > 0);
+});
+
+test('column widths multi-tier fallback restores widths from sessionStorage or cookie when localStorage is cleared', () => {
+  const localStorageMap = new Map();
+  const sessionMap = new Map();
+  const cookieObj = { value: '' };
+
+  const first = device(localStorageMap, [], sessionMap, cookieObj);
+  first.app.saveColumnWidth('part', 280);
+  first.app.flushDevicePanelStates();
+
+  // localStorage가 브라우저 업데이트 등으로 지워진 상황 시뮬레이션
+  localStorageMap.clear();
+
+  // sessionStorage 또는 cookie에 의해 복원되어야 함
+  const restored = device(localStorageMap, [], sessionMap, cookieObj);
+  assert.equal(restored.headers[2].style.width, '280px');
+  assert.equal(restored.app.getSavedColumnWidths().part, 280);
+});
+

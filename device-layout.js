@@ -302,6 +302,14 @@ class PTDeviceLayout {
       this.persistLocalToolbarState(toolbar);
       if (this.toolbarStateStore) this.queueDeviceToolbarState(toolbar);
     } catch (_) {}
+    try {
+      const widths = this.deviceColumnWidths || this.readDeviceColumnWidths().widths;
+      if (widths && typeof widths === "object" && Object.keys(widths).length) {
+        const snapshot = { widths: { ...widths }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
+        this.persistLocalColumnWidths(snapshot);
+        if (this.columnWidthsStore) this.queueDeviceColumnWidths(snapshot);
+      }
+    } catch (_) {}
   }
 
   initToolbarActionsToggle() {
@@ -498,14 +506,42 @@ class PTDeviceLayout {
   }
 
   readDeviceColumnWidths() {
+    const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
     let snapshot = null;
-    try { snapshot = JSON.parse(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_SNAPSHOT`) || 'null'); } catch (_) {}
+    try { snapshot = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null'); } catch (_) {}
+    if (snapshot?.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) && Number.isFinite(snapshot.updatedAt) && snapshot.updatedAt > 0) {
+      return snapshot;
+    }
+    try {
+      const session = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null');
+      if (session?.widths && typeof session.widths === 'object' && !Array.isArray(session.widths) && Number.isFinite(session.updatedAt) && session.updatedAt > 0) {
+        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(session)); } catch (_) {}
+        return session;
+      }
+    } catch (_) {}
+    try {
+      const cookieKey = `${key}_STATE=`;
+      const matches = String(document.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
+      let bestCookie = null;
+      for (const raw of matches) {
+        try {
+          const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
+          if (saved?.widths && typeof saved.widths === 'object' && !Array.isArray(saved.widths) && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
+            if (!bestCookie || saved.updatedAt > bestCookie.updatedAt) bestCookie = saved;
+          }
+        } catch (_) {}
+      }
+      if (bestCookie) {
+        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(bestCookie)); } catch (_) {}
+        return bestCookie;
+      }
+    } catch (_) {}
     let legacy = {widths:{},updatedAt:0};
     try {
-      const data = localStorage.getItem(COL_WIDTHS_STORAGE_KEY);
+      const data = localStorage.getItem(key);
       const saved = data ? JSON.parse(data) : {};
       if (saved && typeof saved === 'object' && !Array.isArray(saved)) legacy = {
-        widths:saved, updatedAt:Number(localStorage.getItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`)) || 0
+        widths:saved, updatedAt:Number(localStorage.getItem(`${key}_UPDATED_AT`)) || 0
       };
     } catch (_) {}
     return snapshot?.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) && Number.isFinite(snapshot.updatedAt) &&
@@ -513,16 +549,21 @@ class PTDeviceLayout {
   }
 
   persistLocalColumnWidths(snapshot) {
+    const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
+    this.persistDevicePanelCookie(key, snapshot);
     let atomicSaved = false, legacySaved = false;
+    try {
+      sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot));
+    } catch (_) {}
     try {
       // Keep widths and their version together so an interrupted save cannot
       // pair old widths with a new timestamp on the next launch.
-      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_SNAPSHOT`, JSON.stringify(snapshot));
+      localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot));
       atomicSaved = true;
     } catch (_) {}
     try {
-      localStorage.setItem(COL_WIDTHS_STORAGE_KEY, JSON.stringify(snapshot.widths));
-      localStorage.setItem(`${COL_WIDTHS_STORAGE_KEY}_UPDATED_AT`, String(snapshot.updatedAt));
+      localStorage.setItem(key, JSON.stringify(snapshot.widths));
+      localStorage.setItem(`${key}_UPDATED_AT`, String(snapshot.updatedAt));
       legacySaved = true;
     } catch (_) {}
     this.columnWidthsLocalSaveFailed = !atomicSaved && !legacySaved;
@@ -559,18 +600,20 @@ class PTDeviceLayout {
 
   async restoreDeviceColumnWidths(store) {
     this.columnWidthsStore = store;
-    const persisted = await store("device-column-widths-v1");
+    let persisted = null;
+    try { persisted = await store("device-column-widths-v1"); } catch (_) {}
     const localUpdatedAt = this.readDeviceColumnWidths().updatedAt;
     const saved = this.getSavedColumnWidths();
     // A resize during startup must win over the asynchronous disk read.
-    if (!this.columnWidthsChanged && persisted?.widths && persisted.updatedAt >= localUpdatedAt) {
+    if (!this.columnWidthsChanged && persisted?.widths && typeof persisted.widths === 'object' && Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= localUpdatedAt) {
       this.deviceColumnWidths = { ...persisted.widths };
       this.columnWidthsUpdatedAt = persisted.updatedAt;
       this.persistLocalColumnWidths(persisted);
       this.applySavedColumnWidths();
       this.syncCrossDateColWidths();
-    } else if (Object.keys(saved).length) {
+    } else if (saved && typeof saved === 'object' && Object.keys(saved).length) {
       this.deviceColumnWidths = { ...saved };
+      this.applySavedColumnWidths();
       this.queueDeviceColumnWidths({ widths: saved, updatedAt: this.columnWidthsUpdatedAt || localUpdatedAt || Date.now() });
       await this.columnWidthsWrite;
     }

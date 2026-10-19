@@ -368,6 +368,19 @@ class PTAppEvents {
     // Summary Sidebar Toggle
     this.initSummaryToggle();
 
+    // Flush device panel states (summary, toolbar, column widths) on unload / backgrounding
+    window.addEventListener("beforeunload", () => {
+      try { this.flushDevicePanelStates?.(); } catch (_) {}
+    });
+    window.addEventListener("pagehide", () => {
+      try { this.flushDevicePanelStates?.(); } catch (_) {}
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        try { this.flushDevicePanelStates?.(); } catch (_) {}
+      }
+    });
+
     // Keyboard Shortcuts
     // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {

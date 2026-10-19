@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v443';
+const CACHE_NAME = 'pt-status-pwa-v444';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -47,13 +47,13 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './local-tools.js',
   './manifest.json',
-  './manifest.json?v=443',
-  './icon.svg?v=443',
-  './icon-32.png?v=443',
-  './icon-48.png?v=443',
-  './icon-192.png?v=443',
-  './icon-256.png?v=443',
-  './icon-512.png?v=443',
+  './manifest.json?v=444',
+  './icon.svg?v=444',
+  './icon-32.png?v=444',
+  './icon-48.png?v=444',
+  './icon-192.png?v=444',
+  './icon-256.png?v=444',
+  './icon-512.png?v=444',
   './icon.svg',
   './icon-32.png',
   './icon-48.png',

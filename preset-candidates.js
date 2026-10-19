@@ -28,25 +28,28 @@ class PTPresetCandidates {
           normalized[key] = [...new Set(migrated)];
         }
       } else if (key.startsWith('__query:') && Array.isArray(values)) {
-        let start = 0;
-        while (start < values.length && String(values[start] ?? '').trim() === '') {
-          start++;
-        }
-        let seenEmpty = false;
-        const cleaned = [];
-        for (let i = start; i < values.length; i++) {
-          const v = values[i];
-          const isEmpty = String(v ?? '').trim() === '';
-          if (isEmpty) {
-            if (!seenEmpty) {
-              seenEmpty = true;
-              cleaned.push(v);
+        // 하부 세부 규칙 목록 정제:
+        // 상위 창에서 생성된 빈칸이 하부 항목 상단으로 전파되지 않도록 맨 앞 빈칸들만 제거하고,
+        // 내용 뒤에 사용자가 수동으로 추가한 빈칸은 유지(연속 빈칸은 1개로 정리)
+        let firstContentIdx = values.findIndex(v => String(v ?? '').trim() !== '');
+        let cleaned = [];
+        if (firstContentIdx !== -1) {
+          const tail = values.slice(firstContentIdx);
+          let prevBlank = false;
+          for (const item of tail) {
+            const isBlank = String(item ?? '').trim() === '';
+            if (isBlank) {
+              if (!prevBlank) {
+                cleaned.push('');
+                prevBlank = true;
+              }
+            } else {
+              cleaned.push(item);
+              prevBlank = false;
             }
-          } else {
-            cleaned.push(v);
           }
         }
-        if (cleaned.length !== values.length) {
+        if (cleaned.length !== values.length || cleaned.some((v, idx) => v !== values[idx])) {
           if (normalized === presets) normalized = {...presets};
           normalized[key] = cleaned;
         }
