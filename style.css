@@ -2988,6 +2988,16 @@ details.summary-accordion[open] summary {
 .preset-color-editor-actions button { padding:7px 16px; border:1px solid #cbd5e1; border-radius:5px; cursor:pointer; }
 .preset-color-help { margin:0 0 12px; color:#64748b; font-size:12px; }
 .preset-color-preview { margin-top:12px; padding:10px; min-height:40px; border:1px solid #cbd5e1; border-radius:5px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.preset-confirm-dialog { z-index: 12000; }
+.preset-confirm-dialog .modal-card { width: 380px; max-width: 92vw; padding: 22px 24px; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.22); }
+.preset-confirm-dialog h3 { margin: 0 0 10px; font-size: 16px; font-weight: 700; color: #1e293b; }
+.preset-confirm-dialog p { margin: 0 0 20px; font-size: 14px; color: #475569; line-height: 1.6; word-break: break-all; }
+.preset-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.preset-confirm-actions button { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155; }
+.preset-confirm-actions button.btn-danger { background: #ef4444; border-color: #ef4444; color: #fff; font-weight: 600; }
+.preset-confirm-actions button.btn-danger:hover { background: #dc2626; border-color: #dc2626; }
+.preset-confirm-actions button.btn-primary { background: #107c41; border-color: #107c41; color: #fff; font-weight: 600; }
+.preset-confirm-actions button.btn-primary:hover { background: #0c5b30; border-color: #0c5b30; }
 #presetManagerModal .preset-item-text { min-width:0; }
 #presetManagerModal .preset-item-actions { flex-wrap:wrap; justify-content:flex-end; }
 

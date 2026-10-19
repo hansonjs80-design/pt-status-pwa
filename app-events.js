@@ -281,7 +281,13 @@ class PTAppEvents {
       this.elManagerNewPresetInput.addEventListener("keydown", (e) => this.handlePresetManagerAddKeyDown(e));
     }
     if (this.elBtnManagerResetPresets) {
-      this.elBtnManagerResetPresets.addEventListener("click", () => this.resetPresetsFromManager());
+      this.elBtnManagerResetPresets.addEventListener("click", () => {
+        if (typeof this.requestResetPresetsFromManager === "function") {
+          this.requestResetPresetsFromManager();
+        } else {
+          this.resetPresetsFromManager();
+        }
+      });
     }
 
     // 프리셋 우클릭 메뉴 액션

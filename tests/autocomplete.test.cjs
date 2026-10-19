@@ -1002,4 +1002,47 @@ test('prescription and extra preset pickers stay open during background refreshS
   }
 });
 
+test('requestDeletePreset prompts with normalized label and only deletes upon confirmation without flickering', async () => {
+  const presets = { extra: ['', '견인', '도수'] };
+  let confirmedChoice = false;
+  let promptedMessage = null;
+  let promptedOptions = null;
+
+  const app = createApp({}, presets, {
+    document: {
+      activeElement: null,
+      getElementById() { return null; }
+    }
+  });
+
+  app.activePresetTab = 'extra';
+  app.renderPresetManagerList = () => {};
+  app.renderQuickChips = () => {};
+  app.showSaveIndicator = () => {};
+  app.setPresetManagerFeedback = () => {};
+
+  app.openPresetConfirmDialog = async (message, options) => {
+    promptedMessage = message;
+    promptedOptions = options;
+    return confirmedChoice;
+  };
+
+  // 1. 빈칸 항목 삭제 요청 - 취소 선택 시 삭제되지 않음
+  confirmedChoice = false;
+  await app.requestDeletePreset('extra', 0);
+  assert.equal(promptedMessage, '“빈칸” 항목을 삭제하시겠습니까?');
+  assert.equal(promptedOptions.danger, true);
+  assert.deepEqual(Array.from(app.getPresetManagerItems('extra')), ['', '견인', '도수']);
+
+  // 2. 빈칸 항목 삭제 요청 - 확인 선택 시 삭제됨
+  confirmedChoice = true;
+  await app.requestDeletePreset('extra', 0);
+  assert.deepEqual(Array.from(app.getPresetManagerItems('extra')), ['견인', '도수']);
+
+  // 3. '견인' 항목 삭제 요청
+  await app.requestDeletePreset('extra', 0);
+  assert.equal(promptedMessage, '“견인” 항목을 삭제하시겠습니까?');
+  assert.deepEqual(Array.from(app.getPresetManagerItems('extra')), ['도수']);
+});
+
 

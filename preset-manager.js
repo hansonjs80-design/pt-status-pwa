@@ -120,26 +120,44 @@ class PTPresetManager {
         this.openPresetModal("edit", target);
         break;
       case "delete-preset":
-        if (confirm(`"${target.value}" 프리셋을 삭제하시겠습니까?`)) {
-          const arr = COLUMN_PRESETS[target.type];
-          if (arr) {
-            arr.splice(target.index, 1);
-            saveColumnPresets(COLUMN_PRESETS);
-            this.renderQuickChips();
-            this.showSaveIndicator("프리셋 삭제됨");
+        (async () => {
+          const rawVal = target.value;
+          const label = String(rawVal) === "" ? "빈칸" : String(rawVal);
+          const ok = await this.openPresetConfirmDialog(`“${label}” 프리셋을 삭제하시겠습니까?`, {
+            title: "프리셋 삭제",
+            confirmText: "삭제",
+            cancelText: "취소",
+            danger: true
+          });
+          if (ok) {
+            const arr = COLUMN_PRESETS[target.type];
+            if (arr) {
+              arr.splice(target.index, 1);
+              saveColumnPresets(COLUMN_PRESETS);
+              this.renderQuickChips();
+              this.showSaveIndicator("프리셋 삭제됨");
+            }
           }
-        }
+        })();
         break;
       case "manage-presets":
         this.openPresetManager(target ? target.type : "prescription");
         break;
       case "reset-presets":
-        if (confirm("빠른 입력 도구를 기본값으로 복원하시겠습니까?")) {
-          COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
-          saveColumnPresets(COLUMN_PRESETS);
-          this.renderQuickChips();
-          this.showSaveIndicator("기본값으로 복원됨");
-        }
+        (async () => {
+          const ok = await this.openPresetConfirmDialog("빠른 입력 도구를 기본값으로 복원하시겠습니까?", {
+            title: "기본값 복원",
+            confirmText: "복원",
+            cancelText: "취소",
+            danger: true
+          });
+          if (ok) {
+            COLUMN_PRESETS = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+            saveColumnPresets(COLUMN_PRESETS);
+            this.renderQuickChips();
+            this.showSaveIndicator("기본값으로 복원됨");
+          }
+        })();
         break;
     }
     this._contextPreset = null;
@@ -358,6 +376,97 @@ class PTPresetManager {
     });
   }
 
+  openPresetConfirmDialog(message, { title = "확인", confirmText = "확인", cancelText = "취소", danger = false } = {}) {
+    if (typeof document === "undefined" || !document.body) {
+      return Promise.resolve(typeof confirm === "function" ? confirm(message) : true);
+    }
+    return new Promise(resolve => {
+      const previousFocus = document.activeElement;
+      const overlay = document.createElement("div");
+      overlay.className = "modal-overlay preset-confirm-dialog";
+      overlay.style.cssText = "display: flex; z-index: 12000; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px);";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-labelledby", "presetConfirmTitle");
+
+      const card = document.createElement("div");
+      card.className = "modal-card preset-confirm-card";
+      card.style.cssText = "width: 380px; max-width: 92vw; background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.22); overflow: hidden; padding: 22px 24px; box-sizing: border-box;";
+
+      const titleEl = document.createElement("h3");
+      titleEl.id = "presetConfirmTitle";
+      titleEl.style.cssText = "margin: 0 0 10px; font-size: 16px; font-weight: 700; color: #1e293b;";
+      titleEl.textContent = title;
+
+      const msgEl = document.createElement("p");
+      msgEl.style.cssText = "margin: 0 0 20px; font-size: 14px; color: #475569; line-height: 1.6; word-break: break-all;";
+      msgEl.textContent = message;
+
+      const actions = document.createElement("div");
+      actions.className = "preset-confirm-actions";
+      actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+
+      const btnCancel = document.createElement("button");
+      btnCancel.type = "button";
+      btnCancel.className = "preset-action-btn";
+      btnCancel.style.cssText = "padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 13px; font-weight: 500; cursor: pointer;";
+      btnCancel.textContent = cancelText;
+
+      const btnConfirm = document.createElement("button");
+      btnConfirm.type = "button";
+      btnConfirm.className = `preset-action-btn ${danger ? "btn-danger" : "btn-primary"}`;
+      btnConfirm.style.cssText = danger
+        ? "padding: 8px 16px; border: 1px solid #ef4444; border-radius: 6px; background: #ef4444; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;"
+        : "padding: 8px 16px; border: 1px solid #107c41; border-radius: 6px; background: #107c41; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;";
+      btnConfirm.textContent = confirmText;
+
+      let settled = false;
+      const close = (result) => {
+        if (settled) return;
+        settled = true;
+        overlay.remove();
+        resolve(result);
+        if (!result && previousFocus?.isConnected) {
+          previousFocus.focus({ preventScroll: true });
+        }
+      };
+
+      btnCancel.onclick = (e) => { e.stopPropagation(); close(false); };
+      btnConfirm.onclick = (e) => { e.stopPropagation(); close(true); };
+
+      overlay.onclick = (e) => {
+        if (e.target === overlay) {
+          e.stopPropagation();
+          close(false);
+        }
+      };
+
+      overlay.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          close(false);
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          close(true);
+        } else if (e.key === "Tab") {
+          const controls = [btnCancel, btnConfirm];
+          if (e.shiftKey && document.activeElement === controls[0]) {
+            e.preventDefault(); controls[1].focus();
+          } else if (!e.shiftKey && document.activeElement === controls[1]) {
+            e.preventDefault(); controls[0].focus();
+          }
+        }
+      };
+
+      actions.append(btnCancel, btnConfirm);
+      card.append(titleEl, msgEl, actions);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+      btnConfirm.focus({ preventScroll: true });
+    });
+  }
+
   createPresetManagerAction(action, label, handler) {
     const paths = {
       up: '<path d="m6 14 6-6 6 6"/>',
@@ -373,7 +482,10 @@ class PTPresetManager {
     button.title = label;
     button.setAttribute("aria-label", label);
     button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[action]}</svg>`;
-    button.onclick = handler;
+    button.onclick = (event) => {
+      event?.stopPropagation?.();
+      handler(event);
+    };
     return button;
   }
 
@@ -462,7 +574,7 @@ class PTPresetManager {
         }
 
         // 삭제 버튼
-        const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.deletePresetAt(tab, idx));
+        const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.requestDeletePreset(tab, idx));
         actionsEl.appendChild(btnDel);
 
         itemEl.appendChild(numEl);
@@ -546,25 +658,52 @@ class PTPresetManager {
     this.showSaveIndicator("프리셋 수정됨");
   }
 
-  deletePresetAt(tab, index) {
-    const curVal = this.getPresetManagerItems(tab)[index];
+  async requestDeletePreset(tab, index) {
+    const items = this.getPresetManagerItems(tab);
+    const curVal = items[index];
     if (curVal === undefined) return;
 
-    if (confirm(`"${curVal}" 항목을 삭제하시겠습니까?`)) {
-      const items = this.getPresetManagerItems(tab);
-      items.splice(index, 1);
-      if (!items.some(item => String(item) === String(curVal))) {
-        delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
-        delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
-        delete COLUMN_PRESETS[this.getAutocompleteWeightKey(this.getPresetManagerKey(tab), curVal)];
-        delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(this.getPresetManagerKey(tab), curVal)];
-        delete COLUMN_PRESETS[this.getAutocompleteRichStyleKey(this.getPresetManagerKey(tab), curVal)];
-      }
-      this.savePresetManagerItems(tab);
-      this.renderPresetManagerList();
-      this.renderQuickChips();
-      this.showSaveIndicator("프리셋 삭제됨");
+    const rawLabel = typeof curVal === "object" && curVal !== null ? (curVal.value ?? "") : String(curVal);
+    const displayLabel = rawLabel === "" ? "빈칸" : rawLabel;
+
+    const confirmed = await this.openPresetConfirmDialog(`“${displayLabel}” 항목을 삭제하시겠습니까?`, {
+      title: "프리셋 항목 삭제",
+      confirmText: "삭제",
+      cancelText: "취소",
+      danger: true
+    });
+    if (confirmed) {
+      this.deletePresetAt(tab, index, { skipConfirm: true });
     }
+  }
+
+  deletePresetAt(tab, index, { skipConfirm = false } = {}) {
+    const items = this.getPresetManagerItems(tab);
+    const curVal = items[index];
+    if (curVal === undefined) return;
+
+    const rawLabel = typeof curVal === "object" && curVal !== null ? (curVal.value ?? "") : String(curVal);
+    const displayLabel = rawLabel === "" ? "빈칸" : rawLabel;
+
+    if (!skipConfirm) {
+      if (typeof confirm === "function" && !confirm(`"${displayLabel}" 항목을 삭제하시겠습니까?`)) {
+        return;
+      }
+    }
+
+    items.splice(index, 1);
+    if (!items.some(item => String(item) === String(curVal))) {
+      delete COLUMN_PRESETS[this.getAutocompleteColorKey(this.getPresetManagerKey(tab), curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichKey(this.getPresetManagerKey(tab), curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteWeightKey(this.getPresetManagerKey(tab), curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichWeightKey(this.getPresetManagerKey(tab), curVal)];
+      delete COLUMN_PRESETS[this.getAutocompleteRichStyleKey(this.getPresetManagerKey(tab), curVal)];
+    }
+    this.savePresetManagerItems(tab);
+    this.renderPresetManagerList();
+    this.renderQuickChips();
+    this.showSaveIndicator("프리셋 삭제됨");
+    this.setPresetManagerFeedback(`“${displayLabel}” 문구를 삭제했습니다.`);
   }
 
   movePresetAt(tab, index, dir) {
@@ -586,10 +725,27 @@ class PTPresetManager {
     this.setPresetManagerFeedback("문구 순서를 변경했습니다.");
   }
 
-  resetPresetsFromManager() {
+  async requestResetPresetsFromManager() {
+    const context = this.autocompleteManagerContext;
+    const message = context
+      ? "이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?"
+      : "빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.";
+    const title = context ? "기본 후보 복원" : "전체 기본값 복원";
+    const ok = await this.openPresetConfirmDialog(message, {
+      title,
+      confirmText: "복원",
+      cancelText: "취소",
+      danger: true
+    });
+    if (ok) {
+      this.resetPresetsFromManager({ skipConfirm: true });
+    }
+  }
+
+  resetPresetsFromManager({ skipConfirm = false } = {}) {
     const context = this.autocompleteManagerContext;
     if (context) {
-      if (!confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
+      if (!skipConfirm && typeof confirm === "function" && !confirm("이 입력값의 자동완성 목록을 기본 후보로 복원하시겠습니까?")) return;
       delete COLUMN_PRESETS[context.key];
       delete COLUMN_PRESETS[this.getPresetCandidateFormatsKey(context.key)];
       delete COLUMN_PRESETS[this.getAutocompleteHiddenKey(context.key)];
@@ -601,7 +757,7 @@ class PTPresetManager {
       this.renderPresetManagerList();
       return;
     }
-    if (confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다.")) {
+    if (skipConfirm || (typeof confirm === "function" && confirm("빠른 입력 도구를 초기 기본값으로 복원하시겠습니까?\n모든 커스텀 항목이 기본값 세트로 복원됩니다."))) {
       const detailRules = Object.fromEntries(Object.entries(COLUMN_PRESETS).filter(([key]) =>
         key.startsWith("__autocorrect:") || key.startsWith("__query:") || key.startsWith("__hidden:") || ['__candidateFormats:', '__color:', '__rich:', '__weight:', '__richWeight:', '__richStyle:'].some(prefix => key.startsWith(`${prefix}"__query:`))));
       COLUMN_PRESETS = { ...JSON.parse(JSON.stringify(DEFAULT_PRESETS)), ...detailRules };
