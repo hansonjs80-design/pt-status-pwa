@@ -6,13 +6,13 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=445">
+  <link rel="manifest" href="manifest.json?v=446">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=445">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=445">
+  <link rel="apple-touch-icon" href="icon-192.png?v=446">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=446">
 
   <script>
     if ('serviceWorker' in navigator) {
@@ -247,6 +247,48 @@
             <!-- Dynamic Rows will be injected here -->
           </tbody>
         </table>
+        <script>
+          (function() {
+            try {
+              var s = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
+              var widths = (s && s.widths && typeof s.widths === 'object' && Object.keys(s.widths).length) ? s.widths : null;
+              if (!widths) {
+                var ss = JSON.parse(sessionStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
+                if (ss && ss.widths && typeof ss.widths === 'object' && Object.keys(ss.widths).length) widths = ss.widths;
+              }
+              if (!widths) {
+                var leg = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1') || 'null');
+                if (leg && typeof leg === 'object' && Object.keys(leg).length) widths = leg;
+              }
+              if (widths && typeof widths === 'object') {
+                var ths = document.querySelectorAll('.col-headers-row th.col-letter');
+                var bths = document.querySelectorAll('.business-headers-row th');
+                var table = document.getElementById('excelTable');
+                var total = 48;
+                for (var i = 0; i < ths.length; i++) {
+                  var k = ths[i].getAttribute('data-col');
+                  var w = (k && Number.isFinite(widths[k]) && widths[k] > 0) ? widths[k] : parseFloat(ths[i].style.width);
+                  if (Number.isFinite(w) && w > 0) {
+                    ths[i].style.width = w + 'px';
+                    ths[i].style.minWidth = w + 'px';
+                    ths[i].style.maxWidth = w + 'px';
+                    if (bths[i + 1]) {
+                      bths[i + 1].style.width = w + 'px';
+                      bths[i + 1].style.minWidth = w + 'px';
+                      bths[i + 1].style.maxWidth = w + 'px';
+                    }
+                    total += w;
+                  }
+                }
+                if (table && total > 48) {
+                  table.style.width = total + 'px';
+                  table.style.minWidth = total + 'px';
+                  table.style.maxWidth = total + 'px';
+                }
+              }
+            } catch (_) {}
+          })();
+        </script>
         <div class="bottom-add-bar">
           <button type="button" class="btn-add-row-wide" id="btnBottomAddRow">+ 새 환자 행 추가 (새로 입력하기)</button>
         </div>

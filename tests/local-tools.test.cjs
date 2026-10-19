@@ -373,10 +373,10 @@ test('initUpdateNotifier listens for pt-app-update-available and displays toolba
  const l = Object.create(LocalTools.prototype);
  l.updateDot = { hidden: true };
  l.button = { classList: { add() {} }, title: '' };
- l.app = { latestServerVersion: 'v445', isUpdateAvailable: false };
+ l.app = { latestServerVersion: 'v446', isUpdateAvailable: false };
  l.initUpdateNotifier();
 
  // 업데이트 이벤트 발생 시 알림 닷이 노출되어야 함
- listeners['pt-app-update-available']({ type: 'pt-app-update-available', detail: { version: 'v445' } });
+ listeners['pt-app-update-available']({ type: 'pt-app-update-available', detail: { version: 'v446' } });
  assert.equal(l.updateDot.hidden, false, 'update dot should become visible');
 });

@@ -833,7 +833,7 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 
 /* Excel Table Styling */
 .excel-table {
-  width: 100%;
+  width: max-content;
   /* Sticky cells must own their borders so they scroll with the header. */
   border-collapse: separate;
   border-spacing: 0;
@@ -2644,7 +2644,6 @@ details.summary-accordion[open] summary {
 .column-typography-menu .is-current { background: #e3f1e8; color: #107c41; }
 .color-swatch.is-current { outline: 2px solid #107c41; outline-offset: 2px; color: white; text-shadow: 0 1px 2px black; }
 
-.excel-table { min-width: 1406px; }
 .excel-table th { font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; }
 
 .font-size-button .format-icon { font: 600 21px Arial, sans-serif; white-space: nowrap; }
@@ -3085,11 +3084,6 @@ details.summary-accordion[open] summary {
 .excel-table .cell-prescription .cell-input-element { padding-left:26px; }
 
 /* Table horizontal grid line continuation to fill available sheet width */
-.excel-table {
-  min-width: 100% !important;
-  width: 100% !important;
-  max-width: none !important;
-}
 .excel-table th.col-spacer {
   width: auto !important;
   min-width: 10px !important;

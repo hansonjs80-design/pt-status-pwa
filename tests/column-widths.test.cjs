@@ -281,3 +281,23 @@ test('column widths multi-tier fallback restores widths from sessionStorage or c
   assert.equal(restored.app.getSavedColumnWidths().part, 280);
 });
 
+test('empty disk snapshot does not overwrite valid local user column widths on app restart', async () => {
+  const storage = new Map([
+    ['PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT', JSON.stringify({ widths: { part: 240, name: 150 }, updatedAt: 50 })],
+    ['PT_APP_COL_WIDTHS_STORAGE_V1', JSON.stringify({ part: 240, name: 150 })],
+    ['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT', '50']
+  ]);
+  // 디스크에 과거 설치 시점의 빈 객체가 저장되어 있는 상황
+  const disk = new Map([['device-column-widths-v1', { widths: {}, updatedAt: 100 }]]);
+  const restarted = device(storage);
+  const diskStore = d => async (k, v) => (v !== undefined ? d.set(k, v) : d.get(k));
+  await restarted.app.restoreDeviceColumnWidths(diskStore(disk));
+
+  // 로컬의 유효한 설정이 유지되어야 함
+  assert.equal(restarted.app.getSavedColumnWidths().part, 240);
+  assert.equal(restarted.app.getSavedColumnWidths().name, 150);
+  assert.equal(restarted.headers[2].style.width, '240px');
+  assert.equal(restarted.headers[1].style.width, '150px');
+});
+
+

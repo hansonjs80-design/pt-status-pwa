@@ -97,7 +97,7 @@ test('reload navigation requests fetch from network to pick up new releases upon
 
 test('version.json requests always fetch from network without cache to detect updates in real-time', async () => {
   let fetchedReq = null;
-  const versionResponse = { status: 200, json: async () => ({ version: 'v445' }) };
+  const versionResponse = { status: 200, json: async () => ({ version: 'v446' }) };
   const handlers = worker({
     caches: { match: async () => assert.fail('must not use cache for version.json') },
     fetch: async (req, opts) => { fetchedReq = { req, opts }; return versionResponse; }
@@ -120,7 +120,7 @@ test('PTApp.prototype.checkForUpdate detects newer server version from version.j
     navigator: {},
     fetch: async () => ({
       ok: true,
-      json: async () => ({ version: 'v445' })
+      json: async () => ({ version: 'v446' })
     }),
     Date,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } }
@@ -133,10 +133,10 @@ test('PTApp.prototype.checkForUpdate detects newer server version from version.j
   const hasUpdate = await app.checkForUpdate();
   assert.equal(hasUpdate, true);
   assert.equal(app.isUpdateAvailable, true);
-  assert.equal(app.latestServerVersion, 'v445');
+  assert.equal(app.latestServerVersion, 'v446');
   assert.ok(dispatched);
   assert.equal(dispatched.type, 'pt-app-update-available');
-  assert.equal(dispatched.detail.version, 'v445');
+  assert.equal(dispatched.detail.version, 'v446');
 });
 
 

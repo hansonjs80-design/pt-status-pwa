@@ -216,6 +216,7 @@ class PTTableView {
     this.updateBackgroundColorIndicator();
     this.updateUnderlineIndicator();
     this.restoreSearchPromptFocus(searchPromptFocus);
+    if (typeof this.syncMainColumnWidths === 'function') this.syncMainColumnWidths();
   }
 
   // Select and focus cell like Excel

@@ -613,7 +613,7 @@
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v445';
+      const currentVersion = this.app?.appVersion || 'v446';
       const latestVer = this.app?.latestServerVersion || '';
       dialog.innerHTML = `
         <header>

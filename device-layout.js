@@ -163,11 +163,11 @@ class PTDeviceLayout {
     try { persisted = await store("device-summary-state-v1"); } catch (_) {}
     const local = this.deviceSummaryState || this.readDeviceSummaryState();
 
-    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt) && local.updatedAt > 0;
-    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt) && persisted.updatedAt > 0;
+    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt);
+    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt);
 
-    // 디스크 복원은 로컬 스냅샷이 없거나 디스크가 로컬보다 엄격히 더 최신일 때만 적용!
-    const shouldUsePersisted = !this.summaryStateChanged && isPersistedValid && (!isLocalValid || persisted.updatedAt > local.updatedAt);
+    const shouldUsePersisted = !this.summaryStateChanged && isPersistedValid &&
+      (persisted.updatedAt > (local?.updatedAt || 0) || (!isLocalValid && persisted.updatedAt >= 0));
 
     if (shouldUsePersisted) {
       this.deviceSummaryState = persisted;
@@ -274,10 +274,11 @@ class PTDeviceLayout {
     try { persisted = await store("device-toolbar-state-v1"); } catch (_) {}
     const local = this.deviceToolbarState || this.readDeviceToolbarState();
 
-    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt) && local.updatedAt > 0;
-    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt) && persisted.updatedAt > 0;
+    const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt);
+    const isPersistedValid = persisted && typeof persisted.closed === "boolean" && Number.isFinite(persisted.updatedAt);
 
-    const shouldUsePersisted = !this.toolbarStateChanged && isPersistedValid && (!isLocalValid || persisted.updatedAt > local.updatedAt);
+    const shouldUsePersisted = !this.toolbarStateChanged && isPersistedValid &&
+      (persisted.updatedAt > (local?.updatedAt || 0) || (!isLocalValid && persisted.updatedAt >= 0));
 
     if (shouldUsePersisted) {
       this.deviceToolbarState = persisted;
@@ -509,43 +510,49 @@ class PTDeviceLayout {
     const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
     let snapshot = null;
     try { snapshot = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null'); } catch (_) {}
-    if (snapshot?.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) && Number.isFinite(snapshot.updatedAt) && snapshot.updatedAt > 0) {
-      return snapshot;
-    }
-    try {
-      const session = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      if (session?.widths && typeof session.widths === 'object' && !Array.isArray(session.widths) && Number.isFinite(session.updatedAt) && session.updatedAt > 0) {
-        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(session)); } catch (_) {}
-        return session;
-      }
-    } catch (_) {}
+    let session = null;
+    try { session = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null'); } catch (_) {}
+    let cookieCandidate = null;
     try {
       const cookieKey = `${key}_STATE=`;
       const matches = String(document.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
-      let bestCookie = null;
       for (const raw of matches) {
         try {
           const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
           if (saved?.widths && typeof saved.widths === 'object' && !Array.isArray(saved.widths) && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
-            if (!bestCookie || saved.updatedAt > bestCookie.updatedAt) bestCookie = saved;
+            if (!cookieCandidate || saved.updatedAt > cookieCandidate.updatedAt) cookieCandidate = saved;
           }
         } catch (_) {}
       }
-      if (bestCookie) {
-        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(bestCookie)); } catch (_) {}
-        return bestCookie;
-      }
     } catch (_) {}
-    let legacy = {widths:{},updatedAt:0};
+    let legacy = { widths: {}, updatedAt: 0 };
     try {
       const data = localStorage.getItem(key);
       const saved = data ? JSON.parse(data) : {};
-      if (saved && typeof saved === 'object' && !Array.isArray(saved)) legacy = {
-        widths:saved, updatedAt:Number(localStorage.getItem(`${key}_UPDATED_AT`)) || 0
-      };
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        legacy = { widths: saved, updatedAt: Number(localStorage.getItem(`${key}_UPDATED_AT`)) || 0 };
+      }
     } catch (_) {}
-    return snapshot?.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) && Number.isFinite(snapshot.updatedAt) &&
-      snapshot.updatedAt >= legacy.updatedAt ? snapshot : legacy;
+
+    const candidates = [snapshot, session, cookieCandidate, legacy].filter(c =>
+      c?.widths && typeof c.widths === 'object' && !Array.isArray(c.widths) && Number.isFinite(c.updatedAt)
+    );
+
+    const withKeys = candidates.filter(c => Object.keys(c.widths).length > 0);
+    let best = null;
+    if (withKeys.length > 0) {
+      best = withKeys.reduce((acc, cur) => cur.updatedAt >= acc.updatedAt ? cur : acc);
+    } else if (candidates.length > 0) {
+      best = candidates.reduce((acc, cur) => cur.updatedAt >= acc.updatedAt ? cur : acc);
+    }
+
+    if (best && Object.keys(best.widths).length > 0) {
+      try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
+      try { sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
+      return best;
+    }
+
+    return best || legacy;
   }
 
   persistLocalColumnWidths(snapshot) {
@@ -602,16 +609,24 @@ class PTDeviceLayout {
     this.columnWidthsStore = store;
     let persisted = null;
     try { persisted = await store("device-column-widths-v1"); } catch (_) {}
-    const localUpdatedAt = this.readDeviceColumnWidths().updatedAt;
+    const local = this.readDeviceColumnWidths();
+    const localUpdatedAt = local.updatedAt || 0;
     const saved = this.getSavedColumnWidths();
-    // A resize during startup must win over the asynchronous disk read.
-    if (!this.columnWidthsChanged && persisted?.widths && typeof persisted.widths === 'object' && Number.isFinite(persisted.updatedAt) && persisted.updatedAt >= localUpdatedAt) {
+    const localKeyCount = Object.keys(saved || {}).length;
+    const persistedKeyCount = Object.keys(persisted?.widths || {}).length;
+
+    const shouldUsePersisted = !this.columnWidthsChanged &&
+      persisted?.widths && typeof persisted.widths === 'object' && Number.isFinite(persisted.updatedAt) &&
+      (persistedKeyCount > 0 || localKeyCount === 0) &&
+      (persisted.updatedAt >= localUpdatedAt || (localUpdatedAt === 0 && persisted.updatedAt > 0));
+
+    if (shouldUsePersisted) {
       this.deviceColumnWidths = { ...persisted.widths };
       this.columnWidthsUpdatedAt = persisted.updatedAt;
       this.persistLocalColumnWidths(persisted);
       this.applySavedColumnWidths();
       this.syncCrossDateColWidths();
-    } else if (saved && typeof saved === 'object' && Object.keys(saved).length) {
+    } else if (localKeyCount > 0) {
       this.deviceColumnWidths = { ...saved };
       this.applySavedColumnWidths();
       this.queueDeviceColumnWidths({ widths: saved, updatedAt: this.columnWidthsUpdatedAt || localUpdatedAt || Date.now() });
