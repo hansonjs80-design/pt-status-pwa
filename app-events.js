@@ -380,6 +380,11 @@ class PTAppEvents {
         try { this.flushDevicePanelStates?.(); } catch (_) {}
       }
     });
+    // iOS PWA에서 beforeunload/pagehide가 호출되지 않을 수 있으므로
+    // Page Lifecycle API freeze 이벤트에서도 flush 실행
+    document.addEventListener("freeze", () => {
+      try { this.flushDevicePanelStates?.(); } catch (_) {}
+    });
 
     // Keyboard Shortcuts
     // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.

@@ -325,6 +325,8 @@ class PTDeviceLayout {
   initToolbarActionsToggle() {
     this.deviceToolbarState = this.readDeviceToolbarState();
     this.setToolbarActionsClosed(this.deviceToolbarState.closed, false);
+    // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
+    this.persistLocalToolbarState(this.deviceToolbarState);
     const btn = document.getElementById("btnToggleToolbarActions");
     if (btn && !btn._hasToggleListener) {
       btn._hasToggleListener = true;
@@ -340,6 +342,8 @@ class PTDeviceLayout {
   initSummaryToggle() {
     this.deviceSummaryState = this.readDeviceSummaryState();
     this.setSummaryClosed(this.deviceSummaryState.closed, false);
+    // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
+    this.persistLocalSummaryState(this.deviceSummaryState);
     const btn = document.getElementById("btnToggleSummary");
     if (btn && !btn._hasToggleListener) {
       btn._hasToggleListener = true;
@@ -650,6 +654,7 @@ class PTDeviceLayout {
     // Pin all tracks from the first render, even before a device has any saved
     // widths. Hiding visitTime in history must never redistribute that space.
     this.hasFixedColumnWidths = true;
+    let anyMeasured = false;
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
       const col = th.dataset.col;
       const width = saved[col];
@@ -662,6 +667,7 @@ class PTDeviceLayout {
         const measured = parseFloat(th.style.width) || th.getBoundingClientRect().width;
         if (Number.isFinite(measured) && measured > 0 && col) {
           saved[col] = measured;
+          anyMeasured = true;
         }
       }
     });
@@ -669,6 +675,12 @@ class PTDeviceLayout {
     this.deviceColumnWidths = { ...saved };
     if (!this.columnWidthsUpdatedAt) {
       this.columnWidthsUpdatedAt = this.readDeviceColumnWidths().updatedAt || 0;
+    }
+    // 측정한 너비를 즉시 localStorage/sessionStorage/Cookie에 저장하여
+    // 앱 종료 후 다시 열어도 열 너비가 복원되도록 보장
+    if (anyMeasured || Object.keys(saved).length > 0) {
+      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
+      this.persistLocalColumnWidths(snapshot);
     }
     this.syncMainColumnWidths();
   }
