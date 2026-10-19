@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v439";
+  static VERSION = "v440";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -502,6 +502,8 @@ class PTApp {
     this.elStatPeriodLabel = document.getElementById("statPeriodLabel");
     this.elSummaryPeriodTabs = document.querySelectorAll("[data-summary-period]");
     this.elStatTotalCount = document.getElementById("statTotalCount");
+    this.elHeaderTotalCount = document.getElementById("headerTotalCount");
+    this.elBtnHeaderSummaryCount = document.getElementById("btnHeaderSummaryCount");
     this.elStatMaleCount = document.getElementById("statMaleCount");
     this.elStatFemaleCount = document.getElementById("statFemaleCount");
     this.elStatUnknownCount = document.getElementById("statUnknownCount");

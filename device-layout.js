@@ -202,6 +202,11 @@ class PTDeviceLayout {
       button.title = closed ? "현황 열기" : "현황 닫기";
       button.setAttribute("aria-label", closed ? "현황 열기" : "현황 닫기");
     }
+    const headerBtn = document.getElementById("btnHeaderSummaryCount");
+    if (headerBtn) {
+      headerBtn.setAttribute("aria-expanded", String(!closed));
+      headerBtn.title = closed ? "선택 날짜 총 환자 수 (클릭하여 현황 요약창 열기)" : "선택 날짜 총 환자 수 (클릭하여 현황 요약창 접기)";
+    }
     if (save) {
       const previous = this.deviceSummaryState || this.readDeviceSummaryState();
       const snapshot = { closed, updatedAt: Math.max(Date.now(), (previous?.updatedAt || 0) + 1) };
@@ -321,6 +326,16 @@ class PTDeviceLayout {
     if (btn && !btn._hasToggleListener) {
       btn._hasToggleListener = true;
       btn.addEventListener("click", () => {
+        const sidebar = document.getElementById("summarySidebar");
+        const isClosed = (typeof document !== "undefined" && document.documentElement?.classList?.contains("device-summary-closed")) ||
+          Boolean(sidebar?.classList.contains("summary-closed"));
+        this.setSummaryClosed(!isClosed, true);
+      });
+    }
+    const headerBtn = document.getElementById("btnHeaderSummaryCount");
+    if (headerBtn && !headerBtn._hasToggleListener) {
+      headerBtn._hasToggleListener = true;
+      headerBtn.addEventListener("click", () => {
         const sidebar = document.getElementById("summarySidebar");
         const isClosed = (typeof document !== "undefined" && document.documentElement?.classList?.contains("device-summary-closed")) ||
           Boolean(sidebar?.classList.contains("summary-closed"));

@@ -48,6 +48,7 @@ class PTSummary {
   }
 
   renderSummaryList(container, entries, emptyMessage, summary = null) {
+    if (!container) return;
     container.replaceChildren();
     if (!entries.size) {
       const empty = document.createElement("li");
@@ -74,6 +75,7 @@ class PTSummary {
   }
 
   renderWriterSummaryList(container, writers, contentCounts) {
+    if (!container) return;
     container.replaceChildren();
     if (!writers.size) {
       const empty = document.createElement("li");
@@ -182,8 +184,9 @@ class PTSummary {
     if (!panel) {
       panel = document.createElement("section");
       panel.id = "summaryAnalytics";
-      panel.className = "summary-section summary-analytics";
-      sidebar.querySelector(".stat-card").after(panel);
+      const statCard = sidebar.querySelector?.(".stat-card");
+      if (statCard?.after) statCard.after(panel);
+      else sidebar.append?.(panel);
     }
     panel.replaceChildren();
     panel.hidden = period === "day";
@@ -335,17 +338,24 @@ class PTSummary {
     const labels = { day: "일일", month: "월간", year: "연간" };
     if (this.elSidebarSummaryTitle) this.elSidebarSummaryTitle.textContent = `📊 ${labels[period]} 현황 요약`;
     if (this.elStatPeriodLabel) this.elStatPeriodLabel.textContent = { day: "선택 날짜 전체", month: "선택 요일·주 합계", year: this.summaryYearMonth ? "선택 월 합계" : "선택 연도 전체" }[period];
-    this.elSidebarDateTag.textContent = period === "year" ? `${this.summaryYear || this.currentDate.slice(0, 4)}년${this.summaryYearMonth ? ` ${this.summaryYearMonth}월` : ""}`
-      : (period === "month" ? this.summaryMonth || this.currentDate.slice(0,7) : this.currentDate).replace(/-/g, ".");
+    if (this.elSidebarDateTag) {
+      this.elSidebarDateTag.textContent = period === "year" ? `${this.summaryYear || this.currentDate.slice(0, 4)}년${this.summaryYearMonth ? ` ${this.summaryYearMonth}월` : ""}`
+        : (period === "month" ? this.summaryMonth || this.currentDate.slice(0,7) : this.currentDate).replace(/-/g, ".");
+    }
     this.elSummaryPeriodTabs?.forEach(button => {
       const selected = button.dataset.summaryPeriod === period;
       button.classList.toggle("active", selected);
       button.setAttribute("aria-selected", String(selected));
     });
-    this.elStatTotalCount.textContent = summary.total;
-    this.elStatMaleCount.textContent = summary.male;
-    this.elStatFemaleCount.textContent = summary.female;
-    this.elStatUnknownCount.textContent = summary.unknown;
+    if (this.elStatTotalCount) this.elStatTotalCount.textContent = summary.total;
+    if (this.elStatMaleCount) this.elStatMaleCount.textContent = summary.male;
+    if (this.elStatFemaleCount) this.elStatFemaleCount.textContent = summary.female;
+    if (this.elStatUnknownCount) this.elStatUnknownCount.textContent = summary.unknown;
+    const headerCountEl = this.elHeaderTotalCount || (typeof document !== "undefined" && document.getElementById("headerTotalCount"));
+    if (headerCountEl) {
+      const daily = period === "day" ? summary : this.getDailySummary();
+      headerCountEl.textContent = String(daily.total);
+    }
     this.renderWriterSummaryList(this.elStatWriterList, summary.writers, summary.writerContentCounts);
     this.renderSummaryList(this.elStatExtraList, summary.extras, "추가 사항 없음", summary);
     this.renderSummaryList(this.elStatPrescriptionList, summary.prescriptions, "입력된 처방 없음");

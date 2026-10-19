@@ -289,13 +289,18 @@ function deviceSummaryHarness() {
   const storage = new Map();
   const disk = new Map();
   const session = new Map();
-  const sidebar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } } };
+  const sidebar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } }, querySelectorAll: () => [], querySelector: () => null };
   const toolbar = { classList: { closed: false, toggle(_, value) { this.closed = value; }, contains() { return this.closed; } }, contains:()=>false, setAttribute(){} };
   const toolbarButton = { setAttribute(){}, addEventListener(){}, focus(){} };
   let failLocal = false;
   const ctx = vm.createContext({
     window: { addEventListener() {} },
-    document: { getElementById: id => id === 'summarySidebar' ? sidebar : id === 'collapsibleToolbarActions' ? toolbar : id === 'btnToggleToolbarActions' ? toolbarButton : null },
+    document: {
+      getElementById: id => id === 'summarySidebar' ? sidebar : id === 'collapsibleToolbarActions' ? toolbar : id === 'btnToggleToolbarActions' ? toolbarButton : null,
+      createElement: tag => ({ tagName: String(tag).toUpperCase(), className: '', style: {}, children: [], append(){}, appendChild(c){ return c; }, replaceChildren(){ this.children = []; }, setAttribute(){}, getAttribute(){}, addEventListener(){}, querySelectorAll: () => [] }),
+      querySelectorAll: () => [],
+      querySelector: () => null,
+    },
     localStorage: {
       getItem: key => storage.get(key) || null,
       setItem: (key, value) => { if (failLocal) throw Error('quota'); storage.set(key, value); },
@@ -316,7 +321,7 @@ function deviceSummaryHarness() {
   });
   const create = () => { const app = Object.create(ctx.App.prototype); app.syncMainColumnWidths = () => {}; return app; };
   const store = async (key, value) => { if (value !== undefined) disk.set(key, structuredClone(value)); return disk.get(key); };
-  return { storage, session, disk, sidebar, toolbar, cookies, create, store, failLocal() { failLocal = true; } };
+  return { storage, session, disk, sidebar, toolbar, cookies, create, store, failLocal() { failLocal = true; }, ctx };
 }
 
 test('summary closed state survives restart with full localStorage and remains device-local', async () => {
@@ -644,6 +649,59 @@ test('closing panels and closing app immediately (stale disk open state) preserv
   const diskToolbar = await h.store("device-toolbar-state-v1");
   assert.equal(diskSummary.closed, true, '디스크에 최신 닫힘 상태 동기화 완료');
   assert.equal(diskToolbar.closed, true, '디스크에 최신 도구 접힘 상태 동기화 완료');
+});
+
+test('header summary count button displays daily total and toggles summary sidebar', () => {
+  const h = deviceSummaryHarness();
+  const headerCountEl = { textContent: '0' };
+  const headerBtn = {
+    title: '',
+    attributes: {},
+    _hasToggleListener: false,
+    setAttribute(k, v) { this.attributes[k] = String(v); },
+    getAttribute(k) { return this.attributes[k]; },
+    listeners: {},
+    addEventListener(evt, fn) { this.listeners[evt] = fn; },
+    click() { if (this.listeners['click']) this.listeners['click'](); }
+  };
+
+  const origGetElementById = h.ctx.document.getElementById;
+  h.ctx.document.getElementById = id => {
+    if (id === 'headerTotalCount') return headerCountEl;
+    if (id === 'btnHeaderSummaryCount') return headerBtn;
+    return origGetElementById(id);
+  };
+
+  const app = h.create();
+  app.elHeaderTotalCount = headerCountEl;
+  app.elBtnHeaderSummaryCount = headerBtn;
+  app.dataStore = {
+    '2026-10-19': [
+      { name: '환자A', prescription: '도수' },
+      { name: '환자B', prescription: '물리' },
+      { name: '', prescription: '' }
+    ]
+  };
+  app.currentDate = '2026-10-19';
+
+  app.initSummaryToggle();
+  assert.equal(headerBtn.getAttribute('aria-expanded'), 'true');
+
+  // 통계 업데이트 시 헤더 버튼의 환자 수 갱신 확인
+  app.updateSidebarStats();
+  assert.equal(headerCountEl.textContent, '2', '유효 환자 2명이 헤더 카운트에 반영됨');
+
+  // 헤더 버튼 클릭 시 요약창 닫힘 토글 확인
+  headerBtn.click();
+  assert.equal(app.isSummaryClosed(), true, '헤더 버튼 클릭으로 요약창 닫힘');
+  assert.equal(headerBtn.getAttribute('aria-expanded'), 'false');
+  assert.ok(headerBtn.title.includes('열기'));
+
+  // 다시 클릭 시 요약창 열림 토글 확인
+  headerBtn.click();
+  assert.equal(app.isSummaryClosed(), false, '헤더 버튼 다시 클릭으로 요약창 열림');
+  assert.equal(headerBtn.getAttribute('aria-expanded'), 'true');
+  assert.ok(headerBtn.title.includes('접기'));
 });
 
 test('monthly summary table merges weekday averages into bottom average row and hides deselected weekdays', () => {

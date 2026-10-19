@@ -6,13 +6,13 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=439">
+  <link rel="manifest" href="manifest.json?v=440">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=439">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=439">
+  <link rel="apple-touch-icon" href="icon-192.png?v=440">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=440">
 
   <script>
     if ('serviceWorker' in navigator) {
@@ -129,6 +129,7 @@
           <button type="button" class="btn-nav" id="btnNextDay" title="다음 날짜 (Alt+Right)" aria-label="다음 날짜"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><polyline points="8 5 16 12 8 19" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           <button type="button" class="btn-today-pill" id="btnGoToday" title="오늘 날짜로 이동">오늘</button>
           <button type="button" class="btn-clock-toggle" id="btnToggleSheetClock" title="디지털 시계 끄기" aria-label="디지털 시계 끄기" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg></button>
+          <button type="button" class="btn-header-summary-count" id="btnHeaderSummaryCount" title="선택 날짜 총 환자 수 (클릭하여 현황 요약창 열기/접기)" aria-label="선택 날짜 총 환자 수">총 <span id="headerTotalCount" class="count-num">0</span>명</button>
         </div>
           <div class="search-period-group" title="이전 날짜 기록 검색 기간 설정">
             <label for="searchPeriodSelect" class="search-period-label">검색 기간</label>
