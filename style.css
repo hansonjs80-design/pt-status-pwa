@@ -2651,7 +2651,7 @@ details.summary-accordion[open] summary {
 .font-weight-button .format-icon { font: 800 22px Arial, sans-serif; }
 
 .excel-table .col-spacer, .excel-table .cell-spacer { padding: 0; }
-.excel-table .col-spacer .col-resizer { left: 0; right: auto; width: 5px; }
+.excel-table .col-spacer .col-resizer { right: -2px; width: 6px; }
 .excel-table .col-del .col-resizer { right: 2px; width: 4px; }
 .excel-table .cell-spacer { border-right: 1px solid var(--excel-grid-line); border-bottom: 1px solid var(--excel-grid-line); }
 
@@ -3085,12 +3085,10 @@ details.summary-accordion[open] summary {
 
 /* Table horizontal grid line continuation to fill available sheet width */
 .excel-table th.col-spacer {
-  width: auto !important;
-  min-width: 10px !important;
-  max-width: none !important;
+  min-width: 10px;
 }
 .excel-table col[data-col="spacer"] {
-  width: auto !important;
+  min-width: 10px;
 }
 
 /* Vertical toggle bar located at the left edge of summary sidebar */

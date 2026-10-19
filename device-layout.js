@@ -405,15 +405,15 @@ class PTDeviceLayout {
     const doResize = (clientX) => {
       if (!activeTh) return;
       const diff = clientX - startX;
-      const newWidth = Math.max(activeColKey === "spacer" ? 10 : 35, startWidth + (activeColKey === "spacer" ? -diff : diff));
+      const newWidth = Math.max(activeColKey === "spacer" ? 10 : 35, startWidth + diff);
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
+      activeTh.style.maxWidth = `${newWidth}px`;
       this.saveColumnWidth(activeColKey, newWidth);
+      // Update colgroup and table total width so every column (including del)
+      // visually resizes during drag instead of being locked by stale col tracks.
+      this.syncMainColumnWidths();
       this.syncCrossDateColWidths();
-      if (activeColKey === "spacer") {
-        // The trailing column grows leftward; compensate horizontal overflow to keep its right edge in place.
-        this.elSheetContainer.scrollLeft += activeTh.getBoundingClientRect().right - fixedRight;
-      }
     };
 
     const endResize = () => {

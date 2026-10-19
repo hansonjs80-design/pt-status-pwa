@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v446";
+  static VERSION = "v447";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
@@ -202,6 +202,8 @@ class PTApp {
     this.getCurrentRows();
     this.editHistory.clear();
     this.setDate(this.currentDate, true);
+    // 처방열에만 "한랭"이 있는 버그 행 일회성 정리 (localStorage 경로)
+    if (!this._recordsOnDisk) this.cleanupHanraengBugRows();
     if (typeof document !== "undefined") document.documentElement?.classList?.add("app-ready");
   }
 

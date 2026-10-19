@@ -83,6 +83,8 @@ class PTLocalRecordStore {
       await this.restoreDiskRecords();
       this._recordsRestored = true;
       this._recordsRestorePending = false;
+      // 처방열에만 "한랭"이 있는 버그 행 일회성 정리 (IndexedDB 경로)
+      this.cleanupHanraengBugRows();
       this.updateLocalRestoreUI('');
       this.getCurrentRows();
       this.editHistory.clear();
@@ -227,5 +229,54 @@ class PTLocalRecordStore {
     // Callers still receive the rejection; avoid an unhandled background rejection.
     pending.catch(() => {});
     return pending;
+  }
+
+  /**
+   * 일회성 마이그레이션: 처방(prescription)열에만 "한랭"이 들어 있고
+   * 나머지 모든 필드가 비어 있는 버그 행의 처방 값을 지운 뒤
+   * normalizeRowAllocation으로 과잉 빈 행을 제거합니다.
+   * @returns {boolean} 데이터가 실제로 변경되었으면 true
+   */
+  cleanupHanraengBugRows() {
+    const CLEANUP_KEY = 'PT_HANRAENG_CLEANUP_V1';
+    try { if (localStorage.getItem(CLEANUP_KEY) === '1') return false; } catch (_) {}
+
+    // dataStore가 아직 비어 있으면(IndexedDB 로드 전) 플래그를 세우지 않고 건너뜀
+    const dates = Object.keys(this.dataStore);
+    if (dates.length === 0) return false;
+
+    const contentKeys = ['no','gender','chartNo','name','part','extra','writer','memo','specialNote','visitTime'];
+    let totalCleaned = 0;
+
+    for (const [date, rows] of Object.entries(this.dataStore)) {
+      if (!Array.isArray(rows)) continue;
+      let cleaned = 0;
+      for (let i = rows.length - 1; i >= 0; i--) {
+        const row = rows[i];
+        const prescription = String(row.prescription ?? '').trim();
+        if (!prescription.includes('한랭')) continue;
+
+        // 다른 모든 내용 필드가 비어 있는지 확인
+        const hasOtherContent = contentKeys.some(key => String(row[key] ?? '').trim());
+        if (!hasOtherContent) {
+          row.prescription = '';
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) {
+        if (typeof this.normalizeRowAllocation === 'function') {
+          this.normalizeRowAllocation(rows, date, true);
+        }
+        totalCleaned += cleaned;
+      }
+    }
+
+    // 데이터를 실제로 처리했으면 플래그 설정 (빈 dataStore에서는 설정하지 않음)
+    try { localStorage.setItem(CLEANUP_KEY, '1'); } catch (_) {}
+
+    if (totalCleaned > 0) {
+      void this.persistDataStore?.().catch(() => {});
+    }
+    return totalCleaned > 0;
   }
 }
