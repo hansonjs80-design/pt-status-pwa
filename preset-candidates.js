@@ -10,22 +10,46 @@ class PTPresetCandidates {
     if (!presets || typeof presets !== 'object' || Array.isArray(presets)) return presets;
     let normalized = presets;
     for (const [key, values] of Object.entries(presets)) {
-      if (!key.startsWith('__hidden:') || !Array.isArray(values)) continue;
-      let changed = false;
-      const migrated = values.map(value => {
-        if (typeof value !== 'string') return value;
-        const separator = value.indexOf('\u0000');
-        if (separator < 0) return value;
-        try {
-          const formatting = JSON.parse(value.slice(separator + 1));
-          if (!formatting || typeof formatting !== 'object' || Array.isArray(formatting)) return value;
-          changed = true;
-          return this.candidateIdentity(value.slice(0, separator), formatting);
-        } catch (_) { return value; }
-      });
-      if (changed) {
-        if (normalized === presets) normalized = {...presets};
-        normalized[key] = [...new Set(migrated)];
+      if (key.startsWith('__hidden:') && Array.isArray(values)) {
+        let changed = false;
+        const migrated = values.map(value => {
+          if (typeof value !== 'string') return value;
+          const separator = value.indexOf('\u0000');
+          if (separator < 0) return value;
+          try {
+            const formatting = JSON.parse(value.slice(separator + 1));
+            if (!formatting || typeof formatting !== 'object' || Array.isArray(formatting)) return value;
+            changed = true;
+            return this.candidateIdentity(value.slice(0, separator), formatting);
+          } catch (_) { return value; }
+        });
+        if (changed) {
+          if (normalized === presets) normalized = {...presets};
+          normalized[key] = [...new Set(migrated)];
+        }
+      } else if (key.startsWith('__query:') && Array.isArray(values)) {
+        let start = 0;
+        while (start < values.length && String(values[start] ?? '').trim() === '') {
+          start++;
+        }
+        let seenEmpty = false;
+        const cleaned = [];
+        for (let i = start; i < values.length; i++) {
+          const v = values[i];
+          const isEmpty = String(v ?? '').trim() === '';
+          if (isEmpty) {
+            if (!seenEmpty) {
+              seenEmpty = true;
+              cleaned.push(v);
+            }
+          } else {
+            cleaned.push(v);
+          }
+        }
+        if (cleaned.length !== values.length) {
+          if (normalized === presets) normalized = {...presets};
+          normalized[key] = cleaned;
+        }
       }
     }
     return normalized;
@@ -99,6 +123,7 @@ class PTPresetCandidates {
     }
     for (const item of items) {
       expanded.push(item);
+      if (String(item).trim() === '') continue; // 빈칸은 과거 서식 변형으로 복제·확장하지 않음
       const formats = current.get(String(item)) || cached.groups.get(String(item))?.formats;
       if (formats?.size > 1) expanded.push(...formats.values());
     }

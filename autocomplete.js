@@ -83,6 +83,7 @@ class PTAutocomplete {
       if (!sourceQuery || !this.matchesHangulPrefix(query, sourceQuery, true)) continue;
       const hidden = new Set(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || []);
       for (const value of this.getPresetCandidates(key)) {
+        if (String(value).trim() === '') continue; // 상위 규칙의 빈칸은 하위 규칙으로 전파하지 않음
         if (!hidden.has(this.getPresetCandidateIdentity(value)) && !presets.some(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(value))) presets.push(value);
       }
     }
@@ -132,7 +133,11 @@ class PTAutocomplete {
       // 매칭 품질: 1=접두사, 2=초성접두사, 3=부분일치
       // 일치하는 관리 문구는 목록에 저장된 순서 그대로 우선 표시한다.
       let quality = -1;
-      if (isPreset && item === "") { matched.push({ item, score: 0, isPreset }); return; }
+      if (isPreset && item === "") {
+        if (query) return; // 검색어를 입력 중일 때는 빈칸을 추천 목록에 표시하지 않음
+        matched.push({ item, score: 0, isPreset });
+        return;
+      }
 
       if (["name", "part", "extra", "memo", "specialNote"].includes(colKey)) {
         if (this.matchesHangulPrefix(item, query, isComposing)) quality = itemLower.startsWith(query) ? 1 : 1.5;

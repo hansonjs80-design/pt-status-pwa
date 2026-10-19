@@ -51,8 +51,11 @@ class PTPresetManager {
       ? this.autocompleteState.candidates : this.getAutocompleteSuggestions(colKey, query, true);
     const key = this.getAutocompleteRuleKey(colKey, query);
     const items = Object.hasOwn(COLUMN_PRESETS, key) ? [...this.getPresetCandidates(key)]
-      : [...new Set(shown.filter(item => colKey === "name" || item === value ||
-        (COLUMN_PRESETS[colKey] || []).includes(item) || (item !== query && item !== this.assembleHangul(query))))];
+      : [...new Set(shown.filter(item => {
+        if (String(item).trim() === '') return false;
+        return colKey === "name" || item === value ||
+          (COLUMN_PRESETS[colKey] || []).includes(item) || (item !== query && item !== this.assembleHangul(query));
+      }))];
     input?.blur?.();
     this.closeAutocompleteMenu();
     this.openPresetManager(colKey, { colKey, query, key, items, hidden: [...(COLUMN_PRESETS[this.getAutocompleteHiddenKey(key)] || [])] });
@@ -166,8 +169,14 @@ class PTPresetManager {
   // --- 통합 빠른 도구 관리 모달 (추가 / 삭제 / 수정 / 순서변경) ---
   openPresetManager(tab = "prescription", context = null) {
     if (!this.elPresetManagerModal) return;
+    this.pendingDeletePresetIndex = null;
     if (this.elPresetManagerModal.style.display !== "flex") this.presetManagerReturnFocus = document.activeElement;
     clearTimeout(this.presetManagerFocusTimer);
+    if (context?.items) {
+      while (context.items.length && String(context.items[0] ?? '').trim() === '') {
+        context.items.shift();
+      }
+    }
     this.autocompleteManagerContext = context;
     this.activePresetTab = tab;
     this.updatePresetManagerTabs();
@@ -183,6 +192,7 @@ class PTPresetManager {
   }
 
   closePresetManager() {
+    this.pendingDeletePresetIndex = null;
     this.closeForcedCorrectionManager(false);
     clearTimeout(this.presetManagerFocusTimer);
     this.clearPresetDrag();
@@ -195,6 +205,7 @@ class PTPresetManager {
   }
 
   switchPresetTab(tab) {
+    this.pendingDeletePresetIndex = null;
     this.clearPresetDrag();
     this.autocompleteManagerContext = null;
     this.activePresetTab = tab;
@@ -384,7 +395,7 @@ class PTPresetManager {
       const previousFocus = document.activeElement;
       const overlay = document.createElement("div");
       overlay.className = "modal-overlay preset-confirm-dialog";
-      overlay.style.cssText = "display: flex; z-index: 12000; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px);";
+      overlay.style.cssText = "display: flex; z-index: 12000; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,0.55); backdrop-filter: none !important; -webkit-backdrop-filter: none !important; transform: translateZ(0); will-change: transform;";
       overlay.setAttribute("role", "dialog");
       overlay.setAttribute("aria-modal", "true");
       overlay.setAttribute("aria-labelledby", "presetConfirmTitle");
@@ -536,46 +547,83 @@ class PTPresetManager {
 
         const actionsEl = document.createElement("div");
         actionsEl.className = "preset-item-actions";
-        const colorPicker = document.createElement("input"); colorPicker.type = "color";
-        colorPicker.className = "preset-item-color"; colorPicker.value = this.toColorPickerValue(itemColor);
-        colorPicker.dataset.presetAction = "color";
-        colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
-        colorPicker.onchange = () => {
-          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
-          this.savePresetManagerItems(tab);
-          this.renderPresetManagerList();
-        };
-        actionsEl.appendChild(colorPicker);
-        const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
-          this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.savePresetManagerItems(tab); this.renderPresetManagerList();
-        });
-        actionsEl.appendChild(resetColor);
 
-        const btnUp = this.createPresetManagerAction("up", `${label} 위로 이동`, () => this.movePresetAt(tab, idx, -1));
-        btnUp.disabled = idx === 0;
-        const btnDown = this.createPresetManagerAction("down", `${label} 아래로 이동`, () => this.movePresetAt(tab, idx, 1));
-        btnDown.disabled = idx === items.length - 1;
-        actionsEl.append(btnUp, btnDown);
-        const btnEdit = this.createPresetManagerAction("edit", `${label} 문구·글자색·두께 수정`, () => this.editPresetAt(tab, idx));
-        actionsEl.appendChild(btnEdit);
-        if (this.autocompleteManagerContext) {
-          const visibility = document.createElement("button");
-          visibility.type = "button"; visibility.className = "preset-action-btn";
-          visibility.textContent = hidden ? "표시" : "숨김";
-          visibility.setAttribute("aria-label", `${val} ${hidden ? "다시 표시" : "자동완성에서 숨김"}`);
-          visibility.onclick = () => this.togglePresetCandidateVisibility(tab, idx);
-          actionsEl.appendChild(visibility);
-          const historyEdit = document.createElement("button");
-          historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
-          historyEdit.textContent = "이전 기록 수정";
-          historyEdit.title = "선택한 날짜와 그 이전 기록의 같은 열에서 이 문구 수정";
-          historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
-          actionsEl.appendChild(historyEdit);
+        if (this.pendingDeletePresetIndex === idx) {
+          const confirmBox = document.createElement("div");
+          confirmBox.className = "preset-inline-delete-confirm";
+          const promptText = document.createElement("span");
+          promptText.className = "preset-delete-prompt";
+          promptText.textContent = "정말 삭제할까요?";
+          const btnDoDelete = document.createElement("button");
+          btnDoDelete.type = "button";
+          btnDoDelete.className = "preset-action-btn btn-danger btn-confirm-del";
+          btnDoDelete.textContent = "삭제";
+          btnDoDelete.setAttribute("aria-label", `${label} 삭제 확정`);
+          btnDoDelete.onclick = (e) => {
+            e.stopPropagation();
+            this.pendingDeletePresetIndex = null;
+            this.deletePresetAt(tab, idx, { skipConfirm: true });
+          };
+          const btnCancelDel = document.createElement("button");
+          btnCancelDel.type = "button";
+          btnCancelDel.className = "preset-action-btn btn-cancel-del";
+          btnCancelDel.textContent = "취소";
+          btnCancelDel.setAttribute("aria-label", `${label} 삭제 취소`);
+          btnCancelDel.onclick = (e) => {
+            e.stopPropagation();
+            this.pendingDeletePresetIndex = null;
+            this.renderPresetManagerList();
+          };
+          confirmBox.append(promptText, btnDoDelete, btnCancelDel);
+          actionsEl.appendChild(confirmBox);
+        } else {
+          const colorPicker = document.createElement("input"); colorPicker.type = "color";
+          colorPicker.className = "preset-item-color"; colorPicker.value = this.toColorPickerValue(itemColor);
+          colorPicker.dataset.presetAction = "color";
+          colorPicker.title = "글자색 지정"; colorPicker.setAttribute("aria-label", `${label} 글자색`);
+          colorPicker.onchange = () => {
+            this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, colorPicker.value);
+            this.savePresetManagerItems(tab);
+            this.renderPresetManagerList();
+          };
+          actionsEl.appendChild(colorPicker);
+          const resetColor = this.createPresetManagerAction("reset", `${label} 기본색으로 되돌리기`, () => {
+            this.setAutocompleteValueColor(this.getPresetManagerKey(tab), val, null); this.savePresetManagerItems(tab); this.renderPresetManagerList();
+          });
+          actionsEl.appendChild(resetColor);
+
+          const btnUp = this.createPresetManagerAction("up", `${label} 위로 이동`, () => this.movePresetAt(tab, idx, -1));
+          btnUp.disabled = idx === 0;
+          const btnDown = this.createPresetManagerAction("down", `${label} 아래로 이동`, () => this.movePresetAt(tab, idx, 1));
+          btnDown.disabled = idx === items.length - 1;
+          actionsEl.append(btnUp, btnDown);
+          const btnEdit = this.createPresetManagerAction("edit", `${label} 문구·글자색·두께 수정`, () => this.editPresetAt(tab, idx));
+          actionsEl.appendChild(btnEdit);
+          if (this.autocompleteManagerContext) {
+            const visibility = document.createElement("button");
+            visibility.type = "button"; visibility.className = "preset-action-btn";
+            visibility.textContent = hidden ? "표시" : "숨김";
+            visibility.setAttribute("aria-label", `${val} ${hidden ? "다시 표시" : "자동완성에서 숨김"}`);
+            visibility.onclick = () => this.togglePresetCandidateVisibility(tab, idx);
+            actionsEl.appendChild(visibility);
+            const historyEdit = document.createElement("button");
+            historyEdit.type = "button"; historyEdit.className = "preset-action-btn";
+            historyEdit.textContent = "이전 기록 수정";
+            historyEdit.title = "선택한 날짜와 그 이전 기록의 같은 열에서 이 문구 수정";
+            historyEdit.onclick = () => this.editAutocompleteValue(tab, val, null);
+            actionsEl.appendChild(historyEdit);
+          }
+
+          // 삭제 버튼 클릭 시 인라인 확인 UI로 전환
+          const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, (e) => {
+            e?.stopPropagation?.();
+            this.pendingDeletePresetIndex = idx;
+            this.renderPresetManagerList();
+            const targetBtn = this.elPresetListContainer?.querySelector(`[data-preset-index="${idx}"] .btn-confirm-del`);
+            targetBtn?.focus({ preventScroll: true });
+          });
+          actionsEl.appendChild(btnDel);
         }
-
-        // 삭제 버튼
-        const btnDel = this.createPresetManagerAction("delete", `${label} 삭제`, () => this.requestDeletePreset(tab, idx));
-        actionsEl.appendChild(btnDel);
 
         itemEl.appendChild(numEl);
         itemEl.appendChild(textEl);

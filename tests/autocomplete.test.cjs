@@ -10,11 +10,12 @@ function createApp(dataStore, presets = {}, environment = {}) {
     ...environment,
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') +
-    '\n globalThis.App = PTApp; globalThis.setPresets = value => { COLUMN_PRESETS = value; };', context);
+    '\n globalThis.App = PTApp; globalThis.PTPresetCandidates = PTPresetCandidates; globalThis.setPresets = value => { COLUMN_PRESETS = value; };', context);
   context.setPresets(presets);
   const app = Object.create(context.App.prototype);
   app.currentDate = '2026-09-30';
   app.dataStore = dataStore;
+  app._context = context;
   return app;
 }
 
@@ -1044,5 +1045,65 @@ test('requestDeletePreset prompts with normalized label and only deletes upon co
   assert.equal(promptedMessage, '“견인” 항목을 삭제하시겠습니까?');
   assert.deepEqual(Array.from(app.getPresetManagerItems('extra')), ['도수']);
 });
+
+test('new autocomplete detail rule creation excludes blank entries from automatic candidates', () => {
+  const presets = { extra: ['충격파', '이온', '견인'] };
+  let openedTab = null, openedContext = null;
+  const app = createApp({ '2026-10-19': [{ extra: '충격파 / 견인' }] }, presets, {
+    document: { activeElement: null, getElementById() { return null; } }
+  });
+  app.openPresetManager = (tab, context) => {
+    openedTab = tab;
+    openedContext = context;
+  };
+  app.closeAutocompleteMenu = () => {};
+
+  // '충격파 /' 입력 시 새 세부 규칙 생성
+  // shown 후보에 빈칸이나 기존 값이 섞여있어도 새 목록의 items에는 빈칸이 자동으로 포함되지 않아야 함
+  app.autocompleteState = {
+    colKey: 'extra',
+    query: '충격파 /',
+    candidates: ['충격파 /', '', '', '충격파 / 견인']
+  };
+
+  app.openAutocompletePresetManager('extra', null, { value: '충격파 /' });
+  assert.equal(openedTab, 'extra');
+  assert.ok(openedContext, 'context must be provided');
+  assert.equal(openedContext.query, '충격파 /');
+  // 새 목록의 items에는 빈칸이 전혀 포함되지 않아야 함
+  assert.ok(!openedContext.items.some(item => String(item).trim() === ''), 'items must not contain any blank entries automatically');
+  assert.deepEqual(Array.from(openedContext.items), ['충격파 / 견인']);
+});
+
+test('normalizeStorage cleans up top blank entries from existing query detail rules while preserving manual blank at later positions', () => {
+  const dirtyPresets = {
+    prescription: ['사지', ''],
+    '__query:extra:충격파 /': ['', '', '', '충격파 / 견인'],
+    '__query:extra:이온': ['이온', '', ''],
+    '__query:part:허리': ['', '허리 디스크']
+  };
+
+  const app = createApp({});
+  const cleaned = app._context.PTPresetCandidates.normalizeStorage(dirtyPresets);
+  // 1. __query:extra:충격파 / 상단의 빈칸 3개는 모두 제거되어야 함
+  assert.deepEqual(Array.from(cleaned['__query:extra:충격파 /']), ['충격파 / 견인']);
+  // 2. __query:extra:이온 상단 빈칸이 없고 뒤에 연속 빈칸이 있는 경우 1개만 유지
+  assert.deepEqual(Array.from(cleaned['__query:extra:이온']), ['이온', '']);
+  // 3. __query:part:허리 상단 빈칸 제거
+  assert.deepEqual(Array.from(cleaned['__query:part:허리']), ['허리 디스크']);
+  // 4. 일반 열의 빈칸은 유지
+  assert.deepEqual(Array.from(cleaned.prescription), ['사지', '']);
+});
+
+test('typing a search query does not match blank preset at top of suggestions', () => {
+  const presets = { extra: ['', '충격파', '충격파 치료'] };
+  const app = createApp({}, presets);
+
+  // '충'을 타이핑했을 때 빈칸('')은 후보에 없어야 하고 '충격파' 등이 매칭되어야 함
+  const suggestions = app.getAutocompleteSuggestions('extra', '충');
+  assert.ok(!suggestions.includes(''), 'suggestions while typing must not include blank preset');
+  assert.ok(suggestions.includes('충격파'));
+});
+
 
 
