@@ -133,6 +133,157 @@ class PTDeviceLayout {
     } catch (_) {}
   }
 
+  // 기기 전용 통합 UI 디스플레이 설정 읽기 (localStorage -> sessionStorage -> Cookie -> 레거시 자동 마이그레이션)
+  readDevicePreferences() {
+    const key = "PT_DEVICE_UI_PREFS_V1";
+    let prefs = null;
+    try { prefs = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) {}
+    if (!prefs || typeof prefs !== 'object') {
+      try { prefs = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (_) {}
+    }
+    if (!prefs || typeof prefs !== 'object') {
+      try {
+        const cookieKey = `${key}=`;
+        const matches = String(document.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
+        if (matches.length > 0) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
+      } catch (_) {}
+    }
+
+    if (!prefs || typeof prefs !== 'object') {
+      prefs = {
+        version: 1,
+        columnWidths: {},
+        columnWidthsUpdatedAt: 0,
+        columnWidthsUserModified: false,
+        summaryClosed: false,
+        summaryClosedUpdatedAt: 0,
+        summaryClosedUserModified: false,
+        toolbarCollapsed: false,
+        toolbarCollapsedUpdatedAt: 0,
+        toolbarCollapsedUserModified: false
+      };
+    }
+
+    // 기존 개별 설정 키(스냅샷)가 있으면 통합 객체에 병합 (레거시 안전 마이그레이션)
+    const colSnap = this.readDeviceColumnWidths();
+    if (colSnap?.widths && Object.keys(colSnap.widths).length > 0) {
+      if (!prefs.columnWidths || Object.keys(prefs.columnWidths).length === 0 || (colSnap.updatedAt || 0) >= (prefs.columnWidthsUpdatedAt || 0)) {
+        prefs.columnWidths = { ...colSnap.widths };
+        prefs.columnWidthsUpdatedAt = colSnap.updatedAt || prefs.columnWidthsUpdatedAt || 0;
+        if (colSnap.updatedAt > 1) prefs.columnWidthsUserModified = true;
+      }
+    }
+
+    const sumSnap = this.readDeviceSummaryState();
+    if (sumSnap && Number.isFinite(sumSnap.updatedAt)) {
+      if ((sumSnap.updatedAt || 0) >= (prefs.summaryClosedUpdatedAt || 0)) {
+        prefs.summaryClosed = Boolean(sumSnap.closed);
+        prefs.summaryClosedUpdatedAt = sumSnap.updatedAt;
+        if (sumSnap.updatedAt > 1) prefs.summaryClosedUserModified = true;
+      }
+    }
+
+    const toolSnap = this.readDeviceToolbarState();
+    if (toolSnap && Number.isFinite(toolSnap.updatedAt)) {
+      if ((toolSnap.updatedAt || 0) >= (prefs.toolbarCollapsedUpdatedAt || 0)) {
+        prefs.toolbarCollapsed = Boolean(toolSnap.closed);
+        prefs.toolbarCollapsedUpdatedAt = toolSnap.updatedAt;
+        if (toolSnap.updatedAt > 1) prefs.toolbarCollapsedUserModified = true;
+      }
+    }
+
+    return prefs;
+  }
+
+  // 기기 전용 통합 UI 디스플레이 설정 영구 보존 (4중 계층: localStorage + sessionStorage + Cookie + IndexedDB + 레거시 미러링)
+  persistDevicePreferences(prefs) {
+    if (!prefs || typeof prefs !== 'object') return;
+    const key = "PT_DEVICE_UI_PREFS_V1";
+    try { localStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
+    try { sessionStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
+    try {
+      const encoded = encodeURIComponent(JSON.stringify(prefs));
+      document.cookie = `${key}=${encoded}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    } catch (_) {}
+
+    // 레거시 키에도 동시 저장하여 기존 테스트 및 하위 호환성 유지
+    if (prefs.columnWidths && Object.keys(prefs.columnWidths).length > 0) {
+      const colSnapshot = { widths: { ...prefs.columnWidths }, updatedAt: prefs.columnWidthsUpdatedAt || 1 };
+      this.persistLocalColumnWidths(colSnapshot);
+    }
+    const sumSnapshot = { closed: Boolean(prefs.summaryClosed), updatedAt: prefs.summaryClosedUpdatedAt || 1 };
+    this.persistLocalSummaryState(sumSnapshot);
+    const toolSnapshot = { closed: Boolean(prefs.toolbarCollapsed), updatedAt: prefs.toolbarCollapsedUpdatedAt || 1 };
+    this.persistLocalToolbarState(toolSnapshot);
+
+    // IndexedDB 비동기 영구 저장
+    if (this.devicePreferencesStore) {
+      this.queueDevicePreferences(prefs);
+    }
+  }
+
+  queueDevicePreferences(prefs) {
+    if (!this.devicePreferencesStore) return;
+    const write = (async () => {
+      await this.devicePreferencesStore("device-ui-preferences-v1", prefs);
+    })();
+    write.catch(err => console.warn("Failed to persist device UI preferences to IndexedDB:", err));
+  }
+
+  async restoreDevicePreferences(store) {
+    this.devicePreferencesStore = store;
+    let persisted = null;
+    try { persisted = await store("device-ui-preferences-v1"); } catch (_) {}
+
+    const local = this.readDevicePreferences();
+    if (!persisted || typeof persisted !== 'object') {
+      if (local && (local.columnWidthsUserModified || local.summaryClosedUserModified || local.toolbarCollapsedUserModified)) {
+        this.queueDevicePreferences(local);
+      }
+      this._deviceSettingsRestored = true;
+      return;
+    }
+
+    let changed = false;
+    // 1. 열 너비 복원: 디스크의 사용자 설정이 로컬보다 최신이거나 로컬이 기본값이면 디스크 우선
+    if (persisted.columnWidthsUserModified && (!local.columnWidthsUserModified || (persisted.columnWidthsUpdatedAt || 0) >= (local.columnWidthsUpdatedAt || 0))) {
+      if (persisted.columnWidths && Object.keys(persisted.columnWidths).length > 0) {
+        local.columnWidths = { ...persisted.columnWidths };
+        local.columnWidthsUpdatedAt = persisted.columnWidthsUpdatedAt;
+        local.columnWidthsUserModified = true;
+        this.deviceColumnWidths = { ...persisted.columnWidths };
+        this.columnWidthsUpdatedAt = persisted.columnWidthsUpdatedAt;
+        this.applySavedColumnWidths();
+        changed = true;
+      }
+    }
+
+    // 2. 현황창 복원: 디스크의 사용자 설정 우선
+    if (persisted.summaryClosedUserModified && (!local.summaryClosedUserModified || (persisted.summaryClosedUpdatedAt || 0) >= (local.summaryClosedUpdatedAt || 0))) {
+      local.summaryClosed = Boolean(persisted.summaryClosed);
+      local.summaryClosedUpdatedAt = persisted.summaryClosedUpdatedAt;
+      local.summaryClosedUserModified = true;
+      this.deviceSummaryState = { closed: local.summaryClosed, updatedAt: local.summaryClosedUpdatedAt };
+      this.setSummaryClosed(local.summaryClosed, false);
+      changed = true;
+    }
+
+    // 3. 툴바 복원: 디스크의 사용자 설정 우선
+    if (persisted.toolbarCollapsedUserModified && (!local.toolbarCollapsedUserModified || (persisted.toolbarCollapsedUpdatedAt || 0) >= (local.toolbarCollapsedUpdatedAt || 0))) {
+      local.toolbarCollapsed = Boolean(persisted.toolbarCollapsed);
+      local.toolbarCollapsedUpdatedAt = persisted.toolbarCollapsedUpdatedAt;
+      local.toolbarCollapsedUserModified = true;
+      this.deviceToolbarState = { closed: local.toolbarCollapsed, updatedAt: local.toolbarCollapsedUpdatedAt };
+      this.setToolbarActionsClosed(local.toolbarCollapsed, false);
+      changed = true;
+    }
+
+    if (changed) {
+      this.persistDevicePreferences(local);
+    }
+    this._deviceSettingsRestored = true;
+  }
+
   readDeviceSummaryState() {
     const key = typeof SUMMARY_CLOSED_STORAGE_KEY !== "undefined" ? SUMMARY_CLOSED_STORAGE_KEY : "device-summary-closed-v1";
     return this.readDevicePanelState(key, '1');
@@ -223,6 +374,14 @@ class PTDeviceLayout {
       this.deviceSummaryState = snapshot;
       this.persistLocalSummaryState(snapshot);
       this.queueDeviceSummaryState(snapshot);
+
+      try {
+        const prefs = this.readDevicePreferences();
+        prefs.summaryClosed = closed;
+        prefs.summaryClosedUpdatedAt = snapshot.updatedAt;
+        prefs.summaryClosedUserModified = true;
+        this.persistDevicePreferences(prefs);
+      } catch (_) {}
     }
     if (typeof this.syncMainColumnWidths === "function") this.syncMainColumnWidths();
   }
@@ -250,6 +409,14 @@ class PTDeviceLayout {
       this.toolbarStateChanged = true;
       this.persistLocalToolbarState(this.deviceToolbarState);
       this.queueDeviceToolbarState(this.deviceToolbarState);
+
+      try {
+        const prefs = this.readDevicePreferences();
+        prefs.toolbarCollapsed = closed;
+        prefs.toolbarCollapsedUpdatedAt = this.deviceToolbarState.updatedAt;
+        prefs.toolbarCollapsedUserModified = true;
+        this.persistDevicePreferences(prefs);
+      } catch (_) {}
     }
   }
 
@@ -303,21 +470,44 @@ class PTDeviceLayout {
 
   flushDevicePanelStates() {
     try {
+      const prefs = this.readDevicePreferences();
+      let prefsChanged = false;
+
       const summary = this.deviceSummaryState || this.readDeviceSummaryState();
       this.persistLocalSummaryState(summary);
       if (this.summaryStateStore) this.queueDeviceSummaryState(summary);
-    } catch (_) {}
-    try {
+      if (this.summaryStateChanged && this.deviceSummaryState) {
+        prefs.summaryClosed = this.deviceSummaryState.closed;
+        prefs.summaryClosedUpdatedAt = this.deviceSummaryState.updatedAt || Date.now();
+        prefs.summaryClosedUserModified = true;
+        prefsChanged = true;
+      }
+
       const toolbar = this.deviceToolbarState || this.readDeviceToolbarState();
       this.persistLocalToolbarState(toolbar);
       if (this.toolbarStateStore) this.queueDeviceToolbarState(toolbar);
-    } catch (_) {}
-    try {
+      if (this.toolbarStateChanged && this.deviceToolbarState) {
+        prefs.toolbarCollapsed = this.deviceToolbarState.closed;
+        prefs.toolbarCollapsedUpdatedAt = this.deviceToolbarState.updatedAt || Date.now();
+        prefs.toolbarCollapsedUserModified = true;
+        prefsChanged = true;
+      }
+
       const widths = this.deviceColumnWidths || this.readDeviceColumnWidths().widths;
       if (widths && typeof widths === "object" && Object.keys(widths).length) {
         const snapshot = { widths: { ...widths }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
         this.persistLocalColumnWidths(snapshot);
         if (this.columnWidthsStore) this.queueDeviceColumnWidths(snapshot);
+        if (this.columnWidthsChanged) {
+          prefs.columnWidths = { ...widths };
+          prefs.columnWidthsUpdatedAt = snapshot.updatedAt;
+          prefs.columnWidthsUserModified = true;
+          prefsChanged = true;
+        }
+      }
+
+      if (prefsChanged) {
+        this.persistDevicePreferences(prefs);
       }
     } catch (_) {}
   }
@@ -603,6 +793,14 @@ class PTDeviceLayout {
     this.columnWidthsUpdatedAt = snapshot.updatedAt;
     this.persistLocalColumnWidths(snapshot);
     this.queueDeviceColumnWidths(snapshot);
+
+    try {
+      const prefs = this.readDevicePreferences();
+      prefs.columnWidths = { ...widths };
+      prefs.columnWidthsUpdatedAt = snapshot.updatedAt;
+      prefs.columnWidthsUserModified = true;
+      this.persistDevicePreferences(prefs);
+    } catch (_) {}
   }
 
   queueDeviceColumnWidths(snapshot) {
@@ -657,7 +855,11 @@ class PTDeviceLayout {
   }
 
   applySavedColumnWidths() {
-    const saved = this.getSavedColumnWidths();
+    let prefs = null;
+    try { prefs = this.readDevicePreferences(); } catch (_) {}
+    const saved = (prefs?.columnWidths && Object.keys(prefs.columnWidths).length > 0)
+      ? { ...prefs.columnWidths }
+      : this.getSavedColumnWidths();
     if (!saved || typeof saved !== "object") return;
 
     // Pin all tracks from the first render, even before a device has any saved
@@ -683,17 +885,19 @@ class PTDeviceLayout {
     // 읽은 너비를 인메모리 캐시에 반영하여 flush 시 참조 가능
     this.deviceColumnWidths = { ...saved };
     if (!this.columnWidthsUpdatedAt) {
-      this.columnWidthsUpdatedAt = this.readDeviceColumnWidths().updatedAt || 0;
+      this.columnWidthsUpdatedAt = prefs?.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 1;
     }
-    // updatedAt가 0이면 유효한 값으로 보정하되, 부트스트랩 타임스탬프(1) 사용
-    // → restoreDeviceColumnWidths에서 IndexedDB의 실제 사용자 설정이 항상 이길 수 있도록
-    // (Date.now()를 사용하면 IndexedDB보다 최신으로 판정되어 기본값이 우선됨)
     if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = 1;
     // 측정한 너비를 즉시 localStorage/sessionStorage/Cookie에 저장하여
     // 앱 종료 후 다시 열어도 열 너비가 복원되도록 보장
     if (anyMeasured || Object.keys(saved).length > 0) {
       const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt };
       this.persistLocalColumnWidths(snapshot);
+      if (prefs) {
+        prefs.columnWidths = { ...saved };
+        prefs.columnWidthsUpdatedAt = this.columnWidthsUpdatedAt;
+        this.persistDevicePreferences(prefs);
+      }
     }
     this.syncMainColumnWidths();
   }

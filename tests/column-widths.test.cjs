@@ -300,4 +300,32 @@ test('empty disk snapshot does not overwrite valid local user column widths on a
   assert.equal(restarted.headers[1].style.width, '150px');
 });
 
+test('PT_DEVICE_UI_PREFS_V1 dedicated store persists and restores column widths and panel states', async () => {
+  const storage = new Map([
+    ['PT_DEVICE_UI_PREFS_V1', JSON.stringify({
+      version: 1,
+      columnWidths: { part: 310, name: 175 },
+      columnWidthsUserModified: true,
+      columnWidthsUpdatedAt: 200,
+      summaryClosed: true,
+      summaryClosedUserModified: true,
+      summaryClosedUpdatedAt: 200,
+      toolbarCollapsed: true,
+      toolbarCollapsedUserModified: true,
+      toolbarCollapsedUpdatedAt: 200
+    })]
+  ]);
+  const restarted = device(storage);
+  const prefs = restarted.app.readDevicePreferences();
+  assert.equal(prefs.columnWidths.part, 310);
+  assert.equal(prefs.columnWidths.name, 175);
+  assert.equal(prefs.summaryClosed, true);
+  assert.equal(prefs.toolbarCollapsed, true);
+
+  // 테이블 헤더에 적용되었는지 확인
+  assert.equal(restarted.app.getSavedColumnWidths().part, 310);
+  assert.equal(restarted.app.getSavedColumnWidths().name, 175);
+});
+
+
 

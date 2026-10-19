@@ -16,7 +16,10 @@
 
   <script>
     if ('serviceWorker' in navigator) {
+      var isReloading = false;
       function flushPanelStatesBeforeReload() {
+        if (isReloading) return;
+        isReloading = true;
         try {
           if (window.ptApp && typeof window.ptApp.flushDevicePanelStates === 'function') {
             window.ptApp.flushDevicePanelStates();
@@ -46,6 +49,25 @@
   <script>
     (function() {
       try {
+        // 0. 기기 전용 통합 UI 설정(PT_DEVICE_UI_PREFS_V1) 최우선 확인
+        var prefs = null;
+        try { prefs = JSON.parse(localStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
+        if (!prefs) {
+          try { prefs = JSON.parse(sessionStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
+        }
+        if (!prefs) {
+          try {
+            var cookieKey = 'PT_DEVICE_UI_PREFS_V1=';
+            var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
+            if (matches.length) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
+          } catch (_) {}
+        }
+        if (prefs && typeof prefs === 'object') {
+          if (prefs.summaryClosed) document.documentElement.classList.add('device-summary-closed');
+          if (prefs.toolbarCollapsed) document.documentElement.classList.add('device-toolbar-collapsed');
+          return;
+        }
+
         function readState(key, legacyClosed) {
           // 1. localStorage SNAPSHOT 최우선 확인
           try {
@@ -250,8 +272,23 @@
         <script>
           (function() {
             try {
-              var s = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
-              var widths = (s && s.widths && typeof s.widths === 'object' && Object.keys(s.widths).length) ? s.widths : null;
+              var prefs = null;
+              try { prefs = JSON.parse(localStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
+              if (!prefs) {
+                try { prefs = JSON.parse(sessionStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
+              }
+              if (!prefs) {
+                try {
+                  var cookieKey = 'PT_DEVICE_UI_PREFS_V1=';
+                  var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
+                  if (matches.length) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
+                } catch (_) {}
+              }
+              var widths = (prefs && prefs.columnWidths && typeof prefs.columnWidths === 'object' && Object.keys(prefs.columnWidths).length) ? prefs.columnWidths : null;
+              if (!widths) {
+                var s = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
+                widths = (s && s.widths && typeof s.widths === 'object' && Object.keys(s.widths).length) ? s.widths : null;
+              }
               if (!widths) {
                 var ss = JSON.parse(sessionStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
                 if (ss && ss.widths && typeof ss.widths === 'object' && Object.keys(ss.widths).length) widths = ss.widths;

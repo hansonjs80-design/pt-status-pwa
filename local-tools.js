@@ -200,6 +200,7 @@
     }
     async init() {
       await Promise.all([
+        this.app.restoreDevicePreferences?.(this.store.bind(this)),
         this.app.restoreDeviceColumnWidths(this.store.bind(this)),
         this.app.restoreDeviceSummaryState(this.store.bind(this)),
         this.app.restoreDeviceToolbarState(this.store.bind(this)),
