@@ -164,10 +164,11 @@ class PTDeviceLayout {
       };
     }
 
-    // 기존 개별 설정 키(스냅샷)가 있으면 통합 객체에 병합 (레거시 안전 마이그레이션)
+    // 레거시 개별 키 → 통합 객체 최초 1회 마이그레이션 (이미 통합 객체에 값이 있으면 절대 덮어쓰지 않음)
     const colSnap = this.readDeviceColumnWidths();
     if (colSnap?.widths && Object.keys(colSnap.widths).length > 0) {
-      if (!prefs.columnWidths || Object.keys(prefs.columnWidths).length === 0 || (colSnap.updatedAt || 0) >= (prefs.columnWidthsUpdatedAt || 0)) {
+      // prefs에 열 너비가 아직 없을 때만 레거시에서 가져옴 (역주행 방지)
+      if (!prefs.columnWidths || Object.keys(prefs.columnWidths).length === 0) {
         prefs.columnWidths = { ...colSnap.widths };
         prefs.columnWidthsUpdatedAt = colSnap.updatedAt || prefs.columnWidthsUpdatedAt || 0;
         if (colSnap.updatedAt > 1) prefs.columnWidthsUserModified = true;
@@ -176,7 +177,8 @@ class PTDeviceLayout {
 
     const sumSnap = this.readDeviceSummaryState();
     if (sumSnap && Number.isFinite(sumSnap.updatedAt)) {
-      if ((sumSnap.updatedAt || 0) >= (prefs.summaryClosedUpdatedAt || 0)) {
+      // prefs에 사용자 수정 기록이 없을 때만 레거시에서 가져옴
+      if (!prefs.summaryClosedUserModified) {
         prefs.summaryClosed = Boolean(sumSnap.closed);
         prefs.summaryClosedUpdatedAt = sumSnap.updatedAt;
         if (sumSnap.updatedAt > 1) prefs.summaryClosedUserModified = true;
@@ -185,7 +187,8 @@ class PTDeviceLayout {
 
     const toolSnap = this.readDeviceToolbarState();
     if (toolSnap && Number.isFinite(toolSnap.updatedAt)) {
-      if ((toolSnap.updatedAt || 0) >= (prefs.toolbarCollapsedUpdatedAt || 0)) {
+      // prefs에 사용자 수정 기록이 없을 때만 레거시에서 가져옴
+      if (!prefs.toolbarCollapsedUserModified) {
         prefs.toolbarCollapsed = Boolean(toolSnap.closed);
         prefs.toolbarCollapsedUpdatedAt = toolSnap.updatedAt;
         if (toolSnap.updatedAt > 1) prefs.toolbarCollapsedUserModified = true;
@@ -245,8 +248,8 @@ class PTDeviceLayout {
     }
 
     let changed = false;
-    // 1. 열 너비 복원: 디스크의 사용자 설정이 로컬보다 최신이거나 로컬이 기본값이면 디스크 우선
-    if (persisted.columnWidthsUserModified && (!local.columnWidthsUserModified || (persisted.columnWidthsUpdatedAt || 0) >= (local.columnWidthsUpdatedAt || 0))) {
+    // 1. 열 너비 복원: 세션 중 사용자가 이미 열 너비를 조정했으면 디스크 값으로 절대 덮어쓰지 않음
+    if (!this.columnWidthsChanged && persisted.columnWidthsUserModified && (!local.columnWidthsUserModified || (persisted.columnWidthsUpdatedAt || 0) >= (local.columnWidthsUpdatedAt || 0))) {
       if (persisted.columnWidths && Object.keys(persisted.columnWidths).length > 0) {
         local.columnWidths = { ...persisted.columnWidths };
         local.columnWidthsUpdatedAt = persisted.columnWidthsUpdatedAt;
@@ -256,26 +259,34 @@ class PTDeviceLayout {
         this.applySavedColumnWidths();
         changed = true;
       }
+    } else if (this.columnWidthsChanged && this.deviceColumnWidths) {
+      // 세션 중 변경된 값을 디스크에 반영
+      const snapshot = { widths: { ...this.deviceColumnWidths }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
+      this.queueDeviceColumnWidths(snapshot);
     }
 
-    // 2. 현황창 복원: 디스크의 사용자 설정 우선
-    if (persisted.summaryClosedUserModified && (!local.summaryClosedUserModified || (persisted.summaryClosedUpdatedAt || 0) >= (local.summaryClosedUpdatedAt || 0))) {
+    // 2. 현황창 복원: 세션 중 사용자가 이미 변경했으면 디스크 값으로 절대 덮어쓰지 않음
+    if (!this.summaryStateChanged && persisted.summaryClosedUserModified && (!local.summaryClosedUserModified || (persisted.summaryClosedUpdatedAt || 0) >= (local.summaryClosedUpdatedAt || 0))) {
       local.summaryClosed = Boolean(persisted.summaryClosed);
       local.summaryClosedUpdatedAt = persisted.summaryClosedUpdatedAt;
       local.summaryClosedUserModified = true;
       this.deviceSummaryState = { closed: local.summaryClosed, updatedAt: local.summaryClosedUpdatedAt };
       this.setSummaryClosed(local.summaryClosed, false);
       changed = true;
+    } else if (this.summaryStateChanged && this.deviceSummaryState) {
+      this.queueDeviceSummaryState(this.deviceSummaryState);
     }
 
-    // 3. 툴바 복원: 디스크의 사용자 설정 우선
-    if (persisted.toolbarCollapsedUserModified && (!local.toolbarCollapsedUserModified || (persisted.toolbarCollapsedUpdatedAt || 0) >= (local.toolbarCollapsedUpdatedAt || 0))) {
+    // 3. 툴바 복원: 세션 중 사용자가 이미 변경했으면 디스크 값으로 절대 덮어쓰지 않음
+    if (!this.toolbarStateChanged && persisted.toolbarCollapsedUserModified && (!local.toolbarCollapsedUserModified || (persisted.toolbarCollapsedUpdatedAt || 0) >= (local.toolbarCollapsedUpdatedAt || 0))) {
       local.toolbarCollapsed = Boolean(persisted.toolbarCollapsed);
       local.toolbarCollapsedUpdatedAt = persisted.toolbarCollapsedUpdatedAt;
       local.toolbarCollapsedUserModified = true;
       this.deviceToolbarState = { closed: local.toolbarCollapsed, updatedAt: local.toolbarCollapsedUpdatedAt };
       this.setToolbarActionsClosed(local.toolbarCollapsed, false);
       changed = true;
+    } else if (this.toolbarStateChanged && this.deviceToolbarState) {
+      this.queueDeviceToolbarState(this.deviceToolbarState);
     }
 
     if (changed) {
@@ -566,9 +577,9 @@ class PTDeviceLayout {
     let activeTh = null;
     let activeColKey = null;
     let activeResizer = null;
+    let activePointerId = -1;
     let startX = 0;
     let startWidth = 0;
-    let fixedRight = 0;
 
     // 기기별로 저장된 열 너비 초기 로딩 시 복원 적용
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
@@ -593,7 +604,8 @@ class PTDeviceLayout {
           saved[th.dataset.col] = width;
         }
       });
-      this.persistColumnWidths(saved);
+      // 드래그 시작 시에는 동기 저장 없이 메모리만 고정 (렉 방지)
+      this.deviceColumnWidths = { ...saved };
       this.hasFixedColumnWidths = true;
       this.syncMainColumnWidths();
       const sourceTh = resizerEl.closest("th");
@@ -605,7 +617,6 @@ class PTDeviceLayout {
       activeResizer = resizerEl;
       startX = clientX;
       startWidth = saved[activeColKey] || parseFloat(activeTh.style.width) || activeTh.getBoundingClientRect().width;
-      fixedRight = activeTh.getBoundingClientRect().right;
       resizerEl.classList.add("resizing");
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
@@ -618,9 +629,9 @@ class PTDeviceLayout {
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
       activeTh.style.maxWidth = `${newWidth}px`;
-      this.saveColumnWidth(activeColKey, newWidth);
-      // Update colgroup and table total width so every column (including del)
-      // visually resizes during drag instead of being locked by stale col tracks.
+      // 드래그 중에는 DOM + 메모리만 60fps 반영, 스토리지 쓰기 없음 (렉 방지)
+      if (this.deviceColumnWidths) this.deviceColumnWidths[activeColKey] = newWidth;
+      this.columnWidthsChanged = true;
       this.syncMainColumnWidths();
       this.syncCrossDateColWidths();
     };
@@ -629,66 +640,58 @@ class PTDeviceLayout {
       if (activeTh) {
         const key = activeColKey;
         const finalWidth = parseFloat(activeTh.style.width) || activeTh.offsetWidth;
+        // 포인터 캡처 해제
+        if (activeResizer && activePointerId >= 0) {
+          try { activeResizer.releasePointerCapture(activePointerId); } catch (_) {}
+        }
         activeResizer?.classList.remove?.("resizing");
         activeResizer = null;
         activeTh = null;
         activeColKey = null;
+        activePointerId = -1;
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        // Release pointer state before persistence, even when storage fails.
+        // 드래그 종료 시점에 최종 너비를 모든 저장소에 즉시 확정 저장
         if (key) this.saveColumnWidth(key, finalWidth);
       }
     };
     this.endColumnResize = endResize;
 
-    // 마우스 이벤트 리스너
-    document.addEventListener("mousedown", (e) => {
+    // 포인터 이벤트 (mouse + touch + pen 통합, setPointerCapture로 Mac/Windows 안정화)
+    document.addEventListener("pointerdown", (e) => {
       if (e.target.classList.contains("col-resizer")) {
         e.preventDefault();
         e.stopPropagation();
-        startResize(e.target, e.pageX);
+        activePointerId = e.pointerId;
+        // setPointerCapture: 마우스가 리사이저 밖으로 빠르게 벗어나도 pointermove/pointerup 수신 보장
+        try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+        startResize(e.target, e.clientX);
       }
     });
 
-    document.addEventListener("mousemove", (e) => {
+    document.addEventListener("pointermove", (e) => {
       if (activeTh) {
-        if (e.buttons === 0) { endResize(); return; }
-        doResize(e.pageX);
+        e.preventDefault();
+        doResize(e.clientX);
       }
     });
 
-    document.addEventListener("mouseup", () => {
+    document.addEventListener("pointerup", (e) => {
+      if (activeTh) {
+        endResize();
+      }
+    });
+
+    document.addEventListener("pointercancel", () => {
       endResize();
     });
 
-    // 태블릿/모바일 터치 이벤트 리스너
+    // 터치 멀티터치 보호 (2손가락으로 전환 시 리사이즈 취소)
     document.addEventListener("touchstart", (e) => {
-      if (e.touches.length > 1) {
+      if (e.touches.length > 1 && activeTh) {
         endResize();
-        return;
       }
-      if (e.target.classList.contains("col-resizer") && e.touches.length === 1) {
-        e.preventDefault();
-        e.stopPropagation();
-        startResize(e.target, e.touches[0].pageX);
-      }
-    }, { passive: false });
-
-    document.addEventListener("touchmove", (e) => {
-      if (e.touches.length > 1) {
-        endResize();
-        return;
-      }
-      if (activeTh && e.touches.length === 1) {
-        e.preventDefault();
-        doResize(e.touches[0].pageX);
-      }
-    }, { passive: false });
-
-    document.addEventListener("touchend", () => {
-      endResize();
-    });
-    document.addEventListener("touchcancel", endResize);
+    }, { passive: true });
 
     // 리사이저 더블클릭 시 해당 열 기본 너비로 복원 기능
     document.addEventListener("dblclick", (e) => {
@@ -705,9 +708,10 @@ class PTDeviceLayout {
   }
 
   saveColumnWidth(colKey, width) {
-    const saved = this.getSavedColumnWidths();
-    saved[colKey] = width;
-    this.persistColumnWidths(saved);
+    if (!this.deviceColumnWidths) this.deviceColumnWidths = {};
+    this.deviceColumnWidths[colKey] = width;
+    // 모든 저장소에 즉시 확정 저장 (endResize에서 호출)
+    this.persistColumnWidths({ ...this.deviceColumnWidths });
   }
 
   getSavedColumnWidths() {
@@ -857,9 +861,14 @@ class PTDeviceLayout {
   applySavedColumnWidths() {
     let prefs = null;
     try { prefs = this.readDevicePreferences(); } catch (_) {}
-    const saved = (prefs?.columnWidths && Object.keys(prefs.columnWidths).length > 0)
-      ? { ...prefs.columnWidths }
-      : this.getSavedColumnWidths();
+    // restoreDeviceColumnWidths 등에서 이미 deviceColumnWidths를 설정한 경우
+    // (예: IndexedDB에서 복원) localStorage보다 인메모리 값을 우선 사용
+    const inMemoryValid = this.deviceColumnWidths && Object.keys(this.deviceColumnWidths).length > 0;
+    const saved = inMemoryValid
+      ? { ...this.deviceColumnWidths }
+      : (prefs?.columnWidths && Object.keys(prefs.columnWidths).length > 0)
+        ? { ...prefs.columnWidths }
+        : this.getSavedColumnWidths();
     if (!saved || typeof saved !== "object") return;
 
     // Pin all tracks from the first render, even before a device has any saved
