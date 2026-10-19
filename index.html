@@ -6,13 +6,13 @@
   <title>PT 일일현황</title>
 
   <!-- PWA Settings -->
-  <link rel="manifest" href="manifest.json?v=444">
+  <link rel="manifest" href="manifest.json?v=445">
   <meta name="theme-color" content="#107C41">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PT 일일현황">
-  <link rel="apple-touch-icon" href="icon-192.png?v=444">
-  <link rel="icon" type="image/svg+xml" href="icon.svg?v=444">
+  <link rel="apple-touch-icon" href="icon-192.png?v=445">
+  <link rel="icon" type="image/svg+xml" href="icon.svg?v=445">
 
   <script>
     if ('serviceWorker' in navigator) {
@@ -91,49 +91,6 @@
         if (summary.closed) document.documentElement.classList.add('device-summary-closed');
         var toolbar = readState('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', 'true');
         if (toolbar.closed) document.documentElement.classList.add('device-toolbar-collapsed');
-
-        // 기기별 열너비 인라인 즉시 복원 (앱 로드/새로고침 시 깜빡임 없이 유지)
-        function readWidthsState(key) {
-          try {
-            var s = JSON.parse(localStorage.getItem(key + '_SNAPSHOT') || 'null');
-            if (s && s.widths && typeof s.widths === 'object' && !Array.isArray(s.widths)) return s.widths;
-          } catch (_) {}
-          try {
-            var ss = JSON.parse(sessionStorage.getItem(key + '_SNAPSHOT') || 'null');
-            if (ss && ss.widths && typeof ss.widths === 'object' && !Array.isArray(ss.widths)) return ss.widths;
-          } catch (_) {}
-          try {
-            var cookieKey = key + '_STATE=';
-            var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
-            for (var i = 0; i < matches.length; i++) {
-              try {
-                var parsed = JSON.parse(decodeURIComponent(matches[i].slice(cookieKey.length)));
-                if (parsed && parsed.widths && typeof parsed.widths === 'object') return parsed.widths;
-              } catch (_) {}
-            }
-          } catch (_) {}
-          try {
-            var legacy = JSON.parse(localStorage.getItem(key) || 'null');
-            if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) return legacy;
-          } catch (_) {}
-          return null;
-        }
-        var savedWidths = readWidthsState('PT_APP_COL_WIDTHS_STORAGE_V1');
-        if (savedWidths) {
-          var css = '';
-          for (var colKey in savedWidths) {
-            var w = savedWidths[colKey];
-            if (typeof w === 'number' && w > 0) {
-              css += '.col-headers-row th[data-col="' + colKey + '"], .business-headers-row th[data-col="' + colKey + '"] { width: ' + w + 'px !important; min-width: ' + w + 'px !important; max-width: ' + w + 'px !important; }\n';
-            }
-          }
-          if (css) {
-            var styleEl = document.createElement('style');
-            styleEl.id = 'deviceColWidthsStyle';
-            styleEl.textContent = css;
-            document.head.appendChild(styleEl);
-          }
-        }
       } catch (_) {}
     })();
   </script>

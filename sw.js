@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v444';
+const CACHE_NAME = 'pt-status-pwa-v445';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -47,13 +47,13 @@ const ASSETS_TO_CACHE = [
   './app.js',
   './local-tools.js',
   './manifest.json',
-  './manifest.json?v=444',
-  './icon.svg?v=444',
-  './icon-32.png?v=444',
-  './icon-48.png?v=444',
-  './icon-192.png?v=444',
-  './icon-256.png?v=444',
-  './icon-512.png?v=444',
+  './manifest.json?v=445',
+  './icon.svg?v=445',
+  './icon-32.png?v=445',
+  './icon-48.png?v=445',
+  './icon-192.png?v=445',
+  './icon-256.png?v=445',
+  './icon-512.png?v=445',
   './icon.svg',
   './icon-32.png',
   './icon-48.png',
@@ -95,6 +95,17 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const reqUrl = event.request.url || '';
+
+  // version.json은 항상 네트워크에서 가져와 실시간 새 버전 감지 지원
+  if (reqUrl.includes('version.json')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => new Response(JSON.stringify({ version: 'unknown' }), {
+        headers: { 'Content-Type': 'application/json' }
+      }))
+    );
+    return;
+  }
+
   const isManifestOrIcon = reqUrl.includes('manifest.json') || reqUrl.includes('/icon');
 
   if (isManifestOrIcon) {

@@ -95,3 +95,49 @@ test('reload navigation requests fetch from network to pick up new releases upon
   assert.equal(result, networkHTML);
 });
 
+test('version.json requests always fetch from network without cache to detect updates in real-time', async () => {
+  let fetchedReq = null;
+  const versionResponse = { status: 200, json: async () => ({ version: 'v445' }) };
+  const handlers = worker({
+    caches: { match: async () => assert.fail('must not use cache for version.json') },
+    fetch: async (req, opts) => { fetchedReq = { req, opts }; return versionResponse; }
+  });
+  let response;
+  handlers.fetch({ request: { method: 'GET', url: 'https://example.test/version.json?_t=123' }, respondWith(value) { response = value; } });
+  const result = await response;
+  assert.equal(result, versionResponse);
+  assert.equal(fetchedReq.opts?.cache, 'no-store');
+});
+
+test('PTApp.prototype.checkForUpdate detects newer server version from version.json and dispatches pt-app-update-available', async () => {
+  let dispatched = null;
+  const context = vm.createContext({
+    window: {
+      addEventListener() {},
+      dispatchEvent(e) { dispatched = e; }
+    },
+    document: { addEventListener() {} },
+    navigator: {},
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({ version: 'v445' })
+    }),
+    Date,
+    CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } }
+  });
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  app.appVersion = 'v441';
+  app.isUpdateAvailable = false;
+
+  const hasUpdate = await app.checkForUpdate();
+  assert.equal(hasUpdate, true);
+  assert.equal(app.isUpdateAvailable, true);
+  assert.equal(app.latestServerVersion, 'v445');
+  assert.ok(dispatched);
+  assert.equal(dispatched.type, 'pt-app-update-available');
+  assert.equal(dispatched.detail.version, 'v445');
+});
+
+
+

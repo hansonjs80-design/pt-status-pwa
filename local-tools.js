@@ -118,11 +118,79 @@
         <circle cx="12" cy="12" r="3"/>
       </svg>`;
       this.button.onclick = () => this.open('backup');
+      const updateDot = document.createElement('span');
+      updateDot.className = 'device-settings-update-dot';
+      updateDot.hidden = true;
+      updateDot.title = '새 버전 업데이트 준비됨';
+      this.button.append(updateDot);
+      this.updateDot = updateDot;
       document.querySelector('.toolbar-actions-panel-inner')?.append(this.button);
       this.statusElement = document.createElement('small'); this.statusElement.textContent = '이 컴퓨터의 저장 설정';
       footer.append(this.statusElement);
       document.querySelector('.excel-sidebar')?.append(footer);
+      this.initUpdateNotifier();
       this.init().catch(error => this.report(error.message));
+    }
+    initUpdateNotifier() {
+      const applyUpdateAction = async (btn) => {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '적용 중...';
+        }
+        try {
+          if (this.app && typeof this.app.applyUpdate === 'function') {
+            await this.app.applyUpdate();
+          } else if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        } catch (_) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '지금 업데이트';
+          }
+        }
+      };
+
+      const handleUpdateAvailable = (event) => {
+        const newVer = event?.detail?.version || this.app?.latestServerVersion || '';
+        // 1. 툴바 설정 버튼에 알림 닷 표시
+        if (this.updateDot) this.updateDot.hidden = false;
+        if (this.button) {
+          this.button.classList.add('has-update');
+          this.button.title = `이 컴퓨터 설정 (새 버전 ${newVer || ''} 준비됨)`;
+        }
+
+        // 2. 상단 헤더 바(날짜 바 / 환자 수 버튼 옆)에 원클릭 업데이트 배너 버튼 노출
+        let headerNotice = document.getElementById('btnHeaderUpdateNotice');
+        if (!headerNotice) {
+          headerNotice = document.createElement('button');
+          headerNotice.type = 'button';
+          headerNotice.id = 'btnHeaderUpdateNotice';
+          headerNotice.className = 'header-update-notice-btn';
+          headerNotice.onclick = () => applyUpdateAction(headerNotice);
+
+          // 날짜 컨트롤 바 영역 또는 테이블 헤더 시계 옆에 삽입
+          const dateBar = document.querySelector('.date-controls-bar');
+          const countBtn = document.getElementById('btnHeaderSummaryCount');
+          if (countBtn && countBtn.parentNode) {
+            countBtn.parentNode.insertBefore(headerNotice, countBtn.nextSibling);
+          } else if (dateBar) {
+            dateBar.append(headerNotice);
+          } else {
+            document.querySelector('.toolbar-actions-panel-inner')?.prepend(headerNotice);
+          }
+        }
+        headerNotice.hidden = false;
+        headerNotice.innerHTML = `🔄 새 버전${newVer ? ' ' + newVer : ''} 업데이트`;
+        headerNotice.title = '클릭하여 최신 기능으로 지금 바로 새로고침합니다.';
+      };
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('pt-app-update-available', handleUpdateAvailable);
+        if (this.app?.isUpdateAvailable) {
+          handleUpdateAvailable();
+        }
+      }
     }
     async db() {
       return this.app.openLocalDatabase('PT_DEVICE_BACKUPS', 'files');
@@ -545,13 +613,14 @@
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v441';
+      const currentVersion = this.app?.appVersion || 'v445';
+      const latestVer = this.app?.latestServerVersion || '';
       dialog.innerHTML = `
         <header>
           <div class="device-settings-title-group">
             <h2>이 컴퓨터 설정</h2>
             <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
-            <button type="button" class="device-settings-update-badge" data-apply-update hidden title="클릭하여 지금 새로고침">🔄 업데이트 필요 (새로고침)</button>
+            <button type="button" class="device-settings-update-badge" data-apply-update hidden title="클릭하여 지금 새로고침">🔄 새 버전${latestVer ? ' ' + latestVer : ''} 업데이트 필요 (새로고침)</button>
           </div>
           <button data-close class="device-settings-close-btn" aria-label="닫기">×</button>
         </header>
@@ -559,8 +628,8 @@
           <div class="device-settings-update-info">
             <span class="device-settings-update-icon">🔔</span>
             <div class="device-settings-update-text">
-              <strong>새로운 업데이트가 준비되었습니다!</strong>
-              <span>최신 기능을 반영하려면 지금 새로고침하거나 앱을 다시 실행해 주세요.</span>
+              <strong>새로운 업데이트(${latestVer || '최신'})가 준비되었습니다!</strong>
+              <span>최신 기능과 버그 수정을 반영하려면 지금 새로고침을 눌러주세요.</span>
             </div>
           </div>
           <button type="button" class="device-settings-update-btn" data-apply-update>지금 새로고침</button>
@@ -713,9 +782,15 @@
       // 업데이트 알림 및 새로고침 동작 바인딩
       const updateBanner = dialog.querySelector('[data-update-banner]');
       const updateBadge = dialog.querySelector('.device-settings-update-badge');
-      const setUpdateNoticeVisible = (visible) => {
+      const setUpdateNoticeVisible = (visible, ver) => {
         if (updateBanner) updateBanner.hidden = !visible;
         if (updateBadge) updateBadge.hidden = !visible;
+        const targetVer = ver || this.app?.latestServerVersion;
+        if (visible && targetVer) {
+          if (updateBadge) updateBadge.textContent = `🔄 새 버전 ${targetVer} 업데이트 필요 (새로고침)`;
+          const strong = updateBanner?.querySelector('strong');
+          if (strong) strong.textContent = `새로운 업데이트(${targetVer})가 준비되었습니다!`;
+        }
       };
 
       dialog.querySelectorAll('[data-apply-update]').forEach(btn => {
@@ -737,12 +812,12 @@
       });
 
       if (this.app?.isUpdateAvailable) {
-        setUpdateNoticeVisible(true);
+        setUpdateNoticeVisible(true, this.app.latestServerVersion);
       }
 
       if (this.app && typeof this.app.checkForUpdate === 'function') {
         this.app.checkForUpdate().then(hasUpdate => {
-          setUpdateNoticeVisible(Boolean(hasUpdate));
+          setUpdateNoticeVisible(Boolean(hasUpdate), this.app.latestServerVersion);
         }).catch(() => {});
       } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistration().then(reg => {
@@ -758,7 +833,7 @@
         }).catch(() => {});
       }
 
-      const onUpdateFound = () => setUpdateNoticeVisible(true);
+      const onUpdateFound = (e) => setUpdateNoticeVisible(true, e?.detail?.version || this.app?.latestServerVersion);
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('pt-app-update-available', onUpdateFound, { once: true });
         dialog.addEventListener('close', () => {

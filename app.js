@@ -139,10 +139,11 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v441";
+  static VERSION = "v445";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
+    this.latestServerVersion = null;
     this.isUpdateAvailable = false;
     this.swRegistration = null;
     this.initDevicePlatformAppearance();
@@ -1141,30 +1142,53 @@ class PTApp {
   }
 
   async checkForUpdate() {
-    if (!("serviceWorker" in navigator)) return false;
+    let updateFound = false;
+    let foundVersion = null;
+
+    // 1. 서버의 version.json을 캐시 우회(no-store)로 직접 조회하여 최신 버전 확인
     try {
-      const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
-      if (!reg) {
-        this.isUpdateAvailable = false;
-        return false;
+      if (typeof fetch === "function") {
+        const res = await fetch("./version.json?_t=" + Date.now(), { cache: "no-store" });
+        if (res.ok) {
+          const info = await res.json();
+          if (info?.version && info.version !== this.appVersion) {
+            updateFound = true;
+            foundVersion = info.version;
+            this.latestServerVersion = info.version;
+          }
+        }
       }
-      this.swRegistration = reg;
-      if (reg.waiting) {
-        this.isUpdateAvailable = true;
-        window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
-        return true;
+    } catch (_) {}
+
+    // 2. 서비스 워커 업데이트 확인
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = this.swRegistration || await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          this.swRegistration = reg;
+          if (reg.waiting || (reg.installing && reg.installing.state === "installed")) {
+            updateFound = true;
+          } else {
+            await reg.update().catch(() => {});
+            if (reg.waiting || (reg.installing && reg.installing.state === "installed")) {
+              updateFound = true;
+            }
+          }
+        }
       }
-      await reg.update().catch(() => {});
-      if (reg.waiting || (reg.installing && reg.installing.state === "installed")) {
-        this.isUpdateAvailable = true;
-        window.dispatchEvent(new CustomEvent("pt-app-update-available", { detail: { waiting: true } }));
-        return true;
+    } catch (_) {}
+
+    if (updateFound) {
+      this.isUpdateAvailable = true;
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("pt-app-update-available", {
+          detail: { waiting: true, version: foundVersion || this.latestServerVersion, currentVersion: this.appVersion }
+        }));
       }
-      this.isUpdateAvailable = false;
-      return false;
-    } catch (_) {
-      return false;
+      return true;
     }
+
+    return Boolean(this.isUpdateAvailable);
   }
 
   async applyUpdate() {
@@ -1276,15 +1300,20 @@ class PTApp {
             });
           });
 
-          checkUpdate(reg);
-          setInterval(() => checkUpdate(reg), 60 * 1000);
+          const triggerUpdateCheck = () => {
+            checkUpdate(reg);
+            this.checkForUpdate().catch(() => {});
+          };
+
+          triggerUpdateCheck();
+          setInterval(triggerUpdateCheck, 30 * 1000);
 
           document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible") checkUpdate(reg);
+            if (document.visibilityState === "visible") triggerUpdateCheck();
           });
-          window.addEventListener("focus", () => checkUpdate(reg));
-          window.addEventListener("pageshow", () => checkUpdate(reg));
-          window.addEventListener("online", () => checkUpdate(reg));
+          window.addEventListener("focus", triggerUpdateCheck);
+          window.addEventListener("pageshow", triggerUpdateCheck);
+          window.addEventListener("online", triggerUpdateCheck);
         })
         .catch((err) => console.log("SW Registration Failed", err));
     };

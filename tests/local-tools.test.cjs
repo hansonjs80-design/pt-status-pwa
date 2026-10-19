@@ -340,3 +340,43 @@ test('device settings shows update banner and triggers applyUpdate when update i
  applyButtons[0].onclick();
  assert.equal(updateApplied, 1, 'applyUpdate should be called');
 });
+
+test('initUpdateNotifier listens for pt-app-update-available and displays toolbar dot and header notice button', () => {
+ const listeners = {};
+ const fakeDoc = {
+   createElement(tag) {
+     return {
+       tagName: tag.toUpperCase(),
+       hidden: true,
+       classList: { add(cls) { this[cls] = true; } },
+       setAttribute() {},
+       append() {}
+     };
+   },
+   getElementById() { return null; },
+   querySelector(sel) {
+     if (sel === '.toolbar-actions-panel-inner') return { prepend() {}, append() {} };
+     if (sel === '.date-controls-bar') return { append() {} };
+     return null;
+   }
+ };
+ const window = {
+   addEventListener(evt, fn) { listeners[evt] = fn; },
+   dispatchEvent(e) { if (listeners[e.type]) listeners[e.type](e); }
+ };
+ vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+   window,
+   document: fakeDoc,
+   Blob, TextEncoder, Date, localStorage: { getItem() { return null; } }, setTimeout
+ });
+ const { LocalTools } = window.PTLocalTools;
+ const l = Object.create(LocalTools.prototype);
+ l.updateDot = { hidden: true };
+ l.button = { classList: { add() {} }, title: '' };
+ l.app = { latestServerVersion: 'v445', isUpdateAvailable: false };
+ l.initUpdateNotifier();
+
+ // 업데이트 이벤트 발생 시 알림 닷이 노출되어야 함
+ listeners['pt-app-update-available']({ type: 'pt-app-update-available', detail: { version: 'v445' } });
+ assert.equal(l.updateDot.hidden, false, 'update dot should become visible');
+});
