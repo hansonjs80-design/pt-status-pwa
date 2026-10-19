@@ -324,8 +324,9 @@ class PTDeviceLayout {
 
   initToolbarActionsToggle() {
     this.deviceToolbarState = this.readDeviceToolbarState();
-    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시되므로 유효한 타임스탬프 보장
-    if (!this.deviceToolbarState.updatedAt) this.deviceToolbarState.updatedAt = Date.now();
+    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시될 수 있으므로 유효한 값 보장
+    // 부트스트랩 타임스탬프(1)를 사용하여 나중에 IndexedDB의 실제 사용자 설정이 이길 수 있도록 함
+    if (!this.deviceToolbarState.updatedAt) this.deviceToolbarState.updatedAt = 1;
     this.setToolbarActionsClosed(this.deviceToolbarState.closed, false);
     // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
     this.persistLocalToolbarState(this.deviceToolbarState);
@@ -343,8 +344,9 @@ class PTDeviceLayout {
 
   initSummaryToggle() {
     this.deviceSummaryState = this.readDeviceSummaryState();
-    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시되므로 유효한 타임스탬프 보장
-    if (!this.deviceSummaryState.updatedAt) this.deviceSummaryState.updatedAt = Date.now();
+    // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시될 수 있으므로 유효한 값 보장
+    // 부트스트랩 타임스탬프(1)를 사용하여 나중에 IndexedDB의 실제 사용자 설정이 이길 수 있도록 함
+    if (!this.deviceSummaryState.updatedAt) this.deviceSummaryState.updatedAt = 1;
     this.setSummaryClosed(this.deviceSummaryState.closed, false);
     // 읽은 상태를 즉시 모든 저장소에 확인 저장하여 앱 재시작 시 유실 방지
     this.persistLocalSummaryState(this.deviceSummaryState);
@@ -683,8 +685,10 @@ class PTDeviceLayout {
     if (!this.columnWidthsUpdatedAt) {
       this.columnWidthsUpdatedAt = this.readDeviceColumnWidths().updatedAt || 0;
     }
-    // updatedAt가 0이면 restoreDeviceColumnWidths에서 빈 IndexedDB에 밀릴 수 있으므로 보정
-    if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = Date.now();
+    // updatedAt가 0이면 유효한 값으로 보정하되, 부트스트랩 타임스탬프(1) 사용
+    // → restoreDeviceColumnWidths에서 IndexedDB의 실제 사용자 설정이 항상 이길 수 있도록
+    // (Date.now()를 사용하면 IndexedDB보다 최신으로 판정되어 기본값이 우선됨)
+    if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = 1;
     // 측정한 너비를 즉시 localStorage/sessionStorage/Cookie에 저장하여
     // 앱 종료 후 다시 열어도 열 너비가 복원되도록 보장
     if (anyMeasured || Object.keys(saved).length > 0) {
