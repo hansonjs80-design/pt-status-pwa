@@ -389,6 +389,8 @@ class PTSheetActions {
   }
 
   clearSelection() {
+    // History coordinates refer to their source dates, never today's row numbers.
+    if (this.crossDateSelection) return this.clearHistoryNotes();
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const rows = this.getCurrentRows();
     const previousPatients = this.getPatientIdentitySnapshot(rows);

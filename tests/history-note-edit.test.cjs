@@ -280,3 +280,57 @@ test('only a single special-note Enter starts editing; other history Enter retai
   app.isCrossDateRowSelected=true;app.handleHistoryApplyShortcut(enter());assert.equal(applies,1);
   app.isCrossDateRowSelected=false;app.crossDateSelection.maxRow=1;app.handleHistoryApplyShortcut(enter());assert.equal(applies,2);
 });
+
+test('clearing multiple historical notes saves each source date, retains cell styles and daily records', async () => {
+  const {app,context,queued}=formattingFixture();
+  context.document={activeElement:{blur(){}}};
+  app.elSheetContainer={focus(){context.document.activeElement=this;}};
+  app.cloudSearchHistory['2026-09-01'][0]._textStyles={specialNote:{backgroundColor:'#ffff00',fontWeight:700}};
+  app.crossDateResults[0]._textStyles=app.cloudSearchHistory['2026-09-01'][0]._textStyles;
+  app.crossDateResults[0]._richText={specialNote:{text:'이전 메모',colors:['red']}};
+  const today=JSON.stringify(app.getCurrentRows());
+  app.clearSelection();
+  await Promise.resolve();
+  assert.equal(app.dataStore['2026-09-01'][0].specialNote,'');
+  assert.equal(app.dataStore['2026-10-19'][0].specialNote,'');
+  assert.equal(app.dataStore['2026-09-01'][1].specialNote,'유지');
+  assert.equal(app.dataStore['2026-09-01'][0].memo,'원본');
+  assert.equal(app.dataStore['2026-09-01'][0]._textStyles.specialNote.backgroundColor,'#ffff00');
+  assert.equal(app.dataStore['2026-09-01'][0]._richText.specialNote.text,'');
+  assert.equal(app.dataStore['2026-09-01'][0]._richText.specialNote.colors.length,0);
+  assert.equal(JSON.stringify(app.getCurrentRows()),today);
+  assert.equal(context.document.activeElement,app.elSheetContainer);
+  assert.deepEqual(queued,['2026-09-01','2026-10-19']);
+});
+
+test('historical clear ignores gaps in sparse selections and rejects non-note ranges', () => {
+  const {app,context}=formattingFixture();
+  context.document={activeElement:null};
+  app.selectedCellKind='history';app.selectedCellSet=new Set(['1:9']);
+  app.clearSelection();
+  assert.equal(app.dataStore['2026-09-01'],undefined);
+  assert.equal(app.dataStore['2026-10-19'][0].specialNote,'');
+  app.crossDateSelection.minCol=8;
+  app.clearSelection();
+  assert.equal(app.dataStore['2026-09-01'],undefined);
+});
+
+for (const action of ['deleteSelectedText','pasteIntoTextEditor','applyQuickTextEdit']) {
+  test(`historical context ${action} edits its source draft without accessing today's rows`,async()=>{
+    const {app,edit,context}=fixture();
+    const today=JSON.stringify(app.dataStore[app.currentDate]);
+    edit.row.specialNote='ABCDEF';
+    const editor={value:'ABCDEF',historyEdit:edit,isConnected:action!=='applyQuickTextEdit',style:{},
+      closest:()=>null,focus(){},setSelectionRange(){},
+      dispatchEvent(){app.updateEditorTextColors(edit.row,'specialNote',this.value);edit.row.specialNote=this.value;edit.save(false);}};
+    app.textEditorState={input:editor,historyEdit:edit,rowIdx:0,colKey:'specialNote',start:1,end:3,selectedText:'BC'};
+    context.Event=class{};
+    context.navigator={clipboard:{readText:async()=> 'X'}};
+    context.document={getElementById:id=>id==='quickTextInput'?{value:'X'}:null};
+    app.getCurrentRows=()=>{throw Error('must not access current-date rows');};
+    app.captureHistory=()=>{throw Error('must not capture current-date undo');};
+    await app[action]();
+    assert.equal(app.dataStore['2026-09-01'][0].specialNote,action==='deleteSelectedText'?'ADEF':'AXDEF');
+    assert.equal(JSON.stringify(app.dataStore[app.currentDate]),today);
+  });
+}

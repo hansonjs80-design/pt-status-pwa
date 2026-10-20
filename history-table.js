@@ -103,6 +103,20 @@ class PTHistoryTable {
     } else edit.timer = setTimeout(persist, 350);
   }
 
+  clearHistoryNotes() {
+    if (!this.getHistoryNoteRange() || this._recordsRestorePending || this._recordRestoreError) return;
+    document.activeElement?.blur?.();
+    const targets = this.getHistoryNoteFormattingTargets({ partial: false });
+    for (const {row, key} of targets) {
+      this.updateEditorTextColors(row, key, "");
+      row[key] = "";
+    }
+    this.textColorSelection = null;
+    this.saveHistoryNoteEdits(targets.map(target => target.edit));
+    this.elSheetContainer?.focus?.({ preventScroll: true });
+    this.showSaveIndicator("내용 지우기 완료");
+  }
+
   getHistoryNoteRange() {
     const range = this.crossDateSelection;
     return range && !this.isCrossDateRowSelected && range.minCol === 9 && range.maxCol === 9 ? { ...range } : null;

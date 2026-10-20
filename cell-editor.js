@@ -793,9 +793,7 @@ class PTCellEditor {
       if (input.classList.contains("is-armed")) {
         if (historyEdit && ["Backspace", "Delete"].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault(); e.stopPropagation();
-          this.activateNativeEditor(input);
-          input.value = "";
-          input.dispatchEvent(new Event("input", { bubbles: true }));
+          this.clearHistoryNotes();
           return;
         }
         if (historyEdit && (e.key === "Enter" || e.key === "F2") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {

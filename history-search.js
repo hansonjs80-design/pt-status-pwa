@@ -266,8 +266,15 @@ class PTHistorySearch {
 
   restoreHistorySearchSelection(snapshot) {
     if (!snapshot) return;
-    const find = identity => this.crossDateResults?.findIndex(row =>
-      JSON.stringify([row._sourceDate, row._sourceRowIdx]) === identity) ?? -1;
+    const find = identity => {
+      const identify = row => JSON.stringify([row._sourceDate, row._sourceRowIdx]);
+      const exact = this.crossDateResults?.findIndex(row => identify(row) === identity) ?? -1;
+      if (exact >= 0 || this.isCrossDateExpanded) return exact;
+      // A clear/edit can merge duplicate records into a different representative.
+      // Keep the border on that displayed representative after regrouping.
+      const source = this.allCrossDateMatchedRows?.find(row => identify(row) === identity);
+      return source ? this.crossDateResults.findIndex(row => this.getHistoryDedupeKey(row) === this.getHistoryDedupeKey(source)) : -1;
+    };
     const startRow = find(snapshot.start), endRow = find(snapshot.end);
     if (startRow < 0 || endRow < 0) {
       if (snapshot.rowSelected && snapshot.wasLastRow && this.crossDateResults?.length) {

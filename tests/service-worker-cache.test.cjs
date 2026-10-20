@@ -46,7 +46,7 @@ test('navigation falls back to installed bundled HTML when offline or network fa
   assert.equal(await response, installedHTML);
 });
 
-test('navigation online fetches fresh HTML from network to apply updates upon refresh', async () => {
+test('navigation without an installed document falls back to the network', async () => {
   const freshHTML = { status: 200, clone() { return this; } };
   let putCalled = false;
   const handlers = worker({
@@ -56,7 +56,7 @@ test('navigation online fetches fresh HTML from network to apply updates upon re
   let response;
   handlers.fetch({ request: { method: 'GET', mode: 'navigate', url: 'https://example.test/' }, respondWith(value) { response = value; } });
   assert.equal(await response, freshHTML);
-  assert.equal(putCalled, true);
+  assert.equal(putCalled, false);
 });
 
 test('service worker handles SKIP_WAITING message from client', () => {
@@ -82,17 +82,19 @@ test('manifest and icon requests use network first to pick up icon changes witho
   assert.equal(fetchedUrl.url, 'https://example.test/manifest.json?v=434');
 });
 
-test('reload navigation requests fetch from network to pick up new releases upon refresh', async () => {
-  let fetchedUrl = null;
-  const networkHTML = { status: 200, clone() { return this; } };
+test('reload keeps the installed HTML and scripts together while an update waits', async () => {
+  const installedHTML = { release: 'installed' };
   const handlers = worker({
-    caches: { open: async () => ({ put: async () => {} }), match: async () => assert.fail('should not use cache first for reload') },
-    fetch: async req => { fetchedUrl = req; return networkHTML; }
+    caches: { match: async (request, options) => {
+      assert.equal(request, './index.html');
+      assert.match(options.cacheName, /^pt-status-pwa-v\d+$/);
+      return installedHTML;
+    } },
+    fetch: async () => assert.fail('must not mix new HTML with installed scripts'),
   });
   let response;
   handlers.fetch({ request: { method: 'GET', mode: 'navigate', cache: 'reload', url: 'https://example.test/?_reload=123' }, respondWith(value) { response = value; } });
-  const result = await response;
-  assert.equal(result, networkHTML);
+  assert.equal(await response, installedHTML);
 });
 
 test('version.json requests always fetch from network without cache to detect updates in real-time', async () => {
@@ -114,7 +116,7 @@ test('PTApp.prototype.checkForUpdate detects newer server version from version.j
   const context = vm.createContext({
     window: {
       addEventListener() {},
-      dispatchEvent(e) { dispatched = e; }
+      dispatchEvent(e) { if (e.type === "pt-app-update-available") dispatched = e; }
     },
     document: { addEventListener() {} },
     navigator: {},
@@ -122,7 +124,7 @@ test('PTApp.prototype.checkForUpdate detects newer server version from version.j
       ok: true,
       json: async () => ({ version: 'v446' })
     }),
-    Date,
+    Date, AbortSignal,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } }
   });
   vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);

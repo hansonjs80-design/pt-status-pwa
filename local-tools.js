@@ -678,7 +678,7 @@
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
       this.dialog = dialog;
-      const currentVersion = this.app?.appVersion || 'v446';
+      const currentVersion = this.app?.appVersion || '확인 중';
       const latestVer = this.app?.latestServerVersion || '';
       dialog.innerHTML = `
         <header>
@@ -689,6 +689,10 @@
           </div>
           <button data-close class="device-settings-close-btn" aria-label="닫기">×</button>
         </header>
+        <div class="device-settings-update-check">
+          <span data-update-status role="status" aria-live="polite">업데이트 확인 중...</span>
+          <button type="button" data-check-update>업데이트 확인</button>
+        </div>
         <div class="device-settings-update-banner" data-update-banner hidden role="alert">
           <div class="device-settings-update-info">
             <span class="device-settings-update-icon">🔔</span>
@@ -872,6 +876,8 @@
           } catch (e) {
             btn.disabled = false;
             btn.textContent = origText;
+            const status = dialog.querySelector('[data-update-status]');
+            if (status) status.textContent = e.message || '업데이트 적용 실패 · 다시 시도해 주세요.';
           }
         };
       });
@@ -880,29 +886,33 @@
         setUpdateNoticeVisible(true, this.app.latestServerVersion);
       }
 
-      if (this.app && typeof this.app.checkForUpdate === 'function') {
-        this.app.checkForUpdate().then(hasUpdate => {
-          setUpdateNoticeVisible(Boolean(hasUpdate), this.app.latestServerVersion);
-        }).catch(() => {});
-      } else if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistration().then(reg => {
-          if (reg?.waiting) {
-            setUpdateNoticeVisible(true);
-          } else if (reg && typeof reg.update === 'function') {
-            reg.update().then(() => {
-              setUpdateNoticeVisible(Boolean(reg.waiting));
-            }).catch(() => {});
-          } else {
-            setUpdateNoticeVisible(false);
-          }
-        }).catch(() => {});
-      }
+      const checkButton = dialog.querySelector('[data-check-update]');
+      const checkStatus = dialog.querySelector('[data-update-status]');
+      const updateCheckStatus = () => {
+        setUpdateNoticeVisible(Boolean(this.app?.isUpdateAvailable), this.app?.latestServerVersion);
+        if (checkStatus) checkStatus.textContent = this.app?.isUpdateAvailable
+          ? `새 버전 ${this.app.latestServerVersion || ''} 업데이트가 준비되었습니다.`
+          : this.app?.updateCheckError ? '업데이트 확인 실패 · 연결을 확인하고 다시 시도해 주세요.'
+          : '최신 버전입니다.';
+      };
+      const checkUpdate = async () => {
+        checkButton.disabled = true;
+        checkStatus.textContent = '업데이트 확인 중...';
+        try { await this.app?.checkForUpdate?.(); }
+        catch (_) { if (checkStatus) checkStatus.textContent = '업데이트 확인 실패 · 다시 시도해 주세요.'; return; }
+        finally { checkButton.disabled = false; }
+        updateCheckStatus();
+      };
+      if (checkButton) checkButton.onclick = checkUpdate;
+      void checkUpdate();
 
       const onUpdateFound = (e) => setUpdateNoticeVisible(true, e?.detail?.version || this.app?.latestServerVersion);
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-        window.addEventListener('pt-app-update-available', onUpdateFound, { once: true });
+        window.addEventListener('pt-app-update-available', onUpdateFound);
+        window.addEventListener('pt-app-update-checked', updateCheckStatus);
         dialog.addEventListener('close', () => {
           window.removeEventListener('pt-app-update-available', onUpdateFound);
+          window.removeEventListener('pt-app-update-checked', updateCheckStatus);
         }, { once: true });
       }
 

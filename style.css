@@ -3755,3 +3755,24 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .preset-color-editor .preset-editor-selection { margin:0; }
 .preset-editor-preview-label { display:block; margin-top:12px; color:#64748b; font-size:11px; }
 .preset-editor-preview-label + .preset-color-preview { margin-top:4px; }
+
+.device-settings-update-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: #315b43;
+  font-size: 13px;
+}
+.device-settings-update-check button {
+  border: 1px solid #b8d3c4;
+  border-radius: 8px;
+  background: #f3f8f5;
+  color: #176b3a;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.history-context-hidden { display: none !important; }

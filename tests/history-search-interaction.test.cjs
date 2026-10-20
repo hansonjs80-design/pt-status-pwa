@@ -2030,3 +2030,20 @@ test('an earlier direct lookup cannot replace a newer direct or dialog search af
     assert.deepEqual(searched,['최신가상환자']);
   }
 });
+
+test('clearing notes retains selection when duplicate dates collapse into a new representative', () => {
+  const {app,context}=createApp();
+  const first={name:'가상환자',specialNote:'',_sourceDate:'2026-09-01',_sourceRowIdx:0};
+  const last={...first,_sourceDate:'2026-10-01'};
+  app.crossDateResults=[first,last];
+  app.crossDateSelection={startRow:0,endRow:1,startCol:9,endCol:9};
+  context.document.activeElement=app.elSheetContainer;
+  const snapshot=app.captureHistorySearchSelection();
+  app.allCrossDateMatchedRows=[first,last];app.crossDateResults=[last];
+  const selected=[];let focused=0;
+  app.selectCrossDateCell=(...args)=>selected.push(args);
+  app.elSheetContainer.focus=()=>focused++;
+  app.restoreHistorySearchSelection(snapshot);
+  assert.deepEqual(selected,[[0,9]]);
+  assert.equal(focused,1);
+});

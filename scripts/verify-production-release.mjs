@@ -2,14 +2,14 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { readReleaseMetadata } from './release-metadata.mjs';
 
 const root = new URL('../', import.meta.url);
 const base = new URL(process.argv[2] || 'https://pt-status-pwa.vercel.app/');
-const worker = await readFile(new URL('sw.js', root), 'utf8');
-const version = worker.match(/const CACHE_NAME = '([^']+)'/)?.[1];
+const { worker, cacheName: version } = await readReleaseMetadata(root);
 const list = worker.match(/const ASSETS_TO_CACHE = \[([\s\S]*?)\];/)?.[1];
 if (!version || !list) throw new Error('Release manifest could not be read');
-const paths = [...new Set(['sw.js', ...[...list.matchAll(/'\.\/([^']*)'/g)].map(match => match[1] || 'index.html')])];
+const paths = [...new Set(['sw.js', 'version.json', ...[...list.matchAll(/'\.\/([^']*)'/g)].map(match => match[1] || 'index.html')])];
 const digest = data => createHash('sha256').update(data).digest('hex');
 const failures = [];
 const queue = [...paths];

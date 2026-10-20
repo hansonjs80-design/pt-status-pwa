@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v456';
+const CACHE_NAME = 'pt-status-pwa-v457';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -44,6 +44,7 @@ const ASSETS_TO_CACHE = [
   './patient-search-index.js',
   './patient-search-dialog.js',
   './history-table.js',
+  './app-updates.js',
   './app.js',
   './local-tools.js',
   './manifest.json',
@@ -66,7 +67,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE.map(url => new Request(url, { cache: 'reload' })));
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -75,7 +76,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key.startsWith('pt-status-pwa-') && key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
@@ -117,30 +118,22 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         }
         return networkResponse;
-      }).catch(() => caches.match(event.request))
+      }).catch(() => caches.match(event.request, { cacheName: CACHE_NAME }))
     );
     return;
   }
 
-  // HTML 네비게이션(페이지 접속 / 새로고침): Network First with Cache Fallback
+  // Serve the installed document with its scripts until the new worker is activated.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
-          }
-          return networkResponse;
-        })
-        .catch(() => caches.match('./index.html'))
+      caches.match('./index.html', { cacheName: CACHE_NAME }).then(cached => cached || fetch(event.request, { cache: 'no-store' }))
     );
     return;
   }
 
   // 정적 리소스(JS, CSS 등): Cache First
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(event.request, { cacheName: CACHE_NAME }).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }

@@ -103,7 +103,51 @@ class PTContextMenu {
 
   handleTableContextMenu(e) {
     this.captureTextColorSelection();
-    if (e.target?.closest?.(".cross-date-row")) { e.preventDefault?.(); return; }
+    this.elContextMenu?.querySelectorAll(".history-context-hidden").forEach(item => item.classList.remove("history-context-hidden"));
+    if (e.target?.closest?.(".cross-date-row")) {
+      const cell = e.target.closest('.cross-date-cell');
+      e.preventDefault?.();
+      if (!cell) return;
+      const index = Number(cell.dataset.crossIdx);
+      const editor = cell.querySelector('input:not(.is-armed)');
+      if (editor?.historyEdit) {
+        const value = this.getCellEditorValue(editor);
+        const start = Math.min(editor.selectionStart ?? 0, editor.selectionEnd ?? 0);
+        const end = Math.max(editor.selectionStart ?? 0, editor.selectionEnd ?? 0);
+        const selectedText = value.slice(start, end);
+        this.textEditorState = { input: editor, historyEdit: editor.historyEdit,
+          rowIdx: index, colKey: "specialNote", colIdx: 9, start, end, selectedText,
+          fullText: value, cellElement: cell };
+        this.contextTarget = { type: "history", isTextEdit: true, cellElement: cell };
+        this.updateContextMenuItemsForTextMode(true, selectedText, start);
+        this.elContextMenu.querySelectorAll('.menu-item, .menu-divider').forEach(item => {
+          item.classList.toggle("history-context-hidden", item.classList.contains("row-only-item") ||
+            item.classList.contains("col-only-item") || item.dataset.action === "find" ||
+            (item.dataset.action === "cut" && !selectedText));
+        });
+        this.showContextMenu(e.clientX, e.clientY, cell);
+        return;
+      }
+      this.textEditorState = null;
+      const column = Number(cell.dataset.crossColIdx);
+      const range = this.crossDateSelection;
+      if (!range || index < range.minRow || index > range.maxRow || column < range.minCol || column > range.maxCol ||
+          !this.isSelectedCoordinate(index, column)) {
+        this.isCrossDateRowSelected = false;
+        this.selectCrossDateCell(index, column);
+      }
+      document.activeElement?.blur?.();
+      this.updateContextMenuItemsForTextMode(false);
+      this.contextTarget = { type: "history", cellElement: cell };
+      const allowed = this.getHistoryNoteRange()
+        ? ["copy", "paste", "clear-contents", "font-color", "background-color", "font-size", "font-weight", "underline", "underline-menu", "text-highlight", "change-case"]
+        : ["copy"];
+      this.elContextMenu.querySelectorAll('.menu-item, .menu-divider').forEach(item => {
+        item.classList.toggle("history-context-hidden", !allowed.includes(item.dataset.action));
+      });
+      this.showContextMenu(e.clientX, e.clientY, cell);
+      return;
+    }
     const thRow = e.target?.closest?.("th.row-num");
     const thCol = e.target?.closest?.("th.col-letter, th.b-header");
     const thCorner = e.target?.closest?.("#cornerHeader");
@@ -561,16 +605,30 @@ class PTContextMenu {
 
     const replacement = inputEl.value;
     const editor = state.input;
+    // The quick-edit dialog blurs/commits the original input. Retain its source
+    // date draft so applying the dialog still edits the historical record.
+    if (state.historyEdit && !editor?.isConnected) {
+      const edit = state.historyEdit;
+      const value = String(edit.row.specialNote ?? "");
+      const next = value.slice(0, state.start) + replacement + value.slice(state.end);
+      this.updateEditorTextColors(edit.row, "specialNote", next);
+      edit.row.specialNote = next;
+      edit.save(true);
+      this.closeQuickTextEditDialog();
+      return;
+    }
     if (editor && editor.isConnected) {
-      this.captureHistory?.();
+      if (!editor.historyEdit) this.captureHistory?.();
       const val = editor.value || "";
       const start = Math.min(state.start, val.length);
       const end = Math.min(state.end, val.length);
       const nextVal = val.slice(0, start) + replacement + val.slice(end);
 
       editor.value = nextVal;
-      const rows = this.getCurrentRows();
-      if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+      if (!editor.historyEdit) {
+        const rows = this.getCurrentRows();
+        if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+      }
 
       // 좌측 정렬 유지 보장
       editor.style.textAlign = "left";
@@ -592,15 +650,17 @@ class PTContextMenu {
     const state = this.textEditorState;
     const editor = state?.input;
     if (editor && editor.isConnected) {
-      this.captureHistory?.();
+      if (!editor.historyEdit) this.captureHistory?.();
       const val = editor.value || "";
       const start = Math.min(state.start, val.length);
       const end = Math.min(state.end, val.length);
       const nextVal = val.slice(0, start) + val.slice(end);
 
       editor.value = nextVal;
-      const rows = this.getCurrentRows();
-      if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+      if (!editor.historyEdit) {
+        const rows = this.getCurrentRows();
+        if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+      }
 
       // 좌측 정렬 유지 보장
       editor.style.textAlign = "left";
@@ -631,6 +691,7 @@ class PTContextMenu {
     const state = this.textEditorState;
     const textToCut = state?.selectedText;
     if (!textToCut) {
+      if (state?.historyEdit) return;
       this.cutSelection();
       return;
     }
@@ -677,20 +738,23 @@ class PTContextMenu {
     } else {
       text = this.clipboardBuffer || "";
     }
+    if (state !== this.textEditorState || !editor.isConnected) return;
     if (!text) {
       this.showSaveIndicator("붙여넣을 텍스트가 없습니다.", true);
       return;
     }
 
-    this.captureHistory?.();
+    if (!editor.historyEdit) this.captureHistory?.();
     const val = editor.value || "";
     const start = state.start ?? editor.selectionStart ?? val.length;
     const end = state.end ?? editor.selectionEnd ?? val.length;
     const nextVal = val.slice(0, start) + text + val.slice(end);
 
     editor.value = nextVal;
-    const rows = this.getCurrentRows();
-    if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+    if (!editor.historyEdit) {
+      const rows = this.getCurrentRows();
+      if (rows[state.rowIdx]) rows[state.rowIdx][state.colKey] = nextVal;
+    }
 
     // 좌측 정렬 유지 보장
     editor.style.textAlign = "left";

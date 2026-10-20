@@ -14,37 +14,6 @@
   <link rel="apple-touch-icon" href="icon-192.png?v=446">
   <link rel="icon" type="image/svg+xml" href="icon.svg?v=446">
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      var isReloading = false;
-      function flushPanelStatesBeforeReload() {
-        if (isReloading) return;
-        isReloading = true;
-        try {
-          if (window.ptApp && typeof window.ptApp.flushDevicePanelStates === 'function') {
-            window.ptApp.flushDevicePanelStates();
-          }
-        } catch (_) {}
-      }
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        flushPanelStatesBeforeReload();
-        window.location.reload();
-      });
-      navigator.serviceWorker.addEventListener('message', function(e) {
-        if (e.data && (e.data.type === 'SW_ACTIVATED' || e.data.type === 'FORCE_RELOAD')) {
-          flushPanelStatesBeforeReload();
-          window.location.reload();
-        }
-      });
-      if (window.location.search && (window.location.search.indexOf('_v=') !== -1 || window.location.search.indexOf('_reload=') !== -1)) {
-        try {
-          var clean = window.location.pathname + window.location.hash;
-          window.history.replaceState(null, '', clean);
-        } catch (_) {}
-      }
-    }
-  </script>
-
   <link rel="stylesheet" href="style.css">
   <script>
     (function() {
@@ -902,6 +871,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
   <script src="patient-search-index.js"></script>
   <script src="patient-search-dialog.js"></script>
   <script src="history-table.js"></script>
+  <script src="app-updates.js"></script>
   <script src="app.js"></script>
   <script src="local-tools.js"></script>
 </body>

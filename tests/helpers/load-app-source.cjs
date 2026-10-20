@@ -33,5 +33,6 @@ module.exports = [
   'patient-search-index.js',
   'patient-search-dialog.js',
   'history-table.js',
+  'app-updates.js',
   'app.js'
 ].map(file => readFileSync(resolve(__dirname, '../..', file), 'utf8')).join('\n');
