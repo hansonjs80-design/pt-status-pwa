@@ -60,8 +60,11 @@ class PTCellInputTools {
 
   focusSelectedCellEditor() {
     const selected = this.activeCell;
-    const input = selected && this.elTableBody?.querySelector(
-      `[data-row="${selected.rowIdx}"][data-col="${selected.colKey}"] input`);
+    const history = this.crossDateSelection;
+    const historyInput = history && history.minRow === history.maxRow && history.minCol === 9 && history.maxCol === 9
+      ? this.elTableBody?.querySelector(`[data-cross-idx="${history.endRow}"][data-cross-col="specialNote"] input`) : null;
+    const input = historyInput || (selected && this.elTableBody?.querySelector(
+      `[data-row="${selected.rowIdx}"][data-col="${selected.colKey}"] input`));
     // Keep the destination's native input focused before the first IME key.
     // Moving focus to the sheet makes the first composing key create/refocus an editor.
     if (input) input.focus({ preventScroll: true });

@@ -276,7 +276,9 @@ class PTHistorySearch {
     if (snapshot.rowSelected) this.selectCrossDateRow(endRow);
     else {
       this.selectCrossDateCell(startRow, snapshot.selection.startCol);
-      this.selectCrossDateCell(endRow, snapshot.selection.endCol, true);
+      if (startRow !== endRow || snapshot.selection.startCol !== snapshot.selection.endCol) {
+        this.selectCrossDateCell(endRow, snapshot.selection.endCol, true);
+      }
       this.isSelectingCrossDate = false;
     }
   }
@@ -320,6 +322,9 @@ class PTHistorySearch {
     // 확장 선택 중인 드래그를 유지한다. 키보드/초기 선택은 드래그를 시작하지 않는다.
     this.isSelectingCrossDate = Boolean(extend && dragging);
     this.updateHistoryDestinationHighlight();
+    if (!extend && !this.isCrossDateRowSelected && col === 9 && !this.selectedCellSet) {
+      this.startHistoryNoteEdit(row, cell, true);
+    }
   }
 
   restoreAppliedHistorySelection(target) {

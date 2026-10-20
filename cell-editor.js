@@ -335,11 +335,11 @@ class PTCellEditor {
     if (!input.lang && this.isKoreanPreferredColumn(colKey)) this.initMemoInput(input);
   }
 
-  startInlineEdit(rowIdx, colKey, cellElement, armed = false) {
+  startInlineEdit(rowIdx, colKey, cellElement, armed = false, historyEdit = null) {
     // Background selection restoration must not take focus from an open editor dialog.
     if (armed && (this.elSearchPromptModal?.style.display === 'flex' ||
         (typeof document !== 'undefined' && document.activeElement?.closest?.('#forcedCorrectionModal')))) return;
-    if (!armed) void this.loadSearchHistory();
+    if (!armed && !historyEdit) void this.loadSearchHistory();
     if (colKey === "gender") {
       const dropBtn = cellElement.querySelector(".gender-dropdown-btn");
       this.openGenderDropdown(rowIdx, cellElement, dropBtn);
@@ -369,12 +369,18 @@ class PTCellEditor {
     }
     if (cellElement.querySelector("select")) return;
 
-    const rows = this.getCurrentRows();
+    const rows = historyEdit ? { [rowIdx]: historyEdit.row } : this.getCurrentRows();
+    const save = () => historyEdit ? historyEdit.save(true) : this.saveDataStore();
+    const debounceSave = () => historyEdit ? historyEdit.save(false) : this.debounceSaveDataStore();
+    const adjacent = direction => historyEdit ? historyEdit.navigate(0, direction)
+      : direction < 0 ? this.selectAutocompleteLeftCell(rowIdx, colKey) : this.selectAutocompleteRightCell(rowIdx, colKey);
+    const navigateColumn = direction => historyEdit ? historyEdit.navigate(0, direction) : this.navigateCol(rowIdx, colKey, direction);
     const initialVal = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
 
     // An armed input stays transparent over the selected cell until native typing starts.
     if (!armed) cellElement.textContent = "";
     const input = document.createElement("input");
+    input.historyEdit = historyEdit;
     input.type = "text";
     input.className = "cell-input-element" + (armed ? " is-armed" : "");
     input.value = initialVal;
@@ -471,7 +477,7 @@ class PTCellEditor {
       }
       this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
       this.renderColoredText(cellElement, rows[rowIdx], colKey);
-      this.saveDataStore();
+      save();
       this.refreshNewPatientRows();
       // The OS may deliver the source IME's final input after focus has moved.
       // Arm the destination guard before creating/focusing its editor; a new
@@ -555,7 +561,7 @@ class PTCellEditor {
       this.elFormulaInput.value = colKey === "writer" ? input.value : val;
       input.refreshEditorColors();
       this.refreshNativeLanguagePreview(input);
-      this.debounceSaveDataStore();
+      debounceSave();
       if (!composing && input.dataset.nativeComposing !== "true") repairCompletedInput();
       // Refresh from the visible query while preserving the native IME input.
       queueAutocomplete(composing || input.dataset.nativeComposing === "true" ? 40 : 25);
@@ -584,7 +590,7 @@ class PTCellEditor {
         rows[rowIdx][colKey] = val;
       }
       this.elFormulaInput.value = input.value;
-      this.debounceSaveDataStore();
+      debounceSave();
 
       // A final IME event must use the same query and preserve menu selection.
       queueAutocomplete(0);
@@ -628,7 +634,7 @@ class PTCellEditor {
         if (finalVal === "F") cellElement.classList.add("f");
         if (finalVal === "M") cellElement.classList.add("m");
       }
-      this.saveDataStore();
+      save();
       if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
       setTimeout(() => {
         this._justCommittedFromAutocomplete = false;
@@ -785,6 +791,19 @@ class PTCellEditor {
           this.isSearchShortcut(e)) refreshPendingAutocomplete();
       this.releaseNavigationInputGuard(input, e);
       if (input.classList.contains("is-armed")) {
+        if (historyEdit && ["Backspace", "Delete"].includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault(); e.stopPropagation();
+          this.activateNativeEditor(input);
+          input.value = "";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          return;
+        }
+        if (historyEdit && (e.key === "Enter" || e.key === "F2") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+          e.preventDefault(); e.stopPropagation();
+          this.activateNativeEditor(input);
+          input.setSelectionRange(input.value.length, input.value.length);
+          return;
+        }
         if (this.handleSelectedTextCellEnter(e)) return;
         if (this.handleEmptyCellEnter(e, input)) return;
         if (colKey === "prescription" && this.handlePrescriptionPickerShortcut(e, rowIdx, cellElement)) return;
@@ -804,7 +823,7 @@ class PTCellEditor {
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
         // Select the adjacent cell without arming another editor for this key.
-        this.selectAutocompleteLeftCell(rowIdx, colKey);
+        adjacent(-1);
         this.focusSelectedCellEditor();
         return;
       }
@@ -818,7 +837,7 @@ class PTCellEditor {
         const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
-        this.selectAutocompleteRightCell(rowIdx, colKey);
+        adjacent(1);
         this.focusSelectedCellEditor();
         return;
       }
@@ -829,7 +848,7 @@ class PTCellEditor {
         const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
-        this.navigateCol(rowIdx, colKey, 1);
+        navigateColumn(1);
         this.focusSelectedCellEditor();
         return;
       }
@@ -858,7 +877,7 @@ class PTCellEditor {
         // Escape confirms the typed value and moves right, like direct commit.
         commitAndBlur();
         this.guardNextCellInput = true;
-        this.selectAutocompleteRightCell(rowIdx, colKey);
+        adjacent(1);
         this.focusSelectedCellEditor();
         return;
       }
@@ -868,7 +887,7 @@ class PTCellEditor {
           !e.ctrlKey && !e.metaKey && !e.altKey && ['Enter', 'NumpadEnter'].includes(e.code || e.key)) {
         e.preventDefault(); e.stopPropagation();
         commitAndBlur();
-        this.selectAutocompleteRightCell(rowIdx, colKey);
+        adjacent(1);
         this.focusSelectedCellEditor();
         return;
       }
@@ -879,6 +898,11 @@ class PTCellEditor {
         e.stopPropagation();
         return;
       }
+      if (historyEdit && (e.ctrlKey || e.metaKey) && ["z", "y"].includes(e.key.toLowerCase())) {
+        // Native undo stays inside the history editor; never undo today's table.
+        e.stopPropagation(); return;
+      }
+      if (historyEdit && e.key === "F2") { e.stopPropagation(); return; }
       if (this.handleHistoryShortcut(e)) return;
       if (this.handleRowDeleteShortcut(e)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
@@ -942,7 +966,7 @@ class PTCellEditor {
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
           commitAndBlur(chosenVal);
-          this.selectAutocompleteRightCell(rowIdx, colKey);
+          adjacent(1);
           if (this.elSheetContainer) {
             this.focusSelectedCellEditor();
           }
@@ -956,9 +980,9 @@ class PTCellEditor {
           this.closeAutocompleteMenu();
           commitAndBlur(chosenVal);
           if (e.shiftKey) {
-            this.navigateCol(rowIdx, colKey, -1);
+            navigateColumn(-1);
           } else {
-            this.navigateCol(rowIdx, colKey, 1);
+            navigateColumn(1);
           }
           return;
         }
@@ -988,6 +1012,11 @@ class PTCellEditor {
           commitAndBlur();
         }
 
+        if (historyEdit) {
+          historyEdit.navigate(e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0,
+            e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0);
+          return;
+        }
         // 방향에 따라 셀 이동
         const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
         const colIdx = colOrder.indexOf(colKey);
@@ -1018,15 +1047,15 @@ class PTCellEditor {
         e.preventDefault();
         commitAndBlur();
         e.stopPropagation();
-        this.selectAutocompleteRightCell(rowIdx, colKey);
+        adjacent(1);
         this.focusSelectedCellEditor();
       } else if (e.key === "Tab") {
         e.preventDefault();
         commitAndBlur();
         if (e.shiftKey) {
-          this.navigateCol(rowIdx, colKey, -1);
+          navigateColumn(-1);
         } else {
-          this.navigateCol(rowIdx, colKey, 1);
+          navigateColumn(1);
         }
       }
     });

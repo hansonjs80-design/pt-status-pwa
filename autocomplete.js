@@ -252,7 +252,7 @@ class PTAutocomplete {
     const preferredIndex = preferred === undefined ? -1 : candidates.findIndex(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(preferred));
     let currentValueIndex = preferCurrentValue ? candidates.findIndex(value => String(value) === query.trim()) : -1;
     if (preferCurrentValue && candidates.filter(value => String(value) === query.trim()).length > 1) {
-      const row = this.getCurrentRows()[rowIdx];
+      const row = input.historyEdit?.row || this.getCurrentRows()[rowIdx];
       const key = row && this.getPresetCandidateFormatKey(colKey,this.makePresetCandidate(query.trim(),this.getRowAutocompleteFormatting(row,colKey)));
       const match = candidates.findIndex(value => String(value) === query.trim() && this.getPresetCandidateFormatKey(colKey,value,query) === key);
       if (match >= 0) currentValueIndex = match;
@@ -286,7 +286,7 @@ class PTAutocomplete {
 
       const textSpan = document.createElement("span");
       textSpan.className = "autocomplete-item-text";
-      this.renderAutocompleteText(textSpan, colKey, cand, query, this.getCurrentRows()[rowIdx]);
+      this.renderAutocompleteText(textSpan, colKey, cand, query, input.historyEdit?.row || this.getCurrentRows()[rowIdx]);
       itemEl.appendChild(textSpan);
 
       const editButton = document.createElement("button");
@@ -335,7 +335,8 @@ class PTAutocomplete {
           this.saveDataStore();
           if (["name", "chartNo"].includes(colKey)) this.refreshNewPatientRows();
         }
-        if (String(cand) === "") this.selectAutocompleteRightCell(rowIdx, colKey);
+        if (input.historyEdit) input.historyEdit.navigate(0, String(cand) === "" ? 1 : 0);
+        else if (String(cand) === "") this.selectAutocompleteRightCell(rowIdx, colKey);
         else this.selectCell(rowIdx, colKey, cellElement, false);
         if (this.elSheetContainer) {
           this.focusSelectedCellEditor();

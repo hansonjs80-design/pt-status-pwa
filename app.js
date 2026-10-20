@@ -667,9 +667,11 @@ class PTApp {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  getSearchDataStore({ rebasePending = false } = {}) {
-    const history = { ...this.cloudSearchHistory };
-    for (const [date, local] of Object.entries(this.dataStore || {})) {
+  getSearchDataStore({ rebasePending = false, date: onlyDate = null } = {}) {
+    const history = onlyDate ? { [onlyDate]: this.cloudSearchHistory?.[onlyDate] } : { ...this.cloudSearchHistory };
+    const localDates = onlyDate ? (Array.isArray(this.dataStore?.[onlyDate]) ? [[onlyDate, this.dataStore[onlyDate]]] : [])
+      : Object.entries(this.dataStore || {});
+    for (const [date, local] of localDates) {
       const remote = history[date];
       const base = this.syncBaselines?.get(date);
       if (!Array.isArray(remote) || ((!rebasePending || !base?.length) && (date === this.currentDate ||
@@ -794,6 +796,12 @@ class PTApp {
         const patientKeys = ['gender','chartNo','name','part','extra','memo','specialNote'];
         for (const entry of entries) {
           if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Array.isArray(entry.rows_data)) {
+            const savedVersion = this.searchHistoryVersions?.[entry.date];
+            if ((Date.parse(savedVersion) || 0) > (Date.parse(entry.updated_at) || 0)) {
+              // An upload completed while this history request was in flight.
+              versions[entry.date] = savedVersion;
+              continue;
+            }
             for (const row of entry.rows_data) {
               const prescription = String(row?.prescription ?? '').trim();
               if (prescription.includes('한랭') && !patientKeys.some(k => String(row[k] ?? '').trim())) {

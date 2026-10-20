@@ -107,6 +107,12 @@ class PTSheetKeyboard {
     // A read-only history formula field still belongs to the history selection.
     if (target?.matches?.("input, textarea, [contenteditable='true']") && target !== this.elFormulaInput) return false;
     if (target?.closest?.("button") && !target.closest(".history-apply-btn")) return false;
+    const selection = this.crossDateSelection;
+    if (!this.isCrossDateRowSelected && selection.minRow === selection.maxRow &&
+        selection.minCol === 9 && selection.maxCol === 9) {
+      const cell = this.elTableBody.querySelector(`[data-cross-idx="${selection.minRow}"][data-cross-col="specialNote"]`);
+      if (cell) { e.preventDefault(); e.stopPropagation(); this.startHistoryNoteEdit(selection.minRow, cell); return true; }
+    }
     const rowIndex = this.crossDateSelection.minRow;
     const source = this.crossDateResults?.[rowIndex];
     if (!source) return false;

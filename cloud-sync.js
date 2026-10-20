@@ -538,6 +538,12 @@ class PTCloudSync {
         this.dataStore[dateStr] = latest;
         if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
         if (JSON.stringify(latest) !== latestText) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(latestText));
+        // A history edit can finish syncing before the next search refresh.
+        // Keep that search snapshot aligned with its new merge baseline.
+        this.cloudSearchHistory ||= {};
+        this.cloudSearchHistory[dateStr] = JSON.parse(JSON.stringify(rows));
+        this.searchHistoryVersions ||= {};
+        this.searchHistoryVersions[dateStr] = record.updated_at;
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
         const mergedSnapshot = JSON.stringify(latest);
         await this.persistSyncBaselines();

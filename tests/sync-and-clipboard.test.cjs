@@ -27,6 +27,39 @@ function createApp(db = new Map()) {
   }};
   return { app, storage, context };
 }
+test('a synced historical note stays updated on immediate re-search and on another device', async () => {
+  const date='2026-09-01', before=[{name:'가상환자',chartNo:'TEST1',specialNote:'이전'}];
+  const db=new Map([[date,{date,rows_data:clone(before),updated_at:'2026-09-01T00:00:00Z'}]]);
+  const {app}=createApp(db);
+  app.currentDate='2026-10-20';app.cloudSearchHistory={[date]:clone(before)};
+  app.dataStore[date]=clone(before);app.dataStore[date][0].specialNote='수정';
+  app.syncBaselines.set(date,clone(before));app.pendingSyncDates.add(date);
+  await app.pushToCloud(date);
+  assert.equal(app.pendingSyncDates.has(date),false);
+  assert.equal(db.get(date).rows_data[0].specialNote,'수정');
+  assert.equal(app.getSearchDataStore()[date][0].specialNote,'수정');
+  assert.equal(app.searchHistoryVersions[date],db.get(date).updated_at);
+  const other=createApp(db).app;other.currentDate=date;other.normalizeRowAllocation=()=>{};
+  await other.pullFromCloud(date);
+  assert.equal(other.getCurrentRows()[0].specialNote,'수정');
+});
+
+test('an older in-flight history read cannot replace a just-uploaded historical note', async () => {
+  const date='2026-09-01', before=[{name:'가상환자',chartNo:'TEST1',specialNote:'이전'}];
+  const entry={date,rows_data:clone(before),updated_at:'2026-09-01T00:00:00Z'};
+  const db=new Map([[date,clone(entry)]]),{app}=createApp(db);
+  app.currentDate='2026-10-20';app.searchHistoryClient=app.supabaseClient;
+  app.cloudSearchHistory={[date]:clone(before)};app.searchHistoryVersions={[date]:entry.updated_at};
+  app.dataStore[date]=clone(before);app.dataStore[date][0].specialNote='수정';
+  app.syncBaselines.set(date,clone(before));app.pendingSyncDates.add(date);
+  app.getSearchPeriod=()=> '1year_plus';app.refreshLoadedSearchResults=()=>{};
+  let finish;app.readSearchHistoryPages=()=>new Promise(resolve=>{finish=resolve;});
+  const read=app.loadSearchHistory(true);
+  await app.pushToCloud(date);finish([entry]);await read;
+  assert.equal(app.getSearchDataStore()[date][0].specialNote,'수정');
+  assert.equal(app.searchHistoryVersions[date],db.get(date).updated_at);
+});
+
 test('Excel TSV preserves empty cells, multiline cells and escaped quotes', () => {
   const { app } = createApp();
   assert.deepEqual(clone(app.parseClipboardGrid('123\t가상\t\r\n456\t"두\n줄"\t"인용 ""문자"""\r\n')), [['123','가상',''],['456','두\n줄','인용 "문자"']]);

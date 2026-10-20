@@ -1,5 +1,101 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTHistoryTable {
+  startHistoryNoteEdit(index, cell, armed = false) {
+    const source = this.crossDateResults?.[index];
+    if (!source || !cell || this._recordsRestorePending || this._recordRestoreError ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(source._sourceDate) ||
+        !Number.isInteger(source._sourceRowIdx)) return;
+    const existing = cell.querySelector("input");
+    if (existing?.historyEdit) {
+      if (!armed && !existing.classList.contains("is-armed")) return;
+      this.startInlineEdit(index, "specialNote", cell, armed, existing.historyEdit);
+      return;
+    }
+    // Build a draft only for the selected cell. Opening/searching the history
+    // table never hydrates dates, reads extra records, or creates editors.
+    const edit = {
+      row: JSON.parse(JSON.stringify(source)), date: source._sourceDate,
+      sourceIndex: source._sourceRowIdx, query: this.elSearchInput.value.trim(),
+      save: finished => this.saveHistoryNoteEdit(edit, finished),
+      navigate: (rowDelta, colDelta) => {
+        const row = Math.max(0, Math.min(this.crossDateResults.length - 1, index + rowDelta));
+        const col = Math.max(0, Math.min(9, 9 + colDelta));
+        this.isCrossDateRowSelected = false;
+        this.selectCrossDateCell(row, col);
+        this.elTableBody.querySelector(`[data-cross-idx="${row}"][data-cross-col-idx="${col}"]`)
+          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    };
+    edit.signature = this.getHistoryNoteSignature(edit.row);
+    this.startInlineEdit(index, "specialNote", cell, armed, edit);
+  }
+
+  getHistoryNoteSignature(row) {
+    return JSON.stringify([row.specialNote ?? "", ...["_textColors", "_textStyles", "_richText", "_formatRevisions"]
+      .map(key => row[key]?.specialNote ?? null)]);
+  }
+
+  saveHistoryNoteEdit(edit, finished) {
+    const signature = this.getHistoryNoteSignature(edit.row);
+    if (signature !== edit.signature) {
+      // Materialize only the edited date, with unsent edits and newer remote
+      // fields merged first. Copy only this cell's text/formatting into it.
+      const rows = this.getSearchDataStore({ rebasePending: true, date: edit.date })[edit.date];
+      const target = rows?.[edit.sourceIndex];
+      if (!target || ["name", "chartNo"].some(key => String(target[key] ?? "") !== String(edit.row[key] ?? ""))) {
+        this.showSaveIndicator("원본 기록이 변경되어 특이사항을 저장하지 못했습니다. 다시 검색해 주세요.", true);
+        return;
+      }
+      const copy = JSON.parse(JSON.stringify(rows));
+      const row = copy[edit.sourceIndex];
+      row.specialNote = edit.row.specialNote ?? "";
+      for (const key of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
+        if (edit.row[key]?.specialNote !== undefined) {
+          row[key] ||= {};
+          row[key].specialNote = JSON.parse(JSON.stringify(edit.row[key].specialNote));
+        } else if (row[key]) delete row[key].specialNote;
+      }
+      if (edit.date !== this.currentDate && Array.isArray(this.cloudSearchHistory?.[edit.date])) {
+        this.syncBaselines.set(edit.date, JSON.parse(JSON.stringify(this.cloudSearchHistory[edit.date])));
+      }
+      this.dataStore[edit.date] = copy;
+      if (edit.date === this.currentDate) {
+        const cell = this.elTableBody?.querySelector(`[data-row="${edit.sourceIndex}"][data-col="specialNote"]`);
+        if (cell && !cell.querySelector("input")) {
+          this.applyCellFormatting(cell, row, "specialNote");
+          this.renderColoredText(cell, row, "specialNote");
+        }
+      }
+      this.pendingSyncDates.add(edit.date);
+      try { localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates])); } catch (_) {}
+      edit.signature = signature;
+      edit.changed = true;
+      // Keep Apply/copy and collapsed representatives current without rebuilding
+      // the search table on every keystroke or interrupting Korean composition.
+      for (const result of [...(this.allCrossDateMatchedRows || []), ...(this.crossDateResults || [])]) {
+        if (result._sourceDate === edit.date && result._sourceRowIdx === edit.sourceIndex) Object.assign(result, row);
+      }
+    }
+    if (!edit.changed) return;
+    clearTimeout(edit.timer);
+    const persist = () => {
+      edit.timer = null;
+      return this.persistDataStore().then(() => {
+        this.scheduleSupabaseSync(edit.date);
+        this.showSaveIndicator("저장 완료됨");
+      }).catch(error => {
+        console.error("History note save error", error);
+        this.showSaveIndicator("특이사항 저장 실패 · 다시 저장해 주세요", true);
+      });
+    };
+    if (finished) {
+      void persist();
+      setTimeout(() => {
+        if (this.elSearchInput.value.trim() === edit.query) this.refreshLoadedSearchResults();
+      }, 0);
+    } else edit.timer = setTimeout(persist, 350);
+  }
+
   selectCrossDateRow(idx) {
     if (this.genderPickerState) this.closeGenderDropdown();
     if (!this.crossDateResults || idx < 0 || idx >= this.crossDateResults.length) return;
@@ -301,7 +397,7 @@ class PTHistoryTable {
         }
 
         td.addEventListener("mousedown", (e) => {
-          if (e.button !== 0) return;
+          if (e.button !== 0 || e.target.closest?.("input")) return;
           e.preventDefault();
           this.isCrossDateRowSelected = false;
           this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));
@@ -318,6 +414,9 @@ class PTHistoryTable {
           }
         });
 
+        if (key === "specialNote") {
+          td.addEventListener("dblclick", () => this.startHistoryNoteEdit(idx, td));
+        }
         tr.appendChild(td);
       });
 
