@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-function tools(){const window={addEventListener(){}};vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')),{window,Blob,TextEncoder,Date,localStorage:{getItem(){return null;}},setTimeout});return window.PTLocalTools;}
+function tools(Clock=Date,extraWindow={}){const window={addEventListener(){},...extraWindow};vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')),{window,Blob,TextEncoder,Date:Clock,localStorage:{getItem(){return null;}},setTimeout});return window.PTLocalTools;}
 test('full backup preserves staff-calendar scope separately from patient dates',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype),saved=new Map();
  l.app={dataStore:{},supabaseClient:{from(){const q={select(){return q},order(){return q},range(){return Promise.resolve({data:[{date:'2026-10-10',rows_data:[{name:'가상'}]},{date:'__pt_staff_calendar_count_settings_v1__',rows_data:[{staffCalendarCounts:{scope:'from',startDate:'2026-09-01'}}]}]})}};return q}}};
@@ -36,6 +36,54 @@ test('scheduler catches up missed previous days once and never marks failed PDF 
 });
 test('automatic writes refuse silent fallback when no folder is linked',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype);await assert.rejects(l.write('test.pdf',new Blob(['x']),true),/폴더/);
+});
+
+test('PDF saves yesterday at 09:10 today and follows a changed time on subsequent days',async()=>{
+ const RealDate=Date;let clock=new RealDate(2026,9,20,9,9);
+ class Clock extends RealDate {constructor(...args){super(...(args.length?args:[clock.getTime()]));}static now(){return clock.getTime();}}
+ const {LocalTools}=tools(Clock),l=Object.create(LocalTools.prototype),saved=[];
+ l.settings={pdf:true,backup:false,time:'09:10'};l.save=()=>{};l.report=()=>{};l.pdf=async date=>saved.push(date);
+ await l.tick();assert.deepEqual(saved,[]);
+ clock=new RealDate(2026,9,20,9,10);await l.tick();assert.deepEqual(saved,['2026-10-19']);
+ await l.tick();assert.deepEqual(saved,['2026-10-19'],'one PDF per record date');
+ l.settings.time='17:30';clock=new RealDate(2026,9,21,9,10);await l.tick();assert.equal(saved.length,1);
+ clock=new RealDate(2026,9,21,17,30);await l.tick();assert.deepEqual(saved,['2026-10-19','2026-10-20']);
+});
+
+test('PDF yesterday uses the local calendar across year and leap-month boundaries',async()=>{
+ for(const [now,target] of [[new Date(2027,0,1,9,10),'2026-12-31'],[new Date(2028,2,1,9,10),'2028-02-29']]) {
+   const RealDate=Date;class Clock extends RealDate {constructor(...args){super(...(args.length?args:[now.getTime()]));}static now(){return now.getTime();}}
+   const {LocalTools}=tools(Clock),l=Object.create(LocalTools.prototype),saved=[];
+   l.settings={pdf:true,backup:false,time:'09:10'};l.save=()=>{};l.report=()=>{};l.pdf=async date=>saved.push(date);
+   await l.tick();assert.deepEqual(saved,[target]);
+ }
+});
+
+test('selected export folder and its actual folder names restore together after relaunch',async()=>{
+ const handle={kind:'directory',name:'물리치료현황'},disk=new Map();
+ const {LocalTools}=tools(Date,{showDirectoryPicker:async options=>{
+   assert.equal(options.startIn,'downloads');
+   return {name:'Downloads',getDirectoryHandle:async(name,options)=>{assert.equal(name,handle.name);assert.equal(options.create,true);return handle;}};
+ }});
+ const l=Object.create(LocalTools.prototype);l.report=()=>{};
+ l.store=async(key,value)=>{if(value!==undefined)disk.set(key,value);return disk.get(key);};
+ await l.chooseFolder();assert.equal(l.folder,handle);assert.deepEqual(Array.from(l.folderLocation),['Downloads','물리치료현황']);
+ const again=Object.create(LocalTools.prototype);again.store=l.store;await again.restoreExportFolder();
+ assert.equal(again.folder,handle);assert.deepEqual(Array.from(again.folderLocation),['Downloads','물리치료현황']);
+});
+
+test('legacy folder connection remains usable without inventing a parent path',async()=>{
+ const {LocalTools}=tools(),l=Object.create(LocalTools.prototype),handle={kind:'directory',name:'기존 저장 폴더'};
+ l.store=async key=>key==='folder'?handle:undefined;await l.restoreExportFolder();
+ assert.equal(l.folder,handle);assert.equal(l.folderLocation,undefined);
+});
+
+test('a failed folder selection save keeps the previous working folder and display location',async()=>{
+ const next={kind:'directory',name:'물리치료현황'};
+ const {LocalTools}=tools(Date,{showDirectoryPicker:async()=>next}),l=Object.create(LocalTools.prototype);
+ const previous={kind:'directory',name:'이전 폴더'};l.folder=previous;l.folderLocation=['이전 폴더'];
+ l.store=async()=>{throw Error('disk full');};await assert.rejects(l.chooseFolder(),/disk full/);
+ assert.equal(l.folder,previous);assert.deepEqual(l.folderLocation,['이전 폴더']);
 });
 test('hourly backup executes when interval elapsed and respects on/off toggle',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype);

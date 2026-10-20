@@ -2774,6 +2774,22 @@ details.summary-accordion[open] summary {
 .device-settings-dialog footer { margin-top: 20px; border-top: 1px solid #e1e9e4; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
 .device-settings-dialog a { color: #176e40; font-size: 12px; }
 
+.export-folder-card, .pdf-schedule-card { box-sizing: border-box; width: 100%; min-width: 0; padding: 16px; border: 1px solid #cdded3; border-radius: 12px; background: #f7faf8; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.export-folder-card.is-linked { border-color: #9bc9ad; background: #f0f8f3; }
+.export-folder-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; width: 100%; font-size: 14px; }
+.export-folder-heading [data-folder-state] { padding: 3px 9px; border-radius: 99px; background: #e3ebe6; color: #45614e; font-size: 12px; font-weight: 600; }
+.export-folder-card.is-linked [data-folder-state] { background: #dcefe3; color: #17683b; }
+.export-folder-location { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #d5e4da; border-radius: 8px; background: #fff; color: #164e2e; font-size: 16px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.device-settings-dialog .export-folder-card p { font-size: 12px; line-height: 1.6; }
+.pdf-schedule-card { background: #fff; }
+.device-settings-dialog .pdf-enable-label { font-weight: 700; }
+.device-settings-dialog .pdf-time-label { justify-content: space-between; flex-wrap: wrap; font-weight: 600; }
+.device-settings-dialog .pdf-time-label input { width: 180px; max-width: 180px; font-size: 18px; font-weight: 700; color: #107c41; }
+.pdf-schedule-preview { box-sizing: border-box; width: 100%; padding: 13px; border-radius: 8px; background: #edf6f0; display: flex; flex-direction: column; gap: 8px; line-height: 1.6; }
+.pdf-schedule-preview strong { color: #17683b; font-size: 14px; }
+.pdf-schedule-preview span { color: #506959; font-size: 12px; overflow-wrap: anywhere; }
+.device-settings-dialog .export-file-example { padding-top: 8px; border-top: 1px solid #e1e9e4; font-size: 12px; }
+
 #excelTable [data-col="visitTime"],
 .history-search-active [data-cross-col="visitTime"] { display: none; }
 

@@ -230,8 +230,9 @@
         this.app.restoreCurrentDateSearchPreference(this.store.bind(this)),
         window.ptSheetClock?.restore(this.store.bind(this)),
       ]);
-      this.folder = await this.store('folder');
+      await this.restoreExportFolder();
       await this.app.migrateTextEditBackups(this.store.bind(this));
+      this._initialized = true;
       this.timer = setInterval(() => void this.tick(), 30000);
       window.addEventListener('focus', () => void this.tick());
       void this.tick();
@@ -287,10 +288,48 @@
     }
     async chooseFolder() {
       if (!window.showDirectoryPicker) throw Error('이 브라우저는 폴더 자동 저장을 지원하지 않습니다. Chrome 또는 Edge에서 사용하거나 수동 다운로드해 주세요.');
-      const parent = await window.showDirectoryPicker({ id: 'pt-exports', startIn: 'downloads', mode: 'readwrite' });
-      this.folder = parent.name === '물리치료현황' ? parent : await parent.getDirectoryHandle('물리치료현황', { create: true });
-      await this.store('folder', this.folder);
+      const parent = await window.showDirectoryPicker({ id: 'pt-exports', startIn: this.folder || 'downloads', mode: 'readwrite' });
+      const handle = parent.name === '물리치료현황' ? parent : await parent.getDirectoryHandle('물리치료현황', { create: true });
+      const location = parent === handle ? [handle.name] : [parent.name,handle.name];
+      // Keep the handle and its displayed location together across relaunches.
+      const selection = {handle,location};
+      await this.store('folder-selection-v1',selection);
+      this.folder = handle;
+      this.folderLocation = location;
+      await this.updateFolderDisplay();
       this.report('물리치료현황 폴더 연결됨');
+    }
+    async restoreExportFolder() {
+      const selection = await this.store('folder-selection-v1');
+      if (selection?.handle?.kind === 'directory') {
+        this.folder = selection.handle;
+        this.folderLocation = Array.isArray(selection.location) ? selection.location.filter(value => typeof value === 'string') : null;
+      } else this.folder = await this.store('folder');
+    }
+    async updateFolderDisplay() {
+      const dialog = this.dialog, folder = this.folder;
+      if (!dialog) return;
+      const location = folder ? this.folderLocation?.join(' › ') || folder.name : '저장 폴더를 연결해 주세요';
+      dialog.querySelectorAll('[data-folder-location]').forEach(el => {el.textContent=location;el.title=location;});
+      dialog.querySelectorAll('[data-folder-card]').forEach(el => el.classList.toggle('is-linked',Boolean(folder)));
+      let permission = 'prompt';
+      try { if (folder) permission = await folder.queryPermission({mode:'readwrite'}); } catch (_) {}
+      if (this.dialog !== dialog || this.folder !== folder) return;
+      dialog.querySelectorAll('[data-folder-state]').forEach(el => {el.textContent=!folder?'미연결':permission==='granted'?'저장 가능':'권한 확인 필요';});
+      dialog.querySelectorAll('[data-folder-note]').forEach(el => {
+        el.textContent = !folder ? '백업은 브라우저 보관함에 보관됩니다. 자동 PDF를 저장하려면 폴더를 연결하세요.'
+          : permission==='granted' ? '선택한 폴더 이름으로 표시합니다. PDF와 백업 파일을 이 폴더에 함께 저장합니다.'
+          : '폴더 변경 / 권한 갱신을 눌러 저장 권한을 허용해 주세요. 저장 설정은 유지됩니다.';
+      });
+    }
+    updatePDFSchedule() {
+      if (!this.dialog) return;
+      const time = this.settings.time || SETTINGS_DEFAULTS.time;
+      const now = new Date();
+      const summary = this.dialog.querySelector('[data-pdf-schedule]');
+      if (summary) summary.textContent = `매일 ${time}에 전날 현황을 PDF로 저장합니다.`;
+      const example = this.dialog.querySelector('[data-pdf-example]');
+      if (example) example.textContent = `오늘(${dateKey(now)}) ${time} → 전날(${previousDay(now)}) 현황`;
     }
     async write(name, blob, automatic = false) {
       if (this.folder) {
@@ -459,7 +498,7 @@
         const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         const errors = [];
 
-        if (this.settings.pdf && clock >= this.settings.time) {
+        if (this.settings.pdf && clock >= (this.settings.time || SETTINGS_DEFAULTS.time)) {
           try {
             const target = previousDay(now);
             let date = this.settings.lastPDF
@@ -673,7 +712,7 @@
       }
     }
     open(defaultTab = 'backup') {
-      if (this._settingsRestorePending && this.ready) {
+      if (!this._initialized && this.ready) {
         this.ready.then(() => this.open(defaultTab)).catch(error => this.report('설정 복원 실패 · '+error.message));
         return;
       }
@@ -728,6 +767,12 @@
           <p>이 기기에만 적용하며, 변경한 상태는 즉시 저장됩니다.</p>
         </section>
         <section data-panel="backup">
+          <div class="export-folder-card" data-folder-card>
+            <div class="export-folder-heading"><strong>백업 저장 폴더</strong><span data-folder-state>확인 중</span></div>
+            <div class="export-folder-location" data-folder-location></div>
+            <p data-folder-note></p>
+            <button type="button" data-folder>폴더 변경 / 권한 갱신</button>
+          </div>
           <div class="backup-config-card">
             <div class="backup-toggle-header">
               <label class="backup-toggle-label">
@@ -796,10 +841,6 @@
             </div>
             <div class="backup-status-badge-box">
               <div class="status-row">
-                <span>📁 저장 위치:</span>
-                <strong data-folder-status>${this.folder ? '물리치료현황 폴더 연결됨' : '브라우저 로컬 보관함 (폴더 미연결)'}</strong>
-              </div>
-              <div class="status-row">
                 <span>⏰ 다음 백업 예정:</span>
                 <strong data-next-backup>${this.getNextBackupDescription()}</strong>
               </div>
@@ -817,7 +858,6 @@
               </div>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
-              <button type="button" data-folder>📁 다운로드 폴더 연결 / 변경</button>
               <button type="button" data-backup-now style="background: #107c41; color: white; border: none;">💾 지금 즉시 백업 저장</button>
               <label class="file-label" style="display: inline-flex; align-items: center; cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif;">
                 📂 백업 파일에서 복원 (.json)
@@ -834,12 +874,24 @@
           </div>
         </section>
         <section data-panel="exports" hidden>
-          <label><input type="checkbox" data-pdf> 이전날 현황 자동 PDF 저장</label>
-          <label>PDF 저장 시간 <input type="time" data-time value="09:10"></label>
-          <p>기본: 다음날 오전 9시 10분에 이전날의 최신 기록 저장. 앱이 열려 있고 컴퓨터가 깨어 있어야 실행됩니다. 앱을 다시 열면 누락된 날짜를 순서대로 저장합니다.</p>
-          <p>다운로드 폴더를 선택하면 그 안에 물리치료현황 폴더를 생성합니다. 파일명: 0000년 00월 00일 PT현황.pdf</p>
-          <button data-folder-pdf>📁 다운로드 폴더 연결 / 권한 갱신</button>
-          <button data-pdf-now>현재 선택 날짜 PDF 저장</button>
+          <div class="export-folder-card" data-folder-card>
+            <div class="export-folder-heading"><strong>PDF 저장 폴더</strong><span data-folder-state>확인 중</span></div>
+            <div class="export-folder-location" data-folder-location></div>
+            <p data-folder-note></p>
+            <button type="button" data-folder-pdf>폴더 변경 / 권한 갱신</button>
+          </div>
+          <div class="pdf-schedule-card">
+            <label class="pdf-enable-label"><input type="checkbox" data-pdf> 전날 현황 자동 PDF 저장</label>
+            <label class="pdf-time-label">매일 저장 시각 <input type="time" data-time value="09:10"></label>
+            <div class="pdf-schedule-preview" aria-live="polite">
+              <strong data-pdf-schedule></strong>
+              <span data-pdf-example></span>
+            </div>
+            <p>기본 설정: 오늘 오전 9시 10분에 전날 현황 저장. 시간을 변경하면 매일 해당 시각에 전날 현황을 저장합니다.</p>
+            <p>앱이 열려 있고 컴퓨터가 깨어 있어야 실행됩니다. 앱을 다시 열면 저장 시각이 지난 누락 날짜부터 순서대로 저장합니다.</p>
+            <p class="export-file-example">파일명: 0000년 00월 00일 PT현황.pdf</p>
+          </div>
+          <button type="button" data-pdf-now>현재 선택 날짜 PDF 저장</button>
         </section>
         <section data-panel="usage" hidden></section>
         <footer>
@@ -1033,9 +1085,13 @@
       inpPdfTime.value = this.settings.time || '09:10';
       // PDF 시간 변경 시 즉시 저장
       inpPdfTime.addEventListener('change', () => {
+        if (!inpPdfTime.value) { inpPdfTime.value = this.settings.time || SETTINGS_DEFAULTS.time; return; }
         this.settings.time = inpPdfTime.value;
         this.save();
+        this.updatePDFSchedule();
       });
+      this.updatePDFSchedule();
+      void this.updateFolderDisplay();
 
       // 라디오 변경 시 시각적 활성화
       const updateIntervalUI = () => {
@@ -1103,11 +1159,7 @@
       if (initialTabBtn) initialTabBtn.click();
 
       // 버튼 동작들
-      dialog.querySelector('[data-folder]').onclick = run(async () => {
-        await this.chooseFolder();
-        const folderStatus = dialog.querySelector('[data-folder-status]');
-        if (folderStatus) folderStatus.textContent = this.folder ? '물리치료현황 폴더 연결됨' : '브라우저 로컬 보관함';
-      });
+      dialog.querySelector('[data-folder]').onclick = run(() => this.chooseFolder());
       dialog.querySelector('[data-folder-pdf]').onclick = run(() => this.chooseFolder());
       dialog.querySelector('[data-pdf-now]').onclick = run(async () => {
         await this.pdf(this.app.currentDate);
