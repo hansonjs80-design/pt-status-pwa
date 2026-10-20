@@ -85,26 +85,57 @@
     finish();return jpegPDF(images,width,height);
   }
 
+  const SETTINGS_DEFAULTS = {
+    pdf: false,
+    backup: false,
+    time: '09:10',
+    backupIntervalType: 'daily',
+    backupTime: '18:00',
+    backupIntervalHours: 2,
+    backupMaxCount: 15,
+    workHoursOnly: false,
+    workStartTime: '09:00',
+    workEndTime: '18:00',
+    lastBackup: null,
+    lastBackupDay: null,
+    lastBackupTimestamp: 0
+  };
+
+  // 다중 계층 설정 읽기: localStorage → sessionStorage → cookie
+  function readSettingsMultiTier() {
+    let parsed = null;
+    try { parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (_) {}
+    if (!parsed || typeof parsed !== 'object') {
+      try { parsed = JSON.parse(sessionStorage.getItem(SETTINGS_KEY) || 'null'); } catch (_) {}
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      try {
+        const cookieKey = `${SETTINGS_KEY}=`;
+        const matches = String(typeof document !== 'undefined' ? document.cookie : '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
+        if (matches.length > 0) parsed = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
+      } catch (_) {}
+    }
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  }
+
+  // 다중 계층 설정 쓰기: localStorage + sessionStorage + cookie
+  function persistSettingsMultiTier(settings) {
+    const json = JSON.stringify(settings);
+    try { localStorage.setItem(SETTINGS_KEY, json); } catch (_) {}
+    try { sessionStorage.setItem(SETTINGS_KEY, json); } catch (_) {}
+    try {
+      const encoded = encodeURIComponent(json);
+      // 쿠키 크기 제한(~4KB) 내에서만 저장
+      if (encoded.length < 3800) {
+        document.cookie = `${SETTINGS_KEY}=${encoded}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      }
+    } catch (_) {}
+  }
+
   class LocalTools {
     constructor(app) {
       this.app = app;
-      try { this.settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { this.settings = {}; }
-      this.settings = {
-        pdf: false,
-        backup: false,
-        time: '09:10',
-        backupIntervalType: 'daily',
-        backupTime: '18:00',
-        backupIntervalHours: 2,
-        backupMaxCount: 15,
-        workHoursOnly: false,
-        workStartTime: '09:00',
-        workEndTime: '18:00',
-        lastBackup: null,
-        lastBackupDay: null,
-        lastBackupTimestamp: 0,
-        ...this.settings
-      };
+      this.settings = { ...SETTINGS_DEFAULTS, ...readSettingsMultiTier() };
       this.status = '자동 저장 꺼짐';
       const footer = document.createElement('div'); footer.className = 'device-settings-footer';
       this.button = document.createElement('button');
@@ -199,7 +230,10 @@
       return this.app.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key, value);
     }
     async init() {
+      // IndexedDB store를 설정 복원에도 사용
+      this._settingsDiskStore = this.store.bind(this);
       await Promise.all([
+        this._restoreSettingsFromDisk(),
         this.app.restoreDevicePreferences?.(this.store.bind(this)),
         this.app.restoreDeviceColumnWidths(this.store.bind(this)),
         this.app.restoreDeviceSummaryState(this.store.bind(this)),
@@ -213,8 +247,38 @@
       window.addEventListener('focus', () => void this.tick());
       void this.tick();
     }
+    async _restoreSettingsFromDisk() {
+      let persisted = null;
+      try { persisted = await this.store('device-export-settings-v1'); } catch (_) {}
+      if (!persisted || typeof persisted !== 'object') {
+        // 로컬에 유효한 설정이 있으면 IndexedDB에 백업
+        if (this.settings.pdf || this.settings.backup) {
+          this._queueSettingsDisk();
+        }
+        return;
+      }
+      // IndexedDB에 저장된 설정으로 로컬이 비어있거나 기본값인 경우 복원
+      const localHasUserSetting = this.settings.pdf || this.settings.backup;
+      if (!localHasUserSetting && (persisted.pdf || persisted.backup)) {
+        // IndexedDB에 사용자 설정이 있으나 로컬에는 없음 → 복원
+        this.settings = { ...SETTINGS_DEFAULTS, ...persisted };
+        persistSettingsMultiTier(this.settings);
+      } else if (localHasUserSetting) {
+        // 로컬에 유효한 설정이 있으면 IndexedDB에 동기화
+        this._queueSettingsDisk();
+      }
+    }
     save() {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings));
+      persistSettingsMultiTier(this.settings);
+      // IndexedDB 비동기 영구 저장
+      this._queueSettingsDisk();
+    }
+    _queueSettingsDisk() {
+      if (!this._settingsDiskStore) return;
+      const write = (async () => {
+        try { await this._settingsDiskStore('device-export-settings-v1', { ...this.settings }); } catch (_) {}
+      })();
+      this._settingsDiskWrite = write;
     }
     report(text) {
       this.status = text;
@@ -858,6 +922,7 @@
       rowCount.value = String(window.ptApp?.getDefaultRowCount() || 120);
       const chkBackup = dialog.querySelector('[data-backup]');
       chkBackup.checked = Boolean(this.settings.backup);
+      // 백업 체크박스도 토글 시 즉시 저장됨 (아래 change 리스너에서 처리)
 
       const radIntervals = dialog.querySelectorAll('input[name="backupIntervalType"]');
       const backupType = this.settings.backupIntervalType || 'daily';
@@ -875,10 +940,26 @@
       if (selBackupMaxCount) {
         selBackupMaxCount.value = String(this.settings.backupMaxCount || 15);
         selBackupMaxCount.addEventListener('change', () => {
+          this.settings.backupMaxCount = Math.max(1, Number(selBackupMaxCount.value) || 15);
+          this.save();
           const badge = dialog.querySelector('[data-retention-badge]');
           if (badge) badge.textContent = `최근 ${selBackupMaxCount.value}개 유지 (초과분 자동 삭제)`;
         });
       }
+
+      // 라디오 버튼, 백업 시간, 간격 변경 즉시 저장
+      radIntervals.forEach(rad => rad.addEventListener('change', () => {
+        this.settings.backupIntervalType = dialog.querySelector('input[name="backupIntervalType"]:checked')?.value || 'daily';
+        this.save();
+      }));
+      inpBackupTime.addEventListener('change', () => {
+        this.settings.backupTime = inpBackupTime.value;
+        this.save();
+      });
+      selIntervalHours.addEventListener('change', () => {
+        this.settings.backupIntervalHours = Number(selIntervalHours.value) || 2;
+        this.save();
+      });
 
       // 출·퇴근 시간 바인딩
       const chkWorkHoursOnly = dialog.querySelector('[data-workhours-only]');
@@ -908,17 +989,40 @@
           }
         };
 
-        chkWorkHoursOnly.addEventListener('change', updateWorkHoursUI);
-        inpWorkStartTime.addEventListener('change', updateWorkHoursUI);
-        inpWorkEndTime.addEventListener('change', updateWorkHoursUI);
+        // 출·퇴근 체크박스 즉시 저장
+        chkWorkHoursOnly.addEventListener('change', () => {
+          this.settings.workHoursOnly = chkWorkHoursOnly.checked;
+          this.save();
+          updateWorkHoursUI();
+        });
+        inpWorkStartTime.addEventListener('change', () => {
+          this.settings.workStartTime = inpWorkStartTime.value;
+          this.save();
+          updateWorkHoursUI();
+        });
+        inpWorkEndTime.addEventListener('change', () => {
+          this.settings.workEndTime = inpWorkEndTime.value;
+          this.save();
+          updateWorkHoursUI();
+        });
         updateWorkHoursUI();
       }
 
       const chkPdf = dialog.querySelector('[data-pdf]');
       chkPdf.checked = Boolean(this.settings.pdf);
+      // PDF 체크박스 즉시 저장 (설정 저장 버튼 없이도 상태 보존)
+      chkPdf.addEventListener('change', () => {
+        this.settings.pdf = chkPdf.checked;
+        this.save();
+      });
 
       const inpPdfTime = dialog.querySelector('[data-time]');
       inpPdfTime.value = this.settings.time || '09:10';
+      // PDF 시간 변경 시 즉시 저장
+      inpPdfTime.addEventListener('change', () => {
+        this.settings.time = inpPdfTime.value;
+        this.save();
+      });
 
       // 라디오 변경 시 시각적 활성화
       const updateIntervalUI = () => {
@@ -933,6 +1037,8 @@
       updateIntervalUI();
 
       chkBackup.addEventListener('change', () => {
+        this.settings.backup = chkBackup.checked;
+        this.save();
         const badgeNext = dialog.querySelector('[data-next-backup]');
         if (badgeNext) badgeNext.textContent = chkBackup.checked ? this.getNextBackupDescription() : '자동 백업 꺼짐';
       });

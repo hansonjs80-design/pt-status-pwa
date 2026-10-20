@@ -139,7 +139,7 @@ function saveColumnPresets(presets) {
 let COLUMN_PRESETS = loadColumnPresets();
 
 class PTApp {
-  static VERSION = "v453";
+  static VERSION = "v454";
 
   constructor() {
     this.appVersion = PTApp.VERSION;
