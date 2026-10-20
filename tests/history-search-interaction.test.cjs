@@ -477,6 +477,55 @@ test('multiple history rows append consecutively without overwriting other patie
   assert.deepEqual(rows.map(row => row.name), ['원본환자', '마지막환자', '첫환자', '둘환자']);
 });
 
+test('history copies writer and its formatting only for qualifying extra treatments', () => {
+  const extras = ['충격파', '체외충격파 2000', '도수치료', '운동치료', '도수/충격파', '충격파/견인', '운동/견인', '주사 / 도수', '', undefined, null, '주사', '견인'];
+  for (const extra of extras) for (const matching of [true, false]) for (const writer of ['', 'J']) {
+    const destination = { writer, _textColors: { writer: '#008800' }, _textStyles: { writer: { fontWeight: '700' } } };
+    const rows = [{ name: '가상환자', chartNo: 'T001' }, destination, {}];
+    if (matching) Object.assign(destination, { name: '동일환자', chartNo: 'T002' });
+    const { app } = createApp(rows);
+    app.historyApplyTarget = { date: app.currentDate, rows, row: destination, rowIdx: 1 };
+    const source = { name: '동일환자', chartNo: 'T002', extra, writer: 'K',
+      memo: '충격파 도수 운동', prescription: '충격파 도수 운동',
+      _sourceDate: '2026-10-01', _textColors: { writer: '#0000ff' }, _textStyles: { writer: { fontWeight: '400' } } };
+    const originalSource = JSON.stringify(source);
+    app.applyHistoryRow(source);
+    const qualified = /충격파|도수|운동/.test(extra ?? '');
+    assert.equal(destination.writer, qualified ? 'K' : writer, `${extra}/${matching}/${writer}`);
+    assert.equal(destination._textColors.writer, qualified ? '#0000ff' : '#008800');
+    assert.equal(destination._textStyles.writer.fontWeight, qualified ? '400' : '700');
+    assert.equal(destination.name, '동일환자');
+    assert.equal(JSON.stringify(source), originalSource, 'source history stays intact');
+  }
+});
+
+test('a multi-row history apply checks each source extra independently', () => {
+  const rows = [{ name: '기존환자' }, { writer: 'J' }, { writer: 'S' }, { writer: 'K' }];
+  const { app } = createApp(rows);
+  app.crossDateResults = [
+    { name: '충격파환자', extra: '체외충격파', writer: 'K' },
+    { name: '일반환자', extra: '주사', writer: 'J' },
+    { name: '운동환자', extra: '운동치료', writer: 'S' },
+  ];
+  app.crossDateSelection = { minRow: 0, maxRow: 2, minCol: 0, maxCol: 9 };
+  app.applyHistoryRow(app.crossDateResults[0]);
+  assert.deepEqual(rows.map(row => row.writer), [undefined, 'K', 'S', 'S']);
+  assert.deepEqual(rows.slice(1).map(row => row.name), ['충격파환자', '일반환자', '운동환자']);
+});
+
+test('qualifying extras do not copy an unselected writer and sparse selections keep their boundaries', () => {
+  const rows = [{ name: '첫환자', writer: 'J' }, { name: '둘째환자', writer: 'K', extra: '기존' }];
+  const { app } = createApp(rows);
+  app.crossDateResults = [
+    { name: '첫환자', extra: '충격파', writer: 'K' },
+    { name: '둘째환자', extra: '도수치료', writer: 'S' },
+  ];
+  app.crossDateSelection = { minRow: 0, maxRow: 1, minCol: 6, maxCol: 7 };
+  app.selectedCellSet = new Set(['0:6', '1:7']);
+  app.applyHistoryRow(app.crossDateResults[0]);
+  assert.deepEqual(rows.map(row => [row.writer, row.extra]), [['J', '충격파'], ['S', '기존']]);
+});
+
 test('history partial apply preserves unrelated fields on a matching row', () => {
   const rows = [{ name: '가상환자', chartNo: 'T001', part: '목', memo: '유지' }];
   const { app } = createApp(rows);
@@ -821,7 +870,7 @@ test('history appends after the last patient identity despite prepared initials 
   app.applyHistoryRow(source);
   assert.equal(rows[50].name, '새 환자');
   assert.equal(rows[50].chartNo, 'NEW');
-  assert.equal(rows[50].writer, 'K');
+  assert.equal(rows[50].writer, 'J');
   assert.equal(rows[69].writer, 'J');
   assert.equal(rows[69].memo, '미리 입력');
   assert.equal(app.lastHistoryAppliedTarget.rowIdx, 50);

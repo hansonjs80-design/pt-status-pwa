@@ -166,7 +166,11 @@ class PTHistorySearch {
     const selectedKeys = (useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys).filter(key => key !== "visitTime" && key !== "no");
     const appliedAt = new Date();
     for (let offset = 0; offset < sources.length; offset++) {
-      const fields = useSelection && this.selectedCellSet ? selectedKeys.filter(key => this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))) : selectedKeys;
+      // Keep today's prepared writer unless this history row includes one of
+      // the treatments whose assigned writer should follow the patient.
+      const copyWriter = /충격파|도수|운동/.test(String(sources[offset].extra ?? ""));
+      const fields = selectedKeys.filter(key => (key !== "writer" || copyWriter) &&
+        (!useSelection || !this.selectedCellSet || this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))));
       if (!fields.length) continue;
       const destinationIdx = this.getHistoryDestinationIndex(sources[offset], targetRowIdx + offset);
       if (rowIdx === undefined) rowIdx = destinationIdx;
