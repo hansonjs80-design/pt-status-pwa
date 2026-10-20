@@ -838,6 +838,7 @@ class PTApp {
   }
 
   refreshLoadedSearchResults() {
+    if (this.fillDrag?.kind === 'history') { this.historyNoteRefreshPending = true; return; }
     if (!this.elSearchInput?.value?.trim()) {
       this.searchHistoryFocusCleanup?.();
       return;

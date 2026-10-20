@@ -231,11 +231,29 @@ class PTSheetKeyboard {
       const selection = this.crossDateSelection;
       const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
 
+      if (!isCtrlOrMeta && !e.altKey && selection.minRow === selection.maxRow && this.getHistoryNoteRange() &&
+          (e.key.length === 1 || e.key === 'Process' || e.keyCode === 229 || ['F2', 'Delete', 'Backspace'].includes(e.key))) {
+        const cell = this.elTableBody.querySelector(`[data-cross-idx="${selection.endRow}"][data-cross-col="specialNote"]`);
+        if (cell) {
+          this.startHistoryNoteEdit(selection.endRow, cell, e.key !== 'F2');
+          const input = cell.querySelector('input');
+          if (input && ['Delete', 'Backspace'].includes(e.key)) {
+            e.preventDefault(); this.activateNativeEditor(input); input.value = '';
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+          } else if (input && !this.usesNativeCellInput() && e.key.length === 1) {
+            e.preventDefault();
+            input.dispatchEvent(new KeyboardEvent('keydown', {key:e.key,code:e.code,shiftKey:e.shiftKey,bubbles:true,cancelable:true}));
+          } else if (e.key === 'F2') e.preventDefault();
+          return;
+        }
+      }
+
       if (e.key === "Enter") {
         // Eligible Enter events already run the shared Apply button action above.
         if (e.target.closest?.("button, #searchPromptModal")) return;
       }
       else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
+      else if (isCtrlOrMeta && keyLower === "v") return; // Let native paste deliver text and HTML to the shared paste handler.
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();

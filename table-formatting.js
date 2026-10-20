@@ -95,7 +95,7 @@ class PTTableFormatting {
   }
 
   getFormattingRange() {
-    if (this.crossDateSelection) return null;
+    if (this.crossDateSelection) return this.getHistoryNoteRange();
     if (this.selectedRange) return { ...this.selectedRange };
     if (!this.activeCell) return null;
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
@@ -104,6 +104,7 @@ class PTTableFormatting {
   }
 
   getFormattingStatus(property) {
+    if (this.crossDateSelection) return this.getHistoryNoteFormattingStatus(property);
     if (typeof document !== 'undefined' && ['fontSize', 'fontWeight', 'highlight'].includes(property)) {
       const input = document.activeElement;
       if (this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)') && input.selectionStart !== input.selectionEnd) {
@@ -268,6 +269,7 @@ class PTTableFormatting {
   }
 
   applyColumnTypography(property, value) {
+    if (this.crossDateSelection) return this.applyHistoryNoteFormatting(property, value);
     if (["fontSize", "fontWeight"].includes(property) && this.applySelectedTextStyle(property, value)) return;
     const range = this.getFormattingRange();
     if (!range || !["fontSize", "fontWeight", "backgroundColor", "textAlign"].includes(property)) return;
@@ -321,6 +323,7 @@ class PTTableFormatting {
 
   applyAlignment(alignment) {
     if (!['left', 'center', 'right'].includes(alignment)) return;
+    if (this.crossDateSelection) { this.applyHistoryNoteFormatting('textAlign', alignment); this.updateAlignmentIndicator(); return; }
     const range = this.getFormattingRange();
     if (!range) return;
     const columns = this.getSelectedFormattingColumns();
@@ -557,6 +560,19 @@ class PTTableFormatting {
   }
 
   applyChangeCase(caseType) {
+    if (this.crossDateSelection) {
+      const targets = this.getHistoryNoteFormattingTargets();
+      this.textColorSelection = null;
+      for (const {row, key, start, end, input} of targets) {
+        const text = String(row[key] ?? '');
+        const value = text.slice(0, start) + this.transformEnglishCase(text.slice(start, end), caseType) + text.slice(end);
+        if (value === text) continue;
+        this.updateEditorTextColors(row, key, value); row[key] = value;
+        if (input && !input.classList.contains('is-armed')) { input.value = value; input.refreshEditorColors?.(); }
+      }
+      this.saveHistoryNoteEdits(targets.map(target => target.edit));
+      return;
+    }
     const rows = this.getCurrentRows();
     const selected = this.textColorSelection;
     const activeEditor = (typeof document !== 'undefined' && document.activeElement?.matches?.('.cell-input-element:not(.is-armed)'))
@@ -834,6 +850,12 @@ class PTTableFormatting {
 
   captureTextColorSelection() {
     this.textColorSelection = null;
+    if (this.crossDateSelection) {
+      const target = this.getHistoryNoteFormattingTargets().find(target => target.partial);
+      if (target) this.textColorSelection = { history: true, date: target.edit.date, sourceIndex: target.edit.sourceIndex,
+        rowIdx: target.index, colKey: target.key, text: String(target.row[target.key] ?? ''), start: target.start, end: target.end };
+      return;
+    }
     let input = document.activeElement;
     if (!input?.matches?.(".cell-input-element:not(.is-armed)") && this.activeCell) {
       input = this.elTableBody?.querySelector(`[data-row="${this.activeCell.rowIdx}"][data-col="${this.activeCell.colKey}"] input:not(.is-armed)`);
@@ -852,7 +874,7 @@ class PTTableFormatting {
     const red = event.code === 'Space' || event.key === ' ';
     const bold = event.code === 'KeyB' || event.key?.toLowerCase() === 'b';
     const highlight = event.code === 'KeyE' || event.key?.toLowerCase() === 'e';
-    if ((!red && !bold && !highlight) || this.crossDateSelection || !this.getFormattingRange()) return false;
+    if ((!red && !bold && !highlight) || !this.getFormattingRange()) return false;
     const target = event.target;
     if (!target?.matches?.('.cell-input-element') && target !== this.elSheetContainer && !this.elSheetContainer?.contains?.(target)) return false;
     if (target?.matches?.('input, textarea, [contenteditable="true"]') && !target.matches('.cell-input-element')) return false;
@@ -869,6 +891,7 @@ class PTTableFormatting {
   }
 
   isShortcutFormattingApplied(property, value) {
+    if (this.crossDateSelection) return this.isHistoryNoteFormattingApplied(property, value);
     const rows = this.getCurrentRows();
     const matches = current => ['color', 'highlight'].includes(property)
       ? this.normalizeColumnColor(current) === value : Number(current) === value;
@@ -928,6 +951,8 @@ class PTTableFormatting {
   }
 
   applySelectedTextStyle(property, value) {
+    if (this.crossDateSelection) return this.getHistoryNoteFormattingTargets().some(target => target.partial)
+      ? this.applyHistoryNoteFormatting(property, value) : false;
     if (typeof document === 'undefined') return false;
     let input = document.activeElement;
     if (!input?.matches?.('.cell-input-element:not(.is-armed)') && this.activeCell) {
@@ -1004,7 +1029,9 @@ class PTTableFormatting {
   }
 
   applyTextColor(color) {
-    if (this.crossDateSelection) return;
+    if (this.crossDateSelection) {
+      this.applyHistoryNoteFormatting('color', color); this.updateFontColorIndicator(color); this.closeFontColorMenu(); return;
+    }
     if (this.applySelectedTextStyle('color', color)) {
       this.updateFontColorIndicator(color); this.closeFontColorMenu(); return;
     }
@@ -1101,7 +1128,7 @@ class PTTableFormatting {
   }
 
   getUnderlineTargets() {
-    if (this.crossDateSelection) return [];
+    if (this.crossDateSelection) return this.getHistoryNoteFormattingTargets();
     const rows = this.getCurrentRows();
     const input = typeof document !== 'undefined' ? document.activeElement : null;
     const live = this.activeCell && input?.matches?.('.cell-input-element:not(.is-armed)') && input.selectionStart !== input.selectionEnd
@@ -1129,7 +1156,7 @@ class PTTableFormatting {
   }
 
   getSelectedUnderline() {
-    if (!this.activeCell && !this.selectedRange) return { value: null, hasUnderline: false };
+    if (!this.crossDateSelection && !this.activeCell && !this.selectedRange) return { value: null, hasUnderline: false };
     for (const { row, key, start, end } of this.getUnderlineTargets()) {
       const rich = this.getEffectiveCellRichText(row, key);
       for (let i = start; i < end; i++) {
@@ -1173,7 +1200,17 @@ class PTTableFormatting {
   }
 
   toggleUnderline(value = null, allowReset = true) {
-    if (this.crossDateSelection) return;
+    if (this.crossDateSelection) {
+      const selected = this.getSelectedUnderline();
+      value ||= selected.value || this.underlineChoice || { style: 'single', color: null };
+      this.underlineChoice = { ...value };
+      const targets = this.getHistoryNoteFormattingTargets();
+      if (targets.length === 1 && targets[0].end === 0) {
+        document.activeElement?.blur(); this.textColorSelection = null; this.setUnderlineBrush(value); return;
+      }
+      this.applyHistoryNoteFormatting('underline', allowReset && selected.hasUnderline ? null : value);
+      this.updateUnderlineIndicator(); return;
+    }
     const mainButton = value === null;
     const selected = this.getSelectedUnderline();
     value ||= selected.value || this.underlineChoice || { style: 'single', color: null };
@@ -1286,6 +1323,13 @@ class PTTableFormatting {
   }
 
   chooseTextHighlight(color) {
+    if (this.crossDateSelection) {
+      const targets = this.getHistoryNoteFormattingTargets();
+      if (color && targets.length === 1 && (targets[0].end === 0 || this.highlightBrushColor)) {
+        document.activeElement?.blur(); this.textColorSelection = null; this.setHighlightBrush(color);
+      } else { this.setHighlightBrush(null); this.applyTextHighlight(color); }
+      return;
+    }
     const range = this.getFormattingRange();
     const cell = this.activeCell;
     const empty = cell && range && range.minRow === range.maxRow && range.minCol === range.maxCol &&
@@ -1302,7 +1346,10 @@ class PTTableFormatting {
 
   commitHighlightStroke(stroke, end) {
     const { row, key, text, date, start, color } = stroke;
-    if (this.currentDate !== date || this.getCurrentRows()[stroke.rowIndex] !== row || String(row[key] ?? '') !== text) return false;
+    const source = stroke.historyEdit && this.crossDateResults?.[stroke.rowIndex];
+    if (this.currentDate !== date || (stroke.historyEdit
+      ? !source || source._sourceDate !== stroke.historyEdit.date || source._sourceRowIdx !== stroke.historyEdit.sourceIndex || String(source[key] ?? '') !== text
+      : this.getCurrentRows()[stroke.rowIndex] !== row) || String(row[key] ?? '') !== text) return false;
     const lo = Math.min(start, end), hi = Math.max(start, end);
     if (lo === hi) return false;
     const rich = this.getEffectiveCellRichText(row, key);
@@ -1311,6 +1358,11 @@ class PTTableFormatting {
     const reset = Array.from({ length: hi - lo }, (_, i) => stroke.underline
       ? this.underlineMatches(rich?.styles?.[lo + i]?.underline, value)
       : this.normalizeColumnColor(rich?.styles?.[lo + i]?.highlight) === this.normalizeColumnColor(color)).every(Boolean);
+    if (stroke.historyEdit) {
+      this.setPartialTextStyle(row, key, lo, hi, property, reset ? null : value);
+      this.saveHistoryNoteEdits([stroke.historyEdit]);
+      return true;
+    }
     this.captureHistory?.();
     this.setPartialTextStyle(row, key, lo, hi, property, reset ? null : value);
     this.captureHistory?.();
@@ -1336,10 +1388,12 @@ class PTTableFormatting {
     sheet.addEventListener('pointerdown', event => {
       if (!this.highlightBrushColor || event.button !== 0) return;
       suppress(event);
-      const cell = event.target.closest('td.excel-cell[data-row][data-col]');
+      const cell = event.target.closest('td.excel-cell[data-row][data-col], td.cross-date-cell[data-cross-col="specialNote"]');
       if (!cell || !this.elTableBody.contains(cell)) return;
-      const rowIndex = Number(cell.dataset.row), key = cell.dataset.col;
-      const row = this.getCurrentRows()[rowIndex], text = String(row?.[key] ?? '');
+      const history = cell.dataset.crossCol === 'specialNote';
+      const rowIndex = Number(history ? cell.dataset.crossIdx : cell.dataset.row), key = history ? 'specialNote' : cell.dataset.col;
+      const historyEdit = history ? this.createHistoryNoteEdit(rowIndex) : null;
+      const row = historyEdit?.row || this.getCurrentRows()[rowIndex], text = String(row?.[key] ?? '');
       if (!text || key === 'visitTime') return;
       const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
       const chars = [];
@@ -1361,7 +1415,7 @@ class PTTableFormatting {
         if (index > 0 && /[\uDC00-\uDFFF]/.test(text[index] || '')) index++;
         return Math.min(index, text.length);
       };
-      const stroke = { row, rowIndex, key, text, date: this.currentDate, start: indexAt(event.clientX), color: this.highlightBrushColor, underline: this.underlineBrushStyle ? { ...this.underlineBrushStyle } : null };
+      const stroke = { row, rowIndex, key, text, date: this.currentDate, historyEdit, start: indexAt(event.clientX), color: this.highlightBrushColor, underline: this.underlineBrushStyle ? { ...this.underlineBrushStyle } : null };
       let end = stroke.start;
       const selection = document.createElement('div'); selection.className = 'highlight-brush-selection';
       cell.append(selection);
@@ -1398,7 +1452,10 @@ class PTTableFormatting {
   }
 
   applyTextHighlight(color) {
-    if (this.crossDateSelection) return;
+    if (this.crossDateSelection) {
+      if (color) this.textHighlightColor = this.normalizeColumnColor(color) || color;
+      this.applyHistoryNoteFormatting('highlight', color); this.updateTextHighlightIndicator(); return;
+    }
     if (color) this.textHighlightColor = this.normalizeColumnColor(color) || color;
     this.updateTextHighlightIndicator();
     if (this.applySelectedTextStyle('highlight', color)) return;

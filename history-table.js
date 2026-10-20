@@ -13,6 +13,12 @@ class PTHistoryTable {
     }
     // Build a draft only for the selected cell. Opening/searching the history
     // table never hydrates dates, reads extra records, or creates editors.
+    const edit = this.createHistoryNoteEdit(index);
+    this.startInlineEdit(index, "specialNote", cell, armed, edit);
+  }
+
+  createHistoryNoteEdit(index) {
+    const source = this.crossDateResults[index];
     const edit = {
       row: JSON.parse(JSON.stringify(source)), date: source._sourceDate,
       sourceIndex: source._sourceRowIdx, query: this.elSearchInput.value.trim(),
@@ -27,7 +33,7 @@ class PTHistoryTable {
       }
     };
     edit.signature = this.getHistoryNoteSignature(edit.row);
-    this.startInlineEdit(index, "specialNote", cell, armed, edit);
+    return edit;
   }
 
   getHistoryNoteSignature(row) {
@@ -35,7 +41,7 @@ class PTHistoryTable {
       .map(key => row[key]?.specialNote ?? null)]);
   }
 
-  saveHistoryNoteEdit(edit, finished) {
+  saveHistoryNoteEdit(edit, finished, { deferPersist = false } = {}) {
     const signature = this.getHistoryNoteSignature(edit.row);
     if (signature !== edit.signature) {
       // Materialize only the edited date, with unsent edits and newer remote
@@ -44,7 +50,7 @@ class PTHistoryTable {
       const target = rows?.[edit.sourceIndex];
       if (!target || ["name", "chartNo"].some(key => String(target[key] ?? "") !== String(edit.row[key] ?? ""))) {
         this.showSaveIndicator("원본 기록이 변경되어 특이사항을 저장하지 못했습니다. 다시 검색해 주세요.", true);
-        return;
+        return false;
       }
       const copy = JSON.parse(JSON.stringify(rows));
       const row = copy[edit.sourceIndex];
@@ -76,8 +82,9 @@ class PTHistoryTable {
         if (result._sourceDate === edit.date && result._sourceRowIdx === edit.sourceIndex) Object.assign(result, row);
       }
     }
-    if (!edit.changed) return;
+    if (!edit.changed) return false;
     clearTimeout(edit.timer);
+    if (deferPersist) return true;
     const persist = () => {
       edit.timer = null;
       return this.persistDataStore().then(() => {
@@ -94,6 +101,204 @@ class PTHistoryTable {
         if (this.elSearchInput.value.trim() === edit.query) this.refreshLoadedSearchResults();
       }, 0);
     } else edit.timer = setTimeout(persist, 350);
+  }
+
+  getHistoryNoteRange() {
+    const range = this.crossDateSelection;
+    return range && !this.isCrossDateRowSelected && range.minCol === 9 && range.maxCol === 9 ? { ...range } : null;
+  }
+
+  getHistoryNoteFormattingTargets({ partial = true } = {}) {
+    const range = this.getHistoryNoteRange();
+    if (!range) return [];
+    const targets = [];
+    for (let index = range.minRow; index <= range.maxRow; index++) {
+      if (!this.isSelectedCoordinate(index, 9) || !this.crossDateResults?.[index]) continue;
+      const cell = this.elTableBody?.querySelector(`[data-cross-idx="${index}"][data-cross-col="specialNote"]`);
+      const input = cell?.querySelector("input");
+      const edit = input?.historyEdit || this.createHistoryNoteEdit(index);
+      const row = edit.row, text = String(row.specialNote ?? "");
+      const saved = this.textColorSelection;
+      const live = input && !input.classList.contains("is-armed") && input.selectionStart !== input.selectionEnd
+        ? { start: input.selectionStart, end: input.selectionEnd, text: this.getCellEditorValue(input) } : null;
+      const selection = partial && range.minRow === range.maxRow ? live || (saved?.history &&
+        saved.date === edit.date && saved.sourceIndex === edit.sourceIndex && saved.text === text ? saved : null) : null;
+      targets.push({ row, key: "specialNote", index, cell, input, edit, partial: Boolean(selection),
+        start: selection ? Math.min(selection.start, selection.end) : 0,
+        end: selection ? Math.max(selection.start, selection.end) : text.length });
+    }
+    return targets;
+  }
+
+  getHistoryNoteFormattingStatus(property) {
+    const targets = this.getHistoryNoteFormattingTargets();
+    if (!targets.length) return { label: "선택 없음", value: null };
+    const values = new Set();
+    for (const {row, key, cell, start, end, partial} of targets) {
+      const rich = this.getEffectiveCellRichText(row, key);
+      const fallback = this.getCellFormatting(row, key, property) ??
+        (property === "highlight" ? null : cell && typeof getComputedStyle === "function" ? getComputedStyle(cell)[property] : null);
+      if ((partial || property === "highlight") && end > start && rich?.text === String(row[key] ?? "")) {
+        for (let i = start; i < end; i++) values.add((property === "color" ? rich.colors?.[i] : rich.styles?.[i]?.[property]) ?? fallback);
+      } else values.add(fallback);
+    }
+    const value = values.size === 1 ? [...values][0] : null;
+    return { value, label: values.size !== 1 ? "여러 값" : value == null ? "없음" : String(value) };
+  }
+
+  saveHistoryNoteEdits(edits) {
+    const dates = new Set();
+    for (const edit of edits) if (this.saveHistoryNoteEdit(edit, false, { deferPersist: true })) dates.add(edit.date);
+    if (!dates.size) return;
+    void this.persistDataStore().then(() => {
+      for (const date of dates) this.scheduleSupabaseSync(date);
+      this.showSaveIndicator("저장 완료됨");
+    }).catch(error => {
+      console.error("History note formatting save error", error);
+      this.showSaveIndicator("특이사항 저장 실패 · 다시 저장해 주세요", true);
+    });
+    setTimeout(() => this.refreshLoadedSearchResults(), 0);
+  }
+
+  applyHistoryNoteFormatting(property, value) {
+    const targets = this.getHistoryNoteFormattingTargets({ partial: !["backgroundColor", "textAlign"].includes(property) });
+    this.textColorSelection = null;
+    for (const target of targets) {
+      const { row, key, cell, input, start, end, partial } = target;
+      if (partial || ["highlight", "underline"].includes(property)) {
+        if (property === "color") { this.setPartialTextColor(row, key, start, end, value); this.markCellFormatting(row, key, "color"); }
+        else this.setPartialTextStyle(row, key, start, end, property, value);
+      } else if (property === "color") {
+        row._textColors ||= {};
+        if (value) row._textColors[key] = value; else delete row._textColors[key];
+        const rich = row._richText?.[key];
+        if (rich?.styles?.some(Boolean)) rich.colors = Array(String(row[key] ?? "").length).fill(null);
+        else if (row._richText) delete row._richText[key];
+        this.markCellFormatting(row, key, property);
+      } else {
+        row._textStyles ||= {}; row._textStyles[key] ||= {};
+        if (value == null) delete row._textStyles[key][property]; else row._textStyles[key][property] = value;
+        const rich = row._richText?.[key];
+        if (rich?.styles && ["fontSize", "fontWeight"].includes(property)) rich.styles = rich.styles.map(style => {
+          if (!style) return null;
+          const next = { ...style }; delete next[property]; return Object.keys(next).length ? next : null;
+        });
+        this.markCellFormatting(row, key, property);
+      }
+      if (cell) {
+        this.applyCellFormatting(cell, row, key);
+        if (input && !input.classList.contains("is-armed")) {
+          input.refreshEditorColors?.();
+          if (partial) { input.focus({ preventScroll: true }); input.setSelectionRange(start, end); }
+        } else {
+          input?.blur(); input?.remove();
+          this.renderColoredText(cell, row, key);
+        }
+      }
+    }
+    this.saveHistoryNoteEdits(targets.map(target => target.edit));
+    return targets.length > 0;
+  }
+
+  isHistoryNoteFormattingApplied(property, value) {
+    const matches = current => ["color", "highlight"].includes(property)
+      ? this.normalizeColumnColor(current) === value : Number(current) === value;
+    const targets = this.getHistoryNoteFormattingTargets();
+    return targets.length > 0 && targets.every(({row, key, start, end}) => {
+      const rich = this.getEffectiveCellRichText(row, key);
+      const local = this.isCellFormattingCurrent(row, key, property)
+        ? property === "color" ? row._textColors?.[key] : row._textStyles?.[key]?.[property] : null;
+      if (start === end) return matches(local);
+      return Array.from({length: end - start}, (_, i) => {
+        const current = rich?.text === String(row[key] ?? "")
+          ? property === "color" ? rich.colors?.[start + i] : rich.styles?.[start + i]?.[property] : null;
+        return matches(current ?? local);
+      }).every(Boolean);
+    });
+  }
+
+  finishHistoryNoteFill(drag) {
+    const first = Math.min(drag.rowIdx, drag.endRow), last = Math.max(drag.rowIdx, drag.endRow);
+    // Do not apply an old drag to a different search result ordering.
+    if (drag.sources.length !== this.crossDateResults.length || drag.sources.some((source, index) =>
+      source._sourceDate !== this.crossDateResults[index]?._sourceDate ||
+      source._sourceRowIdx !== this.crossDateResults[index]?._sourceRowIdx)) return;
+    const edits = [];
+    for (let index = first; index <= last; index++) {
+      if (index === drag.rowIdx) continue;
+      const edit = this.createHistoryNoteEdit(index);
+      edit.row.specialNote = drag.value;
+      this.applyCopiedCellFormatting(edit.row, 'specialNote', drag.formatting);
+      edits.push(edit);
+    }
+    this.saveHistoryNoteEdits(edits);
+    this.isCrossDateRowSelected = false;
+    this.selectCrossDateCell(drag.rowIdx, 9);
+    this.selectCrossDateCell(drag.endRow, 9, true);
+    this.isSelectingCrossDate = false;
+    this.showSaveIndicator(`${edits.length}개 셀 채우기 완료`);
+  }
+
+  async pasteHistoryNotes(suppliedText, suppliedHtml = "") {
+    const range = this.getHistoryNoteRange(), viewDate = this.currentDate;
+    if (!range) return;
+    const sourceRows = [...this.crossDateResults];
+    const selection = JSON.stringify(this.crossDateSelection);
+    document.activeElement?.blur?.();
+    const { text, html } = await this.readClipboardForPaste(suppliedText, suppliedHtml);
+    if (this.currentDate !== viewDate || JSON.stringify(this.crossDateSelection) !== selection ||
+        sourceRows.length !== this.crossDateResults?.length || sourceRows.some((row, index) =>
+          row._sourceDate !== this.crossDateResults[index]?._sourceDate || row._sourceRowIdx !== this.crossDateResults[index]?._sourceRowIdx)) return;
+    if (!text) { this.showSaveIndicator("붙여넣을 데이터가 없습니다.", true); return; }
+    const grid = this.parseClipboardGrid(text);
+    if (grid.some(row => row.length !== 1) || range.minRow + grid.length > sourceRows.length) {
+      this.showSaveIndicator("표시된 특이사항 셀 범위에 맞는 한 열의 내용을 붙여넣어 주세요.", true); return;
+    }
+    const external = this.parseClipboardHtmlColors(html);
+    const copied = !external && text === this.clipboardBuffer
+      ? this.clipboardSelection || (this.clipboardFormatSnapshot?.text === text ? this.clipboardFormatSnapshot.selection : null) : null;
+    const edits = [];
+    for (let offset = 0; offset < grid.length; offset++) {
+      if (copied?.cells && !copied.cells.includes(`${copied.minRow + offset}:${copied.minCol}`)) continue;
+      const edit = this.createHistoryNoteEdit(range.minRow + offset);
+      const rows = this.getSearchDataStore({ rebasePending: true, date: edit.date })[edit.date];
+      const original = rows?.[edit.sourceIndex];
+      if (!original || ['name', 'chartNo'].some(key => String(original[key] ?? '') !== String(edit.row[key] ?? ''))) {
+        this.showSaveIndicator("원본 기록이 변경되어 붙여넣지 않았습니다. 다시 검색해 주세요.", true); return;
+      }
+      const value = grid[offset][0].trim();
+      this.updateEditorTextColors(edit.row, 'specialNote', value);
+      edit.row.specialNote = value;
+      const formatting = copied?.formatting?.[offset]?.[0];
+      if (formatting) this.applyCopiedCellFormatting(edit.row, 'specialNote', formatting);
+      else if (external?.[offset]?.[0]?.text === value) this.applyPastedCellColors(edit.row, 'specialNote', external[offset][0].formatting);
+      edits.push(edit);
+    }
+    if (!edits.length) return;
+    const cut = this.pendingCut;
+    let moved = false;
+    if (cut && !external && cut.text === text && cut.date === this.currentDate) {
+      const rows = this.getCurrentRows();
+      this.captureHistory();
+      for (const {row, key, value} of cut.cells) if (rows.includes(row) && (row[key] ?? '') === value) {
+        const index = rows.indexOf(row);
+        if (key === 'specialNote' && edits.some(edit => edit.date === this.currentDate && edit.sourceIndex === index)) continue;
+        row[key] = ''; moved = true;
+        const cell = this.elTableBody?.querySelector(`[data-row="${index}"][data-col="${key}"]`);
+        if (cell) this.renderColoredText(cell, row, key);
+      }
+    }
+    this.pendingCut = null;
+    this.saveHistoryNoteEdits(edits);
+    if (moved) void this.saveDataStore();
+    this.clipboardSelection = null;
+    this.renderClipboardSelection();
+    this.isCrossDateRowSelected = false;
+    this.selectCrossDateCell(range.minRow, 9);
+    if (grid.length > 1) this.selectCrossDateCell(range.minRow + grid.length - 1, 9, true);
+    // Match the daily table's paste handoff: a border, without a live caret.
+    this.elSheetContainer?.focus?.({ preventScroll: true });
+    this.showSaveIndicator("붙여넣기 완료됨");
   }
 
   selectCrossDateRow(idx) {
@@ -397,7 +602,7 @@ class PTHistoryTable {
         }
 
         td.addEventListener("mousedown", (e) => {
-          if (e.button !== 0 || e.target.closest?.("input")) return;
+          if (e.button !== 0 || e.target.closest?.("input, .cell-fill-handle")) return;
           e.preventDefault();
           this.isCrossDateRowSelected = false;
           this.elTableBody.querySelectorAll(".cross-date-num").forEach(th => th.classList.remove("selected", "header-active"));

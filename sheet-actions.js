@@ -177,6 +177,7 @@ class PTSheetActions {
       }
       this.clipboardBuffer = tsvData;
       this.clipboardSelection = { ...copyRange, formatting, rowSelection: this.crossDateSelection ? Boolean(this.isCrossDateRowSelected) : Boolean(this.selectedRowRange), date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
+      this.clipboardFormatSnapshot = { text: tsvData, selection: { ...this.clipboardSelection } };
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {
@@ -202,11 +203,7 @@ class PTSheetActions {
     this.showSaveIndicator("잘라내기 선택됨 · 붙여넣으면 이동합니다");
   }
 
-  async pasteSelection(suppliedText, suppliedHtml = "") {
-    if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) {
-      document.activeElement?.blur?.();
-    }
-    if (typeof this.captureHistory === "function") this.captureHistory();
+  async readClipboardForPaste(suppliedText, suppliedHtml = "") {
     let text = suppliedText ?? "";
     let html = suppliedHtml;
     if (suppliedText === undefined && navigator.clipboard?.read) {
@@ -227,6 +224,16 @@ class PTSheetActions {
       text = this.clipboardBuffer;
     }
     if (!text && suppliedText === undefined && this.clipboardBuffer) text = this.clipboardBuffer;
+    return { text, html };
+  }
+
+  async pasteSelection(suppliedText, suppliedHtml = "") {
+    if (this.getHistoryNoteRange()) return this.pasteHistoryNotes(suppliedText, suppliedHtml);
+    if (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput) {
+      document.activeElement?.blur?.();
+    }
+    if (typeof this.captureHistory === "function") this.captureHistory();
+    const { text, html } = await this.readClipboardForPaste(suppliedText, suppliedHtml);
     if (!text) {
       this.showSaveIndicator("붙여넣을 데이터가 없습니다.", true);
       return;
@@ -251,7 +258,8 @@ class PTSheetActions {
 
       const grid = this.parseClipboardGrid(text);
       const htmlColors = this.parseClipboardHtmlColors(html);
-      const sourceSelection = !htmlColors && text === this.clipboardBuffer ? this.clipboardSelection : null;
+      const sourceSelection = !htmlColors && text === this.clipboardBuffer
+        ? this.clipboardSelection || (this.clipboardFormatSnapshot?.text === text ? this.clipboardFormatSnapshot.selection : null) : null;
 
       // Determine start coordinate
       let startRow = 0;

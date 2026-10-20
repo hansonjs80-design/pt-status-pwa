@@ -413,10 +413,9 @@ class PTAppEvents {
       if (this._recordsRestorePending) return;
       const target = event.target;
       if (this.crossDateSelection) {
-        if (target.matches?.(".cell-input-element") && target.historyEdit &&
-            !/[\t\r\n]/.test(event.clipboardData?.getData("text/plain") || "") &&
-            !/<table\b/i.test(event.clipboardData?.getData("text/html") || "")) return;
-        event.preventDefault(); return;
+        event.preventDefault();
+        if (this.getHistoryNoteRange()) void this.pasteSelection(event.clipboardData?.getData("text/plain"), event.clipboardData?.getData("text/html") || "");
+        return;
       }
       if (!this.activeCell && !this.selectedRange && this.selectedRowIdx === null) return;
       if (target.matches?.("input, textarea") && !target.matches(".cell-input-element")) return;

@@ -239,6 +239,7 @@ class PTHistorySearch {
   }
 
   clearCrossDateSelection() {
+    if (this.textColorSelection?.history) this.textColorSelection = null;
     if (this.selectedCellKind === "history") { this.selectedCellSet = null; this.selectedCellKind = null; }
     this.crossDateSelection = null;
     this.isSelectingCrossDate = false;
@@ -258,6 +259,7 @@ class PTHistorySearch {
       return row && JSON.stringify([row._sourceDate, row._sourceRowIdx]);
     };
     return { selection, rowSelected: this.isCrossDateRowSelected,
+      borderOnly: typeof document !== 'undefined' && document.activeElement === this.elSheetContainer,
       wasLastRow: selection.endRow === this.crossDateResults?.length - 1,
       start: identify(selection.startRow), end: identify(selection.endRow) };
   }
@@ -275,11 +277,13 @@ class PTHistorySearch {
     }
     if (snapshot.rowSelected) this.selectCrossDateRow(endRow);
     else {
+      this.isCrossDateRowSelected = false;
       this.selectCrossDateCell(startRow, snapshot.selection.startCol);
       if (startRow !== endRow || snapshot.selection.startCol !== snapshot.selection.endCol) {
         this.selectCrossDateCell(endRow, snapshot.selection.endCol, true);
       }
       this.isSelectingCrossDate = false;
+      if (snapshot.borderOnly) this.elSheetContainer?.focus?.({ preventScroll: true });
     }
   }
 
@@ -325,6 +329,7 @@ class PTHistorySearch {
     if (!extend && !this.isCrossDateRowSelected && col === 9 && !this.selectedCellSet) {
       this.startHistoryNoteEdit(row, cell, true);
     }
+    if (cell && this.getHistoryNoteRange() && selection.minRow === selection.maxRow) this.highlightCell(cell);
   }
 
   restoreAppliedHistorySelection(target) {
@@ -591,12 +596,16 @@ class PTHistorySearch {
   }
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false, searchStore: preparedSearchStore = null } = {}) {
+    const historyExpanded = this.isCrossDateExpanded;
     if (this.includeCurrentDateSearch && this.currentDateSearchOriginalTarget?.date === this.currentDate) {
       this.historyApplyTarget = this.currentDateSearchOriginalTarget;
     }
     clearTimeout(this.historyCurrentScrollTimer);
     const historySelection = preserveCurrentSelection
       ? this.captureHistorySearchSelection() || this.pendingHistorySearchSelection : null;
+    if (historySelection && typeof document !== 'undefined' && typeof document.getElementById === 'function') {
+      this._preservedHistoryScrollTop = document.getElementById('crossDateScrollWrap')?.scrollTop;
+    }
     this.pendingHistorySearchSelection = null;
     if (!this.elSearchInput?.value?.trim() && this.historyOriginSelection === undefined) this.captureHistoryOriginSelection();
     // Refreshing search results must not steal focus from a current-date edit.
@@ -691,7 +700,7 @@ class PTHistorySearch {
 
     this.crossDateGroups = groupMap;
     this.allCrossDateMatchedRows = allMatchedRows;
-    this.isCrossDateExpanded = false; // 기본값: 대표 행만 표시
+    this.isCrossDateExpanded = Boolean(preserveCurrentSelection && historyExpanded);
 
     const currentIndices = this.getCurrentDateSearchRowIndices(q);
     if (currentIndices.length) {
@@ -705,7 +714,7 @@ class PTHistorySearch {
     // Keep keyboard selection in the last history row, and show the daily
     // destination independently through its preview tint and border.
     this.renderCrossDateSection({
-      preserveCurrentSelection: keepCurrentSelection,
+      preserveCurrentSelection: keepCurrentSelection || Boolean(historySelection),
       selectLatestHistory: !preserveCurrentSelection && !this._isPasting
     });
     if (historySelection) this.restoreHistorySearchSelection(historySelection);

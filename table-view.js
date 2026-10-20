@@ -315,8 +315,11 @@ class PTTableView {
     document.querySelectorAll(".cell-fill-handle").forEach((handle) => handle.remove());
     document.querySelectorAll(".cell-focused").forEach((c) => c.classList.remove("cell-focused"));
     cellElement.classList.add("cell-focused");
-    const { row, col, colIdx } = cellElement.dataset;
-    const value = this.getCurrentRows()[Number(row)]?.[col];
+    const history = cellElement.dataset.crossCol === 'specialNote';
+    const row = history ? cellElement.dataset.crossIdx : cellElement.dataset.row;
+    const col = history ? 'specialNote' : cellElement.dataset.col;
+    const colIdx = history ? 9 : cellElement.dataset.colIdx;
+    const value = (history ? this.crossDateResults : this.getCurrentRows())?.[Number(row)]?.[col];
     if (value === null || value === undefined || String(value).trim() === "") return;
     const handle = document.createElement("span");
     handle.className = "cell-fill-handle";
@@ -326,11 +329,16 @@ class PTTableView {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
-      const currentValue = this.getCurrentRows()[Number(row)]?.[col];
+      if (history) document.activeElement?.blur();
+      const source = (history ? this.crossDateResults : this.getCurrentRows())?.[Number(row)];
+      const currentValue = source?.[col];
       if (currentValue === null || currentValue === undefined || String(currentValue).trim() === "") return;
       this.fillDrag = { rowIdx: Number(row), colKey: col, colIdx: Number(colIdx),
         value: col === "writer" ? this.normalizeWriterInput(currentValue) : currentValue,
-        endRow: Number(row), date: this.currentDate };
+        endRow: Number(row), date: this.currentDate,
+        ...(history ? { kind: 'history', sources: [...this.crossDateResults],
+          formatting: this.captureCellFormatting(source, col, cellElement) } : {}) };
+      this.isSelectingCrossDate = false;
       this.isSelectingRange = false;
       this.isSelectingRows = false;
       this.elSheetContainer.classList.add("is-selecting");
@@ -346,7 +354,8 @@ class PTTableView {
     this.startFillDragAutoScroll();
     const row = this.getFillDragRow(event);
     if (!row || !this.elTableBody.contains(row)) return;
-    const endRow = Number(row.dataset.rowIdx);
+    const history = this.fillDrag.kind === 'history';
+    const endRow = Number(history ? row.dataset.crossIdx : row.dataset.rowIdx);
     // 카운트 뱃지 위치 항상 업데이트 (endRow 변화 여부 무관)
     this._updateFillDragBadge(event.clientX, event.clientY, Math.abs(endRow - this.fillDrag.rowIdx) + 1);
     if (this.fillDrag.endRow === endRow) return;
@@ -355,18 +364,23 @@ class PTTableView {
     const first = Math.min(this.fillDrag.rowIdx, endRow), last = Math.max(this.fillDrag.rowIdx, endRow);
     for (let r = first; r <= last; r++) {
       if (r === this.fillDrag.rowIdx) continue;
-      this.elTableBody.querySelector(`.excel-cell[data-row="${r}"][data-col="${this.fillDrag.colKey}"]`)?.classList.add("fill-preview");
+      this.elTableBody.querySelector(history
+        ? `.cross-date-cell[data-cross-idx="${r}"][data-cross-col="specialNote"]`
+        : `.excel-cell[data-row="${r}"][data-col="${this.fillDrag.colKey}"]`)?.classList.add("fill-preview");
     }
   }
 
   getFillDragRow(point) {
-    const rect = this.elSheetContainer.getBoundingClientRect();
+    const history = this.fillDrag?.kind === 'history';
+    const container = history ? document.getElementById('crossDateScrollWrap') : this.elSheetContainer;
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
     if (point.clientX < rect.left || point.clientX >= rect.right) return null;
     // Keep targeting visible rows when the pointer passes either vertical edge.
-    const header = document.getElementById('excelTable')?.querySelector('thead');
+    const header = document.getElementById(history ? 'crossDateInnerTable' : 'excelTable')?.querySelector('thead');
     const top = Math.max(rect.top, header?.getBoundingClientRect().bottom || rect.top);
     const y = Math.max(top + 1, Math.min(rect.bottom - 2, point.clientY));
-    return document.elementFromPoint(point.clientX, y)?.closest('tr[data-row-idx]');
+    return document.elementFromPoint(point.clientX, y)?.closest(history ? 'tr.cross-date-row[data-cross-idx]' : 'tr[data-row-idx]');
   }
 
   startFillDragAutoScroll() {
@@ -374,10 +388,13 @@ class PTTableView {
     this.fillDragScrollFrame = requestAnimationFrame(time => {
       this.fillDragScrollFrame = null;
       if (!this.fillDrag || !this.fillDragPointer) return;
-      const container = this.elSheetContainer, rect = container.getBoundingClientRect();
+      const history = this.fillDrag.kind === 'history';
+      const container = history ? document.getElementById('crossDateScrollWrap') : this.elSheetContainer;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
       const point = this.fillDragPointer;
       if (point.clientX < rect.left || point.clientX >= rect.right) return;
-      const header = document.getElementById('excelTable')?.querySelector('thead');
+      const header = document.getElementById(history ? 'crossDateInnerTable' : 'excelTable')?.querySelector('thead');
       const top = Math.max(rect.top, header?.getBoundingClientRect().bottom || rect.top);
       const edge = Math.min(36, (rect.bottom - top) / 3);
       const velocity = point.clientY > rect.bottom - edge
@@ -421,6 +438,10 @@ class PTTableView {
     this.elSheetContainer.classList.remove("is-selecting");
     this.elSheetContainer.classList.remove("is-fill-dragging");
     this._removeFillDragBadge();
+    if (this.historyNoteRefreshPending) {
+      this.historyNoteRefreshPending = false;
+      setTimeout(() => this.refreshLoadedSearchResults(), 0);
+    }
   }
 
   finishFillDrag(event) {
@@ -430,6 +451,7 @@ class PTTableView {
     this.cancelFillDrag();
     if (!drag || drag.date !== this.currentDate || drag.endRow === drag.rowIdx ||
         !releasedRow || !this.elTableBody.contains(releasedRow)) return;
+    if (drag.kind === 'history') { this.finishHistoryNoteFill(drag); return; }
     const rows = this.getCurrentRows();
     const first = Math.min(drag.rowIdx, drag.endRow), last = Math.max(drag.rowIdx, drag.endRow);
     for (let r = first; r <= last; r++) {
