@@ -1,5 +1,44 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTSheetKeyboard {
+  handleNextNameCellShortcut(e) {
+    if (this._recordsRestorePending || e.defaultPrevented || !(e.ctrlKey || e.metaKey) ||
+        e.altKey || e.shiftKey || e.isComposing ||
+        !(e.code === "KeyT" || String(e.key).toLowerCase() === "t")) return false;
+    const target = e.target;
+    if (target?.closest?.(".modal-overlay, dialog") || document.querySelector("dialog[open]") ||
+        Array.from(document.querySelectorAll(".modal-overlay")).some(modal => modal.style.display && modal.style.display !== "none")) return false;
+    if (target?.matches?.("input, textarea, select, [contenteditable='true']") &&
+        !target.closest?.(".excel-cell") && target !== this.elFormulaInput && target !== this.elSearchInput) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.repeat) return true;
+    // Blur commits the live draft before the last name is calculated.
+    document.activeElement?.blur?.();
+    if (this.elSearchInput?.value?.trim() || this.crossDateResults?.length) this.closeHistorySearch();
+    this.jumpToNextNameCell();
+    return true;
+  }
+
+  jumpToNextNameCell() {
+    this.closeAutocompleteMenu();
+    this.hideContextMenu();
+    const rows = this.getCurrentRows();
+    const rowIdx = rows.findLastIndex(row => String(row?.name ?? "").trim()) + 1;
+    const selector = `.excel-cell[data-row="${rowIdx}"][data-col="name"]`;
+    let cell = this.elTableBody.querySelector(selector);
+    if (!cell) {
+      // getCurrentRows allocates trailing blank rows, including after a draft
+      // fills the final rendered row. Materialize those rows before selecting.
+      this.renderTable();
+      cell = this.elTableBody.querySelector(selector);
+    }
+    if (!cell) return;
+    cell.closest("tr").style.display = "";
+    this.selectCell(rowIdx, "name", cell, false);
+    this.elSheetContainer.focus({ preventScroll: true });
+    this.ensureCurrentCellVisible(cell, { center: true });
+  }
+
   getHorizontalContentEdge(row, startCol, direction, keys) {
     const filled = col => Boolean(String(row?.[keys[col]] ?? "").trim());
     let col = startCol;
@@ -129,6 +168,7 @@ class PTSheetKeyboard {
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
+    if (this.handleNextNameCellShortcut(e)) return;
     if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) {
       this._lastHangulToggleAt = Date.now();
       const cellInput = this.elTableBody?.querySelector(`[data-row="${this.activeCell?.rowIdx}"][data-col="${this.activeCell?.colKey}"] input`);
