@@ -613,14 +613,26 @@
       const days = Object.entries(this.app.getSearchDataStore()).filter(([date, rows]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && records(rows).length);
       const bytes = days.reduce((n, [, rows]) => n + new Blob([JSON.stringify(rows)]).size, 0);
       const perDay = days.length ? bytes / days.length : 0;
-      container.replaceChildren();
-      const p = document.createElement('p');
-      p.textContent = `확인된 ${days.length}일 · 기록 JSON ${(bytes / 1e6).toFixed(2)} MB · 기록일 하루 평균 ${(perDay / 1000).toFixed(1)} KB`;
-      container.append(p);
-      const note = document.createElement('p');
-      note.textContent = '예상치는 확인된 기록만 기준으로 합니다. 실제 DB 크기·요금제·인덱스·다른 테이블·월간 전송량은 Supabase 대시보드에서 확인해야 합니다.';
-      container.append(note);
-      container.insertAdjacentHTML('beforeend', '<label>DB 한도(MB) <input data-limit type="number" min="1" value="500"></label><label>대시보드 현재 DB 사용량(MB) <input data-used type="number" min="0" placeholder="직접 입력"></label><p data-estimate></p><p>Free DB 500 MB · Pro 기본 디스크 8 GB. 월간 전송량은 Free 5 GB / Pro 250 GB로 별도 제한됩니다. 여러 컴퓨터의 반복 조회량에 따라 전송량이 먼저 도달할 수 있습니다.</p><a href="https://supabase.com/docs/guides/platform/billing-on-supabase" target="_blank" rel="noopener">공식 한도 확인</a> · <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">Supabase 사용량 확인</a>');
+      container.innerHTML = `
+        <div class="settings-panel-heading"><h3>저장 사용량</h3><p>확인된 기록을 기준으로 계산한 예상치입니다.</p></div>
+        <div class="settings-usage-metrics">
+          <div class="settings-usage-metric"><span>기록 날짜</span><strong>${days.length}일</strong></div>
+          <div class="settings-usage-metric"><span>기록 JSON</span><strong>${(bytes / 1e6).toFixed(2)} MB</strong></div>
+          <div class="settings-usage-metric"><span>하루 평균</span><strong>${(perDay / 1000).toFixed(1)} KB</strong></div>
+        </div>
+        <div class="settings-card">
+          <h4>남은 기록일 예상</h4>
+          <div class="settings-field-grid">
+            <label class="settings-field">DB 한도 (MB) <input data-limit type="number" min="1" value="500"></label>
+            <label class="settings-field">현재 DB 사용량 (MB) <input data-used type="number" min="0" placeholder="대시보드 값 입력"></label>
+          </div>
+          <p data-estimate aria-live="polite"></p>
+        </div>
+        <div class="settings-card">
+          <p>실제 DB 크기·요금제·월간 전송량은 Supabase 대시보드에서 확인해 주세요.</p>
+          <div class="settings-help-links"><a href="https://supabase.com/docs/guides/platform/billing-on-supabase" target="_blank" rel="noopener">공식 한도 확인 ↗</a><a href="https://supabase.com/dashboard" target="_blank" rel="noopener">사용량 대시보드 ↗</a></div>
+          <details><summary>계산 기준과 한도 안내</summary><p>확인된 기록의 JSON 용량을 기준으로 계산하며, 저장 오버헤드는 하루 용량의 2배로 가정합니다. 인덱스와 다른 테이블, 월간 전송량에 따라 실제 사용 가능 기간은 달라집니다.</p><p>Free DB 500 MB · Pro 기본 디스크 8 GB. 월간 전송량은 Free 5 GB / Pro 250 GB로 별도 제한됩니다.</p></details>
+        </div>`;
       const update = () => {
         const limit = Number(container.querySelector('[data-limit]').value);
         const raw = container.querySelector('[data-used]').value;
@@ -716,57 +728,63 @@
         this.ready.then(() => this.open(defaultTab)).catch(error => this.report('설정 복원 실패 · '+error.message));
         return;
       }
+      this.dialog?.close();
       this.dialog?.remove();
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
+      dialog.setAttribute('aria-labelledby', 'deviceSettingsTitle');
       this.dialog = dialog;
       const currentVersion = this.app?.appVersion || '확인 중';
-      const latestVer = this.app?.latestServerVersion || '';
       dialog.innerHTML = `
+        <div class="device-settings-topbar">
         <header>
           <div class="device-settings-title-group">
-            <h2>이 컴퓨터 설정</h2>
-            <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
-            <button type="button" class="device-settings-update-badge" data-apply-update hidden title="클릭하여 지금 새로고침">🔄 새 버전${latestVer ? ' ' + latestVer : ''} 업데이트 필요 (새로고침)</button>
+            <h2 id="deviceSettingsTitle">이 컴퓨터 설정</h2>
+            <p>화면과 자동 저장을 이 기기에 맞게 설정하세요.</p>
           </div>
           <button data-close class="device-settings-close-btn" aria-label="닫기">×</button>
         </header>
-        <div class="device-settings-update-check">
+        <div class="device-settings-release" data-update-banner>
+          <div class="device-settings-release-info">
+          <span class="device-settings-version-badge" title="현재 실행 중인 앱 버전">현재 버전: ${currentVersion}</span>
           <span data-update-status role="status" aria-live="polite">업데이트 확인 중...</span>
-          <button type="button" data-check-update>업데이트 확인</button>
-        </div>
-        <div class="device-settings-update-banner" data-update-banner hidden role="alert">
-          <div class="device-settings-update-info">
-            <span class="device-settings-update-icon">🔔</span>
-            <div class="device-settings-update-text">
-              <strong>새로운 업데이트(${latestVer || '최신'})가 준비되었습니다!</strong>
-              <span>최신 기능과 버그 수정을 반영하려면 지금 새로고침을 눌러주세요.</span>
-            </div>
           </div>
-          <button type="button" class="device-settings-update-btn" data-apply-update>지금 새로고침</button>
+          <div class="device-settings-release-actions">
+            <button type="button" data-check-update>업데이트 확인</button>
+            <button type="button" class="device-settings-update-btn" data-apply-update hidden title="저장 후 새 버전을 적용합니다">업데이트 적용</button>
+          </div>
         </div>
-        <nav>
-          <button data-tab="rows">기본 행</button>
-          <button data-tab="display">화면</button>
-          <button type="button" data-staff-count-settings>근무표 PT건수</button>
-          <button data-tab="backup">💾 로컬 백업</button>
-          <button data-tab="exports">자동 PDF</button>
-          <button data-tab="usage">사용량</button>
+        <nav role="tablist" aria-label="설정 메뉴">
+          <button type="button" role="tab" id="settings-tab-rows" aria-controls="settings-panel-rows" data-tab="rows">기본 행</button>
+          <button type="button" role="tab" id="settings-tab-display" aria-controls="settings-panel-display" data-tab="display">화면</button>
+          <button type="button" role="tab" id="settings-tab-backup" aria-controls="settings-panel-backup" data-tab="backup">로컬 백업</button>
+          <button type="button" role="tab" id="settings-tab-exports" aria-controls="settings-panel-exports" data-tab="exports">자동 PDF</button>
+          <button type="button" role="tab" id="settings-tab-usage" aria-controls="settings-panel-usage" data-tab="usage">사용량</button>
         </nav>
-        <section data-panel="rows" hidden>
-          <h3>테이블 기본 행 설정</h3>
-          <label>기본 행 수 <input type="number" data-default-row-count min="1" max="2000" step="1" aria-label="기본 행 수"></label>
-          <label>적용 범위 <select data-default-row-scope aria-label="기본 행 적용 범위"><option value="all">전체 날짜</option><option value="month">현재 달부터</option></select></label>
-          <p>현재 달부터 적용하면 이번 달과 이후 날짜에 적용합니다. 이전 달의 기본 행 설정은 유지됩니다.</p>
-          <p>입력한 기록과 개별 서식은 보존하며, 마지막 기록 아래에는 입력할 빈 행 15개를 유지합니다. 이 기기에 저장됩니다.</p>
-          <button type="button" data-apply-default-rows>기본 행 적용</button>
+        </div>
+        <div class="device-settings-body" data-settings-body>
+        <section data-panel="rows" id="settings-panel-rows" role="tabpanel" aria-labelledby="settings-tab-rows" hidden>
+          <div class="settings-panel-heading"><h3>테이블 기본 행</h3><p>날짜별 테이블에 준비할 빈 행 수를 정합니다.</p></div>
+          <div class="settings-card">
+            <div class="settings-field-grid">
+              <label class="settings-field">기본 행 수 <input type="number" data-default-row-count min="1" max="2000" step="1" aria-label="기본 행 수"></label>
+              <label class="settings-field">적용 범위 <select data-default-row-scope aria-label="기본 행 적용 범위"><option value="all">전체 날짜</option><option value="month">현재 달부터</option></select></label>
+            </div>
+            <p>‘현재 달부터’는 이번 달과 이후 날짜에 적용합니다.</p>
+            <p class="settings-note">기록과 서식은 유지하며, 마지막 기록 아래에 입력할 빈 행 15개를 확보합니다.</p>
+            <button type="button" class="settings-primary" data-apply-default-rows>기본 행 적용</button>
+          </div>
         </section>
-        <section data-panel="display" hidden>
-          <h3>시계 표시</h3>
-          <label><input type="checkbox" data-clock-enabled> 디지털 시계 켜기</label>
-          <p>이 기기에만 적용하며, 변경한 상태는 즉시 저장됩니다.</p>
+        <section data-panel="display" id="settings-panel-display" role="tabpanel" aria-labelledby="settings-tab-display" hidden>
+          <div class="settings-panel-heading"><h3>화면 표시</h3><p>이 컴퓨터에서 사용할 표시 기능을 선택하세요.</p></div>
+          <div class="settings-card">
+            <label class="settings-toggle"><input type="checkbox" data-clock-enabled> 디지털 시계 표시</label>
+            <p>테이블 오른쪽 아래에 시계를 표시합니다. 변경 즉시 저장됩니다.</p>
+          </div>
+          <div class="settings-link-card"><div><h4>근무표 PT건수</h4><p>근무표에 반영할 PT건수 기준을 설정합니다.</p></div><button type="button" data-staff-count-settings>설정 열기 ↗</button></div>
         </section>
-        <section data-panel="backup">
+        <section data-panel="backup" id="settings-panel-backup" role="tabpanel" aria-labelledby="settings-tab-backup">
+          <div class="settings-panel-heading"><h3>로컬 백업</h3><p>전체 기록을 JSON 파일로 저장하고 복원합니다.</p></div>
           <div class="export-folder-card" data-folder-card>
             <div class="export-folder-heading"><strong>백업 저장 폴더</strong><span data-folder-state>확인 중</span></div>
             <div class="export-folder-location" data-folder-location></div>
@@ -776,27 +794,26 @@
           <div class="backup-config-card">
             <div class="backup-toggle-header">
               <label class="backup-toggle-label">
-                <input type="checkbox" data-backup> 이 컴퓨터에 자동 로컬 백업 활성화
+                <input type="checkbox" data-backup> 자동 로컬 백업
               </label>
             </div>
             <div class="backup-type-group" data-backup-options>
               <div class="backup-type-item" data-type-item="daily">
                 <label class="backup-type-radio-label">
                   <input type="radio" name="backupIntervalType" value="daily" checked>
-                  <span>📅 <strong>일 단위 백업</strong> (매일 특정 시간에 백업)</span>
+                  <span><strong>매일 정해진 시각</strong></span>
                 </label>
                 <div class="backup-option-inputs" data-input-row="daily">
-                  <label>백업 시각: <input type="time" data-backup-time value="18:00"></label>
-                  <span class="hint">매일 선택한 시간에 전체 데이터를 안전하게 백업합니다.</span>
+                  <label>저장 시각 <input type="time" data-backup-time value="18:00"></label>
                 </div>
               </div>
               <div class="backup-type-item" data-type-item="hourly">
                 <label class="backup-type-radio-label">
                   <input type="radio" name="backupIntervalType" value="hourly">
-                  <span>⏱️ <strong>시간 단위 백업</strong> (일정 시간마다 주기적 백업)</span>
+                  <span><strong>일정 시간마다</strong></span>
                 </label>
                 <div class="backup-option-inputs" data-input-row="hourly">
-                  <label>백업 간격:
+                  <label>저장 간격
                     <select data-backup-interval>
                       <option value="1">1시간 마다</option>
                       <option value="2">2시간 마다</option>
@@ -806,14 +823,13 @@
                       <option value="8">8시간 마다</option>
                     </select>
                   </label>
-                  <span class="hint">앱 사용 중 설정한 시간 간격마다 지속적으로 백업합니다.</span>
                 </div>
               </div>
             </div>
-            <div class="backup-retention-row" style="margin-top: 10px; padding: 10px 12px; background: #f8faf8; border: 1px solid #d5e5db; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-              <label style="font-size: 13px; font-weight: 600; color: #234830; display: flex; align-items: center; gap: 8px; margin: 0; width: auto;">
-                <span>📦 <strong>백업 보관 개수:</strong></span>
-                <select data-backup-max-count style="padding: 4px 8px; border: 1px solid #bcd0c1; border-radius: 6px; font-weight: 700; color: #107c41; background: #fff;">
+            <div class="backup-retention-row">
+              <label>
+                <span>백업 보관 개수</span>
+                <select data-backup-max-count>
                   <option value="5">최근 5개 유지</option>
                   <option value="10">최근 10개 유지</option>
                   <option value="15">최근 15개 유지 (권장)</option>
@@ -822,58 +838,60 @@
                   <option value="50">최근 50개 유지</option>
                 </select>
               </label>
-              <span class="hint" style="font-size: 11px; color: #6a7f72;">최신 백업 저장 시 보관 개수를 초과한 오래된 백업은 자동 삭제됩니다.</span>
+              <p class="hint">초과한 오래된 백업은 새 백업 저장 후 자동 삭제됩니다.</p>
             </div>
-            <div class="backup-workhours-control" style="margin-top: 10px; padding: 10px 12px; background: #fbfdfb; border: 1px solid #d5e5db; border-radius: 8px;">
-              <label style="font-size: 13px; font-weight: 600; color: #234830; display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+            <div class="backup-workhours-control">
+              <label class="settings-toggle">
                 <input type="checkbox" data-workhours-only>
-                <span>🕒 <strong>출·퇴근 시간 중에만 백업</strong> (퇴근 후 ~ 출근 전 백업 일시중지)</span>
+                <span>근무 시간에만 백업</span>
               </label>
-              <div class="workhours-inputs" data-workhours-inputs style="margin-top: 8px; padding-left: 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-                <label style="font-size: 12.5px; color: #333; display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0;">
-                  출근 시각: <input type="time" data-work-start-time value="09:00" style="padding: 4px 6px; border: 1px solid #cad8cf; border-radius: 6px;">
+              <div class="workhours-inputs" data-workhours-inputs>
+                <label>
+                  출근 <input type="time" data-work-start-time value="09:00">
                 </label>
-                <label style="font-size: 12.5px; color: #333; display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 0;">
-                  퇴근 시각: <input type="time" data-work-end-time value="18:00" style="padding: 4px 6px; border: 1px solid #cad8cf; border-radius: 6px;">
+                <label>
+                  퇴근 <input type="time" data-work-end-time value="18:00">
                 </label>
-                <span class="hint" style="font-size: 11px; color: #6a7f72; width: 100%;">퇴근 시간 이후부터 다음 날 출근 시간 전까지는 자동 백업이 실행되지 않습니다.</span>
               </div>
+              <p class="hint">퇴근 후부터 다음 출근 전까지 자동 백업을 일시중지합니다.</p>
             </div>
             <div class="backup-status-badge-box">
               <div class="status-row">
-                <span>⏰ 다음 백업 예정:</span>
+                <span>다음 백업</span>
                 <strong data-next-backup>${this.getNextBackupDescription()}</strong>
               </div>
               <div class="status-row">
-                <span>💾 최근 백업 일시:</span>
+                <span>최근 백업</span>
                 <strong data-last-backup-badge>${this.settings.lastBackup ? new Date(this.settings.lastBackup).toLocaleString() : '아직 없음'}</strong>
               </div>
               <div class="status-row">
-                <span>📦 보관 개수 설정:</span>
+                <span>보관 개수</span>
                 <strong data-retention-badge>최근 ${this.settings.backupMaxCount || 15}개 유지 (초과분 자동 삭제)</strong>
               </div>
               <div class="status-row">
-                <span>🕒 근무 시간 제한:</span>
+                <span>근무 시간</span>
                 <strong data-workhours-badge>${this.settings.workHoursOnly ? `${this.settings.workStartTime || '09:00'} ~ ${this.settings.workEndTime || '18:00'} (퇴근 후 일시중지)` : '제한 없음 (24시간)'}</strong>
               </div>
             </div>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px;">
-              <button type="button" data-backup-now style="background: #107c41; color: white; border: none;">💾 지금 즉시 백업 저장</button>
-              <label class="file-label" style="display: inline-flex; align-items: center; cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif;">
-                📂 백업 파일에서 복원 (.json)
+            <p class="settings-note">자동 백업은 앱이 열려 있고 컴퓨터가 깨어 있을 때 실행됩니다.</p>
+            <div class="settings-actions">
+              <button type="button" class="settings-primary" data-backup-now>지금 백업</button>
+              <label class="file-label" tabindex="0" role="button">
+                파일에서 복원 (.json)
                 <input type="file" data-file-restore accept=".json" style="display: none;">
               </label>
             </div>
             <div class="backup-history-section">
               <div class="backup-history-title">
-                <span>📋 이 컴퓨터에 보관된 백업 목록</span>
-                <button type="button" data-refresh-history style="padding: 2px 8px; font-size: 11px;">새로고침</button>
+                <span>이 컴퓨터의 백업 목록</span>
+                <button type="button" data-refresh-history>목록 새로고침</button>
               </div>
               <div class="backup-history-list" data-history-list></div>
             </div>
           </div>
         </section>
-        <section data-panel="exports" hidden>
+        <section data-panel="exports" id="settings-panel-exports" role="tabpanel" aria-labelledby="settings-tab-exports" hidden>
+          <div class="settings-panel-heading"><h3>자동 PDF</h3><p>매일 지정한 시각에 전날 현황을 PDF로 저장합니다.</p></div>
           <div class="export-folder-card" data-folder-card>
             <div class="export-folder-heading"><strong>PDF 저장 폴더</strong><span data-folder-state>확인 중</span></div>
             <div class="export-folder-location" data-folder-location></div>
@@ -887,16 +905,19 @@
               <strong data-pdf-schedule></strong>
               <span data-pdf-example></span>
             </div>
-            <p>기본 설정: 오늘 오전 9시 10분에 전날 현황 저장. 시간을 변경하면 매일 해당 시각에 전날 현황을 저장합니다.</p>
             <p>앱이 열려 있고 컴퓨터가 깨어 있어야 실행됩니다. 앱을 다시 열면 저장 시각이 지난 누락 날짜부터 순서대로 저장합니다.</p>
             <p class="export-file-example">파일명: 0000년 00월 00일 PT현황.pdf</p>
           </div>
-          <button type="button" data-pdf-now>현재 선택 날짜 PDF 저장</button>
+          <div class="settings-link-card"><div><h4>선택 날짜 PDF</h4><p>지금 테이블에 표시된 날짜의 현황을 저장합니다.</p></div><button type="button" data-pdf-now>지금 PDF 저장</button></div>
         </section>
-        <section data-panel="usage" hidden></section>
+        <section data-panel="usage" id="settings-panel-usage" role="tabpanel" aria-labelledby="settings-tab-usage" hidden></section>
+        </div>
         <footer>
+          <div class="device-settings-save-info">
+          <span data-save-hint>체크·시간 변경은 자동 저장됩니다.</span>
           <p data-status role="status"></p>
-          <button data-save style="background: #107c41; color: white; border: none; font-weight: 700;">설정 저장</button>
+          </div>
+          <button type="button" data-save class="settings-primary">설정 저장</button>
         </footer>
       `;
 
@@ -905,15 +926,13 @@
 
       // 업데이트 알림 및 새로고침 동작 바인딩
       const updateBanner = dialog.querySelector('[data-update-banner]');
-      const updateBadge = dialog.querySelector('.device-settings-update-badge');
+      const updateButton = dialog.querySelector('[data-apply-update]');
       const setUpdateNoticeVisible = (visible, ver) => {
-        if (updateBanner) updateBanner.hidden = !visible;
-        if (updateBadge) updateBadge.hidden = !visible;
+        updateBanner?.classList.toggle('has-update', visible);
+        if (updateButton) updateButton.hidden = !visible;
         const targetVer = ver || this.app?.latestServerVersion;
         if (visible && targetVer) {
-          if (updateBadge) updateBadge.textContent = `🔄 새 버전 ${targetVer} 업데이트 필요 (새로고침)`;
-          const strong = updateBanner?.querySelector('strong');
-          if (strong) strong.textContent = `새로운 업데이트(${targetVer})가 준비되었습니다!`;
+          if (updateButton) updateButton.textContent = `${targetVer} 업데이트 적용`;
         }
       };
 
@@ -961,7 +980,11 @@
       if (checkButton) checkButton.onclick = checkUpdate;
       void checkUpdate();
 
-      const onUpdateFound = (e) => setUpdateNoticeVisible(true, e?.detail?.version || this.app?.latestServerVersion);
+      const onUpdateFound = (e) => {
+        const version = e?.detail?.version || this.app?.latestServerVersion;
+        setUpdateNoticeVisible(true, version);
+        if (checkStatus) checkStatus.textContent = `새 버전 ${version || ''}을 적용할 수 있습니다.`;
+      };
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('pt-app-update-available', onUpdateFound);
         window.addEventListener('pt-app-update-checked', updateCheckStatus);
@@ -1038,6 +1061,8 @@
         inpWorkEndTime.value = this.settings.workEndTime || '18:00';
 
         const updateWorkHoursUI = () => {
+          inpWorkStartTime.disabled = !chkWorkHoursOnly.checked;
+          inpWorkEndTime.disabled = !chkWorkHoursOnly.checked;
           if (workHoursInputsBox) {
             workHoursInputsBox.style.opacity = chkWorkHoursOnly.checked ? '1' : '0.5';
             workHoursInputsBox.style.pointerEvents = chkWorkHoursOnly.checked ? 'auto' : 'none';
@@ -1119,6 +1144,9 @@
 
       // 파일에서 복원
       const fileInput = dialog.querySelector('[data-file-restore]');
+      fileInput.closest('.file-label').onkeydown = e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+      };
       fileInput.onchange = (e) => {
         if (this.app && typeof this.app.handleRestoreFile === 'function') {
           this.app.handleRestoreFile(e);
@@ -1147,10 +1175,26 @@
           });
           dialog.querySelectorAll('[data-tab]').forEach(tab => {
             tab.classList.toggle('active', tab === button);
+            tab.setAttribute('aria-selected', String(tab === button));
+            tab.tabIndex = tab === button ? 0 : -1;
           });
+          dialog.querySelector('[data-settings-body]').scrollTop = 0;
+          dialog.querySelector('[data-save]').hidden = ['rows', 'usage'].includes(button.dataset.tab);
+          dialog.querySelector('[data-save-hint]').textContent = button.dataset.tab === 'rows'
+            ? '기본 행은 적용 버튼으로 저장합니다.' : button.dataset.tab === 'usage'
+            ? '이 기기에서 확인한 기록 기준입니다.' : '체크·시간 변경은 자동 저장됩니다.';
           if (button.dataset.tab === 'usage') {
             void this.usage(dialog.querySelector('[data-panel="usage"]')).catch(error => this.report(error.message));
           }
+        };
+        button.onkeydown = e => {
+          const tabs = Array.from(dialog.querySelectorAll('[data-tab]'));
+          const index = tabs.indexOf(button);
+          const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+            : e.key === 'ArrowRight' ? (index + 1) % tabs.length
+            : e.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : -1;
+          if (next < 0) return;
+          e.preventDefault(); tabs[next].click(); tabs[next].focus();
         };
       });
 

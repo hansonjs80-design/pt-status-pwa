@@ -82,14 +82,24 @@ class PTStaffCalendarSettings {
     this.staffCountDialog = dialog;
     dialog.className = 'device-settings-dialog';
     dialog.setAttribute('aria-labelledby', 'staffCountSettingsTitle');
-    dialog.innerHTML = `<header><h2 id="staffCountSettingsTitle">직원 근무표 PT건수 연동</h2><button type="button" data-close aria-label="닫기">×</button></header>
-      <section><p>PT현황 총치료 건수를 근무자동화의 날짜별 메모 마지막 칸에 표시합니다. 기존 메모는 보존됩니다.</p>
-      <label><input type="checkbox" data-enabled checked> PT건수 연동 사용</label>
-      <p>연동을 끄면 기존에 기록한 메모와 건수를 표시합니다. 다시 켜면 아래 적용 범위를 유지합니다.</p>
-      <label>적용 범위 <select data-scope aria-label="PT건수 적용 범위"><option value="today">오늘부터</option><option value="all">모든 날짜</option><option value="from">지정일부터</option></select></label>
-      <label data-date-label>적용 시작일 <input type="date" data-date aria-label="PT건수 적용 시작일"></label>
-      <p data-note>오늘부터는 설정을 저장한 날짜를 시작일로 유지합니다. 두 앱이 같은 클라우드에 연결되어 있어야 합니다.</p>
-      </section><footer><p data-status role="status">설정을 확인하는 중입니다.</p><button type="button" data-save>설정 저장</button></footer>`;
+    dialog.innerHTML = `<div class="device-settings-topbar"><header>
+      <div class="device-settings-title-group"><h2 id="staffCountSettingsTitle">근무표 PT건수</h2><p>직원 근무표에 표시할 치료 건수를 설정합니다.</p></div>
+      <button type="button" class="device-settings-close-btn" data-close aria-label="닫기">×</button>
+      </header></div>
+      <div class="device-settings-body"><section>
+      <div class="settings-card">
+        <label class="settings-toggle"><input type="checkbox" data-enabled checked> PT건수 연동 사용</label>
+        <p>총치료 건수를 근무자동화의 날짜별 메모 마지막 칸에 표시합니다. 기존 메모는 유지합니다.</p>
+        <p class="settings-note">연동을 끄면 기존 메모와 건수를 표시합니다. 다시 켜면 적용 범위도 유지됩니다.</p>
+      </div>
+      <div class="settings-card">
+        <div class="settings-field-grid">
+          <label class="settings-field">적용 범위 <select data-scope aria-label="PT건수 적용 범위"><option value="today">오늘부터</option><option value="all">모든 날짜</option><option value="from">지정일부터</option></select></label>
+          <label class="settings-field" data-date-label>적용 시작일 <input type="date" data-date aria-label="PT건수 적용 시작일"></label>
+        </div>
+        <p data-note>‘오늘부터’는 저장한 날짜를 시작일로 유지합니다. 두 앱이 같은 클라우드에 연결되어 있어야 합니다.</p>
+      </div>
+      </section></div><footer><p data-status role="status">설정을 확인하는 중입니다.</p><button type="button" class="settings-primary" data-save>설정 저장</button></footer>`;
     document.body.append(dialog);
     const scope = dialog.querySelector('[data-scope]'), date = dialog.querySelector('[data-date]');
     const enabled = dialog.querySelector('[data-enabled]');

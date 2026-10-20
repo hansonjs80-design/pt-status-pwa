@@ -267,6 +267,8 @@ test('device settings dialog renders current app version badge in header', () =>
      appendChild() {},
      append() {},
      addEventListener() {},
+     setAttribute() {},
+     closest() { return createMockElement(); },
      querySelector() { return createMockElement(); },
      querySelectorAll() { return []; }
    };
@@ -326,24 +328,27 @@ test('device settings shows update banner and triggers applyUpdate when update i
      appendChild() {},
      append() {},
      addEventListener() {},
+     setAttribute() {},
+     closest() { return createMockElement(); },
      querySelector() { return createMockElement(); },
      querySelectorAll() { return []; }
    };
    return el;
  }
  const banner = createMockElement('div');
- const badge = createMockElement('button');
- const applyButtons = [createMockElement('button'), createMockElement('button')];
+ const applyButton = createMockElement('button');
+ let highlighted = false;
+ banner.classList.toggle = (name, on) => { if (name === 'has-update') highlighted = on; };
  const fakeDoc = {
    createElement(tag) {
      const el = createMockElement(tag);
      el.querySelector = (sel) => {
        if (sel === '[data-update-banner]') return banner;
-       if (sel === '.device-settings-update-badge') return badge;
+       if (sel === '[data-apply-update]') return applyButton;
        return createMockElement();
      };
      el.querySelectorAll = (sel) => {
-       if (sel === '[data-apply-update]') return applyButtons;
+       if (sel === '[data-apply-update]') return [applyButton];
        return [];
      };
      return el;
@@ -381,11 +386,11 @@ test('device settings shows update banner and triggers applyUpdate when update i
 
  l.open('backup');
 
- assert.equal(banner.hidden, false, 'update banner should be shown');
- assert.equal(badge.hidden, false, 'update badge should be shown');
+ assert.equal(highlighted, true, 'version strip should highlight the available update');
+ assert.equal(applyButton.hidden, false, 'one update action should be shown next to the version');
 
  // 사용자가 지금 새로고침 버튼을 눌렀을 때
- applyButtons[0].onclick();
+ await applyButton.onclick();
  assert.equal(updateApplied, 1, 'applyUpdate should be called');
 });
 

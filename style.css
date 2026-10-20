@@ -2688,28 +2688,32 @@ details.summary-accordion[open] summary {
 
 .device-settings-footer { margin-top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding-top: 16px; }
 .device-settings-footer small { color: #66796d; font-size: 11px; overflow-wrap: anywhere; }
-.device-settings-dialog button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 8px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; }
-.device-settings-dialog { position: fixed; inset: 0; margin: auto; width: min(580px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 22px; border: 1px solid #d5e2d9; border-radius: 16px; background: #ffffff; color: #263d30; box-shadow: 0 16px 70px rgba(0, 0, 0, 0.2); z-index: 2000; }
+/* Device settings: fixed controls, one scrolling content area. */
+.device-settings-dialog { box-sizing: border-box; position: fixed; inset: 0; margin: auto; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: hidden; padding: 0; border: 1px solid #d5e2d9; border-radius: 14px; background: #fff; color: #263d30; box-shadow: 0 18px 70px #13251d40; z-index: 2000; font: 13px/1.5 Arial, sans-serif; }
+.device-settings-dialog[open] { display: flex; flex-direction: column; }
 .device-settings-dialog::backdrop { background: #13251d66; }
-.device-settings-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.device-settings-title-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
-.device-settings-dialog h2 { font-size: 20px; margin: 0; }
-.device-settings-dialog .device-settings-close-btn { width: 32px; height: 32px; min-width: 32px; border-radius: 8px; border: 1px solid #cbdad0; padding: 0; background: #f4f9f5; color: #43634e; font-size: 20px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s; }
-.device-settings-dialog .device-settings-close-btn:hover { background: #e4eee7; color: #173b25; }
-.device-settings-version-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; background: #e9f4ed; color: #107c41; font-size: 12px; font-weight: 700; border: 1px solid #b8dcce; letter-spacing: -0.2px; line-height: 1.3; }
-.device-settings-update-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: #fff3e0; color: #d9531e; border: 1px solid #ffcc80; font-size: 11px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.3; cursor: pointer; transition: all 0.2s ease; }
-.device-settings-update-badge:hover { background: #ffe0b2; transform: translateY(-1px); }
 .device-settings-dialog [hidden] { display: none !important; }
-.device-settings-update-banner { margin: 12px 0 0 0; padding: 10px 14px; background: #fff8f0; border: 1px solid #fed7aa; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.device-settings-update-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-.device-settings-update-icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
-.device-settings-update-text { display: flex; flex-direction: column; gap: 2px; }
-.device-settings-update-text strong { font-size: 13px; font-weight: 700; color: #9a3412; }
-.device-settings-update-text span { font-size: 12px; color: #7c2d12; line-height: 1.3; }
-.device-settings-dialog .device-settings-update-btn { padding: 7px 13px; background: #ea580c; color: #ffffff; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; white-space: nowrap; cursor: pointer; transition: background 0.15s; }
-.device-settings-dialog .device-settings-update-btn:hover { background: #c2410c; }
-
-/* 툴바 설정 버튼 알림 닷 */
+.device-settings-dialog button, .device-settings-dialog .file-label { box-sizing: border-box; cursor: pointer; border: 1px solid #cbdad0; border-radius: 7px; min-height: 34px; padding: 6px 12px; background: #fff; color: #235c39; font: 600 13px/1.4 Arial, sans-serif; }
+.device-settings-dialog button:hover, .device-settings-dialog .file-label:hover { background: #edf5ef; border-color: #9ebaa8; }
+.device-settings-dialog button:disabled { opacity: .55; cursor: wait; }
+.device-settings-dialog :is(button, input, select, .file-label):focus-visible { outline: 2px solid #107c41; outline-offset: 2px; }
+.device-settings-dialog .settings-primary { background: #107c41; border-color: #107c41; color: #fff; }
+.device-settings-dialog .settings-primary:hover { background: #096633; }
+.device-settings-topbar { flex: 0 0 auto; padding: 16px 20px 0; background: #fff; border-bottom: 1px solid #dfe8e2; }
+.device-settings-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.device-settings-title-group { min-width: 0; }
+.device-settings-dialog h2 { margin: 0; font-size: 19px; line-height: 1.4; }
+.device-settings-dialog .device-settings-title-group p { margin-top: 3px; font-size: 12px; }
+.device-settings-dialog .device-settings-close-btn { width: 32px; min-height: 32px; padding: 0; flex-shrink: 0; font-size: 23px; line-height: 1; background: #f4f7f5; }
+.device-settings-release { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0 12px; }
+.device-settings-release-info { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; font-size: 11px; color: #66796d; }
+.device-settings-version-badge { display: inline-flex; flex-shrink: 0; padding: 3px 8px; border-radius: 5px; background: #eff4f1; color: #315b43; font-size: 11px; font-weight: 600; }
+.device-settings-release-actions { display: flex; flex-shrink: 0; gap: 6px; }
+.device-settings-release-actions button { min-height: 30px; padding: 4px 9px; font-size: 11px; white-space: nowrap; }
+.device-settings-release.has-update [data-update-status] { color: #9a4a12; }
+.device-settings-dialog .device-settings-update-btn { background: #107c41; border-color: #107c41; color: #fff; }
+.device-settings-dialog .device-settings-update-btn:hover { background: #096633; }
+.device-settings-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px 20px; background: #f6f8f7; }
 .device-settings-btn { position: relative; }
 .device-settings-update-dot {
   position: absolute;
@@ -2763,32 +2767,67 @@ details.summary-accordion[open] summary {
   40% { transform: translateY(-3px); }
   60% { transform: translateY(-1.5px); }
 }
-.device-settings-dialog nav { display: flex; gap: 6px; margin: 16px 0; border-bottom: 1px solid #e1e9e4; padding-bottom: 10px; flex-wrap: wrap; }
-.device-settings-dialog nav button { cursor: pointer; border: 1px solid #cbdad0; border-radius: 8px; padding: 7px 12px; background: #f4f9f5; color: #235c39; font: 600 13px Arial, sans-serif; transition: all 0.15s ease; }
-.device-settings-dialog nav button.active { background: #107c41; color: #fff; border-color: #107c41; }
-.device-settings-dialog section { display: flex; flex-wrap: wrap; gap: 12px; }
-.device-settings-dialog [hidden] { display: none; }
-.device-settings-dialog p { width: 100%; font-size: 13px; line-height: 1.7; margin: 0; color: #5e7165; }
-.device-settings-dialog label { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 14px; }
-.device-settings-dialog input:not([type=checkbox]) { max-width: 140px; border: 1px solid #cad8cf; padding: 7px; border-radius: 6px; }
-.device-settings-dialog footer { margin-top: 20px; border-top: 1px solid #e1e9e4; padding-top: 14px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+.device-settings-dialog nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.device-settings-dialog nav button { min-width: 0; min-height: 38px; padding: 7px 4px; border: 0; border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: #607267; font-size: 13px; white-space: nowrap; }
+.device-settings-dialog nav button:hover { background: #f0f6f2; color: #235c39; }
+.device-settings-dialog nav button.active { background: #eaf4ed; color: #107c41; border-bottom-color: #107c41; }
+.device-settings-dialog section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.device-settings-dialog h3 { margin: 0; color: #263d30; font-size: 16px; line-height: 1.4; }
+.device-settings-dialog h4 { margin: 0; font-size: 13px; }
+.device-settings-dialog p { margin: 0; color: #63756a; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.settings-panel-heading { display: flex; flex-direction: column; gap: 3px; }
+.settings-card, .settings-link-card { box-sizing: border-box; min-width: 0; padding: 14px; border: 1px solid #dae5de; border-radius: 10px; background: #fff; }
+.settings-card { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.settings-link-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-link-card p { margin-top: 3px; }
+.settings-link-card button { flex-shrink: 0; }
+.settings-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.device-settings-dialog label { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.device-settings-dialog .settings-field { flex-direction: column; align-items: stretch; gap: 6px; font-weight: 600; }
+.device-settings-dialog input:not([type=checkbox]):not([type=radio]), .device-settings-dialog select { box-sizing: border-box; min-width: 0; min-height: 34px; max-width: 100%; border: 1px solid #cad8cf; padding: 5px 8px; border-radius: 6px; background: #fff; color: #263d30; font: inherit; }
+.device-settings-dialog input[type=checkbox], .device-settings-dialog input[type=radio] { flex-shrink: 0; width: 16px; height: 16px; margin: 0; accent-color: #107c41; }
+.device-settings-dialog .settings-toggle { font-weight: 600; cursor: pointer; }
+.device-settings-dialog .settings-note { padding: 8px 10px; border-radius: 6px; background: #f2f6f3; font-size: 11px; }
+.device-settings-dialog footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 20px; border-top: 1px solid #dfe8e2; background: #fff; }
+.device-settings-dialog footer button { flex-shrink: 0; }
+.device-settings-save-info { min-width: 0; font-size: 11px; color: #63756a; }
+.device-settings-dialog [data-status]:empty { display: none; }
+.device-settings-dialog [data-status] { font-size: 11px; color: #235c39; }
 .device-settings-dialog a { color: #176e40; font-size: 12px; }
-
-.export-folder-card, .pdf-schedule-card { box-sizing: border-box; width: 100%; min-width: 0; padding: 16px; border: 1px solid #cdded3; border-radius: 12px; background: #f7faf8; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.export-folder-card.is-linked { border-color: #9bc9ad; background: #f0f8f3; }
-.export-folder-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; width: 100%; font-size: 14px; }
-.export-folder-heading [data-folder-state] { padding: 3px 9px; border-radius: 99px; background: #e3ebe6; color: #45614e; font-size: 12px; font-weight: 600; }
-.export-folder-card.is-linked [data-folder-state] { background: #dcefe3; color: #17683b; }
-.export-folder-location { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #d5e4da; border-radius: 8px; background: #fff; color: #164e2e; font-size: 16px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
-.device-settings-dialog .export-folder-card p { font-size: 12px; line-height: 1.6; }
-.pdf-schedule-card { background: #fff; }
-.device-settings-dialog .pdf-enable-label { font-weight: 700; }
-.device-settings-dialog .pdf-time-label { justify-content: space-between; flex-wrap: wrap; font-weight: 600; }
-.device-settings-dialog .pdf-time-label input { width: 180px; max-width: 180px; font-size: 18px; font-weight: 700; color: #107c41; }
-.pdf-schedule-preview { box-sizing: border-box; width: 100%; padding: 13px; border-radius: 8px; background: #edf6f0; display: flex; flex-direction: column; gap: 8px; line-height: 1.6; }
-.pdf-schedule-preview strong { color: #17683b; font-size: 14px; }
-.pdf-schedule-preview span { color: #506959; font-size: 12px; overflow-wrap: anywhere; }
-.device-settings-dialog .export-file-example { padding-top: 8px; border-top: 1px solid #e1e9e4; font-size: 12px; }
+.settings-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.device-settings-dialog .file-label { display: inline-flex; width: auto; margin: 0; align-items: center; }
+.export-folder-card, .pdf-schedule-card { box-sizing: border-box; width: 100%; min-width: 0; padding: 13px 14px; border: 1px solid #dae5de; border-radius: 10px; background: #fff; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.export-folder-card.is-linked { border-color: #b2d1bd; }
+.export-folder-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; width: 100%; font-size: 13px; }
+.export-folder-heading [data-folder-state] { padding: 2px 7px; border-radius: 4px; background: #eff3f0; color: #63756a; font-size: 11px; font-weight: 600; }
+.export-folder-card.is-linked [data-folder-state] { background: #e8f4ec; color: #17683b; }
+.export-folder-location { box-sizing: border-box; width: 100%; padding: 8px 10px; border-radius: 6px; background: #f2f7f4; color: #285b3b; font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.device-settings-dialog .export-folder-card p { font-size: 11px; }
+.device-settings-dialog .pdf-enable-label { font-weight: 600; }
+.device-settings-dialog .pdf-time-label { width: 100%; justify-content: space-between; font-weight: 600; }
+.device-settings-dialog .pdf-time-label input { width: 142px; font-size: 15px; color: #107c41; }
+.pdf-schedule-preview { box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 7px; background: #edf6f0; display: flex; flex-direction: column; gap: 4px; line-height: 1.5; }
+.pdf-schedule-preview strong { color: #17683b; font-size: 13px; }
+.pdf-schedule-preview span { color: #506959; font-size: 11px; overflow-wrap: anywhere; }
+.device-settings-dialog .export-file-example { width: 100%; padding-top: 8px; border-top: 1px solid #e1e9e4; font-size: 11px; }
+.settings-usage-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.settings-usage-metric { padding: 12px; border: 1px solid #dae5de; border-radius: 8px; background: #fff; display: flex; flex-direction: column; gap: 4px; color: #63756a; font-size: 11px; }
+.settings-usage-metric strong { font-size: 18px; color: #235c39; }
+.settings-help-links { display: flex; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 540px) {
+  .device-settings-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); border-radius: 12px; }
+  .device-settings-topbar { padding: 12px 12px 0; }
+  .device-settings-body { padding: 12px; }
+  .device-settings-dialog footer { padding: 10px 12px; }
+  .device-settings-release { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .device-settings-release-info { width: 100%; }
+  .device-settings-release-actions { align-self: flex-end; }
+  .device-settings-dialog nav button { font-size: 12px; padding-inline: 2px; }
+  .settings-link-card { flex-wrap: wrap; gap: 8px; }
+  .settings-usage-metrics { gap: 6px; }
+  .settings-usage-metric { padding: 10px 8px; }
+  .settings-usage-metric strong { font-size: 16px; }
+}
 
 #excelTable [data-col="visitTime"],
 .history-search-active [data-cross-col="visitTime"] { display: none; }
@@ -3189,156 +3228,31 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
   .summary-panel-shell, .summary-panel-shell > #summarySidebar, .toolbar-actions-toggle svg { transition: none; }
 }
 
-/* Local Backup & Restore Enhanced Styles */
-.backup-config-card {
-  width: 100%;
-  background: #f8faf8;
-  border: 1px solid #dbe6de;
-  border-radius: 12px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-sizing: border-box;
-}
-
-.backup-toggle-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #e2ece5;
-  padding-bottom: 10px;
-}
-
-.backup-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #1a4228;
-  cursor: pointer;
-}
-
-.backup-toggle-label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #107c41;
-}
-
-.backup-type-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.backup-type-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid #dce6e0;
-  border-radius: 8px;
-  background: #ffffff;
-  transition: border-color 0.15s, background-color 0.15s;
-}
-
-.backup-type-item.active {
-  border-color: #107c41;
-  background: #f2f9f4;
-}
-
-.backup-type-radio-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #244630;
-  cursor: pointer;
-}
-
-.backup-type-radio-label input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #107c41;
-  cursor: pointer;
-}
-
-.backup-option-inputs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 24px;
-  flex-wrap: wrap;
-}
-
-.backup-option-inputs select,
-.backup-option-inputs input[type="time"] {
-  border: 1px solid #cad8cf;
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #20402b;
-  background: #ffffff;
-}
-
-.backup-option-inputs .hint {
-  font-size: 12px;
-  color: #6a7f72;
-}
-
-.backup-status-badge-box {
-  width: 100%;
-  background: #eef5f0;
-  border: 1px solid #d5e5db;
-  border-radius: 8px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12.5px;
-  color: #31523d;
-  box-sizing: border-box;
-}
-
-.backup-status-badge-box .status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.backup-status-badge-box strong {
-  color: #107c41;
-}
-
-.backup-history-section {
-  width: 100%;
-  margin-top: 4px;
-}
-
-.backup-history-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #263d30;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.backup-history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 190px;
-  overflow-y: auto;
-  border: 1px solid #dce6e0;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 6px;
+/* Local backup settings */
+.backup-config-card { width: 100%; box-sizing: border-box; background: #fff; border: 1px solid #dae5de; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.backup-toggle-header { display: flex; align-items: center; border-bottom: 1px solid #e2ece5; padding-bottom: 10px; }
+.backup-toggle-label { font-weight: 600; color: #1a4228; cursor: pointer; }
+.backup-type-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.backup-type-item { display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 1px solid #dce6e0; border-radius: 8px; background: #fff; }
+.backup-type-item.active { border-color: #37905a; background: #f2f9f4; }
+.backup-type-radio-label { color: #244630; cursor: pointer; }
+.backup-option-inputs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.device-settings-dialog .backup-option-inputs label { flex-wrap: wrap; font-size: 12px; }
+.backup-retention-row, .backup-workhours-control { padding-top: 10px; border-top: 1px solid #e5ece7; }
+.device-settings-dialog .backup-retention-row label { justify-content: space-between; }
+.device-settings-dialog .hint { font-size: 11px; margin-top: 6px; }
+.workhours-inputs { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 9px; padding-left: 24px; }
+.backup-status-badge-box { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; width: 100%; box-sizing: border-box; padding: 10px 12px; background: #f2f6f3; border-radius: 7px; font-size: 11px; color: #63756a; }
+.backup-status-badge-box .status-row { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.backup-status-badge-box strong { color: #315b43; font-size: 12px; overflow-wrap: anywhere; }
+.backup-history-section { width: 100%; padding-top: 12px; border-top: 1px solid #e5ece7; }
+.backup-history-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: #263d30; }
+.device-settings-dialog .backup-history-title button { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+.backup-history-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+@media (max-width: 420px) {
+  .backup-type-group { grid-template-columns: 1fr; }
+  .workhours-inputs { padding-left: 0; gap: 8px; }
+  .backup-history-item { flex-wrap: wrap; gap: 8px; }
 }
 
 .backup-history-item {
@@ -3771,24 +3685,5 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .preset-color-editor .preset-editor-selection { margin:0; }
 .preset-editor-preview-label { display:block; margin-top:12px; color:#64748b; font-size:11px; }
 .preset-editor-preview-label + .preset-color-preview { margin-top:4px; }
-
-.device-settings-update-check {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 12px;
-  color: #315b43;
-  font-size: 13px;
-}
-.device-settings-update-check button {
-  border: 1px solid #b8d3c4;
-  border-radius: 8px;
-  background: #f3f8f5;
-  color: #176b3a;
-  padding: 7px 12px;
-  cursor: pointer;
-}
 
 .history-context-hidden { display: none !important; }
