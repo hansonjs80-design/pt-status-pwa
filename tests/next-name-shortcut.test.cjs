@@ -50,6 +50,31 @@ test('an empty name column selects the first name cell, also with a Korean physi
   assert.deepEqual(calls[0], ['select', 0, 'name', false]);
 });
 
+test('the corner toggle exits a full-sheet selection through the same next-name-cell path', () => {
+  const { app, calls } = fixture([{ name: '첫 성함' }, {}, { name: '마지막 성함' }]);
+  app.selectAllCells = () => calls.push(['all']);
+  app.toggleAllCells();
+  assert.deepEqual(calls, [['all']]);
+  calls.length = 0;
+  app.selectedRange = { minRow: 0, maxRow: app.getCurrentRows().length - 1, minCol: 0, maxCol: 9 };
+  app.selectedRowRange = { minRow: 0, maxRow: app.selectedRange.maxRow };
+  app.toggleAllCells();
+  assert.deepEqual(calls, [['select', 3, 'name', false], ['focus', true], ['scroll', true]]);
+});
+
+test('partial rows, columns and sparse selections still select the whole sheet on a corner click', () => {
+  for (const mode of ['partial', 'column', 'sparse']) {
+    const { app, calls } = fixture();
+    app.selectAllCells = () => calls.push(['all']);
+    app.selectedRange = { minRow: 0, maxRow: app.getCurrentRows().length - 1, minCol: 0, maxCol: 9 };
+    if (mode !== 'column') app.selectedRowRange = { minRow: 0, maxRow: app.selectedRange.maxRow };
+    if (mode === 'partial') app.selectedRange.maxRow--;
+    if (mode === 'sparse') app.selectedCellSet = new Set(['0:0']);
+    app.toggleAllCells();
+    assert.deepEqual(calls, [['all']]);
+  }
+});
+
 test('a live draft is committed before finding the destination and newly allocated rows are rendered', () => {
   const { app, rows, document, calls, press } = fixture();
   document.activeElement = { blur() { rows[rows.length - 1].name = '새 성함'; } };

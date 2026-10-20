@@ -12,14 +12,15 @@ class PTSheetKeyboard {
     e.preventDefault();
     e.stopPropagation();
     if (e.repeat) return true;
-    // Blur commits the live draft before the last name is calculated.
-    document.activeElement?.blur?.();
-    if (this.elSearchInput?.value?.trim() || this.crossDateResults?.length) this.closeHistorySearch();
     this.jumpToNextNameCell();
     return true;
   }
 
   jumpToNextNameCell() {
+    // The shortcut and the corner toggle share the same commit, search exit,
+    // selection and centered-scroll path.
+    document.activeElement?.blur?.();
+    if (this.elSearchInput?.value?.trim() || this.crossDateResults?.length) this.closeHistorySearch();
     this.closeAutocompleteMenu();
     this.hideContextMenu();
     const rows = this.getCurrentRows();

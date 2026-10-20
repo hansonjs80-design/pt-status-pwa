@@ -50,7 +50,7 @@ class PTAppEvents {
         if (event.target.closest('#btnCloseHistorySearch')) {
           event.preventDefault(); event.stopPropagation();
           this.closeHistorySearch();
-        } else this.selectAllCells();
+        } else this.toggleAllCells();
       });
       document.getElementById('btnCloseHistorySearch')?.addEventListener('mousedown', event => event.preventDefault());
     }

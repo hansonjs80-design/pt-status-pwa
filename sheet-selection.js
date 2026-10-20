@@ -288,6 +288,15 @@ class PTSheetSelection {
     this.updateBackgroundColorIndicator();
   }
 
+  toggleAllCells() {
+    const range = this.selectedRange;
+    const allSelected = this.selectedRowRange && !this.selectedCellSet && !this.crossDateSelection &&
+      range?.minRow === 0 && range.minCol === 0 && range.maxCol === 9 &&
+      range.maxRow === this.getCurrentRows().length - 1;
+    if (allSelected) this.jumpToNextNameCell();
+    else this.selectAllCells();
+  }
+
   selectAllCells() {
     document.activeElement?.blur();
     this.selectRowRange(0, this.getCurrentRows().length - 1);
