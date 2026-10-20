@@ -477,9 +477,9 @@ test('multiple history rows append consecutively without overwriting other patie
   assert.deepEqual(rows.map(row => row.name), ['원본환자', '마지막환자', '첫환자', '둘환자']);
 });
 
-test('history copies writer and its formatting only for qualifying extra treatments', () => {
+test('history copies writer into a blank destination or for qualifying extra treatments', () => {
   const extras = ['충격파', '체외충격파 2000', '도수치료', '운동치료', '도수/충격파', '충격파/견인', '운동/견인', '주사 / 도수', '', undefined, null, '주사', '견인'];
-  for (const extra of extras) for (const matching of [true, false]) for (const writer of ['', 'J']) {
+  for (const extra of extras) for (const matching of [true, false]) for (const writer of ['', '　 ', undefined, null, 'J']) {
     const destination = { writer, _textColors: { writer: '#008800' }, _textStyles: { writer: { fontWeight: '700' } } };
     const rows = [{ name: '가상환자', chartNo: 'T001' }, destination, {}];
     if (matching) Object.assign(destination, { name: '동일환자', chartNo: 'T002' });
@@ -490,13 +490,37 @@ test('history copies writer and its formatting only for qualifying extra treatme
       _sourceDate: '2026-10-01', _textColors: { writer: '#0000ff' }, _textStyles: { writer: { fontWeight: '400' } } };
     const originalSource = JSON.stringify(source);
     app.applyHistoryRow(source);
-    const qualified = /충격파|도수|운동/.test(extra ?? '');
+    const qualified = !String(writer ?? '').trim() || /충격파|도수|운동/.test(extra ?? '');
     assert.equal(destination.writer, qualified ? 'K' : writer, `${extra}/${matching}/${writer}`);
     assert.equal(destination._textColors.writer, qualified ? '#0000ff' : '#008800');
     assert.equal(destination._textStyles.writer.fontWeight, qualified ? '400' : '700');
     assert.equal(destination.name, '동일환자');
     assert.equal(JSON.stringify(source), originalSource, 'source history stays intact');
   }
+});
+
+test('the writer rule uses the actual appended destination instead of the search origin row', () => {
+  for (const writer of ['', 'S']) {
+    const rows = [{ name: '검색 시작 환자', writer: 'J' }, { name: '마지막 환자', writer: 'K' }, { writer }];
+    const { app } = createApp(rows);
+    app.applyHistoryRow({ name: '새 환자', chartNo: 'NEW', extra: '견인', writer: 'K' });
+    assert.equal(rows[0].writer, 'J');
+    assert.equal(rows[2].name, '새 환자');
+    assert.equal(rows[2].writer, writer || 'K');
+  }
+});
+
+test('multi-row apply fills blank writers while preserving nonblank ordinary-treatment writers', () => {
+  const rows = [{ name: '기존환자' }, { writer: '' }, { writer: 'J' }, { writer: '' }];
+  const { app } = createApp(rows);
+  app.crossDateResults = [
+    { name: '첫환자', extra: '견인', writer: 'K' },
+    { name: '둘째환자', extra: '주사', writer: 'S' },
+    { name: '셋째환자', extra: '', writer: 'J' },
+  ];
+  app.crossDateSelection = { minRow: 0, maxRow: 2, minCol: 0, maxCol: 9 };
+  app.applyHistoryRow(app.crossDateResults[0]);
+  assert.deepEqual(rows.slice(1).map(row => row.writer), ['K', 'J', 'J']);
 });
 
 test('a multi-row history apply checks each source extra independently', () => {
@@ -524,6 +548,17 @@ test('qualifying extras do not copy an unselected writer and sparse selections k
   app.selectedCellSet = new Set(['0:6', '1:7']);
   app.applyHistoryRow(app.crossDateResults[0]);
   assert.deepEqual(rows.map(row => [row.writer, row.extra]), [['J', '충격파'], ['S', '기존']]);
+});
+
+test('a blank destination writer is untouched when the writer column is not selected', () => {
+  const rows = [{ name: '가상환자', writer: '' }];
+  const { app } = createApp(rows);
+  const source = { name: '가상환자', extra: '견인', writer: 'K' };
+  app.crossDateResults = [source];
+  app.crossDateSelection = { minRow: 0, maxRow: 0, minCol: 6, maxCol: 6 };
+  app.applyHistoryRow(source);
+  assert.equal(rows[0].extra, '견인');
+  assert.equal(rows[0].writer, '');
 });
 
 test('history partial apply preserves unrelated fields on a matching row', () => {

@@ -166,13 +166,16 @@ class PTHistorySearch {
     const selectedKeys = (useSelection ? keys.slice(selection.minCol, selection.maxCol + 1) : keys).filter(key => key !== "visitTime" && key !== "no");
     const appliedAt = new Date();
     for (let offset = 0; offset < sources.length; offset++) {
-      // Keep today's prepared writer unless this history row includes one of
-      // the treatments whose assigned writer should follow the patient.
-      const copyWriter = /충격파|도수|운동/.test(String(sources[offset].extra ?? ""));
-      const fields = selectedKeys.filter(key => (key !== "writer" || copyWriter) &&
-        (!useSelection || !this.selectedCellSet || this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))));
-      if (!fields.length) continue;
+      const selectedFields = useSelection && this.selectedCellSet
+        ? selectedKeys.filter(key => this.isSelectedCoordinate(selection.minRow + offset, keys.indexOf(key))) : selectedKeys;
+      if (!selectedFields.length) continue;
       const destinationIdx = this.getHistoryDestinationIndex(sources[offset], targetRowIdx + offset);
+      // Fill a blank writer in the actual destination. An existing writer only
+      // follows history when that row includes one of these extra treatments.
+      const copyWriter = !String(rows[destinationIdx]?.writer ?? "").trim() ||
+        /충격파|도수|운동/.test(String(sources[offset].extra ?? ""));
+      const fields = copyWriter ? selectedFields : selectedFields.filter(key => key !== "writer");
+      if (!fields.length) continue;
       if (rowIdx === undefined) rowIdx = destinationIdx;
       while (!rows[destinationIdx]) rows.push(this.createDefaultEmptyRows(1)[0]);
       this.copyHistoryFields(rows[destinationIdx], sources[offset], fields);
