@@ -179,8 +179,13 @@ class PTHistorySearch {
     this.clipboardSelection = null;
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
+    if (focusAppliedRow) this.elSearchInput.value = "";
     this.renderTable();
-    if (searchQuery) {
+    this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
+    if (focusAppliedRow) {
+      // Apply and Enter finish the search using the same cleanup as Escape.
+      this.closeHistorySearch();
+    } else if (searchQuery) {
       this.searchAllDates(searchQuery, rowIdx, { scrollToAppliedRow: focusAppliedRow });
       if (useSelection && this.crossDateResults?.length) {
         if (wasRowSelected) this.selectCrossDateRow(selection.minRow);
@@ -196,8 +201,6 @@ class PTHistorySearch {
         if (appliedSourceIndex >= 0) this.selectCrossDateRow(appliedSourceIndex);
       }
     }
-    this.lastHistoryAppliedTarget = { date: this.currentDate, row: rows[rowIdx], rowIdx };
-    if (focusAppliedRow) this.restoreAppliedHistorySelection(this.lastHistoryAppliedTarget);
     // Include row allocation and final selection in the same Apply transaction.
     this.captureHistory();
     history.applySelections.set(history.current, {
@@ -426,6 +429,8 @@ class PTHistorySearch {
   }
 
   closeHistorySearch() {
+    clearTimeout(this.historyCurrentScrollTimer);
+    this.pendingHistorySearchSelection = null;
     this.closeAutocompleteMenu();
     this.closeGenderDropdown();
     this.hideContextMenu();

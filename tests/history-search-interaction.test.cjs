@@ -708,20 +708,27 @@ test('search prompt lists only names for a name query and only chart numbers for
 });
 
 
-test('apply button moves selection to No. on the actual destination row', () => {
+test('Apply closes search immediately and selects No. on the actual destination row', () => {
   for (const match of [true, false]) {
     const rows = [{ name: match ? '가상환자' : '다른환자', chartNo: match ? 'T001' : 'OTHER' }, {}, {}];
-    const { app } = createApp(rows);
-    let restored, searched;
+    const { app, context } = createApp(rows);
+    let restored, focused = false;
+    context.document.querySelector = () => null;
+    app.elBtnClearSearch = {style:{}};
+    app.elSheetContainer = {classList:{remove(){}},focus(){focused=true;}};
+    app.elTableBody = {querySelectorAll:()=>[],querySelector:()=>({scrollIntoView(){}})};
     app.elSearchInput.value = '가상환자';
-    app.searchAllDates = (...args) => { searched = args; };
+    app.searchAllDates = () => assert.fail('Apply must not reopen search results');
     app.restoreAppliedHistorySelection = target => { restored = target; };
     app.applyHistoryRow({ name: '가상환자', chartNo: 'T001', part: '목' }, { focusAppliedRow: true });
     const expected = match ? 0 : 1;
     assert.equal(restored.rowIdx, expected);
     assert.equal(restored.row, rows[expected]);
-    assert.deepEqual(searched.slice(0, 2), ['가상환자', expected]);
-    assert.equal(searched[2].scrollToAppliedRow, true);
+    assert.equal(app.elSearchInput.value,'');
+    assert.equal(app.crossDateResults.length,0);
+    assert.equal(app.crossDateSelection,null);
+    assert.equal(app.elBtnClearSearch.style.display,'none');
+    assert.equal(focused,true);
   }
 });
 

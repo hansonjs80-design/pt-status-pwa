@@ -6,7 +6,7 @@ function createApp() {
   const storage = new Map();
   const context = vm.createContext({
     window: { addEventListener() {} },
-    document: { activeElement: null, getElementById() { return null; } },
+    document: { activeElement: null, getElementById() { return null; }, querySelector() { return null; }, querySelectorAll() { return []; } },
     localStorage: { getItem() { return null; }, setItem(k, v) { storage.set(k, v); } },
     clearTimeout,
   });
@@ -20,7 +20,7 @@ function createApp() {
   for (const method of ['clearHeaderSelections', 'closeAutocompleteMenu', 'closeGenderDropdown', 'renderTable', 'showSaveIndicator', 'updateSidebarStats', 'scheduleSupabaseSync']) app[method] = () => {};
   for (const element of ['elSearchInput', 'elFormulaInput', 'elCellAddress', 'elSelectedCellCoords']) app[element] = { value: "" };
   app.elBtnClearSearch = { style: {} };
-  app.elSheetContainer = { focus() {} };
+  app.elSheetContainer = { focus() {}, classList:{remove(){}} };
   return { app, storage, context };
 }
 

@@ -122,7 +122,7 @@ class PTSheetKeyboard {
     const button = this.elTableBody.querySelector(`.cross-date-row[data-cross-idx="${rowIndex}"] .history-apply-btn`);
     // Use the actual Apply button action so click and keyboard cannot diverge.
     if (button?.click) button.click();
-    else this.applyHistoryRow(source);
+    else this.applyHistoryRow(source, { focusAppliedRow: true });
     return true;
   }
 
