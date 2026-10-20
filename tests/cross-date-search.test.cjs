@@ -712,3 +712,32 @@ test('current-date-inclusive search selects the last previous-date row across al
   app.searchAllDates('123',0);
   assert.equal(app.crossDateSelection.minRow,1,'without previous history, select the last current-date row');
 });
+
+test('date toggles preserve the selected source date instead of reusing its old display index', () => {
+  const {app}=createCrossDateTestApp();
+  for(const date of ['2026-09-01','2026-09-02','2026-09-03'])app.dataStore[date]=[{name:'토글가상',chartNo:'TEST',specialNote:'동일'}];
+  app.searchAllDates('토글가상',0);
+  assert.equal(app.crossDateResults.length,1);
+  app.isCrossDateRowSelected=false;app.selectCrossDateCell(0,9);
+  app.toggleCrossDateExpanded();
+  assert.equal(app.crossDateResults.length,3);
+  assert.equal(app.crossDateSelection.endRow,2);
+  assert.equal(app.crossDateResults[app.crossDateSelection.endRow]._sourceDate,'2026-09-03');
+  app.toggleCrossDateExpanded();
+  assert.equal(app.crossDateResults.length,1);assert.equal(app.crossDateSelection.endRow,0);
+});
+
+test('edited subrows remain visible and current after regrouping, while a new search restores normal deduplication', () => {
+  const {app}=createCrossDateTestApp();
+  for(const date of ['2026-09-01','2026-09-02','2026-09-03'])app.dataStore[date]=[{name:'토글가상',chartNo:'TEST',specialNote:date}];
+  app.searchAllDates('토글가상',0);
+  const sources=[...app.crossDateResults];app.pinHistoryNoteRows(sources);
+  for(const date of ['2026-09-01','2026-09-02','2026-09-03'])app.dataStore[date][0].specialNote='모두 수정';
+  app.searchAllDates('토글가상',undefined,{preserveCurrentSelection:true});
+  assert.equal(app.crossDateResults.length,3);
+  assert.deepEqual(Array.from(app.crossDateResults,row=>row.specialNote),Array(3).fill('모두 수정'));
+  app.toggleCrossDateExpanded();app.toggleCrossDateExpanded();
+  assert.equal(app.crossDateResults.length,3);
+  app.searchAllDates('토글가상',0);
+  assert.equal(app.crossDateResults.length,1);assert.equal(app.crossDateResults[0].specialNote,'모두 수정');
+});

@@ -412,10 +412,32 @@ class PTCloudSync {
       const before = base[i] || {}, after = local[i] || {};
       merged[i] ||= {};
       let copied = !readOnly;
+      const noteEdited = after._historyNoteRevision && after._historyNoteRevision !== before._historyNoteRevision;
+      const noteMetadata = ["_textColors", "_textStyles", "_richText", "_formatRevisions"];
       for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
         if (before[key] === after[key] || JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
         if (!copied) { merged[i] = { ...merged[i] }; copied = true; }
+        if (noteEdited && noteMetadata.includes(key)) {
+          // History edits own one cell, not other columns' remote formatting.
+          const map = { ...merged[i][key] };
+          for (const column of new Set([...Object.keys(before[key] || {}), ...Object.keys(after[key] || {})])) {
+            if (JSON.stringify(before[key]?.[column]) === JSON.stringify(after[key]?.[column])) continue;
+            if (after[key] && column in after[key]) map[column] = after[key][column]; else delete map[column];
+          }
+          merged[i][key] = map;
+          continue;
+        }
         if (key in after) merged[i][key] = after[key]; else delete merged[i][key];
+      }
+      if (noteEdited) {
+        if (!copied) merged[i] = { ...merged[i] };
+        merged[i].specialNote = after.specialNote ?? "";
+        for (const key of noteMetadata) {
+          const map = { ...merged[i][key] };
+          if (after[key] && Object.hasOwn(after[key], "specialNote")) map.specialNote = after[key].specialNote;
+          else delete map.specialNote;
+          if (Object.keys(map).length) merged[i][key] = map; else delete merged[i][key];
+        }
       }
     }
     if (local.length < base.length) merged.length = local.length;

@@ -2047,3 +2047,23 @@ test('clearing notes retains selection when duplicate dates collapse into a new 
   assert.deepEqual(selected,[[0,9]]);
   assert.equal(focused,1);
 });
+
+test('date toggles and refreshes remap sparse selection by exact source without selecting gaps', () => {
+  const {app}=createApp();
+  const sources=Array.from({length:5},(_,i)=>({_sourceDate:'2026-09-0'+(i+1),_sourceRowIdx:0}));
+  app.crossDateResults=[sources[1],sources[4]];
+  app.crossDateSelection={minRow:0,maxRow:1,minCol:9,maxCol:9,startRow:0,endRow:1,startCol:9,endCol:9};
+  app.selectedCellKind='history';app.selectedCellSet=new Set(['0:9','1:9']);
+  app.elSelectedCellCoords={};app.elFormulaInput={};
+  const snapshot=app.captureHistorySearchSelection();
+  app.crossDateResults=sources;
+  app.clearHeaderSelections=()=>{app.selectedCellSet=null;app.crossDateSelection=null;};
+  app.paintCellSet=app.updateHistoryDestinationHighlight=()=>{};
+  app.restoreHistorySearchSelection(snapshot);
+  assert.deepEqual([...app.selectedCellSet],['1:9','4:9']);
+  assert.equal(app.isSelectedCoordinate(2,9),false);assert.equal(app.isSelectedCoordinate(3,9),false);
+  assert.equal(app.isSelectedCoordinate(1,9),true);
+  const expanded=app.captureHistorySearchSelection();
+  app.crossDateResults=[sources[4]];app.restoreHistorySearchSelection(expanded);
+  assert.deepEqual([...app.selectedCellSet],['0:9']);
+});

@@ -258,7 +258,9 @@ class PTHistorySearch {
       const row = this.crossDateResults?.[index];
       return row && JSON.stringify([row._sourceDate, row._sourceRowIdx]);
     };
-    return { selection, rowSelected: this.isCrossDateRowSelected,
+    const cells = this.selectedCellKind === "history" && this.selectedCellSet
+      ? [...this.selectedCellSet].map(cell => { const [row, col] = cell.split(":").map(Number); return [identify(row), col]; }) : null;
+    return { selection, cells, rowSelected: this.isCrossDateRowSelected,
       borderOnly: typeof document !== 'undefined' && document.activeElement === this.elSheetContainer,
       wasLastRow: selection.endRow === this.crossDateResults?.length - 1,
       start: identify(selection.startRow), end: identify(selection.endRow) };
@@ -266,6 +268,29 @@ class PTHistorySearch {
 
   restoreHistorySearchSelection(snapshot) {
     if (!snapshot) return;
+    if (snapshot.cells) {
+      // Expanding changes display indices. Preserve only the exact chosen
+      // records; never turn gaps in a Ctrl/Cmd selection into selected cells.
+      const cells = snapshot.cells.flatMap(([identity, col]) => {
+        const row = this.crossDateResults.findIndex(item => JSON.stringify([item._sourceDate, item._sourceRowIdx]) === identity);
+        return row >= 0 ? [[row, col]] : [];
+      });
+      this.clearHeaderSelections();
+      this.isCrossDateRowSelected = false;
+      if (cells.length) {
+        const rows = cells.map(cell => cell[0]), cols = cells.map(cell => cell[1]);
+        const minRow = Math.min(...rows), maxRow = Math.max(...rows), minCol = Math.min(...cols), maxCol = Math.max(...cols);
+        this.selectedCellKind = "history";
+        this.selectedCellSet = new Set(cells.map(([row, col]) => `${row}:${col}`));
+        this.crossDateSelection = { minRow, maxRow, minCol, maxCol, startRow: minRow, startCol: minCol, endRow: maxRow, endCol: maxCol };
+        this.paintCellSet();
+        this.elSelectedCellCoords.textContent = `${cells.length}개 셀 선택`;
+        this.elFormulaInput.readOnly = true;
+      }
+      this.elSheetContainer?.focus?.({ preventScroll: true });
+      this.updateHistoryDestinationHighlight();
+      return;
+    }
     const find = identity => {
       const identify = row => JSON.stringify([row._sourceDate, row._sourceRowIdx]);
       const exact = this.crossDateResults?.findIndex(row => identify(row) === identity) ?? -1;
@@ -603,6 +628,10 @@ class PTHistorySearch {
   }
 
   searchAllDates(query, originRowIdx, { preserveCurrentSelection = false, scrollToAppliedRow = false, focusCurrentTarget = false, searchStore: preparedSearchStore = null } = {}) {
+    if (!preserveCurrentSelection || this.historyNotePinnedQuery !== String(query || "").trim().toLowerCase()) {
+      this.historyNotePinnedSources = null;
+      this.historyNotePinnedQuery = null;
+    }
     const historyExpanded = this.isCrossDateExpanded;
     if (this.includeCurrentDateSearch && this.currentDateSearchOriginalTarget?.date === this.currentDate) {
       this.historyApplyTarget = this.currentDateSearchOriginalTarget;

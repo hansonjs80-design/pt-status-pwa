@@ -41,9 +41,17 @@ class PTHistoryTable {
       .map(key => row[key]?.specialNote ?? null)]);
   }
 
-  saveHistoryNoteEdit(edit, finished, { deferPersist = false } = {}) {
+  pinHistoryNoteRows(rows) {
+    const query = this.elSearchInput.value.trim().toLowerCase();
+    if (this.historyNotePinnedQuery !== query) this.historyNotePinnedSources = new Set();
+    this.historyNotePinnedQuery = query;
+    this.historyNotePinnedSources ||= new Set();
+    for (const row of rows) this.historyNotePinnedSources.add(JSON.stringify([row._sourceDate, row._sourceRowIdx]));
+  }
+
+  saveHistoryNoteEdit(edit, finished, { deferPersist = false, force = false } = {}) {
     const signature = this.getHistoryNoteSignature(edit.row);
-    if (signature !== edit.signature) {
+    if (force || signature !== edit.signature) {
       // Materialize only the edited date, with unsent edits and newer remote
       // fields merged first. Copy only this cell's text/formatting into it.
       const rows = this.getSearchDataStore({ rebasePending: true, date: edit.date })[edit.date];
@@ -55,6 +63,9 @@ class PTHistoryTable {
       const copy = JSON.parse(JSON.stringify(rows));
       const row = copy[edit.sourceIndex];
       row.specialNote = edit.row.specialNote ?? "";
+      // Returning to the baseline value is still a deliberate new edit.
+      this.historyNoteRevisionSequence = (this.historyNoteRevisionSequence || 0) + 1;
+      row._historyNoteRevision = `${Date.now()}:${this.historyNoteRevisionSequence}:${Math.random().toString(36).slice(2)}`;
       for (const key of ["_textColors", "_textStyles", "_richText", "_formatRevisions"]) {
         if (edit.row[key]?.specialNote !== undefined) {
           row[key] ||= {};
@@ -76,6 +87,7 @@ class PTHistoryTable {
       try { localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates])); } catch (_) {}
       edit.signature = signature;
       edit.changed = true;
+      this.pinHistoryNoteRows([{ _sourceDate: edit.date, _sourceRowIdx: edit.sourceIndex }]);
       // Keep Apply/copy and collapsed representatives current without rebuilding
       // the search table on every keystroke or interrupting Korean composition.
       for (const result of [...(this.allCrossDateMatchedRows || []), ...(this.crossDateResults || [])]) {
@@ -112,7 +124,7 @@ class PTHistoryTable {
       row[key] = "";
     }
     this.textColorSelection = null;
-    this.saveHistoryNoteEdits(targets.map(target => target.edit));
+    if (!this.saveHistoryNoteEdits(targets.map(target => target.edit))) return;
     this.elSheetContainer?.focus?.({ preventScroll: true });
     this.showSaveIndicator("내용 지우기 완료");
   }
@@ -161,9 +173,21 @@ class PTHistoryTable {
   }
 
   saveHistoryNoteEdits(edits) {
+    if (!edits.length || this._recordsRestorePending || this._recordRestoreError) return 0;
+    // Validate the whole range before changing any date, instead of skipping
+    // a stale row and reporting a partially applied fill as complete.
+    const snapshots = new Map();
+    for (const edit of edits) {
+      if (!snapshots.has(edit.date)) snapshots.set(edit.date, this.getSearchDataStore({ rebasePending: true, date: edit.date })[edit.date]);
+      const target = snapshots.get(edit.date)?.[edit.sourceIndex];
+      if (!target || ["name", "chartNo"].some(key => String(target[key] ?? "") !== String(edit.row[key] ?? ""))) {
+        this.showSaveIndicator("원본 기록이 변경되어 선택 범위를 저장하지 않았습니다. 다시 검색해 주세요.", true);
+        return 0;
+      }
+    }
     const dates = new Set();
-    for (const edit of edits) if (this.saveHistoryNoteEdit(edit, false, { deferPersist: true })) dates.add(edit.date);
-    if (!dates.size) return;
+    for (const edit of edits) if (this.saveHistoryNoteEdit(edit, false, { deferPersist: true, force: true })) dates.add(edit.date);
+    if (!dates.size) return 0;
     void this.persistDataStore().then(() => {
       for (const date of dates) this.scheduleSupabaseSync(date);
       this.showSaveIndicator("저장 완료됨");
@@ -172,6 +196,7 @@ class PTHistoryTable {
       this.showSaveIndicator("특이사항 저장 실패 · 다시 저장해 주세요", true);
     });
     setTimeout(() => this.refreshLoadedSearchResults(), 0);
+    return edits.length;
   }
 
   applyHistoryNoteFormatting(property, value) {
@@ -210,8 +235,7 @@ class PTHistoryTable {
         }
       }
     }
-    this.saveHistoryNoteEdits(targets.map(target => target.edit));
-    return targets.length > 0;
+    return this.saveHistoryNoteEdits(targets.map(target => target.edit)) > 0;
   }
 
   isHistoryNoteFormattingApplied(property, value) {
@@ -245,22 +269,25 @@ class PTHistoryTable {
       this.applyCopiedCellFormatting(edit.row, 'specialNote', drag.formatting);
       edits.push(edit);
     }
-    this.saveHistoryNoteEdits(edits);
+    const count = this.saveHistoryNoteEdits(edits);
+    if (!count) return;
+    this.pinHistoryNoteRows([drag.sources[drag.rowIdx]]);
     this.isCrossDateRowSelected = false;
     this.selectCrossDateCell(drag.rowIdx, 9);
     this.selectCrossDateCell(drag.endRow, 9, true);
     this.isSelectingCrossDate = false;
-    this.showSaveIndicator(`${edits.length}개 셀 채우기 완료`);
+    this.elSheetContainer?.focus?.({ preventScroll: true });
+    this.showSaveIndicator(`${count}개 셀 채우기 완료`);
   }
 
   async pasteHistoryNotes(suppliedText, suppliedHtml = "") {
     const range = this.getHistoryNoteRange(), viewDate = this.currentDate;
-    if (!range) return;
+    if (!range || this._recordsRestorePending || this._recordRestoreError) return;
     const sourceRows = [...this.crossDateResults];
     const selection = JSON.stringify(this.crossDateSelection);
     document.activeElement?.blur?.();
     const { text, html } = await this.readClipboardForPaste(suppliedText, suppliedHtml);
-    if (this.currentDate !== viewDate || JSON.stringify(this.crossDateSelection) !== selection ||
+    if (this._recordsRestorePending || this._recordRestoreError || this.currentDate !== viewDate || JSON.stringify(this.crossDateSelection) !== selection ||
         sourceRows.length !== this.crossDateResults?.length || sourceRows.some((row, index) =>
           row._sourceDate !== this.crossDateResults[index]?._sourceDate || row._sourceRowIdx !== this.crossDateResults[index]?._sourceRowIdx)) return;
     if (!text) { this.showSaveIndicator("붙여넣을 데이터가 없습니다.", true); return; }
@@ -336,8 +363,16 @@ class PTHistoryTable {
   }
 
   toggleCrossDateExpanded() {
+    document.activeElement?.blur?.();
+    if (this.fillDrag) this.cancelFillDrag();
     this.isCrossDateExpanded = !this.isCrossDateExpanded;
-    this.renderCrossDateSection();
+    this.elSheetContainer?.focus?.({ preventScroll: true });
+    const query = this.elSearchInput?.value?.trim();
+    if (query) {
+      // Rebuild groups from current saved data and restore by source identity.
+      // Reusing an old numeric row index after expanding can edit another date.
+      this.searchAllDates(query, undefined, { preserveCurrentSelection: true });
+    } else this.renderCrossDateSection();
   }
 
   syncHistoryRowHeaderPosition() {
@@ -465,11 +500,14 @@ class PTHistoryTable {
     // 렌더링할 행 목록 결정
     let renderRows = [];
     if (!this.isCrossDateExpanded) {
-      // 대표 행 모드: 각 중복 그룹의 대표 1행만 (오래된 날짜가 위, 하단에 최근월일)
-      renderRows = Array.from(groupMap.values()).map(g => ({
-        ...g.representative,
-        _dupCount: g.items.length
-      })).sort((a, b) => (a._sourceDate > b._sourceDate ? 1 : a._sourceDate < b._sourceDate ? -1 : 0));
+      // Keep edited dates visible until a new search. Deduplication must not
+      // replace the cell under the user after a fill or paste.
+      const identify = row => JSON.stringify([row._sourceDate, row._sourceRowIdx]);
+      const visible = new Map(Array.from(groupMap.values(), group => [identify(group.representative), group.representative]));
+      for (const row of allMatchedRows) if (this.historyNotePinnedSources?.has(identify(row))) visible.set(identify(row), row);
+      renderRows = Array.from(visible.values(), row => ({
+        ...row, _dupCount: groupMap.get(this.getHistoryDedupeKey(row))?.items.length || 1
+      })).sort((a, b) => a._sourceDate.localeCompare(b._sourceDate) || a._sourceRowIdx - b._sourceRowIdx);
     } else {
       // 전체 펼치기 모드: 모든 매칭 행 표시
       renderRows = allMatchedRows.map(row => {

@@ -583,3 +583,52 @@ test('cell edits clearing all patients authorize deliberate deletion and do not 
   await app.pushToCloud(date);
   assert.equal(db.get(date).rows_data[0].name, '김철수');
 });
+
+test('explicit history note revisions keep same-baseline text and formatting through search, upload and another device',async()=>{
+  const date='2026-09-01';
+  const before=[{name:'가상환자',chartNo:'TEST1',specialNote:'원래 값',memo:'메모',
+    _textColors:{specialNote:'#ff0000'},_textStyles:{specialNote:{fontWeight:700}}}];
+  const remote=clone(before);remote[0].specialNote='지연 응답';remote[0].memo='다른 기기 메모';
+  remote[0]._textColors={specialNote:'#0000ff',memo:'#00ff00'};
+  remote[0]._textStyles={specialNote:{fontWeight:400},memo:{fontSize:20}};
+  const db=new Map([[date,{date,rows_data:clone(remote),updated_at:null}]]),{app}=createApp(db);
+  app.currentDate='2026-10-20';app.cloudSearchHistory={[date]:clone(remote)};
+  app.syncBaselines.set(date,clone(before));app.dataStore[date]=clone(before);
+  app.dataStore[date][0]._historyNoteRevision='new-explicit-edit';app.pendingSyncDates.add(date);
+  for(const readOnly of [true,false]) {
+    const inputs=clone({before,local:app.dataStore[date],remote});
+    const merged=app.mergeCloudRows(before,app.dataStore[date],remote,{readOnly});
+    assert.equal(merged[0].specialNote,'원래 값');assert.equal(merged[0].memo,'다른 기기 메모');
+    assert.equal(merged[0]._textColors.specialNote,'#ff0000');assert.equal(merged[0]._textColors.memo,'#00ff00');
+    assert.equal(merged[0]._textStyles.specialNote.fontWeight,700);assert.equal(merged[0]._textStyles.memo.fontSize,20);
+    assert.deepEqual({before,local:app.dataStore[date],remote},inputs);
+  }
+  await app.pushToCloud(date);
+  assert.equal(app.pendingSyncDates.has(date),false);
+  assert.equal(db.get(date).rows_data[0].specialNote,'원래 값');
+  assert.equal(app.getSearchDataStore()[date][0].specialNote,'원래 값');
+  const other=createApp(db).app;other.currentDate=date;other.normalizeRowAllocation=()=>{};
+  await other.pullFromCloud(date);
+  assert.equal(other.getCurrentRows()[0].specialNote,'원래 값');
+  assert.equal(other.getCurrentRows()[0]._textColors.specialNote,'#ff0000');
+  // Once acknowledged, a newer edit on another device is still accepted.
+  db.get(date).rows_data[0].specialNote='다음 기기 수정';
+  other.syncBaselines.set(date,clone(other.getCurrentRows()));
+  await other.pullFromCloud(date);assert.equal(other.getCurrentRows()[0].specialNote,'다음 기기 수정');
+});
+
+test('a new historical edit during upload stays pending and wins the retry even when it restores an older value',async()=>{
+  const date='2026-09-01',before=[{name:'가상환자',chartNo:'TEST1',specialNote:'원래'}];
+  const db=new Map([[date,{date,rows_data:clone(before),updated_at:null}]]),{app}=createApp(db);
+  app.currentDate='2026-10-20';app.cloudSearchHistory={[date]:clone(before)};
+  app.dataStore[date]=clone(before);app.dataStore[date][0].specialNote='먼저 업로드';app.dataStore[date][0]._historyNoteRevision='first';
+  app.syncBaselines.set(date,clone(before));app.pendingSyncDates.add(date);
+  const query=app.runCloudQuery.bind(app);let release,readStarted;
+  const started=new Promise(resolve=>{readStarted=resolve;});let held=true;
+  app.runCloudQuery=async request=>{if(held){held=false;readStarted();await new Promise(resolve=>{release=resolve;});}return query(request);};
+  const upload=app.pushToCloud(date);await started;
+  app.dataStore[date][0].specialNote='원래';app.dataStore[date][0]._historyNoteRevision='second';release();await upload;
+  assert.equal(app.dataStore[date][0].specialNote,'원래');assert.equal(app.pendingSyncDates.has(date),true);
+  await app.pushToCloud(date);
+  assert.equal(db.get(date).rows_data[0].specialNote,'원래');assert.equal(app.pendingSyncDates.has(date),false);
+});

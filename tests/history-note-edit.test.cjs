@@ -334,3 +334,55 @@ for (const action of ['deleteSelectedText','pasteIntoTextEditor','applyQuickText
     assert.equal(JSON.stringify(app.dataStore[app.currentDate]),today);
   });
 }
+
+test('restoring a note to its original value survives a late history response and another same-date edit', () => {
+  const {app}=fixture();const date='2026-09-01';
+  app.crossDateResults.push({...app.cloudSearchHistory[date][1],_sourceDate:date,_sourceRowIdx:1});
+  const edit=app.createHistoryNoteEdit(0);
+  edit.row.specialNote='첫 수정';edit.save(false);
+  edit.row.specialNote='이전 메모';edit.save(false);
+  // The earlier edit arrives through a history read before its upload finishes.
+  app.cloudSearchHistory[date][0].specialNote='첫 수정';
+  app.cloudSearchHistory[date][0].extra='다른 기기 변경';
+  const next=app.createHistoryNoteEdit(1);next.row.specialNote='다음 행 수정';next.save(false);
+  assert.equal(app.dataStore[date][0].specialNote,'이전 메모');
+  assert.equal(app.dataStore[date][1].specialNote,'다음 행 수정');
+  assert.equal(app.dataStore[date][0].extra,'다른 기기 변경');
+});
+
+test('a fill applies every source row when several displayed notes belong to the same date', () => {
+  for(const downward of [true,false]) {
+    const {app}=fixture(),date='2026-09-01';
+    const rows=Array.from({length:8},(_,i)=>({name:'가상환자',chartNo:'TEST1',specialNote:'원래 '+i,memo:'원본 '+i}));
+    app.cloudSearchHistory[date]=rows;
+    app.crossDateResults=rows.map((row,i)=>({...row,_sourceDate:date,_sourceRowIdx:i}));
+    app.allCrossDateMatchedRows=[...app.crossDateResults];
+    app.selectCrossDateCell=()=>{};
+    const from=downward?0:7,to=downward?7:0;
+    app.finishHistoryNoteFill({rowIdx:from,endRow:to,sources:[...app.crossDateResults],value:'원래 '+from,formatting:{}});
+    assert.deepEqual(Array.from(app.dataStore[date],row=>row.specialNote),Array(8).fill('원래 '+from));
+    assert.deepEqual(Array.from(app.dataStore[date],row=>row.memo),rows.map(row=>row.memo));
+  }
+});
+
+test('a stale middle row rejects the entire fill instead of applying only the other dates', () => {
+  const {app,saved,notices}=formattingFixture();
+  const third={...app.crossDateResults[1],_sourceDate:'2026-10-18',specialNote:'마지막'};
+  app.cloudSearchHistory['2026-10-18']=[{...third}];app.crossDateResults.push(third);
+  app.allCrossDateMatchedRows=[...app.crossDateResults];
+  app.cloudSearchHistory['2026-10-19'][0].chartNo='CHANGED';
+  app.selectCrossDateCell=()=>{throw Error('must not report successful selection');};
+  const before=JSON.stringify(app.dataStore);
+  app.finishHistoryNoteFill({rowIdx:0,endRow:2,sources:[...app.crossDateResults],value:'일괄 복사',formatting:{}});
+  assert.equal(saved.length,0);assert.equal(JSON.stringify(app.dataStore),before);
+  assert.equal(notices.at(-1)[1],true);assert.match(notices.at(-1)[0],/선택 범위를 저장하지/);
+});
+
+test('pasting the same visible value still records intent against a later server value', () => {
+  const {app}=fixture(),edit=app.createHistoryNoteEdit(0),date=edit.date;
+  assert.equal(app.saveHistoryNoteEdits([edit]),1);
+  assert.equal(app.pendingSyncDates.has(date),true);
+  assert.equal(typeof app.dataStore[date][0]._historyNoteRevision,'string');
+  app.cloudSearchHistory[date][0].specialNote='지연 값';
+  assert.equal(app.getSearchDataStore({rebasePending:true,date})[date][0].specialNote,'이전 메모');
+});
