@@ -3,6 +3,7 @@ const { resolve } = require('node:path');
 
 // Use the same local script order as index.html, without starting the UI.
 module.exports = [
+  'device-settings.js',
   'history-search.js',
   'preset-candidates.js',
   'autocomplete-formatting.js',

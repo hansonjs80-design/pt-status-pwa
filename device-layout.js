@@ -72,54 +72,7 @@ class PTDeviceLayout {
   }
 
   readDevicePanelState(key, legacyClosed, property = 'closed') {
-    // 1. localStorage SNAPSHOT 최우선 확인 (가장 정확한 사용자 로컬 조작 기록)
-    try {
-      const saved = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      if (saved && typeof saved[property] === 'boolean' && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
-        return saved;
-      }
-    } catch (_) {}
-
-    // 2. sessionStorage SNAPSHOT 확인 (새로고침 / 코드 업데이트 시 세션 보호)
-    try {
-      const sessionSaved = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null');
-      if (sessionSaved && typeof sessionSaved[property] === 'boolean' && Number.isFinite(sessionSaved.updatedAt) && sessionSaved.updatedAt > 0) {
-        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(sessionSaved)); } catch (_) {}
-        return sessionSaved;
-      }
-    } catch (_) {}
-
-    // 3. Cookie STATE 확인 (로컬 스토리지가 비었을 때의 fallback)
-    try {
-      const cookieKey = `${key}_STATE=`;
-      const matches = String(document.cookie || '').split(';')
-        .map(value => value.trim())
-        .filter(value => value.startsWith(cookieKey));
-      let bestCookie = null;
-      for (const raw of matches) {
-        try {
-          const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
-          if (saved && typeof saved[property] === 'boolean' && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
-            if (!bestCookie || saved.updatedAt > bestCookie.updatedAt) bestCookie = saved;
-          }
-        } catch (_) {}
-      }
-      if (bestCookie) {
-        try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(bestCookie)); } catch (_) {}
-        return bestCookie;
-      }
-    } catch (_) {}
-
-    // 4. 레거시 단일 키 호환 fallback
-    try {
-      const legacy = localStorage.getItem(key);
-      if (legacy !== null) {
-        const closed = legacy === legacyClosed;
-        return { [property]: closed, updatedAt: 0 };
-      }
-    } catch (_) {}
-
-    return { [property]: false, updatedAt: 0 };
+    return PTDeviceSettings.panel(key, legacyClosed, property);
   }
 
   persistDevicePanelCookie(key, snapshot) {
@@ -135,67 +88,7 @@ class PTDeviceLayout {
 
   // 기기 전용 통합 UI 디스플레이 설정 읽기 (localStorage -> sessionStorage -> Cookie -> 레거시 자동 마이그레이션)
   readDevicePreferences() {
-    const key = "PT_DEVICE_UI_PREFS_V1";
-    let prefs = null;
-    try { prefs = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) {}
-    if (!prefs || typeof prefs !== 'object') {
-      try { prefs = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (_) {}
-    }
-    if (!prefs || typeof prefs !== 'object') {
-      try {
-        const cookieKey = `${key}=`;
-        const matches = String(document.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
-        if (matches.length > 0) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
-      } catch (_) {}
-    }
-
-    if (!prefs || typeof prefs !== 'object') {
-      prefs = {
-        version: 1,
-        columnWidths: {},
-        columnWidthsUpdatedAt: 0,
-        columnWidthsUserModified: false,
-        summaryClosed: false,
-        summaryClosedUpdatedAt: 0,
-        summaryClosedUserModified: false,
-        toolbarCollapsed: false,
-        toolbarCollapsedUpdatedAt: 0,
-        toolbarCollapsedUserModified: false
-      };
-    }
-
-    // 레거시 개별 키 → 통합 객체 최초 1회 마이그레이션 (이미 통합 객체에 값이 있으면 절대 덮어쓰지 않음)
-    const colSnap = this.readDeviceColumnWidths();
-    if (colSnap?.widths && Object.keys(colSnap.widths).length > 0) {
-      // prefs에 열 너비가 아직 없을 때만 레거시에서 가져옴 (역주행 방지)
-      if (!prefs.columnWidths || Object.keys(prefs.columnWidths).length === 0) {
-        prefs.columnWidths = { ...colSnap.widths };
-        prefs.columnWidthsUpdatedAt = colSnap.updatedAt || prefs.columnWidthsUpdatedAt || 0;
-        if (colSnap.updatedAt > 1) prefs.columnWidthsUserModified = true;
-      }
-    }
-
-    const sumSnap = this.readDeviceSummaryState();
-    if (sumSnap && Number.isFinite(sumSnap.updatedAt)) {
-      // prefs에 사용자 수정 기록이 없을 때만 레거시에서 가져옴
-      if (!prefs.summaryClosedUserModified) {
-        prefs.summaryClosed = Boolean(sumSnap.closed);
-        prefs.summaryClosedUpdatedAt = sumSnap.updatedAt;
-        if (sumSnap.updatedAt > 1) prefs.summaryClosedUserModified = true;
-      }
-    }
-
-    const toolSnap = this.readDeviceToolbarState();
-    if (toolSnap && Number.isFinite(toolSnap.updatedAt)) {
-      // prefs에 사용자 수정 기록이 없을 때만 레거시에서 가져옴
-      if (!prefs.toolbarCollapsedUserModified) {
-        prefs.toolbarCollapsed = Boolean(toolSnap.closed);
-        prefs.toolbarCollapsedUpdatedAt = toolSnap.updatedAt;
-        if (toolSnap.updatedAt > 1) prefs.toolbarCollapsedUserModified = true;
-      }
-    }
-
-    return prefs;
+    return PTDeviceSettings.readUI();
   }
 
   // 기기 전용 통합 UI 디스플레이 설정 영구 보존 (4중 계층: localStorage + sessionStorage + Cookie + IndexedDB + 레거시 미러링)
@@ -227,10 +120,58 @@ class PTDeviceLayout {
 
   queueDevicePreferences(prefs) {
     if (!this.devicePreferencesStore) return;
-    const write = (async () => {
-      await this.devicePreferencesStore("device-ui-preferences-v1", prefs);
-    })();
-    write.catch(err => console.warn("Failed to persist device UI preferences to IndexedDB:", err));
+    const snapshot = JSON.parse(JSON.stringify(prefs));
+    const previous = this.devicePreferencesWrite || Promise.resolve();
+    this.devicePreferencesWrite = previous.catch(() => {}).then(async () => {
+      await this.devicePreferencesStore("device-ui-preferences-v1", snapshot);
+      const saved = await this.devicePreferencesStore("device-ui-preferences-v1");
+      if (JSON.stringify(saved) !== JSON.stringify(snapshot)) throw new Error("화면 설정 저장 검증 실패");
+    });
+    this.devicePreferencesWrite.catch(() => this.showSaveIndicator?.("화면 설정 저장 실패 · 다시 저장해 주세요", true));
+  }
+
+  async restoreDeviceSettings(store) {
+    this._deviceSettingsRestorePending = true;
+    const keys = ['device-ui-preferences-v1','device-column-widths-v1','device-summary-state-v1','device-toolbar-state-v1'];
+    // Read every original disk snapshot before enabling any write path.
+    const [unified,widths,summary,toolbar] = await Promise.all(keys.map(key => store(key)));
+    this._deviceSettingsSnapshotsRead = true;
+    const disk = [unified, {columnWidths:widths?.widths,columnWidthsUpdatedAt:widths?.updatedAt},
+      {summaryClosed:summary?.closed,summaryClosedUpdatedAt:summary?.updatedAt},
+      {toolbarCollapsed:toolbar?.closed,toolbarCollapsedUpdatedAt:toolbar?.updatedAt}];
+    const local = this.readDevicePreferences();
+    const beforeEdit = this.columnWidthsBeforeSessionEdit;
+    const localCandidate = beforeEdit ? {...local,columnWidths:beforeEdit.widths,columnWidthsUpdatedAt:beforeEdit.updatedAt} : local;
+    const merged = PTDeviceSettings.mergeUI([...disk,localCandidate]);
+    // A resize before disk recovery must replace only the dragged track, not
+    // publish the other measured HTML defaults over saved device widths.
+    if (this.sessionColumnWidthEdits) {
+      for (const [key,width] of this.sessionColumnWidthEdits) {
+        if (width === null) delete merged.columnWidths[key];
+        else merged.columnWidths[key] = width;
+      }
+      merged.columnWidthsUpdatedAt = Math.max(Date.now(),local.columnWidthsUpdatedAt,merged.columnWidthsUpdatedAt+1);
+      merged.columnWidthsUserModified = true;
+    }
+    for (const [changed,field] of [['summaryStateChanged','summaryClosed'],['toolbarStateChanged','toolbarCollapsed']]) {
+      if (this[changed]) for (const suffix of ['', 'UpdatedAt','UserModified']) merged[field+suffix] = local[field+suffix];
+    }
+    if (!this.summaryStateChanged) {
+      merged.summaryClosed = true;
+      merged.summaryClosedUpdatedAt = Math.max(Date.now(),(merged.summaryClosedUpdatedAt || 0)+1);
+    }
+    this.deviceColumnWidths = {...merged.columnWidths};this.columnWidthsUpdatedAt = merged.columnWidthsUpdatedAt || 1;
+    this.deviceSummaryState = {closed:merged.summaryClosed,updatedAt:merged.summaryClosedUpdatedAt || 1};
+    this.deviceToolbarState = {closed:merged.toolbarCollapsed,updatedAt:merged.toolbarCollapsedUpdatedAt || 1};
+    this.persistDevicePreferences(merged);
+    this.setSummaryClosed(merged.summaryClosed,false);this.setToolbarActionsClosed(merged.toolbarCollapsed,false);
+    this.applySavedColumnWidths();this.syncCrossDateColWidths();
+    this.devicePreferencesStore = this.columnWidthsStore = this.summaryStateStore = this.toolbarStateStore = store;
+    this._deviceSettingsRestorePending = false;this._deviceSettingsRestored = true;
+    this.persistDevicePreferences(this.readDevicePreferences());
+    this.queueDeviceColumnWidths({widths:{...this.deviceColumnWidths},updatedAt:this.columnWidthsUpdatedAt});
+    this.queueDeviceSummaryState(this.deviceSummaryState);this.queueDeviceToolbarState(this.deviceToolbarState);
+    await Promise.all([this.devicePreferencesWrite,this.columnWidthsWrite,this.summaryStateWrite,this.toolbarStateWrite]);
   }
 
   async restoreDevicePreferences(store) {
@@ -266,7 +207,7 @@ class PTDeviceLayout {
     }
 
     // 2. 현황창 복원: 세션 중 사용자가 이미 변경했으면 디스크 값으로 절대 덮어쓰지 않음
-    if (!this.summaryStateChanged && persisted.summaryClosedUserModified && (!local.summaryClosedUserModified || (persisted.summaryClosedUpdatedAt || 0) >= (local.summaryClosedUpdatedAt || 0))) {
+    if (!this.summaryStartsClosed && !this.summaryStateChanged && persisted.summaryClosedUserModified && (!local.summaryClosedUserModified || (persisted.summaryClosedUpdatedAt || 0) >= (local.summaryClosedUpdatedAt || 0))) {
       local.summaryClosed = Boolean(persisted.summaryClosed);
       local.summaryClosedUpdatedAt = persisted.summaryClosedUpdatedAt;
       local.summaryClosedUserModified = true;
@@ -332,6 +273,14 @@ class PTDeviceLayout {
     this.summaryStateStore = store;
     let persisted = null;
     try { persisted = await store("device-summary-state-v1"); } catch (_) {}
+    if (this.summaryStartsClosed && !this.summaryStateChanged) {
+      this.deviceSummaryState = {closed:true,updatedAt:Math.max(Date.now(),(persisted?.updatedAt || 0)+1)};
+      this.persistLocalSummaryState(this.deviceSummaryState);
+      this.setSummaryClosed(true,false);
+      this.queueDeviceSummaryState(this.deviceSummaryState);
+      await this.summaryStateWrite;
+      return;
+    }
     const local = this.deviceSummaryState || this.readDeviceSummaryState();
 
     const isLocalValid = local && typeof local.closed === "boolean" && Number.isFinite(local.updatedAt);
@@ -480,6 +429,7 @@ class PTDeviceLayout {
   }
 
   flushDevicePanelStates() {
+    if (this._deviceSettingsRestorePending) return;
     try {
       const prefs = this.readDevicePreferences();
       let prefsChanged = false;
@@ -544,7 +494,9 @@ class PTDeviceLayout {
   }
 
   initSummaryToggle() {
-    this.deviceSummaryState = this.readDeviceSummaryState();
+    // Always start closed. Opening it during this launch remains a user action.
+    this.summaryStartsClosed = true;
+    this.deviceSummaryState = { closed: true, updatedAt: 1 };
     // updatedAt가 0이면 인라인 스크립트(index.html)에서 무시될 수 있으므로 유효한 값 보장
     // 부트스트랩 타임스탬프(1)를 사용하여 나중에 IndexedDB의 실제 사용자 설정이 이길 수 있도록 함
     if (!this.deviceSummaryState.updatedAt) this.deviceSummaryState.updatedAt = 1;
@@ -630,6 +582,7 @@ class PTDeviceLayout {
       activeTh.style.minWidth = `${newWidth}px`;
       activeTh.style.maxWidth = `${newWidth}px`;
       // 드래그 중에는 DOM + 메모리만 60fps 반영, 스토리지 쓰기 없음 (렉 방지)
+      this.recordSessionColumnWidth(activeColKey,newWidth);
       if (this.deviceColumnWidths) this.deviceColumnWidths[activeColKey] = newWidth;
       this.columnWidthsChanged = true;
       this.syncMainColumnWidths();
@@ -707,7 +660,14 @@ class PTDeviceLayout {
     });
   }
 
+  recordSessionColumnWidth(colKey, width) {
+    this.columnWidthsBeforeSessionEdit ||= {widths:this.getSavedColumnWidths(),updatedAt:this.columnWidthsUpdatedAt || 0};
+    this.sessionColumnWidthEdits ||= new Map();
+    this.sessionColumnWidthEdits.set(colKey,width);
+  }
+
   saveColumnWidth(colKey, width) {
+    this.recordSessionColumnWidth(colKey,width);
     if (!this.deviceColumnWidths) this.deviceColumnWidths = {};
     this.deviceColumnWidths[colKey] = width;
     // 모든 저장소에 즉시 확정 저장 (endResize에서 호출)
@@ -897,9 +857,10 @@ class PTDeviceLayout {
       this.columnWidthsUpdatedAt = prefs?.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 1;
     }
     if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = 1;
-    // 측정한 너비를 즉시 localStorage/sessionStorage/Cookie에 저장하여
-    // 앱 종료 후 다시 열어도 열 너비가 복원되도록 보장
-    if (anyMeasured || Object.keys(saved).length > 0) {
+    // Before disk recovery these measurements are display placeholders only.
+    // Stamping them with a saved partial snapshot's time would erase other
+    // columns that still exist on disk.
+    if ((this._deviceSettingsSnapshotsRead || this.columnWidthsChanged) && (anyMeasured || Object.keys(saved).length > 0)) {
       const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt };
       this.persistLocalColumnWidths(snapshot);
       if (prefs) {
@@ -967,6 +928,7 @@ class PTDeviceLayout {
 
   resetColumnWidth(colKey) {
     try {
+      this.recordSessionColumnWidth(colKey,null);
       const saved = this.getSavedColumnWidths();
       delete saved[colKey];
       this.persistColumnWidths(saved);

@@ -341,3 +341,108 @@ test('PT_DEVICE_UI_PREFS_V1 dedicated store persists and restores column widths 
 
 
 
+
+function prepareUnifiedDevice(value) {
+  value.app.setSummaryClosed = closed => {value.summaryClosed=closed;};
+  value.app.setToolbarActionsClosed = closed => {value.toolbarClosed=closed;};
+  return value;
+}
+
+test('startup reads all device snapshots before writing and preserves newest widths across cold restarts',async()=>{
+  const disk=new Map([
+    ['device-ui-preferences-v1',{columnWidths:{name:180,part:210},columnWidthsUpdatedAt:10,columnWidthsUserModified:true,toolbarCollapsed:false,toolbarCollapsedUpdatedAt:10}],
+    ['device-column-widths-v1',{widths:{part:315},updatedAt:30}],
+    ['device-summary-state-v1',{closed:false,updatedAt:40}],
+    ['device-toolbar-state-v1',{closed:true,updatedAt:50}]
+  ]);
+  const calls=[],store=async(key,value)=>{calls.push([key,value===undefined?'read':'write']);if(value===undefined)return structuredClone(disk.get(key));disk.set(key,structuredClone(value));};
+  for(let restart=0;restart<3;restart++) {
+    const fresh=prepareUnifiedDevice(device());
+    await fresh.app.restoreDeviceSettings(store);
+    assert.equal(fresh.headers[1].style.width,'180px');assert.equal(fresh.headers[2].style.width,'315px');
+    assert.equal(fresh.summaryClosed,true,'summary always starts closed, even if disk was open');
+    assert.equal(fresh.toolbarClosed,true,'tools retain their device state');
+    assert.equal(fresh.app.getSavedColumnWidths().part,315);
+  }
+  assert.deepEqual(calls.slice(0,4).map(call=>call[1]),Array(4).fill('read'));
+  assert.equal(disk.get('device-ui-preferences-v1').columnWidths.part,315);
+});
+
+test('resizing while device disk recovery is delayed wins over every old snapshot',async()=>{
+  const fresh=prepareUnifiedDevice(device()),disk=new Map([
+    ['device-ui-preferences-v1',{columnWidths:{part:200,name:180},columnWidthsUpdatedAt:100}],
+    ['device-column-widths-v1',{widths:{part:250,name:240,spacer:185},updatedAt:200}]
+  ]);
+  const reads=[],writes=[];
+  const restoring=fresh.app.restoreDeviceSettings((key,value)=>{
+    if(value!==undefined){writes.push(key);disk.set(key,structuredClone(value));return Promise.resolve();}
+    if(reads.length<4)return new Promise(resolve=>reads.push(()=>resolve(structuredClone(disk.get(key)))));
+    return Promise.resolve(structuredClone(disk.get(key)));
+  });
+  fresh.app.saveColumnWidth('part',333);
+  fresh.app.flushDevicePanelStates();assert.equal(writes.length,0);
+  reads.forEach(finish=>finish());await restoring;
+  assert.equal(fresh.headers[2].style.width,'333px');assert.equal(disk.get('device-column-widths-v1').widths.part,333);
+  assert.equal(fresh.headers[1].style.width,'240px','untouched name must retain disk width');
+  assert.equal(disk.get('device-column-widths-v1').widths.spacer,185,'untouched blank track must retain disk width');
+});
+
+test('a failed settings read never replaces the saved disk widths with measured HTML defaults',async()=>{
+  const fresh=prepareUnifiedDevice(device());let writes=0;
+  await assert.rejects(fresh.app.restoreDeviceSettings(async(key,value)=>{
+    if(value!==undefined)writes++;
+    if(key==='device-column-widths-v1')throw Error('disk temporarily unavailable');
+    return null;
+  }),/temporarily unavailable/);
+  fresh.app.flushDevicePanelStates();assert.equal(writes,0);
+});
+
+test('newer session and cookie values beat stale local preferences independently for each field',()=>{
+  const storage=new Map([['PT_DEVICE_UI_PREFS_V1',JSON.stringify({columnWidths:{name:160},columnWidthsUpdatedAt:10,toolbarCollapsed:false,toolbarCollapsedUpdatedAt:10})]]);
+  const session=new Map([['PT_DEVICE_UI_PREFS_V1',JSON.stringify({columnWidths:{part:300},columnWidthsUpdatedAt:30,toolbarCollapsed:true,toolbarCollapsedUpdatedAt:30})]]);
+  const fresh=device(storage,[],session);
+  assert.equal(fresh.app.getSavedColumnWidths().name,160);assert.equal(fresh.app.getSavedColumnWidths().part,300);
+  assert.equal(fresh.app.readDevicePreferences().toolbarCollapsed,true);
+});
+
+test('all letter columns and the trailing blank column retain distinct widths independently on two devices',async()=>{
+  const keys=['no','gender','chartNo','name','part','prescription','extra','writer','memo','specialNote','visitTime','del','spacer'];
+  const extras=keys.filter(key=>!['name','part','visitTime'].includes(key)).map(key=>[key,50]);
+  const disks=[new Map(),new Map()];
+  for(let machine=0;machine<2;machine++) {
+    const first=prepareUnifiedDevice(device(new Map(),extras));
+    await first.app.restoreDeviceSettings(diskStore(disks[machine]));
+    for(let i=0;i<keys.length;i++)first.app.saveColumnWidth(keys[i],60+i*11+machine*7);
+    await Promise.all([first.app.devicePreferencesWrite,first.app.columnWidthsWrite]);
+  }
+  for(let launch=0;launch<3;launch++)for(let machine=0;machine<2;machine++) {
+    const again=prepareUnifiedDevice(device(new Map(),extras));
+    await again.app.restoreDeviceSettings(diskStore(disks[machine]));
+    for(let i=0;i<keys.length;i++) {
+      const key=keys[i],width=60+i*11+machine*7;
+      assert.equal(again.app.getSavedColumnWidths()[key],width,`device ${machine} launch ${launch}: ${key}`);
+      assert.equal(again.headers.find(th=>th.dataset.col===key).style.width,width+'px');
+      assert.equal(again.table.group.children.find(col=>col.dataset.col===key).style.width,width+'px');
+    }
+  }
+});
+
+test('opening summary during delayed startup recovery remains open for that session',async()=>{
+  const first=prepareUnifiedDevice(device());let finish;
+  const gate=new Promise(resolve=>{finish=resolve;});
+  const store=diskStore(new Map([['device-summary-state-v1',{closed:true,updatedAt:200}]]));
+  const ready=first.app.restoreDeviceSettings(async(key,value)=>{if(value===undefined)await gate;return store(key,value);});
+  first.app.summaryStateChanged=true;
+  first.app.persistDevicePreferences({...first.app.readDevicePreferences(),summaryClosed:false,summaryClosedUpdatedAt:300,summaryClosedUserModified:true});
+  finish();await ready;assert.equal(first.summaryClosed,false);
+});
+
+test('startup never stamps measured defaults over older disk columns missing from a newer partial fast snapshot',async()=>{
+  const storage=new Map([['PT_DEVICE_UI_PREFS_V1',JSON.stringify({columnWidths:{part:330},columnWidthsUpdatedAt:300})]]);
+  const first=prepareUnifiedDevice(device(storage,[['spacer',10]]));
+  const disk=new Map([['device-column-widths-v1',{widths:{name:220,part:280,spacer:190},updatedAt:200}]]);
+  await first.app.restoreDeviceSettings(diskStore(disk));
+  assert.equal(first.app.getSavedColumnWidths().part,330);
+  assert.equal(first.app.getSavedColumnWidths().name,220);
+  assert.equal(first.app.getSavedColumnWidths().spacer,190);
+});

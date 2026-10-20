@@ -103,19 +103,7 @@
 
   // 다중 계층 설정 읽기: localStorage → sessionStorage → cookie
   function readSettingsMultiTier() {
-    let parsed = null;
-    try { parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (_) {}
-    if (!parsed || typeof parsed !== 'object') {
-      try { parsed = JSON.parse(sessionStorage.getItem(SETTINGS_KEY) || 'null'); } catch (_) {}
-    }
-    if (!parsed || typeof parsed !== 'object') {
-      try {
-        const cookieKey = `${SETTINGS_KEY}=`;
-        const matches = String(typeof document !== 'undefined' ? document.cookie : '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
-        if (matches.length > 0) parsed = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
-      } catch (_) {}
-    }
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    return PTDeviceSettings.mergeExports(PTDeviceSettings.candidates(SETTINGS_KEY).reverse());
   }
 
   // 다중 계층 설정 쓰기: localStorage + sessionStorage + cookie
@@ -136,6 +124,8 @@
     constructor(app) {
       this.app = app;
       this.settings = { ...SETTINGS_DEFAULTS, ...readSettingsMultiTier() };
+      this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
+      this._settingsRestorePending = true;
       this.status = '자동 저장 꺼짐';
       const footer = document.createElement('div'); footer.className = 'device-settings-footer';
       this.button = document.createElement('button');
@@ -160,7 +150,9 @@
       footer.append(this.statusElement);
       document.querySelector('.excel-sidebar')?.append(footer);
       this.initUpdateNotifier();
-      this.init().catch(error => this.report(error.message));
+      this.ready = this.init();
+      this.app.deviceSettingsReady = this.ready;
+      this.ready.catch(error => this.report(error.message));
     }
     initUpdateNotifier() {
       const applyUpdateAction = async (btn) => {
@@ -230,14 +222,11 @@
       return this.app.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key, value);
     }
     async init() {
-      // IndexedDB store를 설정 복원에도 사용
       this._settingsDiskStore = this.store.bind(this);
+      this._settingsRestoreTask = this._restoreSettingsFromDisk();
       await Promise.all([
-        this._restoreSettingsFromDisk(),
-        this.app.restoreDevicePreferences?.(this.store.bind(this)),
-        this.app.restoreDeviceColumnWidths(this.store.bind(this)),
-        this.app.restoreDeviceSummaryState(this.store.bind(this)),
-        this.app.restoreDeviceToolbarState(this.store.bind(this)),
+        this._settingsRestoreTask,
+        this.app.restoreDeviceSettings(this.store.bind(this)),
         this.app.restoreCurrentDateSearchPreference(this.store.bind(this)),
         window.ptSheetClock?.restore(this.store.bind(this)),
       ]);
@@ -248,37 +237,47 @@
       void this.tick();
     }
     async _restoreSettingsFromDisk() {
-      let persisted = null;
-      try { persisted = await this.store('device-export-settings-v1'); } catch (_) {}
-      if (!persisted || typeof persisted !== 'object') {
-        // 로컬에 유효한 설정이 있으면 IndexedDB에 백업
-        if (this.settings.pdf || this.settings.backup) {
-          this._queueSettingsDisk();
-        }
-        return;
+      this._settingsRestorePending = true;
+      // A failed read is not an empty store. Keep it intact for retry.
+      const persisted = await this.store('device-export-settings-v1');
+      const current = {...this.settings};
+      if (!current._fieldUpdatedAt) {
+        // Unstamped constructor defaults must not overwrite an older real save.
+        for (const key of Object.keys(SETTINGS_DEFAULTS)) if (current[key] === SETTINGS_DEFAULTS[key]) delete current[key];
       }
-      // IndexedDB에 저장된 설정으로 로컬이 비어있거나 기본값인 경우 복원
-      const localHasUserSetting = this.settings.pdf || this.settings.backup;
-      if (!localHasUserSetting && (persisted.pdf || persisted.backup)) {
-        // IndexedDB에 사용자 설정이 있으나 로컬에는 없음 → 복원
-        this.settings = { ...SETTINGS_DEFAULTS, ...persisted };
-        persistSettingsMultiTier(this.settings);
-      } else if (localHasUserSetting) {
-        // 로컬에 유효한 설정이 있으면 IndexedDB에 동기화
-        this._queueSettingsDisk();
-      }
+      const merged = PTDeviceSettings.mergeExports([persisted, readSettingsMultiTier(), current]);
+      this.settings = {...SETTINGS_DEFAULTS,...merged};
+      this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
+      persistSettingsMultiTier(this.settings);
+      this._settingsRestorePending = false;
+      await this._queueSettingsDisk();
     }
     save() {
+      const stamps = {...this.settings._fieldUpdatedAt};
+      const previous = this._savedSettingsSnapshot || {};
+      const timestamp = Math.max(Date.now(), ...Object.values(stamps).map(Number).filter(Number.isFinite), 0) + 1;
+      for (const key of Object.keys(this.settings)) {
+        if (!key.startsWith('_') && JSON.stringify(this.settings[key]) !== JSON.stringify(previous[key])) stamps[key] = timestamp;
+      }
+      this.settings._fieldUpdatedAt = stamps;
+      this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
       persistSettingsMultiTier(this.settings);
-      // IndexedDB 비동기 영구 저장
-      this._queueSettingsDisk();
+      const write = this._settingsRestorePending
+        ? Promise.resolve(this._settingsRestoreTask).then(() => this._queueSettingsDisk()) : this._queueSettingsDisk();
+      write?.catch(error => this.report('설정 저장 실패 · '+error.message));
+      return write;
     }
     _queueSettingsDisk() {
-      if (!this._settingsDiskStore) return;
-      const write = (async () => {
-        try { await this._settingsDiskStore('device-export-settings-v1', { ...this.settings }); } catch (_) {}
-      })();
-      this._settingsDiskWrite = write;
+      if (!this._settingsDiskStore || this._settingsRestorePending) return Promise.resolve();
+      const snapshot = JSON.parse(JSON.stringify(this.settings));
+      const previous = this._settingsDiskWrite || Promise.resolve();
+      this._settingsDiskWrite = previous.catch(() => {}).then(async () => {
+        await this._settingsDiskStore('device-export-settings-v1', snapshot);
+        const saved = await this._settingsDiskStore('device-export-settings-v1');
+        if (JSON.stringify(saved) !== JSON.stringify(snapshot)) throw Error('기기 저장소 확인에 실패했습니다.');
+      });
+      this._settingsDiskWrite.catch(error => this.report('설정 저장 실패 · '+error.message));
+      return this._settingsDiskWrite;
     }
     report(text) {
       this.status = text;
@@ -674,6 +673,10 @@
       }
     }
     open(defaultTab = 'backup') {
+      if (this._settingsRestorePending && this.ready) {
+        this.ready.then(() => this.open(defaultTab)).catch(error => this.report('설정 복원 실패 · '+error.message));
+        return;
+      }
       this.dialog?.remove();
       const dialog = document.createElement('dialog');
       dialog.className = 'device-settings-dialog';
@@ -1169,7 +1172,7 @@
           workStartTime: workStartTimeVal,
           workEndTime: workEndTimeVal
         };
-        this.save();
+        await this.save();
         this.report('이 컴퓨터에 설정 저장됨');
 
         // 변경된 보관 개수 설정에 맞추어 기존 초과 백업 파일 즉시 정리

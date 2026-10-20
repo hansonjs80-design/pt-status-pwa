@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="device-summary-closed">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
@@ -15,74 +15,12 @@
   <link rel="icon" type="image/svg+xml" href="icon.svg?v=446">
 
   <link rel="stylesheet" href="style.css">
+  <script src="device-settings.js"></script>
   <script>
     (function() {
-      try {
-        // 0. 기기 전용 통합 UI 설정(PT_DEVICE_UI_PREFS_V1) 최우선 확인
-        var prefs = null;
-        try { prefs = JSON.parse(localStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
-        if (!prefs) {
-          try { prefs = JSON.parse(sessionStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
-        }
-        if (!prefs) {
-          try {
-            var cookieKey = 'PT_DEVICE_UI_PREFS_V1=';
-            var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
-            if (matches.length) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
-          } catch (_) {}
-        }
-        if (prefs && typeof prefs === 'object') {
-          if (prefs.summaryClosed) document.documentElement.classList.add('device-summary-closed');
-          if (prefs.toolbarCollapsed) document.documentElement.classList.add('device-toolbar-collapsed');
-          return;
-        }
-
-        function readState(key, legacyClosed) {
-          // 1. localStorage SNAPSHOT 최우선 확인
-          try {
-            var s = JSON.parse(localStorage.getItem(key + '_SNAPSHOT') || 'null');
-            if (s && typeof s.closed === 'boolean' && Number.isFinite(s.updatedAt) && s.updatedAt > 0) {
-              return s;
-            }
-          } catch (_) {}
-          // 2. sessionStorage SNAPSHOT 확인 (새로고침/코드 업데이트 시 세션 보호)
-          try {
-            var ss = JSON.parse(sessionStorage.getItem(key + '_SNAPSHOT') || 'null');
-            if (ss && typeof ss.closed === 'boolean' && Number.isFinite(ss.updatedAt) && ss.updatedAt > 0) {
-              try { localStorage.setItem(key + '_SNAPSHOT', JSON.stringify(ss)); } catch (_) {}
-              return ss;
-            }
-          } catch (_) {}
-          // 3. Cookie STATE 확인 (로컬 스토리지 누락 시 fallback)
-          try {
-            var cookieKey = key + '_STATE=';
-            var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
-            var bestCookie = null;
-            for (var i = 0; i < matches.length; i++) {
-              try {
-                var parsed = JSON.parse(decodeURIComponent(matches[i].slice(cookieKey.length)));
-                if (parsed && typeof parsed.closed === 'boolean' && Number.isFinite(parsed.updatedAt) && parsed.updatedAt > 0) {
-                  if (!bestCookie || parsed.updatedAt > bestCookie.updatedAt) bestCookie = parsed;
-                }
-              } catch (_) {}
-            }
-            if (bestCookie) {
-              try { localStorage.setItem(key + '_SNAPSHOT', JSON.stringify(bestCookie)); } catch (_) {}
-              return bestCookie;
-            }
-          } catch (_) {}
-          // 4. 레거시 키 fallback
-          try {
-            var legacy = localStorage.getItem(key);
-            if (legacy !== null) return { closed: legacy === legacyClosed };
-          } catch (_) {}
-          return { closed: false };
-        }
-        var summary = readState('device-summary-closed-v1', '1');
-        if (summary.closed) document.documentElement.classList.add('device-summary-closed');
-        var toolbar = readState('PT_TOOLBAR_ACTIONS_COLLAPSED_V1', 'true');
-        if (toolbar.closed) document.documentElement.classList.add('device-toolbar-collapsed');
-      } catch (_) {}
+      var prefs = PTDeviceSettings.readUI();
+      document.documentElement.classList.add('device-summary-closed');
+      document.documentElement.classList.toggle('device-toolbar-collapsed', prefs.toolbarCollapsed);
     })();
   </script>
   <!-- Supabase JS Client CDN -->
@@ -241,31 +179,7 @@
         <script>
           (function() {
             try {
-              var prefs = null;
-              try { prefs = JSON.parse(localStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
-              if (!prefs) {
-                try { prefs = JSON.parse(sessionStorage.getItem('PT_DEVICE_UI_PREFS_V1') || 'null'); } catch (_) {}
-              }
-              if (!prefs) {
-                try {
-                  var cookieKey = 'PT_DEVICE_UI_PREFS_V1=';
-                  var matches = (document.cookie || '').split(';').map(function(v) { return v.trim(); }).filter(function(v) { return v.indexOf(cookieKey) === 0; });
-                  if (matches.length) prefs = JSON.parse(decodeURIComponent(matches[0].slice(cookieKey.length)));
-                } catch (_) {}
-              }
-              var widths = (prefs && prefs.columnWidths && typeof prefs.columnWidths === 'object' && Object.keys(prefs.columnWidths).length) ? prefs.columnWidths : null;
-              if (!widths) {
-                var s = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
-                widths = (s && s.widths && typeof s.widths === 'object' && Object.keys(s.widths).length) ? s.widths : null;
-              }
-              if (!widths) {
-                var ss = JSON.parse(sessionStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT') || 'null');
-                if (ss && ss.widths && typeof ss.widths === 'object' && Object.keys(ss.widths).length) widths = ss.widths;
-              }
-              if (!widths) {
-                var leg = JSON.parse(localStorage.getItem('PT_APP_COL_WIDTHS_STORAGE_V1') || 'null');
-                if (leg && typeof leg === 'object' && Object.keys(leg).length) widths = leg;
-              }
+              var widths = PTDeviceSettings.readUI().columnWidths;
               if (widths && typeof widths === 'object') {
                 var ths = document.querySelectorAll('.col-headers-row th.col-letter');
                 var bths = document.querySelectorAll('.business-headers-row th');

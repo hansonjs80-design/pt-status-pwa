@@ -1,7 +1,7 @@
 // Release detection, service-worker lifecycle and safe reload live in one module.
 // Change releases with: node scripts/set-release-version.mjs vNNN
 class PTAppUpdates {
-  static VERSION = "v458";
+  static VERSION = "v459";
 
   announceAvailableUpdate(version) {
     if (version) this.latestServerVersion = version;
@@ -46,12 +46,13 @@ class PTAppUpdates {
   async prepareUpdateReload() {
     if (this._recordsRestorePending || this._recordRestoreError) throw new Error("기록 복원이 끝난 뒤 다시 업데이트해 주세요.");
     await this.syncBaselinesReady;
+    await this.deviceSettingsReady;
     document.activeElement?.blur?.();
     clearTimeout(this._saveTimer);
     await this.persistDataStore();
     if (this.syncBaselines) await this.persistSyncBaselines();
     this.flushDevicePanelStates?.();
-    await Promise.all([this._recordWrite, this._baselineWrite, this.summaryStateWrite, this.toolbarStateWrite, this.columnWidthsWrite]);
+    await Promise.all([this._recordWrite, this._baselineWrite, this.summaryStateWrite, this.toolbarStateWrite, this.columnWidthsWrite, this.devicePreferencesWrite, window.ptLocalTools?._settingsDiskWrite]);
   }
 
   async reloadUpdatedApp() {

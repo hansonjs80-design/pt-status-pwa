@@ -249,8 +249,10 @@ test('summary sidebar toggle persists closed state per device in localStorage an
   const instance = Object.create(testContext.App.prototype);
   assert.equal(instance.isSummaryClosed(), false);
 
-  // 초기 로딩: 기본 열림 상태
+  // Every launch starts closed; the user can open it during this session.
   instance.initSummaryToggle();
+  assert.equal(sidebar.classList.contains('summary-closed'), true);
+  toggleListener();
   assert.equal(sidebar.classList.contains('summary-closed'), false);
 
   // 토글 클릭 -> 닫힘으로 전환 및 localStorage 저장
@@ -457,7 +459,7 @@ test('panel state survives immediate app closure before disk writes finish with 
   reopened.summaryStateStore=pendingDisk;reopened.toolbarStateStore=pendingDisk;
   reopened.setSummaryClosed(false);reopened.setToolbarActionsClosed(false);
   const again=h.create();again.initSummaryToggle();again.initToolbarActionsToggle();
-  assert.equal(h.sidebar.classList.closed,false);
+  assert.equal(h.sidebar.classList.closed,true);
   assert.equal(h.toolbar.classList.closed,false);
 });
 
@@ -503,8 +505,8 @@ test('device-remembered summary and toolbar collapsed state syncs with documentE
   const first = h.create();
   first.initSummaryToggle();
   first.initToolbarActionsToggle();
-  assert.equal(first.isSummaryClosed(), false);
-  assert.equal(h.sidebar.classList.closed, false);
+  assert.equal(first.isSummaryClosed(), true);
+  assert.equal(h.sidebar.classList.closed, true);
   assert.equal(h.toolbar.classList.closed, false);
 
   // 사용자가 현황창을 닫고 빠른도구를 접음
@@ -533,8 +535,8 @@ test('device-remembered summary and toolbar collapsed state syncs with documentE
   const again = h.create();
   again.initSummaryToggle();
   again.initToolbarActionsToggle();
-  assert.equal(again.isSummaryClosed(), false, '앱 재실행 시 현황창 열림 상태 복원');
-  assert.equal(h.sidebar.classList.closed, false, '현황창 DOM 열림 유지');
+  assert.equal(again.isSummaryClosed(), true, 'Every new launch starts with the summary closed');
+  assert.equal(h.sidebar.classList.closed, true, 'Startup never reopens the summary');
   assert.equal(h.toolbar.classList.closed, false, '빠른도구 DOM 열림 유지');
 });
 
@@ -685,6 +687,8 @@ test('header summary count button displays daily total and toggles summary sideb
   app.currentDate = '2026-10-19';
 
   app.initSummaryToggle();
+  assert.equal(headerBtn.getAttribute('aria-expanded'), 'false');
+  headerBtn.click();
   assert.equal(headerBtn.getAttribute('aria-expanded'), 'true');
 
   // 통계 업데이트 시 헤더 버튼의 환자 수 갱신 확인

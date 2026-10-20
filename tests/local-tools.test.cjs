@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-function tools(){const window={addEventListener(){}};vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'),'utf8'),{window,Blob,TextEncoder,Date,localStorage:{getItem(){return null;}},setTimeout});return window.PTLocalTools;}
+function tools(){const window={addEventListener(){}};vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')),{window,Blob,TextEncoder,Date,localStorage:{getItem(){return null;}},setTimeout});return window.PTLocalTools;}
 test('full backup preserves staff-calendar scope separately from patient dates',async()=>{
  const {LocalTools}=tools(),l=Object.create(LocalTools.prototype),saved=new Map();
  l.app={dataStore:{},supabaseClient:{from(){const q={select(){return q},order(){return q},range(){return Promise.resolve({data:[{date:'2026-10-10',rows_data:[{name:'가상'}]},{date:'__pt_staff_calendar_count_settings_v1__',rows_data:[{staffCalendarCounts:{scope:'from',startDate:'2026-09-01'}}]}]})}};return q}}};
@@ -229,7 +229,7 @@ test('device settings dialog renders current app version badge in header', () =>
    body: createMockElement('body')
  };
  const window = { addEventListener() {}, ptSheetClock: { enabled: true } };
- vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+ vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')), {
    window,
    document: fakeDoc,
    Blob,
@@ -303,7 +303,7 @@ test('device settings shows update banner and triggers applyUpdate when update i
    body: createMockElement('body')
  };
  const window = { addEventListener() {}, ptSheetClock: { enabled: true } };
- vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+ vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')), {
    window,
    document: fakeDoc,
    Blob,
@@ -364,7 +364,7 @@ test('initUpdateNotifier listens for pt-app-update-available and displays toolba
    addEventListener(evt, fn) { listeners[evt] = fn; },
    dispatchEvent(e) { if (listeners[e.type]) listeners[e.type](e); }
  };
- vm.runInNewContext(fs.readFileSync(require.resolve('../local-tools.js'), 'utf8'), {
+ vm.runInNewContext((fs.readFileSync(require.resolve('../device-settings.js'),'utf8')+'\n'+fs.readFileSync(require.resolve('../local-tools.js'),'utf8')), {
    window,
    document: fakeDoc,
    Blob, TextEncoder, Date, localStorage: { getItem() { return null; } }, setTimeout
