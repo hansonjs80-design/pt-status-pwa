@@ -122,18 +122,31 @@ class PTTableFormatting {
     if (!range) return { label: "선택 없음", value: null };
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const values = new Set();
-    for (let r = range.minRow; r <= range.maxRow; r++) for (let c = range.minCol; c <= range.maxCol; c++) {
+    // Read/normalize rows once, rather than once per selected cell. Large row
+    // selections must not turn a toolbar refresh into a quadratic data scan.
+    const rows = ['backgroundColor', 'highlight'].includes(property) ? this.getCurrentRows() : null;
+    const single = range.minRow === range.maxRow && range.minCol === range.maxCol;
+    const cells = single
+      ? [this.elTableBody.querySelector(`[data-row="${range.minRow}"][data-col="${keys[range.minCol]}"]`)].filter(Boolean)
+      : this.elTableBody.querySelectorAll('.excel-cell[data-row][data-col-idx]');
+    for (const cell of cells) {
+      const r = single ? range.minRow : Number(cell.dataset.row);
+      const c = single ? range.minCol : Number(cell.dataset.colIdx);
+      if (r < range.minRow || r > range.maxRow || c < range.minCol || c > range.maxCol) continue;
       if (!this.isSelectedCoordinate(r, c)) continue;
-      const cell = this.elTableBody.querySelector(`[data-row="${r}"][data-col="${keys[c]}"]`);
-      if (cell && property === 'highlight') {
-        const row = this.getCurrentRows()[r] || {};
+      if (property === 'highlight') {
+        const row = rows[r] || {};
         const rich = this.getEffectiveCellRichText(row, keys[c]);
         const text = String(row[keys[c]] ?? '');
         if (!text.length) values.add(null);
-        for (let i = 0; i < text.length; i++) values.add(rich?.text === text ? rich.styles?.[i]?.highlight || null : null);
-      } else if (cell) values.add(property === "backgroundColor"
-        ? this.getCellFormatting(this.getCurrentRows()[r] || {}, keys[c], property) || "#ffffff"
+        for (let i = 0; i < text.length; i++) {
+          values.add(rich?.text === text ? rich.styles?.[i]?.highlight || null : null);
+          if (values.size > 1) return { label: "여러 값", value: null };
+        }
+      } else values.add(property === "backgroundColor"
+        ? this.getCellFormatting(rows[r] || {}, keys[c], property) || "#ffffff"
         : getComputedStyle(cell)[property]);
+      if (values.size > 1) return { label: "여러 값", value: null };
     }
     if (values.size !== 1) return { label: "여러 값", value: null };
     const value = [...values][0];

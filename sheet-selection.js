@@ -250,22 +250,25 @@ class PTSheetSelection {
     // Ctrl/Cmd+A stops at specialNote; direct row-header selection keeps all data columns.
     this.selectedRange = { minRow, maxRow, minCol: 0, maxCol: lastCol };
 
-    for (let r = minRow; r <= maxRow; r++) {
-      const rowTr = document.querySelector(`tr[data-row-idx="${r}"]`);
-      if (rowTr) {
+    // Walk rendered rows once instead of searching the entire document for
+    // each row when the corner button selects the whole sheet.
+    this.elTableBody.querySelectorAll('.excel-row[data-row-idx]').forEach(rowTr => {
+      const r = Number(rowTr.dataset.rowIdx);
+      if (r >= minRow && r <= maxRow) {
         const rowNumTh = rowTr.querySelector(".row-num");
         if (rowNumTh) rowNumTh.classList.add("selected");
         const cells = rowTr.querySelectorAll(".excel-cell");
         cells.forEach((cell, colIdx) => {
           if (colIdx > lastCol) return;
-          cell.classList.add("row-selected");
-          if (r === minRow) cell.classList.add("range-border-top");
-          if (r === maxRow) cell.classList.add("range-border-bottom");
-          if (colIdx === 0) cell.classList.add("range-border-left");
-          if (colIdx === Math.min(lastCol, cells.length - 1)) cell.classList.add("range-border-right");
+          const classes = ["row-selected"];
+          if (r === minRow) classes.push("range-border-top");
+          if (r === maxRow) classes.push("range-border-bottom");
+          if (colIdx === 0) classes.push("range-border-left");
+          if (colIdx === Math.min(lastCol, cells.length - 1)) classes.push("range-border-right");
+          cell.classList.add(...classes);
         });
       }
-    }
+    });
 
     const startNum = BASE_ROW_NUMBER + minRow;
     const endNum = BASE_ROW_NUMBER + maxRow;
