@@ -4,8 +4,8 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 
 const clone = value => value === undefined ? value : JSON.parse(JSON.stringify(value));
-function fixture(disk = new Map()) {
-  const local = new Map(), session = new Map(), cookies = new Map();
+function fixture(disk = new Map(), shared = {}) {
+  const local = shared.local || new Map(), session = new Map(), cookies = shared.cookies || new Map();
   const storage = map => ({getItem:key => map.get(key) ?? null, setItem:(key,value) => map.set(key,String(value))});
   const document = {};
   Object.defineProperty(document,'cookie',{
@@ -95,4 +95,39 @@ test('lost folder permission leaves automatic PDF and backup preferences enabled
   await assert.rejects(l.write('virtual.pdf',new Blob(['virtual']),true),/권한/);
   assert.equal(l.settings.pdf,true);assert.equal(l.settings.backup,true);assert.equal(l.settings.time,'05:45');
   const again=fixture(disk).l;await again._restoreSettingsFromDisk();assert.equal(again.settings.pdf,true);
+});
+
+test('an older window saving backup options preserves PDF choices made in another window after restart', async () => {
+  const disk = new Map(), first = fixture(disk);
+  await first.l._restoreSettingsFromDisk();
+  const second = fixture(disk,first);await second.l._restoreSettingsFromDisk();
+  second.l.settings.pdf=true;second.l.settings.time='07:25';await second.l.save();
+  first.l.settings.backup=true;first.l.settings.backupIntervalType='hourly';await first.l.save();
+  const restarted=fixture(disk).l;await restarted._restoreSettingsFromDisk();
+  assert.equal(restarted.settings.pdf,true);
+  assert.equal(restarted.settings.time,'07:25');
+  assert.equal(restarted.settings.backup,true);
+  assert.equal(restarted.settings.backupIntervalType,'hourly');
+});
+
+test('a temporarily unavailable startup store can be retried without losing saved options',async()=>{
+  const {l}=fixture(new Map([[key,{pdf:true,time:'06:45',backup:true}]]));
+  l.app={};let attempts=0;
+  l.init=async()=>{if(++attempts===1)throw Error('temporarily unavailable');await l._restoreSettingsFromDisk();l._initialized=true;};
+  await assert.rejects(l.initialize(),/temporarily unavailable/);
+  assert.equal(l._initializing,false);
+  await l.initialize();
+  assert.equal(attempts,2);assert.equal(l.settings.pdf,true);assert.equal(l.settings.backup,true);assert.equal(l.settings.time,'06:45');
+  assert.equal(l.app.deviceSettingsReady,l.ready);
+});
+
+test('valid time input persists without blur and incomplete times cannot replace saved preferences',async()=>{
+  for(const key of ['time','backupTime','workStartTime','workEndTime']) {
+    const {l,disk}=fixture();await l._restoreSettingsFromDisk();
+    const handlers={},input={value:l.settings[key],addEventListener:(name,fn)=>handlers[name]=fn};
+    l.bindTimeSetting(input,key);input.value='22:45';handlers.input();await l._settingsDiskWrite;
+    const restarted=fixture(disk).l;await restarted._restoreSettingsFromDisk();assert.equal(restarted.settings[key],'22:45');
+    input.value='';handlers.input();assert.equal(l.settings[key],'22:45');
+    handlers.change();assert.equal(input.value,'22:45');assert.equal(l.settings[key],'22:45');
+  }
 });

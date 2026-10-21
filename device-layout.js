@@ -94,6 +94,7 @@ class PTDeviceLayout {
   // 기기 전용 통합 UI 디스플레이 설정 영구 보존 (4중 계층: localStorage + sessionStorage + Cookie + IndexedDB + 레거시 미러링)
   persistDevicePreferences(prefs) {
     if (!prefs || typeof prefs !== 'object') return;
+    prefs = PTDeviceSettings.mergeUI([this.readDevicePreferences(),prefs]);
     const key = "PT_DEVICE_UI_PREFS_V1";
     try { localStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
     try { sessionStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
@@ -104,7 +105,7 @@ class PTDeviceLayout {
 
     // 레거시 키에도 동시 저장하여 기존 테스트 및 하위 호환성 유지
     if (prefs.columnWidths && Object.keys(prefs.columnWidths).length > 0) {
-      const colSnapshot = { widths: { ...prefs.columnWidths }, updatedAt: prefs.columnWidthsUpdatedAt || 1 };
+      const colSnapshot = PTDeviceSettings.widthSnapshot(prefs);
       this.persistLocalColumnWidths(colSnapshot);
     }
     const sumSnapshot = { closed: Boolean(prefs.summaryClosed), updatedAt: prefs.summaryClosedUpdatedAt || 1 };
@@ -125,7 +126,7 @@ class PTDeviceLayout {
     this.devicePreferencesWrite = previous.catch(() => {}).then(async () => {
       await this.devicePreferencesStore("device-ui-preferences-v1", snapshot);
       const saved = await this.devicePreferencesStore("device-ui-preferences-v1");
-      if (JSON.stringify(saved) !== JSON.stringify(snapshot)) throw new Error("화면 설정 저장 검증 실패");
+      if (!PTDeviceSettings.containsStored("device-ui-preferences-v1",saved,snapshot)) throw new Error("화면 설정 저장 검증 실패");
     });
     this.devicePreferencesWrite.catch(() => this.showSaveIndicator?.("화면 설정 저장 실패 · 다시 저장해 주세요", true));
   }
@@ -136,12 +137,12 @@ class PTDeviceLayout {
     // Read every original disk snapshot before enabling any write path.
     const [unified,widths,summary,toolbar] = await Promise.all(keys.map(key => store(key)));
     this._deviceSettingsSnapshotsRead = true;
-    const disk = [unified, {columnWidths:widths?.widths,columnWidthsUpdatedAt:widths?.updatedAt},
+    const disk = [unified, PTDeviceSettings.widthPreferences(widths),
       {summaryClosed:summary?.closed,summaryClosedUpdatedAt:summary?.updatedAt},
       {toolbarCollapsed:toolbar?.closed,toolbarCollapsedUpdatedAt:toolbar?.updatedAt}];
     const local = this.readDevicePreferences();
     const beforeEdit = this.columnWidthsBeforeSessionEdit;
-    const localCandidate = beforeEdit ? {...local,columnWidths:beforeEdit.widths,columnWidthsUpdatedAt:beforeEdit.updatedAt} : local;
+    const localCandidate = beforeEdit ? {...local,columnWidths:beforeEdit.widths,columnWidthsUpdatedAt:beforeEdit.updatedAt,columnWidthUpdatedAt:beforeEdit.fieldUpdatedAt} : local;
     const merged = PTDeviceSettings.mergeUI([...disk,localCandidate]);
     // A resize before disk recovery must replace only the dragged track, not
     // publish the other measured HTML defaults over saved device widths.
@@ -151,6 +152,7 @@ class PTDeviceLayout {
         else merged.columnWidths[key] = width;
       }
       merged.columnWidthsUpdatedAt = Math.max(Date.now(),local.columnWidthsUpdatedAt,merged.columnWidthsUpdatedAt+1);
+      for (const key of this.sessionColumnWidthEdits.keys()) merged.columnWidthUpdatedAt[key] = merged.columnWidthsUpdatedAt;
       merged.columnWidthsUserModified = true;
     }
     for (const [changed,field] of [['summaryStateChanged','summaryClosed'],['toolbarStateChanged','toolbarCollapsed']]) {
@@ -160,6 +162,7 @@ class PTDeviceLayout {
       merged.summaryClosed = true;
       merged.summaryClosedUpdatedAt = Math.max(Date.now(),(merged.summaryClosedUpdatedAt || 0)+1);
     }
+    this.columnWidthUpdatedAt = {...merged.columnWidthUpdatedAt};
     this.deviceColumnWidths = {...merged.columnWidths};this.columnWidthsUpdatedAt = merged.columnWidthsUpdatedAt || 1;
     this.deviceSummaryState = {closed:merged.summaryClosed,updatedAt:merged.summaryClosedUpdatedAt || 1};
     this.deviceToolbarState = {closed:merged.toolbarCollapsed,updatedAt:merged.toolbarCollapsedUpdatedAt || 1};
@@ -169,7 +172,7 @@ class PTDeviceLayout {
     this.devicePreferencesStore = this.columnWidthsStore = this.summaryStateStore = this.toolbarStateStore = store;
     this._deviceSettingsRestorePending = false;this._deviceSettingsRestored = true;
     this.persistDevicePreferences(this.readDevicePreferences());
-    this.queueDeviceColumnWidths({widths:{...this.deviceColumnWidths},updatedAt:this.columnWidthsUpdatedAt});
+    this.queueDeviceColumnWidths({widths:{...this.deviceColumnWidths},updatedAt:this.columnWidthsUpdatedAt,fieldUpdatedAt:{...this.columnWidthUpdatedAt}});
     this.queueDeviceSummaryState(this.deviceSummaryState);this.queueDeviceToolbarState(this.deviceToolbarState);
     await Promise.all([this.devicePreferencesWrite,this.columnWidthsWrite,this.summaryStateWrite,this.toolbarStateWrite]);
   }
@@ -262,7 +265,7 @@ class PTDeviceLayout {
     this.summaryStateWrite = previous.then(async () => {
       await this.summaryStateStore("device-summary-state-v1", snapshot);
       const saved = await this.summaryStateStore("device-summary-state-v1");
-      if (!saved || saved.updatedAt !== snapshot.updatedAt || saved.closed !== snapshot.closed) throw new Error("현황창 설정 저장 검증 실패");
+      if (!PTDeviceSettings.containsStored("device-summary-state-v1",saved,snapshot)) throw new Error("현황창 설정 저장 검증 실패");
     }).catch(error => {
       console.error("Failed to persist device summary state:", error);
       this.showSaveIndicator?.("현황창 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
@@ -397,7 +400,7 @@ class PTDeviceLayout {
     this.toolbarStateWrite = previous.then(async () => {
       await this.toolbarStateStore("device-toolbar-state-v1", snapshot);
       const saved = await this.toolbarStateStore("device-toolbar-state-v1");
-      if (!saved || saved.updatedAt !== snapshot.updatedAt || saved.closed !== snapshot.closed) throw new Error("도구 설정 저장 검증 실패");
+      if (!PTDeviceSettings.containsStored("device-toolbar-state-v1",saved,snapshot)) throw new Error("도구 설정 저장 검증 실패");
     }).catch(error => {
       console.error("Failed to persist device toolbar state:", error);
       this.showSaveIndicator?.("도구 설정 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
@@ -456,11 +459,12 @@ class PTDeviceLayout {
 
       const widths = this.deviceColumnWidths || this.readDeviceColumnWidths().widths;
       if (widths && typeof widths === "object" && Object.keys(widths).length) {
-        const snapshot = { widths: { ...widths }, updatedAt: this.columnWidthsUpdatedAt || Date.now() };
+        const snapshot = { widths: { ...widths }, updatedAt: this.columnWidthsUpdatedAt || 1,fieldUpdatedAt:{...this.columnWidthUpdatedAt} };
         this.persistLocalColumnWidths(snapshot);
         if (this.columnWidthsStore) this.queueDeviceColumnWidths(snapshot);
         if (this.columnWidthsChanged) {
           prefs.columnWidths = { ...widths };
+          prefs.columnWidthUpdatedAt = {...this.columnWidthUpdatedAt};
           prefs.columnWidthsUpdatedAt = snapshot.updatedAt;
           prefs.columnWidthsUserModified = true;
           prefsChanged = true;
@@ -661,7 +665,7 @@ class PTDeviceLayout {
   }
 
   recordSessionColumnWidth(colKey, width) {
-    this.columnWidthsBeforeSessionEdit ||= {widths:this.getSavedColumnWidths(),updatedAt:this.columnWidthsUpdatedAt || 0};
+    this.columnWidthsBeforeSessionEdit ||= {widths:this.getSavedColumnWidths(),updatedAt:this.columnWidthsUpdatedAt || 0,fieldUpdatedAt:{...this.columnWidthUpdatedAt}};
     this.sessionColumnWidthEdits ||= new Map();
     this.sessionColumnWidthEdits.set(colKey,width);
   }
@@ -671,7 +675,8 @@ class PTDeviceLayout {
     if (!this.deviceColumnWidths) this.deviceColumnWidths = {};
     this.deviceColumnWidths[colKey] = width;
     // 모든 저장소에 즉시 확정 저장 (endResize에서 호출)
-    this.persistColumnWidths({ ...this.deviceColumnWidths });
+    this.persistColumnWidths({ ...this.deviceColumnWidths },[colKey]);
+    this.applySavedColumnWidths();
   }
 
   getSavedColumnWidths() {
@@ -680,55 +685,13 @@ class PTDeviceLayout {
   }
 
   readDeviceColumnWidths() {
-    const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
-    let snapshot = null;
-    try { snapshot = JSON.parse(localStorage.getItem(`${key}_SNAPSHOT`) || 'null'); } catch (_) {}
-    let session = null;
-    try { session = JSON.parse(sessionStorage.getItem(`${key}_SNAPSHOT`) || 'null'); } catch (_) {}
-    let cookieCandidate = null;
-    try {
-      const cookieKey = `${key}_STATE=`;
-      const matches = String(document.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith(cookieKey));
-      for (const raw of matches) {
-        try {
-          const saved = JSON.parse(decodeURIComponent(raw.slice(cookieKey.length)));
-          if (saved?.widths && typeof saved.widths === 'object' && !Array.isArray(saved.widths) && Number.isFinite(saved.updatedAt) && saved.updatedAt > 0) {
-            if (!cookieCandidate || saved.updatedAt > cookieCandidate.updatedAt) cookieCandidate = saved;
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
-    let legacy = { widths: {}, updatedAt: 0 };
-    try {
-      const data = localStorage.getItem(key);
-      const saved = data ? JSON.parse(data) : {};
-      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
-        legacy = { widths: saved, updatedAt: Number(localStorage.getItem(`${key}_UPDATED_AT`)) || 0 };
-      }
-    } catch (_) {}
-
-    const candidates = [snapshot, session, cookieCandidate, legacy].filter(c =>
-      c?.widths && typeof c.widths === 'object' && !Array.isArray(c.widths) && Number.isFinite(c.updatedAt)
-    );
-
-    const withKeys = candidates.filter(c => Object.keys(c.widths).length > 0);
-    let best = null;
-    if (withKeys.length > 0) {
-      best = withKeys.reduce((acc, cur) => cur.updatedAt >= acc.updatedAt ? cur : acc);
-    } else if (candidates.length > 0) {
-      best = candidates.reduce((acc, cur) => cur.updatedAt >= acc.updatedAt ? cur : acc);
-    }
-
-    if (best && Object.keys(best.widths).length > 0) {
-      try { localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
-      try { sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(best)); } catch (_) {}
-      return best;
-    }
-
-    return best || legacy;
+    return PTDeviceSettings.widthSnapshot(this.readDevicePreferences());
   }
 
   persistLocalColumnWidths(snapshot) {
+    snapshot = PTDeviceSettings.widthSnapshot(PTDeviceSettings.mergeUI([
+      this.readDevicePreferences(),PTDeviceSettings.widthPreferences(snapshot)
+    ]));
     const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
     this.persistDevicePanelCookie(key, snapshot);
     let atomicSaved = false, legacySaved = false;
@@ -749,22 +712,25 @@ class PTDeviceLayout {
     this.columnWidthsLocalSaveFailed = !atomicSaved && !legacySaved;
   }
 
-  persistColumnWidths(widths) {
-    this.deviceColumnWidths = { ...widths };
+  persistColumnWidths(widths, changedColumns = Object.keys(widths)) {
+    void this.requestDeviceStoragePersistence?.();
+    const latest = this.readDevicePreferences();
+    const timestamp = Math.max(Date.now(),latest.columnWidthsUpdatedAt+1,(this.columnWidthsUpdatedAt || 0)+1);
+    const times = {...this.columnWidthUpdatedAt};
+    // Only touched tracks acquire a new version. Other windows may have changed
+    // the remaining tracks since this table was rendered.
+    for (const key of changedColumns) times[key] = timestamp;
+    const merged = PTDeviceSettings.mergeUI([latest,{
+      columnWidths:widths,columnWidthUpdatedAt:times,columnWidthsUpdatedAt:timestamp,columnWidthsUserModified:true
+    }]);
+    this.deviceColumnWidths = {...merged.columnWidths};
+    this.columnWidthUpdatedAt = {...merged.columnWidthUpdatedAt};
     this.columnWidthsChanged = true;
-    const snapshot = { widths: { ...widths }, updatedAt: Math.max(Date.now(),
-      (this.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 0) + 1) };
-    this.columnWidthsUpdatedAt = snapshot.updatedAt;
+    this.columnWidthsUpdatedAt = merged.columnWidthsUpdatedAt;
+    const snapshot = PTDeviceSettings.widthSnapshot(merged);
     this.persistLocalColumnWidths(snapshot);
     this.queueDeviceColumnWidths(snapshot);
-
-    try {
-      const prefs = this.readDevicePreferences();
-      prefs.columnWidths = { ...widths };
-      prefs.columnWidthsUpdatedAt = snapshot.updatedAt;
-      prefs.columnWidthsUserModified = true;
-      this.persistDevicePreferences(prefs);
-    } catch (_) {}
+    this.persistDevicePreferences(merged);
   }
 
   queueDeviceColumnWidths(snapshot) {
@@ -775,8 +741,7 @@ class PTDeviceLayout {
     const write = (async () => {
       await this.columnWidthsStore("device-column-widths-v1", snapshot);
       const restored = await this.columnWidthsStore("device-column-widths-v1");
-      if (!restored || restored.updatedAt < snapshot.updatedAt ||
-          (restored.updatedAt === snapshot.updatedAt && JSON.stringify(restored.widths) !== JSON.stringify(snapshot.widths))) {
+      if (!PTDeviceSettings.containsStored("device-column-widths-v1",restored,snapshot)) {
         throw new Error("열 너비 저장 검증에 실패했습니다.");
       }
     })();
@@ -804,6 +769,7 @@ class PTDeviceLayout {
 
     if (shouldUsePersisted) {
       this.deviceColumnWidths = { ...persisted.widths };
+      this.columnWidthUpdatedAt = PTDeviceSettings.mergeUI([PTDeviceSettings.widthPreferences(persisted)]).columnWidthUpdatedAt;
       this.columnWidthsUpdatedAt = persisted.updatedAt;
       this.persistLocalColumnWidths(persisted);
       this.applySavedColumnWidths();
@@ -813,7 +779,7 @@ class PTDeviceLayout {
       const ts = this.columnWidthsUpdatedAt || localUpdatedAt || Date.now();
       this.columnWidthsUpdatedAt = ts;
       this.applySavedColumnWidths();
-      this.queueDeviceColumnWidths({ widths: saved, updatedAt: ts });
+      this.queueDeviceColumnWidths({ widths: saved, updatedAt: ts,fieldUpdatedAt:{...this.columnWidthUpdatedAt} });
       await this.columnWidthsWrite;
     }
   }
@@ -853,6 +819,8 @@ class PTDeviceLayout {
     });
     // 읽은 너비를 인메모리 캐시에 반영하여 flush 시 참조 가능
     this.deviceColumnWidths = { ...saved };
+    this.columnWidthUpdatedAt ||= {...prefs?.columnWidthUpdatedAt};
+    for (const key of Object.keys(saved)) this.columnWidthUpdatedAt[key] ??= 1;
     if (!this.columnWidthsUpdatedAt) {
       this.columnWidthsUpdatedAt = prefs?.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 1;
     }
@@ -861,10 +829,11 @@ class PTDeviceLayout {
     // Stamping them with a saved partial snapshot's time would erase other
     // columns that still exist on disk.
     if ((this._deviceSettingsSnapshotsRead || this.columnWidthsChanged) && (anyMeasured || Object.keys(saved).length > 0)) {
-      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt };
+      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt,fieldUpdatedAt:{...this.columnWidthUpdatedAt} };
       this.persistLocalColumnWidths(snapshot);
       if (prefs) {
         prefs.columnWidths = { ...saved };
+        prefs.columnWidthUpdatedAt = {...this.columnWidthUpdatedAt};
         prefs.columnWidthsUpdatedAt = this.columnWidthsUpdatedAt;
         this.persistDevicePreferences(prefs);
       }
@@ -931,7 +900,7 @@ class PTDeviceLayout {
       this.recordSessionColumnWidth(colKey,null);
       const saved = this.getSavedColumnWidths();
       delete saved[colKey];
-      this.persistColumnWidths(saved);
+      this.persistColumnWidths(saved,[colKey]);
       const th = document.querySelector(`th.col-letter[data-col="${colKey}"]`);
       if (th) {
         th.style.width = th.dataset.defaultWidth ? `${th.dataset.defaultWidth}px` : "";

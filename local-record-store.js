@@ -1,5 +1,15 @@
 // Local record persistence and recovery; no cloud requests or application startup.
 class PTLocalRecordStore {
+  requestDeviceStoragePersistence() {
+    if (this._deviceStoragePersistence) return this._deviceStoragePersistence;
+    this._deviceStoragePersistence = (async () => {
+      const storage = typeof navigator !== 'undefined' ? navigator.storage : null;
+      if (!storage?.persist) return false;
+      return Boolean(await storage.persisted?.() || await storage.persist());
+    })().catch(() => false);
+    return this._deviceStoragePersistence;
+  }
+
   openLocalDatabase(name, storeName) {
     this._localDatabases ||= new Map();
     if (this._localDatabases.has(name)) return this._localDatabases.get(name);
@@ -41,7 +51,7 @@ class PTLocalRecordStore {
     return ready;
   }
 
-  async localDatabaseStore(name, storeName, key, value) {
+  async localDatabaseStore(name, storeName, key, value, merge) {
     const ready = this.openLocalDatabase(name, storeName);
     const db = await ready;
     return new Promise((resolve, reject) => {
@@ -59,8 +69,23 @@ class PTLocalRecordStore {
       };
       const timer = setTimeout(() => finish(new Error('기기 저장소 응답 시간이 초과되었습니다. 다시 시도해 주세요.')), 15000);
       try {
-        tx = db.transaction(storeName, value === undefined ? 'readonly' : 'readwrite');
-        request = value === undefined ? tx.objectStore(storeName).get(key) : tx.objectStore(storeName).put(value, key);
+        const writing = value !== undefined;
+        if (writing && name === 'PT_DEVICE_BACKUPS') {
+          // Device preferences must reach disk before a successful save is shown.
+          try { tx = db.transaction(storeName, 'readwrite', {durability:'strict'}); }
+          catch (error) {
+            if (error.name !== 'TypeError' && error.name !== 'NotSupportedError') throw error;
+            tx = db.transaction(storeName, 'readwrite');
+          }
+        } else tx = db.transaction(storeName, writing ? 'readwrite' : 'readonly');
+        const objectStore = tx.objectStore(storeName);
+        if (writing && merge) {
+          request = objectStore.get(key);
+          request.onsuccess = () => {
+            try { request = objectStore.put(merge(request.result,value),key); }
+            catch (error) { finish(error); }
+          };
+        } else request = writing ? objectStore.put(value,key) : objectStore.get(key);
         tx.oncomplete = () => finish();
         tx.onerror = () => finish(tx.error || request.error || new Error('기기 저장소 처리 실패'));
         tx.onabort = () => finish(tx.error || new Error('기기 저장소 처리가 중단되었습니다.'));

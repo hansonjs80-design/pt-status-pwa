@@ -446,3 +446,54 @@ test('startup never stamps measured defaults over older disk columns missing fro
   assert.equal(first.app.getSavedColumnWidths().name,220);
   assert.equal(first.app.getSavedColumnWidths().spacer,190);
 });
+
+test('closing an old window cannot roll back another window column widths on cold restart',async()=>{
+  const disk=new Map(),storage=new Map(),cookies={value:''},store=diskStore(disk);
+  const first=prepareUnifiedDevice(device(storage,[],new Map(),cookies));
+  await first.app.restoreDeviceSettings(store);
+  const second=prepareUnifiedDevice(device(storage,[],new Map(),cookies));
+  await second.app.restoreDeviceSettings(store);
+  second.app.saveColumnWidth('part',333);await Promise.all([second.app.columnWidthsWrite,second.app.devicePreferencesWrite]);
+  first.app.flushDevicePanelStates();await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const restarted=prepareUnifiedDevice(device());await restarted.app.restoreDeviceSettings(store);
+  assert.equal(restarted.headers[2].style.width,'333px');
+});
+
+test('resizing a different column in an old window preserves newer untouched widths',async()=>{
+  const disk=new Map(),storage=new Map(),cookies={value:''},store=diskStore(disk);
+  const first=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await first.app.restoreDeviceSettings(store);
+  const second=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await second.app.restoreDeviceSettings(store);
+  second.app.saveColumnWidth('part',333);await Promise.all([second.app.columnWidthsWrite,second.app.devicePreferencesWrite]);
+  first.app.saveColumnWidth('name',240);await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const restarted=prepareUnifiedDevice(device());await restarted.app.restoreDeviceSettings(store);
+  assert.equal(restarted.headers[2].style.width,'333px');assert.equal(restarted.headers[1].style.width,'240px');
+});
+
+test('a window that previously resized cannot publish stale widths under another window newer versions on exit',async()=>{
+  const disk=new Map(),storage=new Map(),cookies={value:''},store=diskStore(disk);
+  const first=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await first.app.restoreDeviceSettings(store);
+  first.app.saveColumnWidth('part',220);await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const second=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await second.app.restoreDeviceSettings(store);
+  second.app.saveColumnWidth('part',377);await Promise.all([second.app.columnWidthsWrite,second.app.devicePreferencesWrite]);
+  first.app.flushDevicePanelStates();await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const restarted=prepareUnifiedDevice(device());await restarted.app.restoreDeviceSettings(store);
+  assert.equal(restarted.headers[2].style.width,'377px');
+});
+
+test('explicit width reset and subsequent changes survive a stale-window flush and cold restart',async()=>{
+  const disk=new Map(),storage=new Map(),cookies={value:''},store=diskStore(disk);
+  const first=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await first.app.restoreDeviceSettings(store);
+  first.app.saveColumnWidth('part',310);await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const second=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await second.app.restoreDeviceSettings(store);
+  second.app.recordSessionColumnWidth('part',null);
+  const widths=second.app.getSavedColumnWidths();delete widths.part;second.app.persistColumnWidths(widths,['part']);
+  await Promise.all([second.app.columnWidthsWrite,second.app.devicePreferencesWrite]);
+  first.app.flushDevicePanelStates();await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const restarted=prepareUnifiedDevice(device());await restarted.app.restoreDeviceSettings(store);
+  assert.equal(restarted.headers[2].style.width,'130px');
+});
+
+test('an invalid fast width snapshot cannot hide intact legacy widths during migration',()=>{
+  const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT','{}'],['PT_APP_COL_WIDTHS_STORAGE_V1',JSON.stringify({part:321})],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','100']]);
+  const first=device(storage);assert.equal(first.headers[2].style.width,'321px');
+});

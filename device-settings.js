@@ -25,19 +25,24 @@ class PTDeviceSettings {
 
   static mergeUI(candidates) {
     const widthTimes = {};
-    const result = {version:1,columnWidths:{},columnWidthsUpdatedAt:0,columnWidthsUserModified:false,
+    const result = {version:1,columnWidths:{},columnWidthUpdatedAt:{},columnWidthsUpdatedAt:0,columnWidthsUserModified:false,
       summaryClosed:false,summaryClosedUpdatedAt:0,summaryClosedUserModified:false,
       toolbarCollapsed:false,toolbarCollapsedUpdatedAt:0,toolbarCollapsedUserModified:false};
     for (const value of candidates.filter(Boolean)) for (const field of ['columnWidths','summaryClosed','toolbarCollapsed']) {
       const valid = field === 'columnWidths' ? value[field] && typeof value[field] === 'object' && !Array.isArray(value[field]) &&
-        Object.keys(value[field]).length && Object.values(value[field]).every(width => Number.isFinite(width) && width > 0)
+        (Object.keys(value[field]).length || Object.keys(value.columnWidthUpdatedAt || {}).length) && Object.values(value[field]).every(width => Number.isFinite(width) && width > 0)
         : typeof value[field] === 'boolean';
       if (!valid) continue;
       const timestamp = Number(value[field+'UpdatedAt']) || 0;
       const modified = Boolean(value[field+'UserModified']) || timestamp > 1;
       if (field === 'columnWidths') {
-        for (const [column,width] of Object.entries(value[field])) if (!(column in widthTimes) || timestamp >= widthTimes[column]) {
-          result.columnWidths[column] = width;widthTimes[column] = timestamp;
+        for (const column of new Set([...Object.keys(value[field]),...Object.keys(value.columnWidthUpdatedAt || {})])) {
+          const time = Number(value.columnWidthUpdatedAt?.[column] ?? timestamp) || 0;
+          if (column in widthTimes && time < widthTimes[column]) continue;
+          if (value[field][column] === undefined) delete result.columnWidths[column];
+          else result.columnWidths[column] = value[field][column];
+          widthTimes[column] = time;
+          result.columnWidthUpdatedAt[column] = time;
         }
         result.columnWidthsUpdatedAt = Math.max(result.columnWidthsUpdatedAt,timestamp);
         result.columnWidthsUserModified ||= modified;
@@ -57,8 +62,13 @@ class PTDeviceSettings {
     candidates.push({summaryClosed:summary.closed,summaryClosedUpdatedAt:summary.updatedAt},
       {toolbarCollapsed:toolbar.closed,toolbarCollapsedUpdatedAt:toolbar.updatedAt});
     const key = 'PT_APP_COL_WIDTHS_STORAGE_V1';
-    for (const widths of this.candidates(key+'_SNAPSHOT',key+'_STATE')) candidates.push({columnWidths:widths.widths,columnWidthsUpdatedAt:widths.updatedAt});
-    try { candidates.push({columnWidths:JSON.parse(localStorage.getItem(key)||'null'),columnWidthsUpdatedAt:Number(localStorage.getItem(key+'_UPDATED_AT'))||0}); } catch (_) {}
+    const snapshots = this.candidates(key+'_SNAPSHOT',key+'_STATE').filter(snapshot =>
+      snapshot.widths && typeof snapshot.widths === 'object' && !Array.isArray(snapshot.widths) &&
+      (Object.keys(snapshot.widths).length || Object.keys(snapshot.fieldUpdatedAt || {}).length) &&
+      Object.values(snapshot.widths).every(width => Number.isFinite(width) && width > 0));
+    for (const widths of snapshots) candidates.push(this.widthPreferences(widths));
+    // Split legacy keys have no per-column versions. Only use them for migration.
+    if (!snapshots.length) try { candidates.push({columnWidths:JSON.parse(localStorage.getItem(key)||'null'),columnWidthsUpdatedAt:Number(localStorage.getItem(key+'_UPDATED_AT'))||0}); } catch (_) {}
     return this.mergeUI([...candidates,...extra]);
   }
 
@@ -76,5 +86,28 @@ class PTDeviceSettings {
     }
     if (known.size) result._fieldUpdatedAt = times;
     return result;
+  }
+
+  static widthPreferences(snapshot) {
+    return {columnWidths:snapshot?.widths,columnWidthsUpdatedAt:snapshot?.updatedAt,columnWidthUpdatedAt:snapshot?.fieldUpdatedAt};
+  }
+
+  static widthSnapshot(prefs) {
+    return {widths:{...prefs.columnWidths},updatedAt:prefs.columnWidthsUpdatedAt || 1,fieldUpdatedAt:{...prefs.columnWidthUpdatedAt}};
+  }
+
+  // Called inside a single IndexedDB read/write transaction, across all windows.
+  static mergeStored(key, saved, incoming) {
+    if (key === 'device-export-settings-v1') return this.mergeExports([saved,incoming]);
+    if (key === 'device-ui-preferences-v1') return this.mergeUI([saved,incoming]);
+    if (key === 'device-column-widths-v1') return this.widthSnapshot(this.mergeUI([this.widthPreferences(saved),this.widthPreferences(incoming)]));
+    if (['device-summary-state-v1','device-toolbar-state-v1'].includes(key)) return (saved?.updatedAt || 0) > (incoming?.updatedAt || 0) ? saved : incoming;
+    return incoming;
+  }
+
+  static containsStored(key, saved, expected) {
+    // A concurrent, newer setting is a successful save too; a lost write is not.
+    if (!saved || typeof saved !== 'object') return false;
+    return JSON.stringify(this.mergeStored(key,saved,expected)) === JSON.stringify(this.mergeStored(key,saved,saved));
   }
 }

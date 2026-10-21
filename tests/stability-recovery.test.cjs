@@ -383,3 +383,40 @@ test('verification failure rejects every coalesced caller and leaves both storag
   fail=false;await app.persistDataStore({'2026-10-15':[{memo:'retry'}]});
   assert.equal(JSON.parse(disk.get('records'))['2026-10-15'][0].memo,'retry');
 });
+
+test('device settings use strict disk commits and merge within the same transaction before completion', async () => {
+  const {app,opens,context}=harness();
+  const settings=vm.runInContext('PTDeviceSettings',context), options=[],writes=[];
+  const db=database(), original=db.transaction;
+  db.transaction=(...args)=>{options.push(args);const tx=original();
+    tx.objectStore=()=>({get:()=>tx.request,put:value=>{writes.push(value);return {};}});return tx;};
+  const value={pdf:false,backup:true,_fieldUpdatedAt:{pdf:0,backup:30}};
+  const pending=app.localDatabaseStore('PT_DEVICE_BACKUPS','files','device-export-settings-v1',value,
+    (saved,incoming)=>settings.mergeStored('device-export-settings-v1',saved,incoming));
+  opens[0].result=db;opens[0].onsuccess();await drain();
+  assert.equal(options[0][2].durability,'strict');
+  const tx=db.transactions[0];tx.request.result={pdf:true,time:'07:10',_fieldUpdatedAt:{pdf:20,time:20}};
+  tx.request.onsuccess();
+  assert.equal(writes[0].pdf,true);assert.equal(writes[0].backup,true);assert.equal(writes[0].time,'07:10');
+  let finished=false;pending.then(()=>{finished=true;});await drain();assert.equal(finished,false);
+  tx.oncomplete();await pending;assert.equal(finished,true);
+});
+
+test('older browsers fall back from strict durability options while real database errors still reject',async()=>{
+  for(const errorName of ['TypeError','NotSupportedError','InvalidStateError']) {
+    const {app,opens}=harness(),db=database(),original=db.transaction,calls=[];
+    db.transaction=(...args)=>{calls.push(args);if(args[2]){const e=Error(errorName);e.name=errorName;throw e;}return original();};
+    const pending=app.localDatabaseStore('PT_DEVICE_BACKUPS','files','folder','virtual');
+    opens[0].result=db;opens[0].onsuccess();await drain();
+    if(errorName==='InvalidStateError') {await assert.rejects(pending,/InvalidStateError/);assert.equal(calls.length,1);}
+    else {assert.equal(calls.length,2);db.transactions[0].oncomplete();await pending;}
+  }
+});
+
+test('persistent device storage is requested once and unsupported or denied storage does not break saving',async()=>{
+  const {app,context}=harness();let requests=0;
+  context.navigator={storage:{persisted:async()=>false,persist:async()=>{requests++;return false;}}};
+  await Promise.all([app.requestDeviceStoragePersistence(),app.requestDeviceStoragePersistence()]);
+  assert.equal(requests,1);
+  const unsupported=harness().app;assert.equal(await unsupported.requestDeviceStoragePersistence(),false);
+});
