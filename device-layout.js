@@ -141,9 +141,7 @@ class PTDeviceLayout {
       {summaryClosed:summary?.closed,summaryClosedUpdatedAt:summary?.updatedAt},
       {toolbarCollapsed:toolbar?.closed,toolbarCollapsedUpdatedAt:toolbar?.updatedAt}];
     const local = this.readDevicePreferences();
-    const beforeEdit = this.columnWidthsBeforeSessionEdit;
-    const localCandidate = beforeEdit ? {...local,columnWidths:beforeEdit.widths,columnWidthsUpdatedAt:beforeEdit.updatedAt,columnWidthUpdatedAt:beforeEdit.fieldUpdatedAt} : local;
-    const merged = PTDeviceSettings.mergeUI([...disk,localCandidate]);
+    const merged = PTDeviceSettings.mergeUI([...disk,local]);
     // A resize before disk recovery must replace only the dragged track, not
     // publish the other measured HTML defaults over saved device widths.
     if (this.sessionColumnWidthEdits) {
@@ -171,8 +169,9 @@ class PTDeviceLayout {
     this.applySavedColumnWidths();this.syncCrossDateColWidths();
     this.devicePreferencesStore = this.columnWidthsStore = this.summaryStateStore = this.toolbarStateStore = store;
     this._deviceSettingsRestorePending = false;this._deviceSettingsRestored = true;
+    this.sessionColumnWidthEdits = null;
     this.persistDevicePreferences(this.readDevicePreferences());
-    this.queueDeviceColumnWidths({widths:{...this.deviceColumnWidths},updatedAt:this.columnWidthsUpdatedAt,fieldUpdatedAt:{...this.columnWidthUpdatedAt}});
+    this.queueDeviceColumnWidths(PTDeviceSettings.widthSnapshot(merged));
     this.queueDeviceSummaryState(this.deviceSummaryState);this.queueDeviceToolbarState(this.deviceToolbarState);
     await Promise.all([this.devicePreferencesWrite,this.columnWidthsWrite,this.summaryStateWrite,this.toolbarStateWrite]);
   }
@@ -432,6 +431,8 @@ class PTDeviceLayout {
   }
 
   flushDevicePanelStates() {
+    // Commit an interrupted drag even while disk recovery is still pending.
+    this.endColumnResize?.();
     if (this._deviceSettingsRestorePending) return;
     try {
       const prefs = this.readDevicePreferences();
@@ -457,14 +458,14 @@ class PTDeviceLayout {
         prefsChanged = true;
       }
 
-      const widths = this.deviceColumnWidths || this.readDeviceColumnWidths().widths;
-      if (widths && typeof widths === "object" && Object.keys(widths).length) {
-        const snapshot = { widths: { ...widths }, updatedAt: this.columnWidthsUpdatedAt || 1,fieldUpdatedAt:{...this.columnWidthUpdatedAt} };
+      const widths = prefs.columnWidths;
+      if (Object.keys(widths).length || Object.keys(prefs.columnWidthUpdatedAt).length) {
+        const snapshot = PTDeviceSettings.widthSnapshot(prefs);
         this.persistLocalColumnWidths(snapshot);
         if (this.columnWidthsStore) this.queueDeviceColumnWidths(snapshot);
         if (this.columnWidthsChanged) {
           prefs.columnWidths = { ...widths };
-          prefs.columnWidthUpdatedAt = {...this.columnWidthUpdatedAt};
+          prefs.columnWidthUpdatedAt = {...snapshot.fieldUpdatedAt};
           prefs.columnWidthsUpdatedAt = snapshot.updatedAt;
           prefs.columnWidthsUserModified = true;
           prefsChanged = true;
@@ -585,10 +586,10 @@ class PTDeviceLayout {
       activeTh.style.width = `${newWidth}px`;
       activeTh.style.minWidth = `${newWidth}px`;
       activeTh.style.maxWidth = `${newWidth}px`;
-      // 드래그 중에는 DOM + 메모리만 60fps 반영, 스토리지 쓰기 없음 (렉 방지)
+      // A small atomic checkpoint survives termination without pointerup/unload.
+      // Full compatibility mirrors are written only when the drag finishes.
       this.recordSessionColumnWidth(activeColKey,newWidth);
-      if (this.deviceColumnWidths) this.deviceColumnWidths[activeColKey] = newWidth;
-      this.columnWidthsChanged = true;
+      this.persistColumnWidths({[activeColKey]:newWidth},[activeColKey],true);
       this.syncMainColumnWidths();
       this.syncCrossDateColWidths();
     };
@@ -665,7 +666,9 @@ class PTDeviceLayout {
   }
 
   recordSessionColumnWidth(colKey, width) {
-    this.columnWidthsBeforeSessionEdit ||= {widths:this.getSavedColumnWidths(),updatedAt:this.columnWidthsUpdatedAt || 0,fieldUpdatedAt:{...this.columnWidthUpdatedAt}};
+    // Only edits made before the first disk read need startup conflict handling.
+    // Replaying completed edits on a later retry would overwrite newer windows.
+    if (this._deviceSettingsSnapshotsRead) return;
     this.sessionColumnWidthEdits ||= new Map();
     this.sessionColumnWidthEdits.set(colKey,width);
   }
@@ -688,12 +691,11 @@ class PTDeviceLayout {
     return PTDeviceSettings.widthSnapshot(this.readDevicePreferences());
   }
 
-  persistLocalColumnWidths(snapshot) {
+  persistLocalColumnWidths(snapshot, checkpoint = false) {
     snapshot = PTDeviceSettings.widthSnapshot(PTDeviceSettings.mergeUI([
       this.readDevicePreferences(),PTDeviceSettings.widthPreferences(snapshot)
     ]));
     const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
-    this.persistDevicePanelCookie(key, snapshot);
     let atomicSaved = false, legacySaved = false;
     try {
       sessionStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot));
@@ -704,7 +706,8 @@ class PTDeviceLayout {
       localStorage.setItem(`${key}_SNAPSHOT`, JSON.stringify(snapshot));
       atomicSaved = true;
     } catch (_) {}
-    try {
+    if (!checkpoint || !atomicSaved) this.persistDevicePanelCookie(key, snapshot);
+    if (!checkpoint) try {
       localStorage.setItem(key, JSON.stringify(snapshot.widths));
       localStorage.setItem(`${key}_UPDATED_AT`, String(snapshot.updatedAt));
       legacySaved = true;
@@ -712,25 +715,32 @@ class PTDeviceLayout {
     this.columnWidthsLocalSaveFailed = !atomicSaved && !legacySaved;
   }
 
-  persistColumnWidths(widths, changedColumns = Object.keys(widths)) {
+  persistColumnWidths(widths, changedColumns, checkpoint = false) {
     void this.requestDeviceStoragePersistence?.();
     const latest = this.readDevicePreferences();
+    changedColumns ||= [...new Set([...Object.keys(latest.columnWidths),...Object.keys(widths)])];
     const timestamp = Math.max(Date.now(),latest.columnWidthsUpdatedAt+1,(this.columnWidthsUpdatedAt || 0)+1);
-    const times = {...this.columnWidthUpdatedAt};
-    // Only touched tracks acquire a new version. Other windows may have changed
-    // the remaining tracks since this table was rendered.
-    for (const key of changedColumns) times[key] = timestamp;
+    const changedWidths = {}, times = {};
+    // Never give measured HTML defaults a saved version. Persist only explicit
+    // edits, including a tombstone when the user resets a track.
+    for (const key of changedColumns) {
+      times[key] = timestamp;
+      if (widths[key] !== undefined) changedWidths[key] = widths[key];
+    }
     const merged = PTDeviceSettings.mergeUI([latest,{
-      columnWidths:widths,columnWidthUpdatedAt:times,columnWidthsUpdatedAt:timestamp,columnWidthsUserModified:true
+      columnWidths:changedWidths,columnWidthUpdatedAt:times,columnWidthsUpdatedAt:timestamp,columnWidthsUserModified:true
     }]);
-    this.deviceColumnWidths = {...merged.columnWidths};
+    this.deviceColumnWidths = {...this.deviceColumnWidths,...merged.columnWidths};
+    for (const key of Object.keys(merged.columnWidthUpdatedAt)) {
+      if (!(key in merged.columnWidths)) delete this.deviceColumnWidths[key];
+    }
     this.columnWidthUpdatedAt = {...merged.columnWidthUpdatedAt};
     this.columnWidthsChanged = true;
     this.columnWidthsUpdatedAt = merged.columnWidthsUpdatedAt;
     const snapshot = PTDeviceSettings.widthSnapshot(merged);
-    this.persistLocalColumnWidths(snapshot);
+    this.persistLocalColumnWidths(snapshot,checkpoint);
     this.queueDeviceColumnWidths(snapshot);
-    this.persistDevicePreferences(merged);
+    if (!checkpoint) this.persistDevicePreferences(merged);
   }
 
   queueDeviceColumnWidths(snapshot) {
@@ -745,7 +755,8 @@ class PTDeviceLayout {
         throw new Error("열 너비 저장 검증에 실패했습니다.");
       }
     })();
-    this.columnWidthsWrite = Promise.all([previous, write]).catch(error => {
+    this.columnWidthsWrite = Promise.all([previous.catch(() => {}), write]);
+    this.columnWidthsWrite.catch(error => {
       console.error("Failed to persist device column widths:", error);
       this.showSaveIndicator?.("열 너비 저장 실패 · 기기 저장 공간을 확인해 주세요", true);
     });
@@ -800,7 +811,6 @@ class PTDeviceLayout {
     // Pin all tracks from the first render, even before a device has any saved
     // widths. Hiding visitTime in history must never redistribute that space.
     this.hasFixedColumnWidths = true;
-    let anyMeasured = false;
     document.querySelectorAll(".col-headers-row th.col-letter").forEach(th => {
       const col = th.dataset.col;
       const width = saved[col];
@@ -813,31 +823,14 @@ class PTDeviceLayout {
         const measured = parseFloat(th.style.width) || th.getBoundingClientRect().width;
         if (Number.isFinite(measured) && measured > 0 && col) {
           saved[col] = measured;
-          anyMeasured = true;
         }
       }
     });
-    // 읽은 너비를 인메모리 캐시에 반영하여 flush 시 참조 가능
+    // Rendering is read-only: defaults are display values, never saved edits.
+    // Otherwise an early close can promote defaults above legacy disk settings.
     this.deviceColumnWidths = { ...saved };
     this.columnWidthUpdatedAt ||= {...prefs?.columnWidthUpdatedAt};
-    for (const key of Object.keys(saved)) this.columnWidthUpdatedAt[key] ??= 1;
-    if (!this.columnWidthsUpdatedAt) {
-      this.columnWidthsUpdatedAt = prefs?.columnWidthsUpdatedAt || this.readDeviceColumnWidths().updatedAt || 1;
-    }
-    if (!this.columnWidthsUpdatedAt) this.columnWidthsUpdatedAt = 1;
-    // Before disk recovery these measurements are display placeholders only.
-    // Stamping them with a saved partial snapshot's time would erase other
-    // columns that still exist on disk.
-    if ((this._deviceSettingsSnapshotsRead || this.columnWidthsChanged) && (anyMeasured || Object.keys(saved).length > 0)) {
-      const snapshot = { widths: { ...saved }, updatedAt: this.columnWidthsUpdatedAt,fieldUpdatedAt:{...this.columnWidthUpdatedAt} };
-      this.persistLocalColumnWidths(snapshot);
-      if (prefs) {
-        prefs.columnWidths = { ...saved };
-        prefs.columnWidthUpdatedAt = {...this.columnWidthUpdatedAt};
-        prefs.columnWidthsUpdatedAt = this.columnWidthsUpdatedAt;
-        this.persistDevicePreferences(prefs);
-      }
-    }
+    this.columnWidthsUpdatedAt ||= prefs?.columnWidthsUpdatedAt || 1;
     this.syncMainColumnWidths();
   }
 

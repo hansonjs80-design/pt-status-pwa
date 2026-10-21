@@ -497,3 +497,61 @@ test('an invalid fast width snapshot cannot hide intact legacy widths during mig
   const storage=new Map([['PT_APP_COL_WIDTHS_STORAGE_V1_SNAPSHOT','{}'],['PT_APP_COL_WIDTHS_STORAGE_V1',JSON.stringify({part:321})],['PT_APP_COL_WIDTHS_STORAGE_V1_UPDATED_AT','100']]);
   const first=device(storage);assert.equal(first.headers[2].style.width,'321px');
 });
+
+// These paths intentionally omit pointerup/unload: those events are not a save contract.
+test('a stopped process retains the last drag checkpoint without pointerup or unload', async () => {
+  const first=prepareUnifiedDevice(device()), disk=new Map();
+  await first.app.restoreDeviceSettings(diskStore(disk));
+  const th=first.headers[2];
+  const handle={classList:{contains:()=>true,add(){}},closest:()=>th,setPointerCapture(){}};
+  first.listeners.pointerdown({target:handle,clientX:200,pointerId:1,preventDefault(){},stopPropagation(){}});
+  first.listeners.pointermove({clientX:287,preventDefault(){}});
+  assert.equal(device(first.storage).headers[2].style.width,'217px','synchronous checkpoint');
+  await first.app.columnWidthsWrite;
+  const cold=prepareUnifiedDevice(device());await cold.app.restoreDeviceSettings(diskStore(disk));
+  assert.equal(cold.headers[2].style.width,'217px','disk checkpoint without session storage');
+});
+
+test('closing before delayed recovery never saves measured defaults over unversioned disk widths', async () => {
+  const disk=new Map([['device-column-widths-v1',{widths:{name:245,part:310},updatedAt:0}]]);
+  const first=prepareUnifiedDevice(device());
+  // Simulate a launch ending before asynchronous recovery can run.
+  first.app.flushDevicePanelStates();
+  const cold=prepareUnifiedDevice(device(first.storage));
+  await cold.app.restoreDeviceSettings(diskStore(disk));
+  assert.equal(cold.headers[1].style.width,'245px');assert.equal(cold.headers[2].style.width,'310px');
+});
+
+test('retrying initialization cannot replay old session edits over a newer window', async () => {
+  const disk=new Map(),storage=new Map(),cookies={value:''},store=diskStore(disk);
+  const first=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await first.app.restoreDeviceSettings(store);
+  first.app.saveColumnWidth('part',210);await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  const second=prepareUnifiedDevice(device(storage,[],new Map(),cookies));await second.app.restoreDeviceSettings(store);
+  second.app.saveColumnWidth('part',340);await Promise.all([second.app.columnWidthsWrite,second.app.devicePreferencesWrite]);
+  await first.app.restoreDeviceSettings(store);
+  assert.equal(first.headers[2].style.width,'340px');
+  const cold=prepareUnifiedDevice(device());await cold.app.restoreDeviceSettings(store);
+  assert.equal(cold.headers[2].style.width,'340px');
+});
+
+test('display defaults never become saved user widths, including after successful recovery', async () => {
+  const disk=new Map(),first=prepareUnifiedDevice(device());await first.app.restoreDeviceSettings(diskStore(disk));
+  first.app.applySavedColumnWidths();first.app.flushDevicePanelStates();
+  await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  assert.deepEqual(Object.keys(disk.get('device-column-widths-v1').widths),[]);
+  first.app.saveColumnWidth('part',250);
+  await Promise.all([first.app.columnWidthsWrite,first.app.devicePreferencesWrite]);
+  assert.deepEqual(Object.keys(disk.get('device-column-widths-v1').widths),['part']);
+  assert.equal(first.headers[1].style.width,'100px','unsaved tracks still display defaults');
+});
+
+test('failed width commits reject the save barrier, then a successful retry clears the failure', async () => {
+  const first=device(),disk=new Map(),store=diskStore(disk),messages=[];
+  first.context.console={error(){}};first.app.showSaveIndicator=text=>messages.push(text);
+  first.app.columnWidthsStore=async()=>{throw Error('disk unavailable');};
+  first.app.saveColumnWidth('part',222);
+  await assert.rejects(first.app.columnWidthsWrite,/disk unavailable/);
+  assert.ok(messages.some(text=>text.includes('저장 실패')));
+  first.app.columnWidthsStore=store;first.app.flushDevicePanelStates();await first.app.columnWidthsWrite;
+  assert.equal(disk.get('device-column-widths-v1').widths.part,222);
+});
