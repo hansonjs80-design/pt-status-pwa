@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v470';
+const CACHE_NAME = 'pt-status-pwa-v471';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -15,6 +15,7 @@ const ASSETS_TO_CACHE = [
   './index.html',
   './style.css',
   './device-settings.js',
+  './device-recovery.js',
   './history-search.js',
   './preset-candidates.js',
   './autocomplete-formatting.js',

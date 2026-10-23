@@ -585,3 +585,17 @@ test('failed width commits reject the save barrier, then a successful retry clea
   first.app.columnWidthsStore=store;first.app.flushDevicePanelStates();await first.app.columnWidthsWrite;
   assert.equal(disk.get('device-column-widths-v1').widths.part,222);
 });
+
+test('restoring a width deletion resets the already open table to its original width',async()=>{
+  const f=prepareUnifiedDevice(device()),disk=new Map(),store=diskStore(disk);
+  await f.app.restoreDeviceSettings(store);
+  f.app.saveColumnWidth('part',365);
+  await Promise.all([f.app.columnWidthsWrite,f.app.devicePreferencesWrite]);
+  const stamp=Date.now()+10000;
+  await store('device-column-widths-v1',{widths:{},fieldUpdatedAt:{part:stamp},updatedAt:stamp});
+  await f.app.restoreDeviceSettings(store);
+  assert.equal(f.headers[2].style.width,'130px');
+  assert.equal(f.headers[2].style.minWidth,'130px');
+  assert.equal(f.headers[2].style.maxWidth,'130px');
+  assert.equal(f.table.group.children[2].style.width,'130px');
+});

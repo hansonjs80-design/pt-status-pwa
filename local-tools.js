@@ -126,6 +126,7 @@
       this.settings = { ...SETTINGS_DEFAULTS, ...readSettingsMultiTier() };
       this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
       this._settingsRestorePending = true;
+      this.recovery = new PTDeviceRecovery(this);
       this.status = '자동 저장 꺼짐';
       const footer = document.createElement('div'); footer.className = 'device-settings-footer';
       this.button = document.createElement('button');
@@ -154,11 +155,13 @@
       const resume = () => {
         void this.app.retryDeviceSettingsWrites?.();
         if (!this._initialized) void this.initialize();
-        else { void this.recoverExtras(); void this.refreshSettingsFromDisk().catch(() => {}); void this.tick(); }
+        else { void this.recoverExtras(); void this.refreshSettingsFromDisk().catch(() => {}); void this.recovery.flush().catch(() => {}); void this.tick(); }
       };
       window.addEventListener('focus', resume);
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resume(); });
       window.addEventListener('pt-device-storage-state', () => this.updatePersistenceNotice());
+      window.addEventListener('pt-device-settings-committed', event => this.recovery.changed(event.detail?.key));
+      window.addEventListener('pagehide', () => { void this.recovery.flush().catch(() => {}); });
     }
     initUpdateNotifier() {
       const applyUpdateAction = async (btn) => {
@@ -263,7 +266,10 @@
       this._extrasTask = Promise.allSettled([
         this.recoverOnce('search', () => this.app.restoreCurrentDateSearchPreference(this.store.bind(this))),
         this.recoverOnce('clock', () => window.ptSheetClock?.restore(this.store.bind(this))),
-        this.recoverOnce('folder', () => this.restoreExportFolder().then(() => this.updateFolderDisplay())),
+        this.recoverOnce('folder', async () => {
+          await this.restoreExportFolder();await this.updateFolderDisplay();
+          await this.recovery?.initialize();
+        }),
         this.recoverOnce('history', () => this.app.migrateTextEditBackups(this.store.bind(this))),
       ]).then(results => {
         if (results.some(result => result.status === 'rejected')) this.scheduleRecovery();
@@ -292,6 +298,7 @@
       retry.onclick = () => { void this.app.retryDeviceSettingsWrites?.();if (!this._initialized) void this.initialize(); };
     }
     async init() {
+      await this.recovery?.inspectStartup();
       this._settingsDiskStore = this.store.bind(this);
       this._settingsRestoreTask = this.recoverOnce('exports', () => this._restoreSettingsFromDisk());
       const results = await Promise.allSettled([
@@ -448,6 +455,7 @@
       this._folderRestorePending = false;
       await this.updateFolderDisplay();
       this.report('물리치료현황 폴더 연결됨');
+      await this.recovery?.initialize();
     }
     async restoreExportFolder() {
       this._folderRestorePending = true;
@@ -920,6 +928,7 @@
           <button type="button" role="tab" id="settings-tab-display" aria-controls="settings-panel-display" data-tab="display">화면</button>
           <button type="button" role="tab" id="settings-tab-backup" aria-controls="settings-panel-backup" data-tab="backup">로컬 백업</button>
           <button type="button" role="tab" id="settings-tab-exports" aria-controls="settings-panel-exports" data-tab="exports">자동 PDF</button>
+          <button type="button" role="tab" id="settings-tab-recovery" aria-controls="settings-panel-recovery" data-tab="recovery">설정 보존</button>
           <button type="button" role="tab" id="settings-tab-usage" aria-controls="settings-panel-usage" data-tab="usage">사용량</button>
         </nav>
         </div>
@@ -1071,6 +1080,7 @@
           </div>
           <div class="settings-link-card"><div><h4>선택 날짜 PDF</h4><p>지금 테이블에 표시된 날짜의 현황을 저장합니다.</p></div><button type="button" data-pdf-now>지금 PDF 저장</button></div>
         </section>
+        <section data-panel="recovery" id="settings-panel-recovery" role="tabpanel" aria-labelledby="settings-tab-recovery" hidden></section>
         <section data-panel="usage" id="settings-panel-usage" role="tabpanel" aria-labelledby="settings-tab-usage" hidden></section>
         </div>
         <footer>
@@ -1084,6 +1094,7 @@
       `;
 
       document.body.append(dialog);
+      this.recovery?.bind(dialog.querySelector('[data-panel="recovery"]'));
       dialog.showModal();
 
       // 업데이트 알림 및 새로고침 동작 바인딩
@@ -1326,10 +1337,11 @@
             tab.tabIndex = tab === button ? 0 : -1;
           });
           dialog.querySelector('[data-settings-body]').scrollTop = 0;
-          dialog.querySelector('[data-save]').hidden = ['rows', 'usage'].includes(button.dataset.tab);
+          dialog.querySelector('[data-save]').hidden = ['rows', 'usage', 'recovery'].includes(button.dataset.tab);
           dialog.querySelector('[data-save-hint]').textContent = button.dataset.tab === 'rows'
             ? '기본 행은 적용 버튼으로 저장합니다.' : button.dataset.tab === 'usage'
-            ? '이 기기에서 확인한 기록 기준입니다.' : '체크·시간 변경은 자동 저장됩니다.';
+            ? '이 기기에서 확인한 기록 기준입니다.' : button.dataset.tab === 'recovery'
+            ? '설정 파일은 이 기기에서 선택한 폴더에 보관됩니다.' : '체크·시간 변경은 자동 저장됩니다.';
           if (button.dataset.tab === 'usage') {
             void this.usage(dialog.querySelector('[data-panel="usage"]')).catch(error => this.report(error.message));
           }

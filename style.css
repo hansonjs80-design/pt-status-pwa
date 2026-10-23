@@ -2767,7 +2767,11 @@ details.summary-accordion[open] summary {
   40% { transform: translateY(-3px); }
   60% { transform: translateY(-1.5px); }
 }
-.device-settings-dialog nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.device-settings-dialog nav { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.device-settings-dialog [data-panel="recovery"] textarea { box-sizing: border-box; width: 100%; margin-top: 10px; font: 12px/1.5 monospace; }
+.device-settings-dialog [data-recovery-candidates] { min-width: 0; }
+.device-settings-dialog [data-recovery-choice] { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; margin-bottom: 8px; text-overflow: ellipsis; }
+.device-settings-dialog [data-panel="recovery"] button { margin: 3px 4px 3px 0; }
 .device-settings-dialog nav button { min-width: 0; min-height: 38px; padding: 7px 4px; border: 0; border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: #607267; font-size: 13px; white-space: nowrap; }
 .device-settings-dialog nav button:hover { background: #f0f6f2; color: #235c39; }
 .device-settings-dialog nav button.active { background: #eaf4ed; color: #107c41; border-bottom-color: #107c41; }

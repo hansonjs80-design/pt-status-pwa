@@ -833,9 +833,11 @@ class PTDeviceLayout {
         th.style.maxWidth = `${width}px`;
       } else {
         // 저장된 너비가 없으면 현재 HTML 기본 너비를 측정하여 보존
-        const measured = parseFloat(th.style.width) || th.getBoundingClientRect().width;
+        const reset = Object.hasOwn(prefs?.columnWidthUpdatedAt || {},col);
+        const measured = (reset ? Number(th.dataset.defaultWidth) : parseFloat(th.style.width)) || th.getBoundingClientRect().width;
         if (Number.isFinite(measured) && measured > 0 && col) {
           saved[col] = measured;
+          if (reset) th.style.width = th.style.minWidth = th.style.maxWidth = `${measured}px`;
         }
       }
     });

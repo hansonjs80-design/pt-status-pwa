@@ -17,6 +17,9 @@ class PTLocalRecordStore {
         const saved = await this.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key);
         if (!PTDeviceSettings.containsStored(key, saved, value)) throw new Error('기기 설정 저장 검증에 실패했습니다.');
         if (this._devicePendingWrites.get(key) === value) this._devicePendingWrites.delete(key);
+        if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pt-device-settings-committed',{detail:{key}}));
+        }
       }
       this._deviceStorageErrors.delete(key);
       this.notifyDeviceStorageState();

@@ -67,6 +67,7 @@ const server = http.createServer(async (req,res) => {
         };
       }
       window.addEventListener('DOMContentLoaded',()=>{
+        if (typeof PTApp === 'undefined') return; // The deliberate about:blank storage-clear step has no app.
         PTApp.prototype.initSupabase=()=>{};
         if(faults.read) {
           const store=PTApp.prototype.localDatabaseStore;
@@ -113,9 +114,11 @@ const server = http.createServer(async (req,res) => {
       const handle=await root.getDirectoryHandle('virtual-exports',{create:true});
       await ptLocalTools.store('folder-selection-v1',{handle,location:['virtual-exports']});
       await ptLocalTools.restoreExportFolder();
+      await ptLocalTools.recovery.initialize();
+      await ptLocalTools.recovery.flush();
     });
   }
-  async function verifyExports(page,expected,label) {
+  async function verifyExports(page,expected,label,folder='virtual-exports') {
     check(await page.evaluate(keys=>Object.fromEntries(keys.map(k=>[k,ptLocalTools.settings[k]])),Object.keys(expected)),expected,label+' export settings');
     await page.evaluate(()=>ptLocalTools.open('backup'));
     const dialog=page.locator('.device-settings-dialog');
@@ -131,7 +134,7 @@ const server = http.createServer(async (req,res) => {
     await dialog.locator('[data-tab="exports"]').click();
     check(await dialog.locator('[data-pdf]').isChecked(),expected.pdf,label+' pdf checkbox');
     check(await dialog.locator('[data-time]').inputValue(),expected.time,label+' pdf time');
-    check(await dialog.locator('[data-panel="exports"] [data-folder-location]').textContent(),'virtual-exports',label+' restored folder');
+    check(await dialog.locator('[data-panel="exports"] [data-folder-location]').textContent(),folder,label+' restored folder');
     await dialog.locator('[data-close]').click();
   }
   async function drag(page,key,width,release=true) {
@@ -257,8 +260,78 @@ const server = http.createServer(async (req,res) => {
       await verifyExports(cold.page,exportSettings[machine],channels[machine]+' forced exit');
       await cold.context.close();
     }
+    for(let machine=0;machine<2;machine++) {
+      console.log(`Checking ${channels[machine]}: complete site-data deletion and external settings-file recovery`);
+      const run=await launch(machine);
+      const backedUp=await run.page.evaluate(async()=>{
+        const recovery=ptLocalTools.recovery;await recovery.flush();
+        const file=await ptLocalTools.folder.getFileHandle(recovery.filename);
+        return JSON.parse(await (await file.getFile()).text());
+      });
+      check(backedUp.ui.columnWidths,expected[machine],'automatic file has latest widths');
+      check(backedUp.exports.time,exportSettings[machine].time,'automatic file has latest export settings');
+      await run.page.evaluate(()=>ptLocalTools.open('recovery'));
+      const downloading=run.page.waitForEvent('download');
+      await run.page.locator('[data-recovery-download]').click();
+      const download=await downloading;
+      // A real downloaded file outside browser origin storage survives clearing all site data.
+      const artifact=path.join(profiles,`external-settings-${machine}.json`);
+      await download.saveAs(artifact);
+      const original=JSON.parse(await fs.readFile(artifact,'utf8'));
+      check(original.deviceId,backedUp.deviceId,'download preserves this device identity');
+      check(original.ui.columnWidths,expected[machine],'download includes latest real drag values');
+      const cdp=await run.context.newCDPSession(run.page);
+      await run.page.goto('about:blank');
+      await cdp.send('Storage.clearDataForOrigin',{origin,storageTypes:'all'});
+      await run.context.clearCookies();await run.context.close();
+      const empty=await launch(machine,true);
+      check(await empty.page.evaluate(()=>Boolean(ptLocalTools.folder)),false,'folder link lost with origin storage');
+      check(await empty.page.evaluate(()=>[ptLocalTools.settings.pdf,ptLocalTools.settings.backup]),[false,false],'all settings reset after storage deletion');
+      check(await empty.page.evaluate(()=>['device-column-widths-v1','device-export-settings-v1','folder-selection-v1'].map(key=>ptLocalTools.recovery.startup[key].state)),['missing','missing','missing'],'diagnostics preserve missing-at-startup evidence');
+      await empty.page.evaluate(()=>ptLocalTools.open('recovery'));
+      await empty.page.locator('[data-recovery-file]').setInputFiles(artifact);
+      await empty.page.waitForFunction(()=>ptLocalTools.settings.pdf && ptLocalTools.settings.backup);
+      await empty.page.waitForFunction(()=>!ptLocalTools.recovery.restoring);
+      await empty.page.locator('.device-settings-dialog [data-close]').click();
+      await verify(empty.page,expected[machine],'external file restored widths');
+      await verifyExports(empty.page,exportSettings[machine],'external file restored options','저장 폴더를 연결해 주세요');
+      await empty.page.evaluate(()=>ptLocalTools.open('recovery'));
+      await empty.page.locator('details summary').filter({hasText:'재부팅 후 설정'}).click();
+      await empty.page.locator('[data-recovery-diagnose]').click();
+      const diagnostic=JSON.parse(await empty.page.locator('[data-recovery-diagnostics]').inputValue());
+      check(diagnostic.startup['folder-selection-v1'].state,'missing','diagnostics retain evidence after import');
+      check(diagnostic.folderConnected,false,'import cannot silently restore native folder authorization');
+      // Reconnect a folder containing an earlier device file via the actual folder UI.
+      // The directory handle here is an isolated OPFS stand-in, not a claim that OPFS survives clearing.
+      await empty.page.evaluate(async original=>{
+        const folder=await (await navigator.storage.getDirectory()).getDirectoryHandle('물리치료현황',{create:true});
+        const file=await folder.getFileHandle(`PT현황_기기설정_${original.deviceId}.json`,{create:true});
+        const writer=await file.createWritable();await writer.write(JSON.stringify(original));await writer.close();
+        window.showDirectoryPicker=async()=>folder;
+      },original);
+      await empty.page.locator('[data-recovery-folder]').click();
+      await empty.page.waitForFunction(()=>ptLocalTools.recovery.candidates.length===1);
+      await empty.page.locator('[data-recovery-restore]').click();
+      await empty.page.waitForFunction(()=>!document.querySelector('[data-recovery-restore]').disabled);
+      await empty.page.locator('[data-recovery-save]').click();
+      await empty.page.waitForFunction(()=>!document.querySelector('[data-recovery-save]').disabled);
+      check(await empty.page.evaluate(()=>ptLocalTools.recovery.dirty),false,'reconnected folder verifies new settings copy');
+      check(await empty.page.evaluate(async()=>{
+        const file=await ptLocalTools.folder.getFileHandle(ptLocalTools.recovery.filename);
+        return JSON.parse(await (await file.getFile()).text()).ui.columnWidths;
+      }),expected[machine],'reconnected file contains the actual restored widths');
+      await empty.page.screenshot({path:path.join(os.tmpdir(),`pt-recovery-${channels[machine]}.png`)});
+      await empty.page.setViewportSize({width:400,height:850});
+      check(await empty.page.locator('[data-panel="recovery"]').evaluate(panel=>panel.scrollWidth<=panel.clientWidth),true,'recovery controls fit a narrow viewport');
+      await empty.page.screenshot({path:path.join(os.tmpdir(),`pt-recovery-${channels[machine]}-mobile.png`)});
+      await empty.context.close();
+      const restored=await launch(machine);
+      await verify(restored.page,expected[machine],'restored file survives next cold launch');
+      await verifyExports(restored.page,exportSettings[machine],'restored export settings survive next cold launch','물리치료현황');
+      await restored.context.close();
+    }
     check(errors,[],'no application errors');
-    console.log(`Device settings: ${checks} browser checks passed in ${channels.join(' and ')}; real controls/drags, cold launches, forced exit, IndexedDB-only recovery, automatic retries and window conflict. Windows platform and storage faults are simulated.`);
+    console.log(`Device settings: ${checks} browser checks passed in ${channels.join(' and ')}; real controls/drags, cold launches, forced exit, IndexedDB-only recovery, automatic retries, window conflict, full site-data deletion, external download/import and folder reconnection. Windows platform and storage faults are simulated.`);
   } finally {
     for(const context of openContexts) await context.close();
     await new Promise(resolve=>server.close(resolve));

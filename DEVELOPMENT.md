@@ -32,10 +32,13 @@
 | `patient-search-dialog.js` | 환자 검색창, 후보 목록, 검색 제출과 검색 결과 없음 안내 |
 | `history-table.js` | 검색 결과 표 렌더링, 날짜 확장·선택과 스크롤·너비 처리 |
 | `local-tools.js` | 기기 저장소와 로컬 도구 초기화 |
+| `device-recovery.js` | 기기별 설정의 외부 파일 보관·복원과 저장소 진단 |
 
 기능 파일은 `index.html`에서 `app.js`보다 먼저 로드하고, `app.js`의 기능 설치
 목록에 등록합니다. 같은 이름의 메서드를 여러 기능에 정의하지 않습니다.
 `local-tools.js`는 앱 이후에 로드하는 별도 초기화 도구입니다.
+`device-recovery.js`는 `PTApp`에 메서드를 설치하지 않으며 `local-tools.js`가
+생성하는 별도 도구입니다. 환자 기록 저장소와 분리된 설정만 처리합니다.
 
 새 파일을 추가하면 `sw.js`의 오프라인 캐시 목록, 캐시 버전,
 `tests/helpers/load-app-source.cjs`의 로딩 순서도 함께 갱신합니다.
