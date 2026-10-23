@@ -2795,6 +2795,12 @@ details.summary-accordion[open] summary {
 .device-settings-dialog footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 20px; border-top: 1px solid #dfe8e2; background: #fff; }
 .device-settings-dialog footer button { flex-shrink: 0; }
 .device-settings-save-info { min-width: 0; font-size: 11px; color: #63756a; }
+.device-settings-dialog .settings-retention-help { display: block; padding: 3px 0; border: 0; background: none; color: #176e40; font: inherit; text-align: left; white-space: normal; text-decoration: underline; }
+.settings-retention-addresses { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.settings-retention-addresses label { flex-wrap: wrap; }
+.settings-retention-addresses input { flex: 1 1 200px; width: 100%; }
+.settings-retention-addresses button { align-self: flex-start; }
+.device-settings-dialog [data-retention-guide] code { overflow-wrap: anywhere; }
 .device-settings-dialog [data-status]:empty { display: none; }
 .device-settings-dialog [data-status] { font-size: 11px; color: #235c39; }
 .device-settings-dialog a { color: #176e40; font-size: 12px; }

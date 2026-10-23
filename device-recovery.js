@@ -226,15 +226,38 @@ class PTDeviceRecovery {
     ]);
     return {appVersion:this.app.appVersion,address:location.origin+location.pathname,browser:navigator.userAgent,
       deviceId:this.meta?.id || null,startup:this.startup,persistentStorageGranted:Boolean(persisted),
+      browserRetentionPolicy:'unknown',startupSettings:this.startupSettingsState(),
       currentStores:Object.fromEntries(disk.map((result,i) => [PTDeviceRecovery.STORE_KEYS[i],result.status === 'rejected' ? 'read-error' : result.value == null ? 'missing' : 'present'])),
       folderConnected:Boolean(this.tools.folder),folderPermission:permission,settingsFileLastSaved:this.lastFileSavedAt || null,
       note:'사이트 데이터 자동 삭제 정책은 웹앱에서 조회할 수 없습니다. 시작 시 missing은 첫 실행, 데이터 삭제, 다른 주소/프로필 중 하나일 수 있습니다.'};
+  }
+
+  startupSettingsState() {
+    const states = ['device-column-widths-v1','device-export-settings-v1','device-ui-preferences-v1']
+      .map(key => this.startup?.[key]?.state);
+    if (states.includes('read-error') || states.includes(undefined)) return 'unavailable';
+    return states.includes('present') ? 'found' : 'missing';
   }
 
   bind(panel) {
     this.panel = panel;
     panel.innerHTML = `
       <div class="settings-panel-heading"><h3>기기 설정 보존</h3><p>열 너비·로컬 백업·자동 PDF 설정을 파일에도 보관합니다. 환자 기록은 포함하지 않습니다.</p></div>
+      <div class="settings-card" data-retention-guide tabindex="-1">
+        <h4>앱을 닫아도 설정 유지하기</h4>
+        <p data-startup-settings role="status"></p>
+        <p>브라우저의 ‘종료 시 사이트 데이터 삭제’가 켜져 있으면 저장을 마쳐도 다음 실행 때 열 너비·백업·PDF 설정과 폴더 연결이 지워집니다. 설치한 앱도 같은 영향을 받습니다.</p>
+        <p><strong>Chrome:</strong> 아래 설정 주소를 주소창에 붙여넣고 ‘기기에 데이터를 저장하도록 허용’ 목록에 이 사이트를 추가하세요. <strong>Edge:</strong> 쿠키 설정의 허용 목록에 추가하고 종료 시 삭제 목록도 확인하세요.</p>
+        <div class="settings-retention-addresses">
+          <label>Chrome <input data-retention-chrome readonly aria-label="Chrome 사이트 데이터 설정 주소" value="chrome://settings/content/siteData"></label>
+          <label>Edge <input data-retention-edge readonly aria-label="Edge 사이트 데이터 설정 주소" value="edge://settings/content/cookies"></label>
+          <label>등록할 사이트 <input data-retention-origin readonly aria-label="설정을 보관할 사이트 주소"></label>
+          <button type="button" data-retention-copy>사이트 주소 복사</button>
+        </div>
+        <p>Edge의 ‘브라우저를 닫을 때마다 지울 항목’에서도 ‘쿠키 및 기타 사이트 데이터’ → ‘지우지 않음’에 같은 주소를 등록하세요. 설정 주소: <code>edge://settings/privacy/clearBrowsingData/clearOnClose</code></p>
+        <p>사용하는 각 브라우저·프로필에서 한 번씩 등록한 뒤, 설정을 지정하고 브라우저를 완전히 종료·재실행해 확인하세요. 이미 삭제된 값은 아래 설정 파일로 복원하거나 다시 지정해야 합니다.</p>
+        <p>이 앱은 브라우저의 삭제 설정을 직접 읽거나 변경할 수 없습니다. 종료 시 삭제를 사용하는 경우에는 보관 예외도 등록해야 합니다.</p>
+      </div>
       <div class="settings-card">
         <p data-recovery-status role="status"></p>
         <button type="button" data-recovery-folder>저장 폴더 연결 / 권한 갱신</button>
@@ -259,6 +282,12 @@ class PTDeviceRecovery {
       try { await action(); } catch (error) { this.message = error.message;this.tools.report(error.message); }
       finally { event.target.disabled = false;this.render(); }
     };
+    const origin = panel.querySelector('[data-retention-origin]');
+    origin.value = location.origin;
+    panel.querySelector('[data-retention-copy]').onclick = run(async () => {
+      try { await navigator.clipboard.writeText(origin.value);this.message = '사이트 주소를 복사했습니다. 브라우저의 보관 예외에 추가하세요.'; }
+      catch (_) { origin.focus();origin.select();this.message = '사이트 주소를 선택했습니다. 복사해서 브라우저의 보관 예외에 추가하세요.'; }
+    });
     panel.querySelector('[data-recovery-folder]').onclick = run(() => this.tools.chooseFolder());
     panel.querySelector('[data-recovery-save]').onclick = run(async () => {
       if (!this.tools.folder) throw Error('설정 파일을 보관할 폴더를 먼저 연결해 주세요.');
@@ -301,6 +330,11 @@ class PTDeviceRecovery {
   render() {
     if (!this.panel?.isConnected) return;
     this.panel.querySelector('[data-recovery-status]').textContent = this.message;
+    const state = this.startupSettingsState();
+    this.panel.querySelector('[data-startup-settings]').textContent = state === 'found'
+      ? '이번 실행에서 이전에 보관한 기기 설정을 찾았습니다.'
+      : state === 'missing' ? '이번 실행에서는 이전 기기 설정을 찾지 못했습니다. 첫 사용, 사이트 데이터 삭제, 다른 프로필 사용 중 어느 경우인지는 앱에서 구분할 수 없습니다.'
+      : '이전 기기 설정의 저장 상태를 아직 확인하지 못했습니다.';
     this.panel.querySelector('[data-recovery-candidates]').hidden = !this.candidates.length;
     const select = this.panel.querySelector('[data-recovery-choice]');
     const selected = select.value;

@@ -1,5 +1,41 @@
 # 배포 확인
 
+v472는 브라우저의 **종료 시 사이트 데이터 삭제** 조건을 실제 Chrome·Edge에서
+재현하고 PT현황 사이트별 저장 허용 예외로 해결하는 릴리스입니다. 이 조건에서는
+정상 저장·읽기 검증 후에도 localStorage, IndexedDB, 쿠키와 폴더 연결이 종료 시
+함께 지워집니다. 저장소를 추가하거나 `persist()`를 호출해도 사용자가 설정한
+삭제 동작을 막을 수 없습니다. 앱 코드가 이 브라우저 설정을 읽거나 바꿀 수도 없습니다.
+
+설정 창 하단의 **재실행하면 설정이 초기화되나요? 보관 설정 확인**에서 등록할
+사이트 주소와 Chrome·Edge 설정 경로를 확인합니다. 설치한 PWA를 포함하여
+사용하는 브라우저·프로필마다 `https://pt-status-pwa.vercel.app`을 보관 예외로
+등록해야 합니다. Edge의 별도 종료 시 삭제 목록을 사용하면 해당 목록의
+‘쿠키 및 기타 사이트 데이터 → 지우지 않음’에도 등록합니다.
+
+macOS / Windows의 로컬 점검 도구 (Python 3, 기본은 읽기 전용):
+
+```sh
+python3 scripts/device-site-storage.py
+# 작업을 저장하고 Chrome·Edge 및 설치한 앱을 완전히 종료한 뒤:
+python3 scripts/device-site-storage.py --apply
+```
+
+Windows에서는 `python3` 대신 `py -3`을 사용할 수 있습니다. 적용은 PT현황 주소의
+저장 허용 예외만 추가하며 전체 사이트의 기본 동작은 유지합니다. 실행 중인
+브라우저가 있거나 설정 파일이 변경되면 중단합니다. 원본 Preferences 파일은
+사용자 홈의 `.pt-status-browser-backups`에 백업하고 쓰기 후 다시 읽어 검증합니다.
+이 백업은 개인 브라우저 설정을 포함하므로 커밋하거나 공유하지 않습니다.
+관리 정책이나 Edge의 별도 종료 시 삭제 설정은 이 도구가 변경하지 않습니다.
+
+추가 회귀 검증: `node scripts/verify-device-retention.cjs` (Playwright 필요).
+임시 프로필에 실제 `SESSION_ONLY` 설정을 넣고 저장 검증 후 완전 종료하여
+초기화를 재현합니다. PT 사이트만 보관 예외로 등록한 뒤 재실행·서비스워커
+업데이트·오프라인 재실행에서 설정 보존을 확인하고 다른 사이트의 삭제 동작도
+검사합니다. 실제 Windows OS 재부팅을 대신하는 검증은 아닙니다.
+
+참고: [Chrome 기기 내 사이트 데이터](https://support.google.com/chrome/answer/14114868?hl=ko),
+[Edge 재실행 시 데이터 보존 문제](https://learn.microsoft.com/en-us/troubleshoot/microsoft-edge/security/cookies-sessions-not-persisting).
+
 릴리스 버전은 다음 명령으로 올립니다. `app-updates.js`의 표시 버전,
 `version.json`의 감지 버전, `sw.js`의 설치 캐시 버전을 함께 맞춥니다.
 

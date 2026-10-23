@@ -1086,6 +1086,7 @@
         <footer>
           <div class="device-settings-save-info">
           <span data-save-hint>체크·시간 변경은 자동 저장됩니다.</span>
+          <button type="button" data-retention-help class="settings-retention-help">재실행하면 설정이 초기화되나요? 보관 설정 확인</button>
           <p data-persistence-status role="status" hidden></p>
           <p data-status role="status"></p>
           </div>
@@ -1096,6 +1097,11 @@
       document.body.append(dialog);
       this.recovery?.bind(dialog.querySelector('[data-panel="recovery"]'));
       dialog.showModal();
+      dialog.querySelector('[data-retention-help]').onclick = () => {
+        dialog.querySelector('[data-tab="recovery"]').click();
+        const guide = dialog.querySelector('[data-retention-guide]');
+        guide.focus();guide.scrollIntoView({block:'nearest'});
+      };
 
       // 업데이트 알림 및 새로고침 동작 바인딩
       const updateBanner = dialog.querySelector('[data-update-banner]');

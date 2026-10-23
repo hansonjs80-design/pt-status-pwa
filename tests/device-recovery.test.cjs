@@ -132,6 +132,19 @@ test('startup evidence distinguishes missing storage from a failed read before d
   assert.equal(f.recovery.startup['device-column-widths-v1'].state,'missing','retain original startup evidence');
 });
 
+test('startup retention guidance distinguishes absent settings from read errors without claiming a browser policy',async()=>{
+  const f=fixture({folderConnected:false});
+  assert.equal(f.recovery.startupSettingsState(),'unavailable');
+  await f.recovery.inspectStartup();
+  assert.equal(f.recovery.startupSettingsState(),'missing');
+  await f.configure();
+  assert.equal(f.recovery.startupSettingsState(),'missing','startup evidence is immutable');
+  const next=fixture(f);await next.recovery.inspectStartup();
+  assert.equal(next.recovery.startupSettingsState(),'found');
+  next.recovery.startup['device-column-widths-v1'].state='read-error';
+  assert.equal(next.recovery.startupSettingsState(),'unavailable');
+});
+
 test('a failed identity save retries before creating an external file',async()=>{
   const f=fixture();await f.configure();const store=f.tools.store;let fail=true;
   f.tools.store=async(key,value)=>{
