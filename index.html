@@ -27,6 +27,10 @@
   <script id="supabaseSdk" async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <div id="devicePersistenceNotice" class="local-restore-notice" role="status" hidden>
+    <span data-device-persistence-message></span>
+    <button type="button">다시 시도</button>
+  </div>
   <div id="localRestoreNotice" class="local-restore-notice" role="alert" hidden>
     <span data-restore-message></span>
     <button type="button">다시 시도</button>

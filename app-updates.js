@@ -1,7 +1,7 @@
 // Release detection, service-worker lifecycle and safe reload live in one module.
 // Change releases with: node scripts/set-release-version.mjs vNNN
 class PTAppUpdates {
-  static VERSION = "v469";
+  static VERSION = "v470";
 
   announceAvailableUpdate(version) {
     if (version) this.latestServerVersion = version;
@@ -52,6 +52,8 @@ class PTAppUpdates {
     await this.persistDataStore();
     if (this.syncBaselines) await this.persistSyncBaselines();
     this.flushDevicePanelStates?.();
+    await this.retryDeviceSettingsWrites?.();
+    await window.ptLocalTools?._queueSettingsDisk?.();
     await Promise.all([this._recordWrite, this._baselineWrite, this.summaryStateWrite, this.toolbarStateWrite, this.columnWidthsWrite, this.devicePreferencesWrite, window.ptLocalTools?._settingsDiskWrite]);
   }
 

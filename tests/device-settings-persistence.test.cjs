@@ -14,7 +14,8 @@ function fixture(disk = new Map(), shared = {}) {
   });
   const window = {addEventListener(){}};
   vm.runInNewContext(['device-settings.js','local-tools.js'].map(file => fs.readFileSync(require.resolve('../'+file),'utf8')).join('\n'),
-    {window,document,localStorage:storage(local),sessionStorage:storage(session),Blob,TextEncoder,Date,setTimeout});
+    {window,document,localStorage:storage(local),sessionStorage:storage(session),Blob,TextEncoder,Date,
+      setTimeout,clearTimeout,setInterval:()=>1});
   const l = Object.create(window.PTLocalTools.LocalTools.prototype), writes = [], reports = [];
   l.settings = {pdf:false,backup:false,time:'09:10',backupIntervalType:'daily',backupTime:'18:00',backupIntervalHours:2,
     backupMaxCount:15,workHoursOnly:false,workStartTime:'09:00',workEndTime:'18:00',lastBackup:null,lastBackupDay:null,lastBackupTimestamp:0};
@@ -25,7 +26,7 @@ function fixture(disk = new Map(), shared = {}) {
   };
   l._settingsDiskStore = (...args) => l.store(...args);
   l.report = text => reports.push(text);
-  return {l,local,session,cookies,disk,writes,reports};
+  return {l,local,session,cookies,disk,writes,reports,window};
 }
 const key = 'device-export-settings-v1';
 
@@ -130,4 +131,49 @@ test('valid time input persists without blur and incomplete times cannot replace
     input.value='';handlers.input();assert.equal(l.settings[key],'22:45');
     handlers.change();assert.equal(input.value,'22:45');assert.equal(l.settings[key],'22:45');
   }
+});
+
+test('unrelated clock, search or backup migration errors cannot block restored export settings',async()=>{
+  const {l,window}=fixture(new Map([[key,{pdf:true,backup:true,time:'06:45'}]]));
+  l.app={restoreDeviceSettings:async()=>{},restoreCurrentDateSearchPreference:async()=>{throw Error('search unavailable');},
+    migrateTextEditBackups:async()=>{throw Error('history unavailable');}};
+  window.ptSheetClock={restore:async()=>{throw Error('clock unavailable');}};
+  l.tick=async()=>{};
+  await l.initialize();
+  assert.equal(l._initialized,true);assert.equal(l.settings.time,'06:45');assert.equal(l.settings.pdf,true);
+  clearTimeout(l._recoveryTimer);
+});
+
+test('a retry waits for every in-flight restoration and does not repeat already restored settings',async()=>{
+  const {l}=fixture();let release,reads=0;
+  l.app={restoreDeviceSettings:()=>new Promise(resolve=>{release=resolve;}),
+    restoreCurrentDateSearchPreference:async()=>{},migrateTextEditBackups:async()=>{}};
+  l._restoreSettingsFromDisk=async()=>{reads++;if(reads===1)throw Error('temporary failure');};
+  l.tick=async()=>{};
+  const first=l.initialize();const rejection=assert.rejects(first,/temporary failure/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(l._initializing,true,'failed sibling must not release the startup lock');
+  release();await rejection;
+  const restored=l.app.restoreDeviceSettings;l.app.restoreDeviceSettings=()=>assert.fail('completed recovery must not run twice');
+  await l.initialize();assert.equal(reads,2);assert.equal(l._initialized,true);
+  l.app.restoreDeviceSettings=restored;clearTimeout(l._recoveryTimer);
+});
+
+test('a verified disk merge is reflected in memory and fast mirrors before the next edit',async()=>{
+  const {l,local}=fixture();await l._restoreSettingsFromDisk();
+  l._settingsDiskStore=async()=>({...l.settings,pdf:true,time:'05:35',backup:true,
+    _fieldUpdatedAt:{...l.settings._fieldUpdatedAt,pdf:9e15,time:9e15,backup:9e15}});
+  l.settings.backup=true;await l.save();
+  assert.equal(l.settings.pdf,true);assert.equal(l.settings.time,'05:35');
+  assert.equal(JSON.parse(local.get('PT_DEVICE_EXPORTS_V1')).pdf,true);
+});
+
+test('an explicit edit during recovery wins even when the system clock was corrected backwards',async()=>{
+  const {l}=fixture(new Map([[key,{pdf:true,time:'06:45',_fieldUpdatedAt:{pdf:9e15,time:9e15}}]]));
+  let release;const read=l.store;
+  l.store=async(name,value)=>{if(value===undefined && !release)await new Promise(resolve=>{release=resolve;});return read(name,value);};
+  l._settingsRestoreTask=l._restoreSettingsFromDisk();
+  l.settings.pdf=true;l.save();l.settings.pdf=false;const saving=l.save();
+  release();await l._settingsRestoreTask;await saving;
+  assert.equal(l.settings.pdf,false);assert.equal(l.settings.time,'06:45');
 });

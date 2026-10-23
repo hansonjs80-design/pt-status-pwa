@@ -397,6 +397,36 @@ test('a failed settings read never replaces the saved disk widths with measured 
   fresh.app.flushDevicePanelStates();assert.equal(writes,0);
 });
 
+test('an unread panel snapshot does not hide intact disk widths and recovery remains read-only until retry',async()=>{
+  const fresh=prepareUnifiedDevice(device());let writes=0,failed=true;
+  const disk=new Map([['device-column-widths-v1',{widths:{name:225,part:325},updatedAt:100}]]);
+  const store=async(key,value)=>{
+    if(value!==undefined){writes++;disk.set(key,structuredClone(value));}
+    if(failed && key==='device-toolbar-state-v1')throw Error('panel unavailable');
+    return structuredClone(disk.get(key));
+  };
+  await assert.rejects(fresh.app.restoreDeviceSettings(store),/panel unavailable/);
+  assert.equal(fresh.headers[1].style.width,'225px');assert.equal(fresh.headers[2].style.width,'325px');
+  assert.equal(writes,0);
+  fresh.app.saveColumnWidth('part',350);assert.equal(writes,0);
+  failed=false;await fresh.app.restoreDeviceSettings(store);
+  assert.equal(fresh.headers[1].style.width,'225px');assert.equal(disk.get('device-column-widths-v1').widths.part,350);
+});
+
+test('disk settings stay canonical when localStorage, sessionStorage and cookies cannot accept writes',async()=>{
+  const fresh=prepareUnifiedDevice(device());
+  fresh.context.localStorage.setItem=()=>{throw Error('quota');};
+  fresh.context.sessionStorage.setItem=()=>{throw Error('blocked');};
+  Object.defineProperty(fresh.context.document,'cookie',{get:()=>'',set:()=>{}});
+  const disk=new Map([['device-column-widths-v1',{widths:{name:225,part:325},updatedAt:100}]]);
+  await fresh.app.restoreDeviceSettings(diskStore(disk));
+  assert.equal(fresh.app.readDevicePreferences().columnWidths.name,225);
+  fresh.app.saveColumnWidth('part',350);fresh.app.flushDevicePanelStates();
+  await Promise.all([fresh.app.columnWidthsWrite,fresh.app.devicePreferencesWrite]);
+  assert.equal(disk.get('device-ui-preferences-v1').columnWidths.name,225);
+  assert.equal(disk.get('device-column-widths-v1').widths.part,350);
+});
+
 test('newer session and cookie values beat stale local preferences independently for each field',()=>{
   const storage=new Map([['PT_DEVICE_UI_PREFS_V1',JSON.stringify({columnWidths:{name:160},columnWidthsUpdatedAt:10,toolbarCollapsed:false,toolbarCollapsedUpdatedAt:10})]]);
   const session=new Map([['PT_DEVICE_UI_PREFS_V1',JSON.stringify({columnWidths:{part:300},columnWidthsUpdatedAt:30,toolbarCollapsed:true,toolbarCollapsedUpdatedAt:30})]]);

@@ -62,6 +62,40 @@ test('blocked database open fails visibly, closes late success and permits a fre
   assert.equal(app._localDatabases.size, 0);
 });
 
+test('failed device writes retry automatically with the newest edit and preserve other fields',async()=>{
+  const {app,timers,expire}=harness();let unavailable=true;
+  const disk=new Map([['device-export-settings-v1',{time:'06:25',_fieldUpdatedAt:{time:5}}]]);
+  app.localDatabaseStore=async(name,store,key,value,merge)=>{
+    if(unavailable)throw Error('temporary device failure');
+    if(value!==undefined)disk.set(key,merge(disk.get(key),value));
+    return structuredClone(disk.get(key));
+  };
+  const key='device-export-settings-v1';
+  await assert.rejects(app.deviceSettingsStore(key,{pdf:true,_fieldUpdatedAt:{pdf:10}}));
+  await assert.rejects(app.deviceSettingsStore(key,{pdf:false,backup:true,_fieldUpdatedAt:{pdf:20,backup:20}}));
+  assert.equal(timers.size,1);
+  unavailable=false;expire();await app._deviceWriteRetryTask;
+  assert.equal(disk.get(key).pdf,false);assert.equal(disk.get(key).backup,true);assert.equal(disk.get(key).time,'06:25');
+  assert.equal(app._devicePendingWrites.size,0);assert.equal(app._deviceStorageErrors.size,0);
+});
+
+test('a newer edit arriving during write verification remains queued for recovery',async()=>{
+  const {app,expire}=harness();let release,reads=0;
+  let disk;
+  app.localDatabaseStore=async(name,store,key,value,merge)=>{
+    if(value!==undefined){if(value.widths.part===333)throw Error('second write failed');disk=merge(disk,value);return;}
+    if(reads++===0)await new Promise(resolve=>{release=resolve;});
+    return structuredClone(disk);
+  };
+  const key='device-column-widths-v1';
+  const first=app.deviceSettingsStore(key,{widths:{part:222},updatedAt:10});await drain();
+  await assert.rejects(app.deviceSettingsStore(key,{widths:{part:333},updatedAt:20}));
+  release();await first;
+  assert.equal(app._devicePendingWrites.get(key).widths.part,333);
+  app.localDatabaseStore=async(name,store,key,value,merge)=>{if(value!==undefined)disk=merge(disk,value);return structuredClone(disk);};
+  expire();await app._deviceWriteRetryTask;assert.equal(disk.widths.part,333);
+});
+
 test('database timeout aborts an unfinished write and a retry reads from a new connection', async () => {
   const { app, opens, expire, timers } = harness();
   const first = app.syncStateDisk('records', 'draft');

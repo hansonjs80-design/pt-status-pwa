@@ -151,7 +151,14 @@
       document.querySelector('.excel-sidebar')?.append(footer);
       this.initUpdateNotifier();
       this.initialize();
-      window.addEventListener('focus', () => { if (!this._initialized) void this.initialize(); });
+      const resume = () => {
+        void this.app.retryDeviceSettingsWrites?.();
+        if (!this._initialized) void this.initialize();
+        else { void this.recoverExtras(); void this.refreshSettingsFromDisk().catch(() => {}); void this.tick(); }
+      };
+      window.addEventListener('focus', resume);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resume(); });
+      window.addEventListener('pt-device-storage-state', () => this.updatePersistenceNotice());
     }
     initUpdateNotifier() {
       const applyUpdateAction = async (btn) => {
@@ -218,31 +225,86 @@
       return this.app.openLocalDatabase('PT_DEVICE_BACKUPS', 'files');
     }
     async store(key, value) {
+      if (key.startsWith('device-') && this.app.deviceSettingsStore) return this.app.deviceSettingsStore(key,value);
       return this.app.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key, value,
         key.startsWith('device-') ? (saved,incoming) => PTDeviceSettings.mergeStored(key,saved,incoming) : undefined);
     }
     initialize() {
       if (this._initializing || this._initialized) return this.ready;
+      clearTimeout(this._recoveryTimer);this._recoveryTimer = null;
       this._initializing = true;
-      this.ready = this.init().finally(() => { this._initializing = false; });
+      this.updatePersistenceNotice();
+      this.ready = this.init().finally(() => { this._initializing = false;this.updatePersistenceNotice(); });
       this.app.deviceSettingsReady = this.ready;
-      this.ready.catch(error => this.report('설정 복원 확인 필요 · '+error.message));
+      this.ready.catch(error => {
+        this.report('설정 복원 재시도 중 · '+error.message);
+        this.scheduleRecovery();
+      });
       return this.ready;
+    }
+    scheduleRecovery() {
+      if (this._recoveryTimer) return;
+      const delay = Math.min(30000, 1000 * 2 ** Math.min(this._recoveryAttempts || 0,5));
+      this._recoveryTimer = setTimeout(() => {
+        this._recoveryTimer = null;
+        this._recoveryAttempts = (this._recoveryAttempts || 0) + 1;
+        if (!this._initialized) void this.initialize();
+        else void this.recoverExtras();
+      },delay);
+    }
+    async recoverOnce(key, task) {
+      this._recovered ||= new Set();
+      if (this._recovered.has(key)) return;
+      await task();
+      this._recovered.add(key);
+    }
+    recoverExtras() {
+      if (this._extrasTask) return this._extrasTask;
+      this._extrasTask = Promise.allSettled([
+        this.recoverOnce('search', () => this.app.restoreCurrentDateSearchPreference(this.store.bind(this))),
+        this.recoverOnce('clock', () => window.ptSheetClock?.restore(this.store.bind(this))),
+        this.recoverOnce('folder', () => this.restoreExportFolder().then(() => this.updateFolderDisplay())),
+        this.recoverOnce('history', () => this.app.migrateTextEditBackups(this.store.bind(this))),
+      ]).then(results => {
+        if (results.some(result => result.status === 'rejected')) this.scheduleRecovery();
+      }).finally(() => {this._extrasTask = null;});
+      return this._extrasTask;
+    }
+    updatePersistenceNotice() {
+      const notice = document.getElementById?.('devicePersistenceNotice');
+      if (!notice) return;
+      const recovering = !this._initialized;
+      const failed = Boolean(this.app._deviceStorageErrors?.size || this.app._devicePendingWrites?.size);
+      notice.hidden = !recovering && !failed;
+      const message = recovering
+        ? '이 컴퓨터의 설정을 불러오는 중입니다. 저장소 연결이 지연되면 자동으로 다시 시도합니다.'
+        : '기기 설정을 확인·저장하고 있습니다. 완료될 때까지 앱을 열어 두세요.';
+      notice.querySelector('[data-device-persistence-message]').textContent = message;
+      const dialogStatus = this.dialog?.querySelector('[data-persistence-status]');
+      if (dialogStatus) { dialogStatus.hidden = notice.hidden;dialogStatus.textContent = message; }
+      if (this.app._deviceStorageErrors?.size) this._hadStorageFailure = true;
+      if (notice.hidden && this._hadStorageFailure) {
+        this._hadStorageFailure = false;
+        this.report('이 컴퓨터의 설정 저장·확인이 완료되었습니다.');
+      }
+      const retry = notice.querySelector('button');
+      retry.disabled = this._initializing;
+      retry.onclick = () => { void this.app.retryDeviceSettingsWrites?.();if (!this._initialized) void this.initialize(); };
     }
     async init() {
       this._settingsDiskStore = this.store.bind(this);
-      this._settingsRestoreTask = this._restoreSettingsFromDisk();
-      await Promise.all([
+      this._settingsRestoreTask = this.recoverOnce('exports', () => this._restoreSettingsFromDisk());
+      const results = await Promise.allSettled([
         this._settingsRestoreTask,
-        this.app.restoreDeviceSettings(this.store.bind(this)),
-        this.app.restoreCurrentDateSearchPreference(this.store.bind(this)),
-        window.ptSheetClock?.restore(this.store.bind(this)),
+        this.recoverOnce('layout', () => this.app.restoreDeviceSettings(this.store.bind(this))),
       ]);
-      await this.restoreExportFolder();
-      await this.app.migrateTextEditBackups(this.store.bind(this));
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure) throw failure.reason;
       this._initialized = true;
-      this.timer = setInterval(() => void this.tick(), 30000);
-      window.addEventListener('focus', () => void this.tick());
+      this._recoveryAttempts = 0;
+      void this.app.requestDeviceStoragePersistence?.();
+      await this.recoverExtras();
+      this.timer ||= setInterval(() => void this.tick(), 30000);
       void this.tick();
     }
     async _restoreSettingsFromDisk() {
@@ -255,6 +317,16 @@
         for (const key of Object.keys(SETTINGS_DEFAULTS)) if (current[key] === SETTINGS_DEFAULTS[key]) delete current[key];
       }
       const merged = PTDeviceSettings.mergeExports([persisted, readSettingsMultiTier(), current]);
+      // Edits made before the first disk read are newer user intent, even if
+      // this computer's clock was corrected since the last saved session.
+      if (this._pendingSettingEdits?.size) {
+        const timestamp = Math.max(Date.now(), ...Object.values(merged._fieldUpdatedAt || {}),0) + 1;
+        merged._fieldUpdatedAt ||= {};
+        for (const [key,value] of this._pendingSettingEdits) {
+          merged[key] = value;merged._fieldUpdatedAt[key] = timestamp;
+        }
+        this._pendingSettingEdits = null;
+      }
       this.settings = {...SETTINGS_DEFAULTS,...merged};
       this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
       persistSettingsMultiTier(this.settings);
@@ -269,7 +341,13 @@
       const timestamp = Math.max(Date.now(), ...Object.values(stamps).map(Number).filter(Number.isFinite),
         ...Object.values(latest._fieldUpdatedAt || {}).map(Number).filter(Number.isFinite), 0) + 1;
       for (const key of Object.keys(this.settings)) {
-        if (!key.startsWith('_') && JSON.stringify(this.settings[key]) !== JSON.stringify(previous[key])) stamps[key] = timestamp;
+        if (!key.startsWith('_') && JSON.stringify(this.settings[key]) !== JSON.stringify(previous[key])) {
+          stamps[key] = timestamp;
+          if (this._settingsRestorePending) {
+            this._pendingSettingEdits ||= new Map();
+            this._pendingSettingEdits.set(key,this.settings[key]);
+          }
+        }
       }
       this.settings._fieldUpdatedAt = stamps;
       this.settings = {...SETTINGS_DEFAULTS,...PTDeviceSettings.mergeExports([latest,this.settings])};
@@ -288,6 +366,10 @@
         await this._settingsDiskStore('device-export-settings-v1', snapshot);
         const saved = await this._settingsDiskStore('device-export-settings-v1');
         if (!PTDeviceSettings.containsStored('device-export-settings-v1',saved,snapshot)) throw Error('기기 저장소 확인에 실패했습니다.');
+        this.settings = {...SETTINGS_DEFAULTS,...PTDeviceSettings.mergeExports([this.settings,saved])};
+        this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
+        persistSettingsMultiTier(this.settings);
+        this.syncSettingsControls();
       });
       this._settingsDiskWrite.catch(error => this.report('설정 저장 실패 · '+error.message));
       return this._settingsDiskWrite;
@@ -295,6 +377,42 @@
     refreshSettings() {
       this.settings = PTDeviceSettings.mergeExports([this.settings,readSettingsMultiTier()]);
       this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
+    }
+    async refreshSettingsFromDisk() {
+      const saved = await this.store('device-export-settings-v1');
+      this.settings = {...SETTINGS_DEFAULTS,...PTDeviceSettings.mergeExports([this.settings,readSettingsMultiTier(),saved])};
+      this._savedSettingsSnapshot = JSON.parse(JSON.stringify(this.settings));
+      persistSettingsMultiTier(this.settings);
+      this.syncSettingsControls();
+    }
+    syncSettingsControls() {
+      if (!this.dialog?.open) return;
+      const fields = {backup:'data-backup',pdf:'data-pdf',time:'data-time',backupTime:'data-backup-time',
+        backupIntervalHours:'data-backup-interval',backupMaxCount:'data-backup-max-count',workHoursOnly:'data-workhours-only',
+        workStartTime:'data-work-start-time',workEndTime:'data-work-end-time'};
+      for (const [key,attribute] of Object.entries(fields)) {
+        const input = this.dialog.querySelector(`[${attribute}]`);
+        if (!input || input === document.activeElement) continue;
+        if (input.type === 'checkbox') input.checked = Boolean(this.settings[key]);
+        else input.value = String(this.settings[key]);
+      }
+      this.dialog.querySelectorAll('input[name="backupIntervalType"]').forEach(input => {
+        if (input !== document.activeElement) input.checked = input.value === this.settings.backupIntervalType;
+      });
+      this.dialog.querySelectorAll('.backup-type-item').forEach(item => {
+        item.classList.toggle('active',item.dataset.typeItem === this.settings.backupIntervalType);
+      });
+      const workHours = Boolean(this.settings.workHoursOnly);
+      for (const attribute of ['data-work-start-time','data-work-end-time']) {
+        this.dialog.querySelector(`[${attribute}]`).disabled = !workHours;
+      }
+      const workBox = this.dialog.querySelector('[data-workhours-inputs]');
+      workBox.style.opacity = workHours ? '1' : '0.5';
+      workBox.style.pointerEvents = workHours ? 'auto' : 'none';
+      this.dialog.querySelector('[data-workhours-badge]').textContent = workHours
+        ? `${this.settings.workStartTime} ~ ${this.settings.workEndTime} (퇴근 후 일시중지)` : '제한 없음 (24시간)';
+      this.dialog.querySelector('[data-next-backup]').textContent = this.getNextBackupDescription();
+      this.updatePDFSchedule();
     }
     bindTimeSetting(input, key, afterSave) {
       const save = () => {
@@ -324,30 +442,39 @@
       // Keep the handle and its displayed location together across relaunches.
       const selection = {handle,location};
       await this.store('folder-selection-v1',selection);
+      this._folderSelectionRevision = (this._folderSelectionRevision || 0) + 1;
       this.folder = handle;
       this.folderLocation = location;
+      this._folderRestorePending = false;
       await this.updateFolderDisplay();
       this.report('물리치료현황 폴더 연결됨');
     }
     async restoreExportFolder() {
+      this._folderRestorePending = true;
+      const revision = this._folderSelectionRevision || 0;
       const selection = await this.store('folder-selection-v1');
+      const legacy = selection?.handle?.kind === 'directory' ? null : await this.store('folder');
+      if (revision !== (this._folderSelectionRevision || 0)) return;
       if (selection?.handle?.kind === 'directory') {
         this.folder = selection.handle;
         this.folderLocation = Array.isArray(selection.location) ? selection.location.filter(value => typeof value === 'string') : null;
-      } else this.folder = await this.store('folder');
+      } else this.folder = legacy;
+      this._folderRestorePending = false;
     }
     async updateFolderDisplay() {
       const dialog = this.dialog, folder = this.folder;
       if (!dialog) return;
-      const location = folder ? this.folderLocation?.join(' › ') || folder.name : '저장 폴더를 연결해 주세요';
+      const location = folder ? this.folderLocation?.join(' › ') || folder.name
+        : this._folderRestorePending ? '저장 폴더를 다시 불러오는 중입니다' : '저장 폴더를 연결해 주세요';
       dialog.querySelectorAll('[data-folder-location]').forEach(el => {el.textContent=location;el.title=location;});
       dialog.querySelectorAll('[data-folder-card]').forEach(el => el.classList.toggle('is-linked',Boolean(folder)));
       let permission = 'prompt';
       try { if (folder) permission = await folder.queryPermission({mode:'readwrite'}); } catch (_) {}
       if (this.dialog !== dialog || this.folder !== folder) return;
-      dialog.querySelectorAll('[data-folder-state]').forEach(el => {el.textContent=!folder?'미연결':permission==='granted'?'저장 가능':'권한 확인 필요';});
+      dialog.querySelectorAll('[data-folder-state]').forEach(el => {el.textContent=this._folderRestorePending?'복원 중':!folder?'미연결':permission==='granted'?'저장 가능':'권한 확인 필요';});
       dialog.querySelectorAll('[data-folder-note]').forEach(el => {
-        el.textContent = !folder ? '백업은 브라우저 보관함에 보관됩니다. 자동 PDF를 저장하려면 폴더를 연결하세요.'
+        el.textContent = this._folderRestorePending ? '기존 폴더 연결을 복원한 뒤 자동 저장을 재개합니다. 저장 설정은 유지됩니다.'
+          : !folder ? '백업은 브라우저 보관함에 보관됩니다. 자동 PDF를 저장하려면 폴더를 연결하세요.'
           : permission==='granted' ? '선택한 폴더 이름으로 표시합니다. PDF와 백업 파일을 이 폴더에 함께 저장합니다.'
           : '폴더 변경 / 권한 갱신을 눌러 저장 권한을 허용해 주세요. 저장 설정은 유지됩니다.';
       });
@@ -521,7 +648,7 @@
       return clock >= startTime || clock <= endTime;
     }
     async tick() {
-      if (this.running || this._settingsRestorePending) return;
+      if (this.running || this._settingsRestorePending || this._folderRestorePending) return;
       this.refreshSettings();
       if (!this.settings.pdf && !this.settings.backup) return;
       this.running = true;
@@ -767,6 +894,7 @@
       dialog.className = 'device-settings-dialog';
       dialog.setAttribute('aria-labelledby', 'deviceSettingsTitle');
       this.dialog = dialog;
+      if (this._initialized) void this.refreshSettingsFromDisk().catch(error => this.report('설정 확인 재시도 필요 · '+error.message));
       const currentVersion = this.app?.appVersion || '확인 중';
       dialog.innerHTML = `
         <div class="device-settings-topbar">
@@ -948,6 +1076,7 @@
         <footer>
           <div class="device-settings-save-info">
           <span data-save-hint>체크·시간 변경은 자동 저장됩니다.</span>
+          <p data-persistence-status role="status" hidden></p>
           <p data-status role="status"></p>
           </div>
           <button type="button" data-save class="settings-primary">설정 저장</button>
@@ -1124,6 +1253,7 @@
       chkPdf.checked = Boolean(this.settings.pdf);
       // PDF 체크박스 즉시 저장 (설정 저장 버튼 없이도 상태 보존)
       chkPdf.addEventListener('change', () => {
+        if (chkPdf.checked && !this.settings.pdf) { this.settings.pdfFrom = previousDay(new Date()); this.settings.lastPDF = null; }
         this.settings.pdf = chkPdf.checked;
         this.save();
       });
@@ -1258,8 +1388,6 @@
         const time = inpPdfTime.value;
         const backupTypeVal = dialog.querySelector('input[name="backupIntervalType"]:checked')?.value || 'daily';
         const backupTimeVal = inpBackupTime.value;
-        const backupHoursVal = Number(selIntervalHours.value) || 2;
-        const backupMaxCountVal = Math.max(1, Number(selBackupMaxCount?.value) || 15);
         const workHoursOnlyVal = Boolean(chkWorkHoursOnly?.checked);
         const workStartTimeVal = inpWorkStartTime?.value || '09:00';
         const workEndTimeVal = inpWorkEndTime?.value || '18:00';
@@ -1270,27 +1398,15 @@
           if (!/^\d{2}:\d{2}$/.test(workStartTimeVal)) throw Error('출근 시각을 올바르게 선택해 주세요.');
           if (!/^\d{2}:\d{2}$/.test(workEndTimeVal)) throw Error('퇴근 시각을 올바르게 선택해 주세요.');
         }
-        if (editingPDF && pdf && !this.settings.pdf) { this.settings.pdfFrom = previousDay(new Date()); this.settings.lastPDF = null; }
-
-        this.settings = {
-          ...this.settings,
-          ...(editingPDF ? {pdf,time} : {
-            backup,
-            backupIntervalType: backupTypeVal,
-            backupTime: backupTimeVal,
-            backupIntervalHours: backupHoursVal,
-            backupMaxCount: backupMaxCountVal,
-            workHoursOnly: workHoursOnlyVal,
-            workStartTime: workStartTimeVal,
-            workEndTime: workEndTimeVal})
-        };
+        // Inputs commit their own edits immediately. Re-copying every control
+        // here would overwrite newer settings from another window with stale UI.
         await this.save();
         this.report('이 컴퓨터에 설정 저장됨');
 
         // 변경된 보관 개수 설정에 맞추어 기존 초과 백업 파일 즉시 정리
-        if (!editingPDF) await this.cleanupOldBackups(backupMaxCountVal);
+        if (!editingPDF) await this.cleanupOldBackups(this.settings.backupMaxCount);
 
-        if (!editingPDF && backup) {
+        if (!editingPDF && this.settings.backup) {
           await this.backup(true);
           this.report('로컬 백업 저장·검증 완료');
           const badge = dialog.querySelector('[data-last-backup-badge]');

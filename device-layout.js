@@ -88,13 +88,15 @@ class PTDeviceLayout {
 
   // 기기 전용 통합 UI 디스플레이 설정 읽기 (localStorage -> sessionStorage -> Cookie -> 레거시 자동 마이그레이션)
   readDevicePreferences() {
-    return PTDeviceSettings.readUI();
+    // Keep the recovered snapshot even when fast storage is full or blocked.
+    return PTDeviceSettings.readUI([this._devicePreferences]);
   }
 
   // 기기 전용 통합 UI 디스플레이 설정 영구 보존 (4중 계층: localStorage + sessionStorage + Cookie + IndexedDB + 레거시 미러링)
   persistDevicePreferences(prefs) {
     if (!prefs || typeof prefs !== 'object') return;
     prefs = PTDeviceSettings.mergeUI([this.readDevicePreferences(),prefs]);
+    this._devicePreferences = prefs;
     const key = "PT_DEVICE_UI_PREFS_V1";
     try { localStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
     try { sessionStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {}
@@ -135,8 +137,9 @@ class PTDeviceLayout {
     this._deviceSettingsRestorePending = true;
     const keys = ['device-ui-preferences-v1','device-column-widths-v1','device-summary-state-v1','device-toolbar-state-v1'];
     // Read every original disk snapshot before enabling any write path.
-    const [unified,widths,summary,toolbar] = await Promise.all(keys.map(key => store(key)));
-    this._deviceSettingsSnapshotsRead = true;
+    const results = await Promise.allSettled(keys.map(key => store(key)));
+    const [unified,widths,summary,toolbar] = results.map(result => result.status === 'fulfilled' ? result.value : null);
+    const failure = results.find(result => result.status === 'rejected');
     const disk = [unified, PTDeviceSettings.widthPreferences(widths),
       {summaryClosed:summary?.closed,summaryClosedUpdatedAt:summary?.updatedAt},
       {toolbarCollapsed:toolbar?.closed,toolbarCollapsedUpdatedAt:toolbar?.updatedAt}];
@@ -162,11 +165,15 @@ class PTDeviceLayout {
     }
     this.columnWidthUpdatedAt = {...merged.columnWidthUpdatedAt};
     this.deviceColumnWidths = {...merged.columnWidths};this.columnWidthsUpdatedAt = merged.columnWidthsUpdatedAt || 1;
+    this._devicePreferences = merged;
     this.deviceSummaryState = {closed:merged.summaryClosed,updatedAt:merged.summaryClosedUpdatedAt || 1};
     this.deviceToolbarState = {closed:merged.toolbarCollapsed,updatedAt:merged.toolbarCollapsedUpdatedAt || 1};
-    this.persistDevicePreferences(merged);
     this.setSummaryClosed(merged.summaryClosed,false);this.setToolbarActionsClosed(merged.toolbarCollapsed,false);
     this.applySavedColumnWidths();this.syncCrossDateColWidths();
+    // Render intact copies now, but never write over an unread snapshot.
+    if (failure) throw failure.reason;
+    this._deviceSettingsSnapshotsRead = true;
+    this.persistDevicePreferences(merged);
     this.devicePreferencesStore = this.columnWidthsStore = this.summaryStateStore = this.toolbarStateStore = store;
     this._deviceSettingsRestorePending = false;this._deviceSettingsRestored = true;
     this.sessionColumnWidthEdits = null;
@@ -695,6 +702,9 @@ class PTDeviceLayout {
     snapshot = PTDeviceSettings.widthSnapshot(PTDeviceSettings.mergeUI([
       this.readDevicePreferences(),PTDeviceSettings.widthPreferences(snapshot)
     ]));
+    this._devicePreferences = PTDeviceSettings.mergeUI([
+      this._devicePreferences,PTDeviceSettings.widthPreferences(snapshot)
+    ]);
     const key = typeof COL_WIDTHS_STORAGE_KEY !== "undefined" ? COL_WIDTHS_STORAGE_KEY : "PT_APP_COL_WIDTHS_STORAGE_V1";
     let atomicSaved = false, legacySaved = false;
     try {
@@ -754,6 +764,9 @@ class PTDeviceLayout {
       if (!PTDeviceSettings.containsStored("device-column-widths-v1",restored,snapshot)) {
         throw new Error("열 너비 저장 검증에 실패했습니다.");
       }
+      this._devicePreferences = PTDeviceSettings.mergeUI([
+        this.readDevicePreferences(),PTDeviceSettings.widthPreferences(restored)
+      ]);
     })();
     this.columnWidthsWrite = Promise.all([previous.catch(() => {}), write]);
     this.columnWidthsWrite.catch(error => {

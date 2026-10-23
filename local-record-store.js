@@ -1,5 +1,63 @@
 // Local record persistence and recovery; no cloud requests or application startup.
 class PTLocalRecordStore {
+  // Retain failed device writes independently of the UI or backup scheduler.
+  // A later successful transaction must not discard a newer queued edit.
+  async deviceSettingsStore(key, value) {
+    this._devicePendingWrites ||= new Map();
+    this._deviceStorageErrors ||= new Map();
+    const writing = value !== undefined;
+    if (writing) {
+      value = PTDeviceSettings.mergeStored(key, this._devicePendingWrites.get(key), value);
+      this._devicePendingWrites.set(key, value);
+    }
+    try {
+      const merge = (saved, incoming) => PTDeviceSettings.mergeStored(key, saved, incoming);
+      const result = await this.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key, value, merge);
+      if (writing) {
+        const saved = await this.localDatabaseStore('PT_DEVICE_BACKUPS', 'files', key);
+        if (!PTDeviceSettings.containsStored(key, saved, value)) throw new Error('기기 설정 저장 검증에 실패했습니다.');
+        if (this._devicePendingWrites.get(key) === value) this._devicePendingWrites.delete(key);
+      }
+      this._deviceStorageErrors.delete(key);
+      this.notifyDeviceStorageState();
+      return result;
+    } catch (error) {
+      this._deviceStorageErrors.set(key, error);
+      this.notifyDeviceStorageState();
+      if (writing) this.scheduleDeviceSettingsRetry();
+      throw error;
+    }
+  }
+
+  notifyDeviceStorageState() {
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pt-device-storage-state'));
+    }
+  }
+
+  scheduleDeviceSettingsRetry() {
+    if (this._deviceWriteRetryTimer) return;
+    const delay = Math.min(30000, 1000 * 2 ** Math.min(this._deviceWriteRetryCount || 0, 5));
+    this._deviceWriteRetryTimer = setTimeout(() => {
+      this._deviceWriteRetryTimer = null;
+      void this.retryDeviceSettingsWrites();
+    }, delay);
+  }
+
+  async retryDeviceSettingsWrites() {
+    if (this._deviceWriteRetryTask) return this._deviceWriteRetryTask;
+    clearTimeout(this._deviceWriteRetryTimer);this._deviceWriteRetryTimer = null;
+    this._deviceWriteRetryTask = Promise.allSettled([...this._devicePendingWrites || []].map(([key,value]) =>
+      this.deviceSettingsStore(key,value))).finally(() => {
+        this._deviceWriteRetryTask = null;
+        if (this._devicePendingWrites?.size) {
+          this._deviceWriteRetryCount = (this._deviceWriteRetryCount || 0) + 1;
+          this.scheduleDeviceSettingsRetry();
+        } else this._deviceWriteRetryCount = 0;
+      });
+    return this._deviceWriteRetryTask;
+  }
+
   requestDeviceStoragePersistence() {
     if (this._deviceStoragePersistence) return this._deviceStoragePersistence;
     this._deviceStoragePersistence = (async () => {
