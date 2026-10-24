@@ -167,7 +167,7 @@ class PTTableFormatting {
     const status = appliedColor ? { value: appliedColor, label: appliedColor } : this.getFormattingStatus("color");
     icon.style.borderBottomColor = status.value || "#000000";
     icon.style.borderBottomStyle = status.label === "여러 값" ? "dashed" : "solid";
-    const label = `글자색: ${status.label}`;
+    const label = `글자색: ${status.label} (Ctrl/Cmd+G: 빨간색 적용/해제)`;
     button.title = label;
     button.setAttribute("aria-label", label);
   }
@@ -884,7 +884,7 @@ class PTTableFormatting {
   handleTextFormattingShortcut(event) {
     if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(event)) return false;
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.isComposing || event.keyCode === 229) return false;
-    const red = event.code === 'Space' || event.key === ' ';
+    const red = event.code === 'KeyG' || event.key?.toLowerCase() === 'g';
     const bold = event.code === 'KeyB' || event.key?.toLowerCase() === 'b';
     const highlight = event.code === 'KeyE' || event.key?.toLowerCase() === 'e';
     if ((!red && !bold && !highlight) || !this.getFormattingRange()) return false;

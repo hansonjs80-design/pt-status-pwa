@@ -46,7 +46,7 @@ test('font color indicator follows selection, applied colors and reset without c
     instance.getFormattingStatus = () => ({ value: null, label: '여러 값' });
     instance.updateFontColorIndicator();
     assert.equal(icon.style.borderBottomStyle, 'dashed');
-    assert.equal(attributes['aria-label'], '글자색: 여러 값');
+    assert.equal(attributes['aria-label'], '글자색: 여러 값 (Ctrl/Cmd+G: 빨간색 적용/해제)');
     instance.getFormattingStatus = () => ({ value: null, label: '선택 없음' });
     instance.updateFontColorIndicator();
     assert.equal(icon.style.borderBottomColor, '#000000');
@@ -937,7 +937,7 @@ test('format shortcuts target the cell or selected text and leave unrelated inpu
   instance.isShortcutFormattingApplied=()=>false;
   instance.applyTextColor=color=>calls.push(color);
   instance.applyColumnTypography=(property,value)=>calls.push([property,value]);
-  const event={target:input,ctrlKey:true,key:' ',code:'Space',preventDefault(){calls.push('prevent');},stopPropagation(){}};
+  const event={target:input,ctrlKey:true,key:'g',code:'KeyG',preventDefault(){calls.push('prevent');},stopPropagation(){}};
   assert.equal(instance.handleTextFormattingShortcut(event),true);
   assert.equal(calls.at(-1),'#ff0000');
   assert.equal(instance.handleTextFormattingShortcut({...event,ctrlKey:false,metaKey:true,key:'b',code:'KeyB'}),true);
@@ -990,7 +990,7 @@ test('repeating either formatting shortcut dispatches reset instead of applying 
   instance.captureTextColorSelection=()=>{};instance.isShortcutFormattingApplied=()=>true;
   instance.applyTextColor=value=>calls.push(['color',value]);
   instance.applyColumnTypography=(property,value)=>calls.push([property,value]);
-  const event={target:sheet,ctrlKey:true,key:' ',preventDefault(){},stopPropagation(){}};
+  const event={target:sheet,ctrlKey:true,key:'g',preventDefault(){},stopPropagation(){}};
   assert.equal(instance.handleTextFormattingShortcut(event),true);
   assert.equal(instance.handleTextFormattingShortcut({...event,key:'b'}),true);
   assert.deepEqual(calls,[['color',null],['fontWeight',null]]);
@@ -1332,6 +1332,39 @@ test('native Windows and macOS input-source shortcuts never apply formatting', (
       for(const modifier of ['ctrlKey','metaKey']) {
         const event={key:' ',code:'Space',[modifier]:true,preventDefault(){assert.fail('OS input-source shortcut was cancelled');}};
         assert.equal(instance.handleTextFormattingShortcut(event),false);
+      }
+    }
+  } finally {delete context.navigator;}
+});
+
+test('Ctrl/Cmd+G uses red on Windows and macOS, including the physical Korean key, and ignores held keys', () => {
+  const instance=Object.create(context.App.prototype), sheet={};
+  instance.elSheetContainer=sheet;
+  instance.getFormattingRange=()=>({minRow:0,maxRow:0,minCol:8,maxCol:8});
+  instance.captureTextColorSelection=()=>{};
+  instance.isShortcutFormattingApplied=(property,value)=>{
+    assert.equal(property,'color');
+    assert.equal(value,'#ff0000');
+    return false;
+  };
+  try {
+    for (const platform of ['Win32','MacIntel']) {
+      context.navigator={platform};
+      for (const modifier of ['ctrlKey','metaKey']) {
+        const colors=[];
+        instance.applyTextColor=value=>colors.push(value);
+        let prevented=0;
+        const event={target:sheet,[modifier]:true,key:'g',code:'KeyG',preventDefault(){prevented++;},stopPropagation(){}};
+        for (const extra of [{},{key:'ㅎ'},{key:'G',code:''}]) {
+          assert.equal(instance.handleTextFormattingShortcut({...event,...extra}),true);
+        }
+        assert.equal(instance.handleTextFormattingShortcut({...event,repeat:true}),true);
+        assert.deepEqual(colors,['#ff0000','#ff0000','#ff0000']);
+        assert.equal(prevented,4,'prevent browser find-next, including held G');
+        for (const extra of [{key:' ',code:'Space'},{isComposing:true},{keyCode:229},{shiftKey:true},{altKey:true}]) {
+          assert.equal(instance.handleTextFormattingShortcut({...event,...extra}),false);
+        }
+        assert.equal(prevented,4);
       }
     }
   } finally {delete context.navigator;}

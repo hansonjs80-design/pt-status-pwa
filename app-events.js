@@ -393,7 +393,7 @@ class PTAppEvents {
       if (this.handleNextNameCellShortcut(e)) return;
       if (!e.defaultPrevented && this.handleForcedCorrectionShortcut(e)) return;
       if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
-      // Input-source shortcuts win over formatting (Ctrl+Space was also red).
+      // Keep input-source shortcuts separate from text formatting.
       if (this.handleCellLanguageToggle(e)) return;
       if (!e.defaultPrevented && this.handleTextFormattingShortcut(e)) return;
       if (!e.defaultPrevented) this.handlePatientEditorSearchShortcut(e);

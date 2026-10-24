@@ -1,7 +1,7 @@
 // Release detection, service-worker lifecycle and safe reload live in one module.
 // Change releases with: node scripts/set-release-version.mjs vNNN
 class PTAppUpdates {
-  static VERSION = "v472";
+  static VERSION = "v473";
 
   announceAvailableUpdate(version) {
     if (version) this.latestServerVersion = version;
