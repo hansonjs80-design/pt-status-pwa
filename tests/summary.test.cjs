@@ -708,7 +708,7 @@ test('header summary count button displays daily total and toggles summary sideb
   assert.ok(headerBtn.title.includes('접기'));
 });
 
-test('monthly summary table merges weekday averages into bottom average row and hides deselected weekdays', () => {
+test('monthly summary table shows totals before averages and follows weekday and week filters', () => {
   function createMockElement(tag, text, className) {
     const children = [];
     const el = {
@@ -771,6 +771,7 @@ test('monthly summary table merges weekday averages into bottom average row and 
     '2026-10-05': [{ name: '환자1' }], // 월요일 (1)
     '2026-10-06': [{ name: '환자2' }], // 화요일 (2)
     '2026-10-11': [{ name: '환자3' }], // 일요일 (0)
+    '2026-10-12': [{ name: '가상4' }, { name: '가상5' }], // 다음 주 월요일
   };
 
   // 1. 모든 요일 선택 시
@@ -796,6 +797,12 @@ test('monthly summary table merges weekday averages into bottom average row and 
   const lastRow = tbody.children[tbody.children.length - 1];
   assert.equal(lastRow.children[0].textContent, '평균', '마지막 행의 제목은 평균');
   assert.equal(lastRow.className, 'summary-row-highlight', '평균 행에 하이라이트 클래스 적용');
+  const totalRow = tbody.children.at(-2);
+  assert.equal(totalRow.className, 'summary-row-highlight', '합계 행도 강조 표시');
+  assert.deepEqual(totalRow.children.map(cell => cell.textContent),
+    ['합계', '3', '1', '0', '0', '0', '0', '1', '5', '1.3'],
+    '요일별 실제 건수를 합산하고 일평균은 전체 4개 기록일로 계산');
+  assert.equal(lastRow.children.at(-2).textContent, '2.5', '기존 주평균 유지');
 
   // 2. 일요일(0) 제외 시
   instance.summaryWeekdays = [1, 2, 3, 4, 5, 6];
@@ -811,6 +818,25 @@ test('monthly summary table merges weekday averages into bottom average row and 
   const headers = headerRow.children.map(th => th.textContent);
   assert.ok(!headers.includes('일'), '제외된 일요일 열은 헤더에 포함되지 않아야 함');
   assert.ok(headers.includes('월'), '선택된 월요일 열은 헤더에 포함됨');
+  const body2 = table2.children.find(c => c.tagName === 'TBODY');
+  assert.deepEqual(body2.children.at(-2).children.map(cell => cell.textContent),
+    ['합계', '3', '1', '0', '0', '0', '0', '4', '1.3'], '선택한 요일만 합산');
+
+  instance.summaryWeeks = [3];
+  const filtered = instance.getSummaryDates('month', true);
+  instance.renderSummaryAnalytics('month', dates, filtered, instance.getDailySummary(filtered.flatMap(entry => entry.rows)));
+  const getTotalCells = () => {
+    const panel = sidebar.children.find(c => c.id === 'summaryAnalytics');
+    const tables = panel.children.find(c => c.className === 'summary-average-tables');
+    const scroll = tables.children.find(c => c.className === 'summary-table-scroll');
+    const body = scroll.children[0].children.find(c => c.tagName === 'TBODY');
+    assert.equal(body.children.at(-1).children[0].textContent, '평균');
+    return body.children.at(-2).children.map(cell => cell.textContent);
+  };
+  assert.deepEqual(getTotalCells(), ['합계', '2', '0', '0', '0', '0', '0', '2', '2.0'], '선택한 주만 합산');
+  instance.summaryWeeks = [];
+  instance.renderSummaryAnalytics('month', dates, [], instance.getDailySummary([]));
+  assert.deepEqual(getTotalCells(), ['합계', '0', '0', '0', '0', '0', '0', '0', '—'], '선택 기록이 없으면 합계 0과 일평균 없음 표시');
 });
 
 test('hanraeng bug rows without patient details are excluded from daily and period summary counts', () => {

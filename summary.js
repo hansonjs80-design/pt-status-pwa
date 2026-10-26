@@ -298,6 +298,12 @@ class PTSummary {
             return [`${week}주`, ...days.map(day => stats(group.filter(entry => entry.weekday === day), metric).average), total.sum.toLocaleString("ko-KR"), total.average];
           });
           const metricTotal = stats(selectedDates, metric);
+          const totalRow = [
+            "합계",
+            ...days.map(day => stats(selectedDates.filter(entry => entry.weekday === day), metric).sum.toLocaleString("ko-KR")),
+            metricTotal.sum.toLocaleString("ko-KR"),
+            metricTotal.average
+          ];
           const avgRow = [
             "평균",
             ...days.map(day => stats(selectedDates.filter(entry => entry.weekday === day), metric).average),
@@ -305,7 +311,7 @@ class PTSummary {
             metricTotal.average
           ];
           render(`주별·요일별 일평균 · ${metric.label}`, ["주", ...days.map(day => "일월화수목금토"[day]), "주 합계", "일평균"],
-            [...weekRows, avgRow]);
+            [...weekRows, totalRow, avgRow]);
         }
       } else {
         const months = Array.from({length:12}, (_,i) => i+1).filter(month => !this.summaryYearMonth || month === this.summaryYearMonth);
