@@ -123,6 +123,11 @@ class PTSheetActions {
   }
 
   copySelection() {
+    // Whole-cell copy ends caret/IME editing before taking its snapshot. The
+    // next arrow belongs to the sheet, not to the old caret or autocomplete.
+    const editor = typeof document !== 'undefined' ? document.activeElement : null;
+    if (editor?.matches?.('.cell-input-element')) editor.blur();
+    if (this.autocompleteState) this.closeAutocompleteMenu();
     this.pendingCut = null;
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const rows = this.getCurrentRows();
@@ -184,6 +189,7 @@ class PTSheetActions {
           console.warn("Clipboard write failed, internal buffer used:", err);
         });
       }
+      this.elSheetContainer?.focus?.({ preventScroll: true });
       this.showSaveIndicator("클립보드에 복사됨");
     }
   }

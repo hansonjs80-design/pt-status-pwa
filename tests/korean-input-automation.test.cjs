@@ -988,3 +988,24 @@ test('Windows name accepts a native composition with no keyboard event after sof
   typeKeys(input,'tn');
   assert.equal(input.value,'김민수');assert.equal(app.getCurrentRows()[0].name,'김민수');
 });
+
+
+test('whole-cell copy and cut commit the live editor before snapshot and return keyboard focus to the sheet',()=>{
+  for(const action of ['copySelection','cutSelection']) {
+    const {app,input,context}=editingFixture({column:'memo',value:'이전'});
+    app.activeCell={rowIdx:0,colKey:'memo'};app.selectedRange=app.selectedColKey=null;
+    app.selectedRowIdx=0;
+    for(const method of ['applyCellFormatting','renderColoredText','saveDataStore','endNativeCellEditing','showSaveIndicator','renderClipboardSelection'])app[method]=()=>{};
+    app.captureCellFormatting=()=>({});
+    input.matches=()=>true;input.value='확정 값';
+    input.blur=()=>input._listeners.blur();context.document.activeElement=input;
+    const sheet={focus(){context.document.activeElement=sheet;}};app.elSheetContainer=sheet;
+    context.navigator={clipboard:{writeText:async()=>{}}};
+    app[action]();
+    assert.equal(app.clipboardBuffer,'확정 값',action+': snapshot follows commit');
+    assert.equal(app.getCurrentRows()[0].memo,'확정 값','cut retains source until paste');
+    assert.equal(context.document.activeElement,sheet,action+': arrows belong to sheet');
+    assert.equal(app.clipboardSelection.minCol,8);
+    if(action==='cutSelection')assert.equal(app.pendingCut.cells[0].value,'확정 값');
+  }
+});
