@@ -24,6 +24,7 @@ class PTPatientSearchDialog {
 
   handleSearchPromptKeyDown(e) {
     const enter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
+    if (enter || ["ArrowDown", "ArrowUp"].includes(e.key)) this.flushSearchPromptAutocomplete();
     if (enter || ["ArrowDown", "ArrowUp", "Escape"].includes(e.key)) e.stopPropagation();
     if (enter) {
       if (e.repeat || this.searchPromptEnterPending) return;
@@ -88,12 +89,11 @@ class PTPatientSearchDialog {
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
     this.restoreSearchPromptPosition();
-    this.searchPromptFocusTimer = setTimeout(() => {
-      if (this.elSearchPromptModal.style.display !== "flex") return;
-      this.elSearchPromptInput.focus();
-      this.elSearchPromptInput.select();
-      this.updateSearchPromptAutocomplete();
-    }, 60);
+    // Own the very first key immediately. A delayed select() used to select
+    // letters already typed by a fast user and let the next letter replace them.
+    this.elSearchPromptInput.focus();
+    this.elSearchPromptInput.select();
+    this.queueSearchPromptAutocomplete();
   }
 
   closeSearchPromptModal() {
@@ -239,6 +239,25 @@ class PTPatientSearchDialog {
     this.moveSearchPromptAutocompleteSelection(0);
   }
 
+  queueSearchPromptAutocomplete() {
+    clearTimeout(this.searchPromptAutocompleteTimer);
+    // An edited query supersedes an in-flight submission and its selection.
+    if (this.searchPromptSubmitting && this.elSearchPromptInput.value.trim() !== this.searchPromptSubmission?.query) this.cancelSearchPromptSubmission();
+    this.closeSearchPromptAutocomplete();
+    const requestId = this.searchPromptRequestId;
+    this.searchPromptAutocompleteTimer = setTimeout(() => {
+      this.searchPromptAutocompleteTimer = null;
+      if (requestId === this.searchPromptRequestId && this.elSearchPromptModal?.style.display === 'flex') this.updateSearchPromptAutocomplete();
+    }, 25);
+  }
+
+  flushSearchPromptAutocomplete() {
+    if (this.searchPromptAutocompleteTimer == null) return;
+    clearTimeout(this.searchPromptAutocompleteTimer);
+    this.searchPromptAutocompleteTimer = null;
+    if (this.elSearchPromptModal?.style.display === 'flex') this.updateSearchPromptAutocomplete();
+  }
+
   moveSearchPromptAutocompleteSelection(delta) {
     if (!this._searchPromptACMenu || !this._searchPromptACSuggestions?.length) return;
     this._searchPromptACIndex = Math.max(0, Math.min(this._searchPromptACSuggestions.length - 1, this._searchPromptACIndex + delta));
@@ -255,6 +274,8 @@ class PTPatientSearchDialog {
   }
 
   closeSearchPromptAutocomplete() {
+    clearTimeout(this.searchPromptAutocompleteTimer);
+    this.searchPromptAutocompleteTimer = null;
     this._searchPromptACCleanup?.();
     this._searchPromptACCleanup = null;
     const menu = document.getElementById("searchPromptAutocompleteMenu");
@@ -427,7 +448,7 @@ class PTPatientSearchDialog {
     this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     this.searchPromptSubmitting = true;
     const requestId = this.searchPromptRequestId || 0;
-    const submission = {};
+    const submission = {query:q};
     const cancelled = new Promise(resolve => { submission.cancel = resolve; });
     this.searchPromptSubmission = submission;
     const button = this.elBtnSearchPromptSubmit;

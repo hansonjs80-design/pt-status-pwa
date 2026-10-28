@@ -461,6 +461,38 @@ function typeKeys(input, keys, extra = {}) {
   for (const key of keys) input._listeners.keydown(keyEvent(key, { code: `Key${key.toUpperCase()}`, ...extra }));
 }
 
+test('ordinary input after a missing compositionend releases the composition lock without losing text', () => {
+  for (const platform of ['MacIntel', 'Win32']) for (const inputType of ['insertText', 'insertFromPaste'])
+  for (const column of ['name', 'part', 'memo', 'specialNote']) {
+    const {app,input} = editingFixture({column,value:'',environment:{navigator:{platform}}});
+    let moved = false;
+    for (const method of ['applyCellFormatting','renderColoredText','saveDataStore','refreshNewPatientRows','endNativeCellEditing']) app[method] = () => {};
+    app.selectAutocompleteRightCell = () => { moved = true; };
+    app.focusSelectedCellEditor = () => {};
+    input._listeners.compositionstart({type:'compositionstart'});
+    input.value = '가';
+    input._listeners.input({type:'input',inputType:'insertCompositionText',isComposing:true,data:'가'});
+    // Native IME was interrupted; the next committed edit is definitely not composition.
+    input.value = '가나';
+    input._listeners.input({type:'input',inputType,isComposing:false,data:'나'});
+    const enter = keyEvent('Enter',{code:'Enter',isComposing:false});
+    input._listeners.keydown(enter);
+    assert.equal(moved,true,column + ': Enter must work after ordinary input');
+    assert.equal(app.getCurrentRows()[0][column],'가나');
+  }
+});
+
+test('recovering an interrupted correction applies the correction only once per input', () => {
+  const {app,input} = editingFixture({column:'name',value:''});
+  input._listeners.compositionstart({type:'compositionstart'});
+  input._forcedCorrectionProjection = {source:'가',target:'나'};
+  let calls = 0;
+  app.updateForcedCorrection = () => { calls++; };
+  input.value = '가';
+  input._listeners.input({type:'input',inputType:'insertText',isComposing:false,data:'가'});
+  assert.equal(calls,1);
+});
+
 test('each software input toggle is consumed once even when its event reaches the sheet', () => {
   const toggles = [
     { key: 'HangulMode', code: 'Lang1' },

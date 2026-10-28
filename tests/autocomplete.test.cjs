@@ -665,6 +665,21 @@ test('native editor reuses historical candidates and formatting while current-da
   assert.equal(reads,2,'a new editor gets a new snapshot');
 });
 
+test('first autocomplete formats only matching candidates, not every historical patient', () => {
+  const document={activeElement:{isConnected:true,matches:()=>true}};
+  const records=Array.from({length:10000},(_,i)=>({name:`다른${i}`,memo:`다른 메모${i}`}));
+  records.push({name:'김가상',memo:'확인 완료',_textColors:{name:'#ff0000'}});
+  const app=createApp({'2026-09-29':records},{},{document});
+  const original=app.getRowAutocompleteFormatting;let formats=0;
+  app.getRowAutocompleteFormatting=function(...args){formats++;return original.apply(this,args);};
+  assert.deepEqual(suggestions(app,'name','김'),['김가상']);
+  assert.equal(formats,1);
+  suggestions(app,'name','김가');assert.equal(formats,1,'repeated keys reuse matched formats');
+  assert.equal(app.getAutocompleteValueFormatting('name','김가상').color,'#ff0000');
+  assert.deepEqual(suggestions(app,'memo','확인'),['확인 완료']);
+  assert.equal(formats,2);
+});
+
 test('history snapshots refresh for cloud changes, same-array sync edits, date changes and undo row replacement', () => {
   const document={activeElement:{isConnected:true,matches:()=>true}};
   const app=createApp({'2026-09-30':[],'2026-09-29':[{name:'김옛값'}]}, {}, {document});

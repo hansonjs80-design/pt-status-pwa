@@ -96,14 +96,20 @@ class PTPresetCandidates {
     const revision = JSON.stringify(this.columnFormatting?.[colKey] || {});
     let cached = snapshot.formatVariants.get(colKey);
     if (!cached || cached.revision !== revision) {
-      const groups = new Map();
+      cached = {revision,groups:new Map()}; snapshot.formatVariants.set(colKey,cached);
+    }
+    // Only resolve typography for the (at most ten) matched values. Building
+    // rich text for every past patient on the first key blocks rapid typing.
+    const missing = new Set(items.map(String).filter(text => text && !cached.groups.has(text)));
+    if (missing.size) {
+      const groups = cached.groups;
+      for (const text of missing) groups.set(text,{raw:new Set(),formats:new Map()});
       for (const date of snapshot.dates) {
         if (date === this.currentDate) continue;
         for (const row of Array.isArray(snapshot.store[date]) ? snapshot.store[date] : []) {
           const text = String(row?.[colKey] ?? '').trim();
-          if (!text) continue;
-          let group = groups.get(text);
-          if (!group) { group = {raw:new Set(),formats:new Map()}; groups.set(text,group); }
+          if (!missing.has(text)) continue;
+          const group = groups.get(text);
           if (group.formats.size >= 10) continue;
           const raw = JSON.stringify([row._textColors?.[colKey],row._textStyles?.[colKey],row._richText?.[colKey],row._formatRevisions?.[colKey]]);
           if (group.raw.has(raw)) continue;
@@ -112,7 +118,6 @@ class PTPresetCandidates {
           group.formats.set(this.getPresetCandidateFormatKey(colKey,item),item);
         }
       }
-      cached = {revision,groups}; snapshot.formatVariants.set(colKey,cached);
     }
     const expanded = [];
     const current = new Map();

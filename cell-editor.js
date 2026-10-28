@@ -499,6 +499,7 @@ class PTCellEditor {
       }, 0);
     };
     input.addEventListener("compositionstart", (e) => {
+      if (isCommitted || input.isConnected === false) return;
       if (this.restoreHandledCellKey(input, e)) return;
       this.beginCellComposition(input);
       input._engKorBuffer = "";
@@ -540,13 +541,27 @@ class PTCellEditor {
       if (this.autocompleteState) this.autocompleteState.isPresetPicker = false;
       if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
       const handledKey = this.restoreHandledCellKey(input, e);
+      let recoveredCorrection = false;
       if (handledKey) composing = false;
       else if (e.isComposing || /Composition/.test(e.inputType || "")) this.projectCellComposition(input, e);
+      // IME cancellation/window switching can omit compositionend. A real,
+      // non-composition edit proves that the old composition is no longer live.
+      // Do not use a timer: a deliberate long Korean composition must stay intact.
+      if (!handledKey && e.isComposing === false && e.inputType && !/Composition/.test(e.inputType)) {
+        composing = false;
+        input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        if (input._forcedCorrectionProjection) {
+          this.updateForcedCorrection(input, colKey, {commit: true, deleting: e.inputType.startsWith('delete')});
+          recoveredCorrection = true;
+        }
+        delete input._nativeCellComposition;
+      }
       this.rememberPatientSearchDraft(rowIdx, colKey, input);
       if (e.isComposing && !handledKey) { composing = true; input.dataset.nativeComposing = "true"; input.dataset.composing = "true"; }
       this.activateNativeEditor(input);
       this.clearInlineAutocompletePreview();
-      if (!handledKey) this.updateForcedCorrection(input, colKey, {deleting: e.inputType?.startsWith('delete')});
+      if (!handledKey && !recoveredCorrection) this.updateForcedCorrection(input, colKey, {deleting: e.inputType?.startsWith('delete')});
       const val = this.getCellEditorValue(input);
       this.updateEditorTextColors(rows[rowIdx], colKey, val);
 

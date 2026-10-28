@@ -46,6 +46,38 @@ function createSearchPrompt(storage = new Map()) {
   return { app, context, card, storage, events, windowEvents, move };
 }
 
+test('opening the prompt focuses once before rapid typing and never selects new text later', () => {
+  const {app,context}=createSearchPrompt();
+  const timers=new Map();let id=0,focused=0,selected=0,queries=[];
+  context.setTimeout=fn=>{timers.set(++id,fn);return id;};context.clearTimeout=id=>timers.delete(id);
+  app.elSearchPromptInput.focus=()=>focused++;
+  app.elSearchPromptInput.select=()=>selected++;
+  app.updateSearchPromptAutocomplete=()=>queries.push(app.elSearchPromptInput.value);
+  app.openSearchPromptModal(0,'');
+  assert.equal(focused,1);assert.equal(selected,1);
+  for(const value of ['ㄱ','기','김','김가상']) { app.elSearchPromptInput.value=value;app.queueSearchPromptAutocomplete(); }
+  for(const fn of timers.values())fn();
+  assert.deepEqual(queries,['김가상']);
+  assert.equal(selected,1);assert.equal(app.elSearchPromptInput.value,'김가상');
+});
+
+test('editing a pending prompt query cancels the stale result and allows a fresh submission', async () => {
+  const {app,context}=createSearchPrompt();context.setTimeout=()=>1;
+  app.openSearchPromptModal(0,'이전');
+  let finish;app.preparePatientHistorySearch=()=>new Promise(resolve=>{finish=resolve;});
+  app.searchAllDates=()=>assert.fail('old query must not replace the newly typed query');
+  const pending=app.submitSearchPrompt();
+  assert.equal(app.searchPromptSubmitting,true);
+  app.elSearchPromptInput.value='새 검색';app.queueSearchPromptAutocomplete();
+  assert.equal(app.searchPromptSubmitting,false);
+  finish({exists:true,searchStore:{}});await pending;
+  assert.equal(app.elSearchPromptModal.style.display,'flex');
+  let searched;app.preparePatientHistorySearch=()=>({exists:true,searchStore:{}});
+  app.searchAllDates=q=>{searched=q;};await app.submitSearchPrompt();
+  assert.equal(searched,'새 검색');
+});
+
+
 test('a late direct search cannot replace a new prompt or a different date', async () => {
   for (const action of ['prompt', 'date']) for (const exists of [true, false]) {
     const { app } = createSearchPrompt();
@@ -1674,7 +1706,7 @@ test('direct chart/name search closes a lingering prompt, cancels its focus call
     app.handleGlobalKeyDown(event);
     assert.equal(app.elSearchPromptModal.style.display,'none');
     for(const fn of timers.values()) fn();
-    assert.equal(focused,0);
+    assert.equal(focused,1,'opening focuses immediately; a closed prompt must never reclaim focus');
     app.openSearchPromptModal=()=>assert.fail('held shortcut must not reopen the prompt');
     app.handleGlobalKeyDown({...event,repeat:true,target:{tagName:'DIV',closest:()=>null}});
     assert.equal(searches,1);
