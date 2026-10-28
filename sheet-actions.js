@@ -388,9 +388,17 @@ class PTSheetActions {
     }
   }
 
+  finishEditorBeforeClear() {
+    // Finish the old draft first. A blur fired by table replacement must never
+    // save that draft after the user's explicit cell/row/column deletion.
+    const input = typeof document !== 'undefined' ? document.activeElement : null;
+    if (input?.matches?.('.cell-input-element')) input.blur?.();
+  }
+
   clearSelection() {
     // History coordinates refer to their source dates, never today's row numbers.
     if (this.crossDateSelection) return this.clearHistoryNotes();
+    this.finishEditorBeforeClear();
     const colKeys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const rows = this.getCurrentRows();
     const previousPatients = this.getPatientIdentitySnapshot(rows);
@@ -481,6 +489,7 @@ class PTSheetActions {
   }
 
   clearRowData(targetRowIdx) {
+    this.finishEditorBeforeClear();
     const rows = this.getCurrentRows();
     const previousPatients = this.getPatientIdentitySnapshot(rows);
     let minRow = targetRowIdx;
@@ -611,6 +620,7 @@ class PTSheetActions {
 
   clearColData(colKey) {
     if (!colKey) return;
+    this.finishEditorBeforeClear();
     const rows = this.getCurrentRows();
     const previousPatients = this.getPatientIdentitySnapshot(rows);
     rows.forEach((r) => {

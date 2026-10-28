@@ -26,7 +26,7 @@ const server = http.createServer(async (req, res) => {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1500, height: 1000 } });
     await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     await context.addInitScript(() => {
-      localStorage.setItem('PT_APP_DATA_STORAGE_V1', '{}');
+      if (localStorage.getItem('PT_APP_DATA_STORAGE_V1') === null) localStorage.setItem('PT_APP_DATA_STORAGE_V1', '{}');
       localStorage.setItem('PT_SEARCH_PERIOD', '1year_plus');
       window.addEventListener('DOMContentLoaded', () => {
         PTApp.prototype.initSupabase = () => {};
@@ -71,20 +71,113 @@ const server = http.createServer(async (req, res) => {
     assert.deepEqual(errors, []);
     assert.ok(result.names.every(name => name === '김가상'));
     assert.ok(result.editors <= 1);
+    // Exercise selection-to-type and double-click editing across the other
+    // text columns. Every key is sent with zero intentional delay.
+    const otherColumns = ['no','chartNo','part','prescription','extra','writer','memo','specialNote'];
+    let rapidOtherCells = 0;
+    for (const mode of ['selected', 'double']) for (let round = 0; round < 3; round++) {
+      const row = 60 + (mode === 'double' ? 3 : 0) + round;
+      for (const col of otherColumns) {
+        const target = page.locator(`.excel-cell[data-row="${row}"][data-col="${col}"]`);
+        // Writer double-click intentionally opens its preset picker; F2 edits text.
+        if (mode === 'double' && col !== 'writer') await target.dblclick();
+        else { await target.click(); if (mode === 'double') await page.keyboard.press('F2'); }
+        const value = col === 'no' ? `${round + 1}` : col === 'chartNo' ? `9876${row}` :
+          col === 'writer' ? 'JS' : `rapid-${row}-${col}`;
+        await target.locator('input').evaluate(input => input.setSelectionRange(0, input.value.length));
+        await page.keyboard.type(value, {delay:0});
+        await page.keyboard.press(round % 2 ? 'Tab' : 'Enter');
+        assert.equal(await page.evaluate(({row,col}) => String(ptApp.getCurrentRows()[row][col]), {row,col}), value, `${mode}: ${col}`);
+        rapidOtherCells++;
+      }
+    }
+    // A discarded selection editor must not process late native events.
+    for (const col of otherColumns) {
+      const target = page.locator(`.excel-cell[data-row="70"][data-col="${col}"]`);
+      await target.click();
+      await page.evaluate(() => { window.retiredEditor = document.activeElement; });
+      await page.locator('.excel-cell[data-row="71"][data-col="memo"]').click();
+      const before = await page.evaluate(col => ptApp.getCurrentRows()[70][col], col);
+      await page.evaluate(() => {
+        retiredEditor.value = 'late';
+        retiredEditor.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertText',isComposing:false,data:'late'}));
+        retiredEditor.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true,data:'late'}));
+      });
+      assert.equal(await page.evaluate(col => ptApp.getCurrentRows()[70][col], col), before, `retired: ${col}`);
+    }
+    // Enter -> reselect -> clear, plus deletion while the caret is still
+    // editing. Wait past autosave and autocomplete timers to catch resurrection.
+    const deletionColumns = ['name', ...otherColumns];
+    let deletionChecks = 0;
+    for (const col of deletionColumns) {
+      for (const key of ['Delete','Backspace']) {
+        const row = key === 'Delete' ? 74 : 75;
+        const target = page.locator(`.excel-cell[data-row="${row}"][data-col="${col}"]`);
+        await target.click();
+        await target.locator('input').evaluate(input => input.setSelectionRange(0,input.value.length));
+        await page.keyboard.type(col === 'name' ? 'rlarktkd' : col === 'writer' ? 'JS' : '123456', {delay:0});
+        await page.keyboard.press('Enter');
+        await target.click();
+        await page.evaluate(() => { window.clearedEditor = document.activeElement; });
+        await page.keyboard.press(key);
+        await page.evaluate(() => {
+          clearedEditor.value = 'late';
+          clearedEditor.dispatchEvent(new InputEvent('input',{inputType:'insertText',isComposing:false,data:'late'}));
+          clearedEditor.dispatchEvent(new CompositionEvent('compositionend',{data:'late'}));
+          clearedEditor.dispatchEvent(new FocusEvent('blur'));
+        });
+        assert.equal(await page.evaluate(({row,col}) => ptApp.getCurrentRows()[row][col],{row,col}), '', `clear ${key}: ${col}`);
+        deletionChecks++;
+      }
+      const target = page.locator(`.excel-cell[data-row="76"][data-col="${col}"]`);
+      await target.click();
+      await target.locator('input').evaluate(input => input.setSelectionRange(0,input.value.length));
+      await page.keyboard.type(col === 'name' ? 'rlarktkd' : col === 'writer' ? 'JS' : '123456', {delay:0});
+      await target.locator('input').evaluate(input => input.setSelectionRange(0,input.value.length));
+      await page.keyboard.press('Backspace');
+      await page.keyboard.press('Enter');
+      assert.equal(await page.evaluate(col => ptApp.getCurrentRows()[76][col],col), '', `editing Backspace: ${col}`);
+      deletionChecks++;
+    }
+    await page.waitForTimeout(500);
+    for (const row of [74,75,76]) for (const col of deletionColumns) {
+      assert.equal(await page.evaluate(({row,col}) => ptApp.getCurrentRows()[row][col],{row,col}), '', `delayed clear: ${row}/${col}`);
+    }
+    for (const col of deletionColumns) {
+      const target = page.locator(`.excel-cell[data-row="77"][data-col="${col}"]`);
+      await target.click();
+      await target.locator('input').evaluate(input=>input.setSelectionRange(0,input.value.length));
+      await page.keyboard.type(col==='name'?'rlarktkd':col==='writer'?'JS':'123456',{delay:0});
+      await page.evaluate(() => {
+        const editor=document.activeElement;
+        ptApp.clearSelection();
+        editor.dispatchEvent(new FocusEvent('blur'));
+      });
+      assert.equal(await page.evaluate(col=>ptApp.getCurrentRows()[77][col],col),'',`clear active editor: ${col}`);
+      deletionChecks++;
+    }
+    // Gender uses its own picker rather than a text editor.
+    const gender = page.locator('.excel-cell[data-row="72"][data-col="gender"]');
+    await gender.click();
+    await page.keyboard.press('f');
+    assert.equal(await page.evaluate(() => ptApp.getCurrentRows()[72].gender), 'F');
+    await gender.click();
+    await page.keyboard.press('m');
+    assert.equal(await page.evaluate(() => ptApp.getCurrentRows()[72].gender), 'M');
     // Missing compositionend: recover from a genuine non-composing edit;
     // Enter must work in name and the other native-editor columns afterward.
-    for (const col of ['name', 'part', 'memo', 'specialNote']) {
+    for (const col of ['no', 'chartNo', 'name', 'part', 'prescription', 'extra', 'memo', 'specialNote']) {
       await page.locator(`.excel-cell[data-row="51"][data-col="${col}"]`).dblclick();
-      await page.evaluate(() => {
+      await page.evaluate(col => {
         const input = document.activeElement;window.testedInput=input;
         input.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true,data:''}));
         input.value='가';input.setSelectionRange(1,1);
         input.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertCompositionText',isComposing:true,data:'가'}));
-        input.value='가나';input.setSelectionRange(2,2);
+        input.value=['no','chartNo'].includes(col)?'123':'가나';input.setSelectionRange(input.value.length,input.value.length);
         input.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertText',isComposing:false,data:'나'}));
-      });
+      }, col);
       await page.keyboard.press('Enter');
-      assert.equal(await page.evaluate(col => ptApp.getCurrentRows()[51][col], col), '가나');
+      assert.equal(await page.evaluate(col => ptApp.getCurrentRows()[51][col], col), ['no','chartNo'].includes(col)?'123':'가나');
       assert.equal(await page.evaluate(() => !testedInput.isConnected), true);
     }
     await page.evaluate(() => {document.activeElement.blur();ptApp.openSearchPromptModal(0,'');});
@@ -98,7 +191,18 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.evaluate(() => ptApp.elSearchInput.value), '김가상');
     assert.ok(await page.evaluate(() => ptApp.crossDateResults.every(row => row.name === '김가상')));
     assert.deepEqual(errors, []);
+    // Disk restore must retain actual empty values, not just empty rendering.
+    await page.waitForTimeout(500);
+    await page.evaluate(async()=>{await ptApp._recordWrite;});
+    await page.reload();
+    await page.waitForFunction(()=>window.ptApp && !ptApp._recordsRestorePending);
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(()=>ptApp.getCurrentRows()[0].name),'김가상');
+    for (const row of [74,75,76,77]) for (const col of deletionColumns) {
+      assert.equal(await page.evaluate(({row,col})=>ptApp.getCurrentRows()[row][col],{row,col}),'',`reload deletion: ${row}/${col}`);
+    }
+    assert.deepEqual(errors,[]);
     console.log(JSON.stringify({rapidNames:result.names.length,historyRows:30001,suggestions:result.suggestions,
-      autocompleteMaxMs:result.maxMs,compositionRecoveryColumns:4,searchPrompt:true,errors:0,externalWrites:0}));
+      autocompleteMaxMs:result.maxMs,rapidOtherCells,deletionChecks,deletionReload:true,retiredColumns:otherColumns.length,genderPicker:true,compositionRecoveryColumns:8,searchPrompt:true,errors:0,externalWrites:0}));
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

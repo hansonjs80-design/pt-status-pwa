@@ -504,7 +504,7 @@ class PTCellEditor {
       this.beginCellComposition(input);
       input._engKorBuffer = "";
       input._engKorPrefix = "";
-      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
+      if (this.blockInheritedNavigationInput(input, e, initialVal)) return;
       this.rememberPatientSearchDraft(rowIdx, colKey, input);
       clearTimeout(_hangulRepairTimer);
       input.dataset.nativeComposing = "true";
@@ -516,7 +516,7 @@ class PTCellEditor {
     });
 
     input.addEventListener("beforeinput", (e) => {
-      if (isCommitted) { e.preventDefault(); return; }
+      if (isCommitted || input.isConnected === false) { e.preventDefault(); return; }
       if (this.blockInheritedNavigationInput(input, e, initialVal)) return;
       if (this.restoreHandledCellKey(input, e)) return;
       if (e.inputType && e.inputType !== "insertText" && !/Composition/.test(e.inputType)) {
@@ -537,9 +537,9 @@ class PTCellEditor {
       }
     });
     input.addEventListener("input", (e) => {
+      if (isCommitted || input.isConnected === false || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
       if (input.dataset) delete input.dataset.presetPickerMode;
       if (this.autocompleteState) this.autocompleteState.isPresetPicker = false;
-      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return; // Reject input inherited from the previous cell.
       const handledKey = this.restoreHandledCellKey(input, e);
       let recoveredCorrection = false;
       if (handledKey) composing = false;
@@ -583,7 +583,7 @@ class PTCellEditor {
     });
 
     input.addEventListener("compositionend", (e) => {
-      if (isCommitted || this.blockInheritedNavigationInput(input, e, initialVal)) return;
+      if (isCommitted || input.isConnected === false || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       const handledKey = this.restoreHandledCellKey(input, e);
       if (!handledKey) this.projectCellComposition(input, e, true);
       if (!handledKey) this.updateForcedCorrection(input, colKey, {commit: true, nativeData: e.data});
@@ -671,7 +671,13 @@ class PTCellEditor {
       input._engKorSuffix = "";
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
-      if (input.classList.contains("is-armed")) { input.remove(); return; }
+      if (input.classList.contains("is-armed")) {
+        // Selection-only editors can still receive queued native IME events
+        // after focus moves. Retire this closure without saving untouched text.
+        isCommitted = true;
+        input.remove();
+        return;
+      }
       this.closeAutocompleteMenu();
       commitAndBlur();
     });
@@ -689,7 +695,7 @@ class PTCellEditor {
     });
 
     input.addEventListener("keydown", (e) => {
-      if (isCommitted) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      if (isCommitted || input.isConnected === false) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 
       const nativeCellInput = this.isKoreanPreferredColumn(colKey) && this.usesNativeCellInput() && !input._koreanNameOnly;

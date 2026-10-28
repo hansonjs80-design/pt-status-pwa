@@ -632,3 +632,28 @@ test('a new historical edit during upload stays pending and wins the retry even 
   await app.pushToCloud(date);
   assert.equal(db.get(date).rows_data[0].specialNote,'원래');assert.equal(app.pendingSyncDates.has(date),false);
 });
+
+
+test('deletion during an in-flight upload stays empty locally and in the next upload', async () => {
+  const date='2026-09-30';
+  for (const column of ['name','chartNo','part','prescription','extra','writer','memo','specialNote']) {
+    const original=[{name:'가상환자',chartNo:'TEST',memo:''}];
+    const db=new Map([[date,{date,rows_data:clone(original),updated_at:'2026-09-30T00:00:00Z'}]]);
+    const {app}=createApp(db);
+    app.dataStore[date]=clone(original);app.syncBaselines.set(date,clone(original));
+    app.dataStore[date][0][column]='새 입력';app.pendingSyncDates.add(date);
+    let release, started;
+    const gate=new Promise(resolve=>{release=resolve;});
+    const reached=new Promise(resolve=>{started=resolve;});
+    const run=app.runCloudQuery.bind(app);let calls=0;
+    app.runCloudQuery=async query=>{const result=await run(query);if(++calls===2){started();await gate;}return result;};
+    const uploading=app.pushToCloud(date);
+    await reached;
+    app.dataStore[date][0][column]='';
+    release();await uploading;
+    assert.equal(app.dataStore[date][0][column],'',column+': old acknowledgement cannot restore text');
+    assert.equal(app.pendingSyncDates.has(date),true);
+    await app.pushToCloud(date);
+    assert.equal(db.get(date).rows_data[0][column],'',column+': next upload retains deletion');
+  }
+});

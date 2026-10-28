@@ -482,6 +482,48 @@ test('ordinary input after a missing compositionend releases the composition loc
   }
 });
 
+test('retired editors ignore late native events in every editable column', () => {
+  for (const column of ['no','chartNo','name','part','prescription','extra','writer','memo','specialNote']) {
+    for (const retiredBy of ['armed-blur','detached']) {
+      const {app,input} = editingFixture({column,value:'original'});
+      let saves = 0;
+      app.debounceSaveDataStore = () => { saves++; };
+      input.remove = () => { input.isConnected = false; };
+      if (retiredBy === 'armed-blur') {
+        input.classList.add('is-armed');
+        input._listeners.blur();
+      } else input.isConnected = false;
+      app.autocompleteState = {isPresetPicker:true};
+      for (const event of ['beforeinput','input','compositionend']) {
+        input.value = 'late';
+        input._listeners[event]({type:event,inputType:'insertText',isComposing:false,data:'late',preventDefault(){}});
+        assert.equal(app.getCurrentRows()[0][column],'original',`${column}: ${retiredBy} ${event}`);
+      }
+      assert.equal(saves,0);
+      assert.equal(app.autocompleteState.isPresetPicker,true,'late input must not change the next cell menu');
+    }
+  }
+});
+
+test('clearing a cell finishes its editor before deletion so delayed blur cannot restore text', () => {
+  for (const column of ['no','chartNo','name','part','prescription','extra','writer','memo','specialNote']) {
+    for (const method of ['clearSelection','clearColData','clearRowData']) {
+      const {app,input,context}=editingFixture({column,value:'old'});
+      app.activeCell={rowIdx:0,colKey:column};
+      app.selectedColKey=app.selectedRowIdx=null;
+      for(const key of ['applyCellFormatting','renderColoredText','saveDataStore','refreshNewPatientRows','endNativeCellEditing','recordManualDateDeletion','showSaveIndicator'])app[key]=()=>{};
+      context.document.activeElement=input;
+      input.matches=()=>true;
+      input.blur=()=>{input._listeners.blur();context.document.activeElement=null;};
+      // A native blur may follow removal/replacement of the old table editor.
+      app.renderTable=()=>input._listeners.blur();
+      app[method](method==='clearColData'?column:0);
+      if(method==='clearRowData'&&column==='writer')continue; // Row clearing deliberately retains initials.
+      assert.equal(app.getCurrentRows()[0][column],'',method+': '+column);
+    }
+  }
+});
+
 test('recovering an interrupted correction applies the correction only once per input', () => {
   const {app,input} = editingFixture({column:'name',value:''});
   input._listeners.compositionstart({type:'compositionstart'});
