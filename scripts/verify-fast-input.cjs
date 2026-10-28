@@ -180,6 +180,21 @@ const server = http.createServer(async (req, res) => {
       assert.equal(await page.evaluate(col => ptApp.getCurrentRows()[51][col], col), ['no','chartNo'].includes(col)?'123':'가나');
       assert.equal(await page.evaluate(() => !testedInput.isConnected), true);
     }
+    // Both shortcut variants must own even the very first rapidly typed key.
+    await page.locator('.excel-cell[data-row="80"][data-col="name"]').click();
+    let koreanPromptRuns = 0;
+    for (const shortcut of ['Control+f','Meta+f']) for (let run=0;run<10;run++) {
+      await page.keyboard.press(shortcut);
+      await page.waitForFunction(()=>ptApp.elSearchPromptModal.style.display==='flex');
+      await page.keyboard.type('rlarktkd',{delay:0});
+      assert.equal(await page.locator('#searchPromptInput').inputValue(),'김가상');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.type('d',{delay:0});
+      assert.equal(await page.locator('#searchPromptInput').inputValue(),'김가상');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(()=>ptApp.elSearchPromptModal.style.display==='none');
+      koreanPromptRuns++;
+    }
     await page.evaluate(() => {document.activeElement.blur();ptApp.openSearchPromptModal(0,'');});
     assert.equal(await page.evaluate(() => document.activeElement === ptApp.elSearchPromptInput), true);
     await page.keyboard.insertText('김');
@@ -190,6 +205,13 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => ptApp.elSearchPromptModal.style.display === 'none' && ptApp.crossDateResults?.length);
     assert.equal(await page.evaluate(() => ptApp.elSearchInput.value), '김가상');
     assert.ok(await page.evaluate(() => ptApp.crossDateResults.every(row => row.name === '김가상')));
+    await page.evaluate(()=>ptApp.openSearchPromptModal(0,''));
+    await page.keyboard.type('rlarktkd',{delay:0});
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>ptApp.elSearchPromptModal.style.display==='none' && ptApp.crossDateResults?.length);
+    assert.equal(await page.evaluate(()=>ptApp.elSearchInput.value),'김가상');
+    assert.ok(await page.evaluate(()=>ptApp.crossDateResults.every(row=>row.name==='김가상')));
+
     assert.deepEqual(errors, []);
     // Disk restore must retain actual empty values, not just empty rendering.
     await page.waitForTimeout(500);
@@ -203,6 +225,6 @@ const server = http.createServer(async (req, res) => {
     }
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({rapidNames:result.names.length,historyRows:30001,suggestions:result.suggestions,
-      autocompleteMaxMs:result.maxMs,rapidOtherCells,deletionChecks,deletionReload:true,retiredColumns:otherColumns.length,genderPicker:true,compositionRecoveryColumns:8,searchPrompt:true,errors:0,externalWrites:0}));
+      autocompleteMaxMs:result.maxMs,rapidOtherCells,deletionChecks,deletionReload:true,retiredColumns:otherColumns.length,genderPicker:true,compositionRecoveryColumns:8,searchPrompt:true,koreanPromptRuns,errors:0,externalWrites:0}));
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

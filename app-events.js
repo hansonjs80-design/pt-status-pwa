@@ -338,7 +338,10 @@ class PTAppEvents {
       this.elBtnSearchPromptSubmit.addEventListener("click", () => this.submitSearchPrompt());
     }
     if (this.elSearchPromptInput) {
-      this.elSearchPromptInput.addEventListener("input", () => this.queueSearchPromptAutocomplete());
+      this.elSearchPromptInput.addEventListener("beforeinput", e => this.handleSearchPromptBeforeInput(e));
+      this.elSearchPromptInput.addEventListener("input", e => this.handleSearchPromptInput(e));
+      this.elSearchPromptInput.addEventListener("compositionstart", e => this.handleSearchPromptCompositionStart(e));
+      this.elSearchPromptInput.addEventListener("compositionend", e => this.handleSearchPromptInput(e));
       this.elSearchPromptInput.addEventListener("keydown", e => this.handleSearchPromptKeyDown(e));
     }
     document.getElementById('searchIncludeCurrentDate')?.addEventListener('change', event => {

@@ -22,7 +22,84 @@ class PTPatientSearchDialog {
     }
   }
 
+  resetSearchPromptInputState() {
+    const input = this.elSearchPromptInput;
+    if (!input) return;
+    this.clearKoreanKeyBuffer(input);
+    delete input._cellKeyValue;
+    input._koreanNameOnly = true;
+    input.dataset ||= {};
+    input.dataset.nativeComposing = 'false';
+  }
+
+  handleSearchPromptCompositionStart(e) {
+    const input = this.elSearchPromptInput;
+    if (this.elSearchPromptModal?.style.display !== 'flex') return;
+    this.restoreHandledCellKey(input, e);
+    this.clearKoreanKeyBuffer(input);
+    input.dataset.nativeComposing = 'true';
+  }
+
+  handleSearchPromptBeforeInput(e) {
+    const input = this.elSearchPromptInput;
+    if (this.elSearchPromptModal?.style.display !== 'flex') return;
+    if (e.inputType && e.inputType !== 'insertText' && !/Composition/.test(e.inputType)) {
+      this.clearKoreanKeyBuffer(input);
+      delete input._cellKeyValue;
+    }
+    this.restoreHandledCellKey(input, e);
+  }
+
+  handleSearchPromptInput(e) {
+    if (this.elSearchPromptModal?.style.display !== 'flex') return;
+    const input = this.elSearchPromptInput;
+    const handled = this.restoreHandledCellKey(input, e);
+    if (e.type === 'compositionend' || (e.isComposing === false && e.inputType && !/Composition/.test(e.inputType))) {
+      input.dataset.nativeComposing = 'false';
+    } else if (e.isComposing && !handled) input.dataset.nativeComposing = 'true';
+    this.queueSearchPromptAutocomplete();
+  }
+
+  handleSearchPromptKoreanKey(e) {
+    const input = this.elSearchPromptInput;
+    const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+    // Use the same two-set composition engine as the name cells. Native IME
+    // composition owns its text; never rewrite a live Korean composition.
+    if (!plain || e.isComposing || e.keyCode === 229) return false;
+    const converted = this.convertEngToHangul(input._engKorBuffer || '');
+    const prefix = input._engKorPrefix || '', suffix = input._engKorSuffix || '';
+    if (input._engKorBuffer && (input.value !== prefix + converted + suffix ||
+        input.selectionStart !== prefix.length + converted.length || input.selectionEnd !== input.selectionStart)) {
+      this.clearKoreanKeyBuffer(input);
+    }
+    const letter = /^[a-zA-Z]$/.test(e.key || '') ? this.getCellLetterKey(e) : '';
+    const backspace = e.key === 'Backspace' && input._engKorBuffer;
+    if (!letter && !backspace) {
+      if (!['Shift','Control','Alt','Meta'].includes(e.key)) {
+        this.clearKoreanKeyBuffer(input);
+        delete input._cellKeyValue;
+      }
+      return false;
+    }
+    e.preventDefault(); e.stopPropagation();
+    if (!input._engKorBuffer) {
+      input._engKorPrefix = input.value.slice(0, input.selectionStart ?? input.value.length);
+      input._engKorSuffix = input.value.slice(input.selectionEnd ?? input.value.length);
+    }
+    input._engKorBuffer = backspace ? input._engKorBuffer.slice(0, -1) : input._engKorBuffer + letter;
+    const value = this.convertEngToHangul(input._engKorBuffer);
+    input.value = input._engKorPrefix + value + input._engKorSuffix;
+    const caret = input._engKorPrefix.length + value.length;
+    input.setSelectionRange(caret, caret);
+    if (!input._engKorBuffer) this.clearKoreanKeyBuffer(input);
+    input.dataset.nativeComposing = 'false';
+    this.rememberCellKeyValue(input);
+    this.queueSearchPromptAutocomplete();
+    return true;
+  }
+
   handleSearchPromptKeyDown(e) {
+    if (this.handleSearchPromptKoreanKey(e)) return;
     const enter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
     if (enter || ["ArrowDown", "ArrowUp"].includes(e.key)) this.flushSearchPromptAutocomplete();
     if (enter || ["ArrowDown", "ArrowUp", "Escape"].includes(e.key)) e.stopPropagation();
@@ -84,6 +161,8 @@ class PTPatientSearchDialog {
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
     const includeCurrentDate = document.getElementById('searchIncludeCurrentDate');
     if (includeCurrentDate) includeCurrentDate.checked = Boolean(this.includeCurrentDateSearch);
+    this.resetSearchPromptInputState();
+    this.elSearchPromptInput.lang = "ko";
     this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
@@ -97,6 +176,7 @@ class PTPatientSearchDialog {
   }
 
   closeSearchPromptModal() {
+    this.resetSearchPromptInputState();
     this.searchPromptHistoryIndex = null;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     this.cancelSearchPromptSubmission();

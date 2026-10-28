@@ -2190,3 +2190,81 @@ test('date toggles and refreshes remap sparse selection by exact source without 
   app.crossDateResults=[sources[4]];app.restoreHistorySearchSelection(expanded);
   assert.deepEqual([...app.selectedCellSet],['0:9']);
 });
+
+
+function koreanPromptFixture(platform='MacIntel') {
+  const {app,context}=createSearchPrompt();
+  context.navigator={platform};
+  const input=app.elSearchPromptInput;
+  input.dataset={};input.selectionStart=input.selectionEnd=0;
+  input.setSelectionRange=(start,end)=>{input.selectionStart=start;input.selectionEnd=end;};
+  input.select=()=>input.setSelectionRange(0,input.value.length);
+  app.openSearchPromptModal(0,'');
+  return {app,input};
+}
+function promptKey(key,options={}) {
+  return {type:'keydown',key,code:/^[a-zA-Z]$/.test(key)?'Key'+key.toUpperCase():key,
+    isComposing:false,preventDefault(){this.defaultPrevented=true;},stopPropagation(){},...options};
+}
+function promptType(app,keys) {for(const key of keys)app.handleSearchPromptKeyDown(promptKey(key));}
+
+test('search prompt composes rapid Latin keys as Korean on Windows and Mac regardless of English input state',()=>{
+  for(const platform of ['MacIntel','Win32']) {
+    const {app,input}=koreanPromptFixture(platform);
+    for(let i=0;i<100;i++) {
+      input.select();promptType(app,'rlarktkd');assert.equal(input.value,'김가상');
+      // A late duplicate native input must keep the software-owned value once.
+      input.value+='d';
+      app.handleSearchPromptInput({type:'input',inputType:'insertText',data:'d',isComposing:false});
+      assert.equal(input.value,'김가상');
+    }
+  }
+});
+
+test('prompt software Backspace, caret replacement and language keys never resurrect an earlier buffer',()=>{
+  const {app,input}=koreanPromptFixture();
+  promptType(app,'rla');app.handleSearchPromptKeyDown(promptKey('Backspace'));assert.equal(input.value,'기');
+  input.select();promptType(app,'gjsfl');assert.equal(input.value,app.convertEngToHangul('gjsfl'));
+  input.setSelectionRange(0,input.value.length);
+  app.handleSearchPromptKeyDown(promptKey('Backspace'));
+  input.value='';input.setSelectionRange(0,0);
+  app.handleSearchPromptBeforeInput({type:'beforeinput',inputType:'deleteContentBackward'});
+  app.handleSearchPromptInput({type:'input',inputType:'deleteContentBackward',isComposing:false});
+  app.handleSearchPromptKeyDown(promptKey('CapsLock'));
+  promptType(app,'rlarktkd');assert.equal(input.value,'김가상');
+});
+
+test('native Korean composition stays untouched and can alternate with fast software Korean',()=>{
+  for(const platform of ['MacIntel','Win32']) {
+    const {app,input}=koreanPromptFixture(platform);
+    promptType(app,'rla');
+    app.handleSearchPromptKeyDown(promptKey('Process',{code:'KeyR',keyCode:229,isComposing:true}));
+    app.handleSearchPromptCompositionStart({type:'compositionstart'});
+    for(const value of ['김ㄱ','김가','김갓','김가사','김가상']) {
+      input.value=value;input.setSelectionRange(value.length,value.length);
+      app.handleSearchPromptInput({type:'input',inputType:'insertCompositionText',data:value.slice(1),isComposing:true});
+      assert.equal(input.value,value,'live IME value must stay unchanged');
+    }
+    app.handleSearchPromptInput({type:'compositionend',data:'가상'});
+    promptType(app,'rla');assert.equal(input.value,'김가상김');
+    // A definite new non-composing letter also recovers a missing compositionend.
+    input.dataset.nativeComposing='true';promptType(app,'rla');assert.equal(input.value,'김가상김김');
+  }
+});
+
+test('chart numbers, paste and shortcuts keep normal search input semantics',()=>{
+  const {app,input}=koreanPromptFixture();
+  promptType(app,'rla');
+  assert.equal(app.handleSearchPromptKoreanKey(promptKey('1')),false);
+  input.value='12345';input.setSelectionRange(5,5);
+  app.handleSearchPromptBeforeInput({type:'beforeinput',inputType:'insertFromPaste'});
+  app.handleSearchPromptInput({type:'input',inputType:'insertFromPaste',isComposing:false,data:'12345'});
+  assert.equal(input.value,'12345');
+  assert.equal(app.handleSearchPromptKoreanKey(promptKey('a',{ctrlKey:true})),false);
+  assert.equal(app.handleSearchPromptKoreanKey(promptKey('v',{metaKey:true})),false);
+  promptType(app,'rla');assert.equal(input.value,'12345김');
+  app.closeSearchPromptModal();
+  const previous=input.value;
+  input.value='late';app.handleSearchPromptInput({type:'compositionend',data:'late'});
+  app.openSearchPromptModal(0,previous);input.select();promptType(app,'rla');assert.equal(input.value,'김');
+});
