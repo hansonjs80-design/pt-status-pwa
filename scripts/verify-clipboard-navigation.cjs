@@ -74,7 +74,32 @@ const server = http.createServer(async (req, res) => {
       assert.equal(await page.evaluate(()=>ptApp.getCurrentRows()[10].memo),action==='cut'?'':'가상 원본');
       checked++;
     }
+    let heldModifierCases=0;
+    for(const action of ['copy','cut']) for(const modifier of ['Control','Meta'])
+    for(const [key,row,col] of [['ArrowUp',9,'part'],['ArrowDown',11,'part'],['ArrowLeft',10,'name'],['ArrowRight',10,'prescription']]) {
+      await page.evaluate(()=>{
+        document.activeElement.blur();const rows=ptApp.getCurrentRows();
+        for(let i=9;i<=12;i++)for(const col of ['name','part','prescription','extra'])rows[i][col]='';
+        rows[0].name='가상 기록';rows[10].part='가상 부위';
+        ptApp.clipboardSelection=null;ptApp.pendingCut=null;ptApp.renderTable();
+      });
+      await page.locator('.excel-cell[data-row="10"][data-col="part"]').click();
+      await page.keyboard.down(modifier);
+      await page.keyboard.press(action==='copy'?'c':'x');
+      await page.keyboard.press(key);
+      assert.deepEqual(await page.evaluate(()=>ptApp.activeCell),{rowIdx:row,colKey:col},`${action}/${modifier} held/${key}`);
+      await page.keyboard.press(key);
+      const next={rowIdx:key==='ArrowDown'?12:key==='ArrowUp'?8:10,
+        colKey:key==='ArrowRight'?'extra':key==='ArrowLeft'?'chartNo':'part'};
+      assert.deepEqual(await page.evaluate(()=>ptApp.activeCell),next,`${modifier}/${key}: second arrow with modifier held`);
+      await page.keyboard.up(modifier);
+      if(key==='ArrowRight') {
+        await page.keyboard.press(`${modifier}+ArrowRight`);
+        assert.equal(await page.evaluate(()=>ptApp.activeCell.colKey),'specialNote','fresh modifier press keeps deliberate edge shortcut');
+      }
+      heldModifierCases++;
+    }
     assert.deepEqual(errors,[]);
-    console.log(JSON.stringify({clipboardNavigationCases:checked,errors:0,externalWrites:0}));
+    console.log(JSON.stringify({clipboardNavigationCases:checked,heldModifierCases,errors:0,externalWrites:0}));
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -183,6 +183,7 @@ class PTSheetActions {
       this.clipboardBuffer = tsvData;
       this.clipboardSelection = { ...copyRange, formatting, rowSelection: this.crossDateSelection ? Boolean(this.isCrossDateRowSelected) : Boolean(this.selectedRowRange), date: this.currentDate, cells: this.selectedCellSet ? [...this.selectedCellSet] : null };
       this.clipboardFormatSnapshot = { text: tsvData, selection: { ...this.clipboardSelection } };
+      this.clipboardArrowModifierHandoff = true;
       this.renderClipboardSelection();
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(tsvData).catch((err) => {

@@ -132,6 +132,7 @@ class PTSheetKeyboard {
   }
 
   releaseHistorySearchKey(e) {
+    if (['Control','Meta'].includes(e.key)) this.clipboardArrowModifierHandoff = false;
     if (["f", "control", "meta"].includes(e.key.toLowerCase()) || e.code === "KeyF") this.directHistorySearchKeyHeld = false;
     if (e.key.toLowerCase() === this.historyApplyBlockedKey ||
         (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
@@ -166,9 +167,30 @@ class PTSheetKeyboard {
     return true;
   }
 
+  handleClipboardArrowHandoff(e) {
+    // Copy/Cut and the next arrow can overlap one held Ctrl/Cmd press. Until
+    // that press ends, arrows move the clipboard destination one cell at a time.
+    // A newly pressed modifier is deliberate and retains the normal shortcuts.
+    if (['Control','Meta'].includes(e.key)) {
+      this.clipboardArrowModifierHandoff = false;
+      return false;
+    }
+    if (!this.clipboardArrowModifierHandoff || !this.clipboardSelection ||
+        this.clipboardSelection.date !== this.currentDate || !(e.ctrlKey || e.metaKey) || e.altKey ||
+        !['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) return false;
+    if (e.target !== this.elSheetContainer && !e.target?.closest?.('#sheetContainer')) return false;
+    e.preventDefault(); e.stopPropagation();
+    this.elSheetContainer.dispatchEvent(new KeyboardEvent('keydown', {
+      key: e.key, code: e.code, shiftKey: e.shiftKey, repeat: e.repeat,
+      bubbles: true, cancelable: true,
+    }));
+    return true;
+  }
+
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (e.defaultPrevented) return;
+    if (this.handleClipboardArrowHandoff(e)) return;
     if (this.handleNextNameCellShortcut(e)) return;
     if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) {
       this._lastHangulToggleAt = Date.now();

@@ -696,6 +696,7 @@ class PTCellEditor {
 
     input.addEventListener("keydown", (e) => {
       if (isCommitted || input.isConnected === false) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      if (this.handleClipboardArrowHandoff(e)) return;
       if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 
       const nativeCellInput = this.isKoreanPreferredColumn(colKey) && this.usesNativeCellInput() && !input._koreanNameOnly;

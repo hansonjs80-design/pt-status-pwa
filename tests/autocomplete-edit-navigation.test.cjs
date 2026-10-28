@@ -1173,3 +1173,28 @@ test('a global preset manager immediately refreshes after a prior-record format 
   await app.editAutocompleteValue('memo','문구',null);
   assert.equal(renders,1);assert.equal(app.getPresetManagerItems('memo')[0],'수정');
 });
+
+test('clipboard arrows ignore only the overlapping copy modifier press and preserve fresh edge shortcuts',()=>{
+  for(const modifier of ['Control','Meta']) for(const key of ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight']) {
+    const {app,context}=createApp();const sent=[];
+    context.KeyboardEvent=class{constructor(type,options){Object.assign(this,{type},options);}};
+    const sheet={dispatchEvent:event=>sent.push(event)};
+    app.elSheetContainer=sheet;app.clipboardSelection={date:app.currentDate};app.clipboardArrowModifierHandoff=true;
+    const event={key,code:key,target:sheet,ctrlKey:modifier==='Control',metaKey:modifier==='Meta',
+      preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
+    assert.equal(app.handleClipboardArrowHandoff(event),true);
+    assert.equal(sent[0].key,key);assert.equal(Boolean(sent[0].ctrlKey||sent[0].metaKey),false);
+    assert.equal(event.prevented,true);assert.equal(event.stopped,true);
+    assert.equal(app.handleClipboardArrowHandoff({...event,repeat:true}),true,'held arrows remain single-cell navigation');
+    assert.equal(sent[1].repeat,true);
+    assert.equal(app.handleClipboardArrowHandoff({...event,altKey:true}),false);
+    assert.equal(app.handleClipboardArrowHandoff({...event,target:{closest:()=>null}}),false,'other inputs keep their shortcuts');
+    app.releaseHistorySearchKey({key:modifier});
+    assert.equal(app.handleClipboardArrowHandoff(event),false,'modifier released');
+    app.clipboardArrowModifierHandoff=true;
+    app.handleClipboardArrowHandoff({key:modifier});
+    assert.equal(app.handleClipboardArrowHandoff(event),false,'fresh modifier press is deliberate');
+    app.clipboardArrowModifierHandoff=true;app.clipboardSelection=null;
+    assert.equal(app.handleClipboardArrowHandoff(event),false,'no clipboard selection');
+  }
+});
