@@ -871,7 +871,7 @@ class PTApp {
     if (!input?.matches(".cell-input-element:not(.is-armed)")) return;
     const cell = input.closest(".excel-cell");
     const colKey = cell?.dataset.col;
-    if (!colKey || ["gender", "writer", "no"].includes(colKey)) return;
+    if (!colKey || !this.isCellAutocompleteEnabled(colKey) || ["gender", "writer", "no"].includes(colKey)) return;
 
     const isPresetPicker = Boolean(input.dataset?.presetPickerMode === "true" || this.autocompleteState?.isPresetPicker);
     if (isPresetPicker && ["prescription", "extra", "writer"].includes(colKey)) {

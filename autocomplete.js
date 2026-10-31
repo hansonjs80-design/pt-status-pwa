@@ -1,5 +1,11 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTAutocomplete {
+  isCellAutocompleteEnabled(colKey) {
+    // Temporarily hide patient identifiers; keep candidates and management intact.
+    // Remove a column from this list when its in-cell completion is needed again.
+    return !["chartNo", "name"].includes(colKey);
+  }
+
   invalidateAutocompleteHistory() {
     this.autocompleteHistoryGeneration = (this.autocompleteHistoryGeneration || 0) + 1;
   }
@@ -217,6 +223,10 @@ class PTAutocomplete {
   }
 
   showAutocompleteMenu(rowIdx, colKey, cellElement, input, candidates, { includeTypedValue = true, preferCurrentValue = false, isPresetPicker = false } = {}) {
+    if (!this.isCellAutocompleteEnabled(colKey)) {
+      this.closeAutocompleteMenu();
+      return;
+    }
     candidates = this.deduplicatePresetCandidates(colKey, candidates || [], this.getCellEditorValue(input));
     const previous = this.autocompleteState;
     const query = this.getCellEditorValue(input);

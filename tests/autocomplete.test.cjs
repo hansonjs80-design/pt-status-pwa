@@ -183,7 +183,7 @@ test('initial-specific special notes survive syllable composition and honor expl
 });
 
 
-test('autocomplete refresh preserves the selected value until the query or editor changes', () => {
+test('patient autocomplete stays hidden and retains selection behavior when restored', () => {
   let menu = null;
   const element = () => ({
     style: {}, children: [], isConnected: true, offsetWidth: 160, offsetHeight: 100,
@@ -201,6 +201,13 @@ test('autocomplete refresh preserves the selected value until the query or edito
   const cell = { isConnected: true, getBoundingClientRect: () => ({left: 100, top: 100, bottom: 130, width: 100}) };
   const input = { value: '김', dataset: {} };
   const show = candidates => app.showAutocompleteMenu(0, 'name', cell, input, candidates);
+  for (const colKey of ['chartNo', 'name']) {
+    app.showAutocompleteMenu(0, colKey, cell, input, ['김가']);
+    assert.equal(menu, null);
+    assert.equal(app.autocompleteState, null);
+  }
+  // Re-enabling the display must retain the existing completion behavior.
+  app.isCellAutocompleteEnabled = () => true;
   show(['김가', '김나', '김다']);
   assert.deepEqual(Array.from(app.autocompleteState.candidates), ['김', '김가', '김나', '김다']);
   assert.equal(app.autocompleteState.selectedIndex, 1);

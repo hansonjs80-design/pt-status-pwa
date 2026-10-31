@@ -723,6 +723,17 @@ test('English autocomplete refreshes from the displayed query during native comp
     input.value = 'ㅣ'; input.setSelectionRange(1, 1);
     input._listeners.input({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: 'ㅣ' });
     for (const callback of [...timers.values()]) callback();
+    if (['chartNo', 'name'].includes(column)) {
+      assert.equal(searched, undefined, 'hidden columns must not search while typing');
+      assert.equal(displayed, undefined);
+      input.matches = () => true;
+      input.closest = () => ({ dataset: { col: column, row: '0' } });
+      app.refreshSearchSuggestions();
+      assert.equal(searched, undefined, 'history refresh must keep patient autocomplete hidden');
+      assert.equal(displayed, undefined);
+      assert.equal(input.value, 'ㅣ', 'hiding autocomplete must preserve native composition');
+      continue;
+    }
     assert.deepEqual(searched, { col: column, query: 'l', composing: false });
     assert.equal(displayed.query, 'l');
     assert.equal(displayed.candidates[0], 'laser 12kg');
