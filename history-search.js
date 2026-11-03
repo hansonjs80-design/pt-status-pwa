@@ -536,7 +536,7 @@ class PTHistorySearch {
   }
 
   rememberPatientSearchDraft(rowIdx, colKey, input) {
-    if (!["name", "chartNo"].includes(colKey)) return;
+    if (colKey !== "name") return;
     this.patientSearchDraft = { date: this.currentDate, rowIdx, colKey, input };
   }
 
@@ -575,16 +575,23 @@ class PTHistorySearch {
     if (useDraft) input = draft.input;
     const colKey = useDraft ? draft.colKey : cell?.dataset?.col || this.activeCell?.colKey;
     if (!cell && !formulaEditor && !useDraft) return false;
-    if (!["name", "chartNo"].includes(colKey)) return false;
-    // An untouched armed input represents a selection border, not a text caret.
     if (input.classList?.contains("is-armed") && !useDraft) return false;
+    const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
+    if (colKey !== "name") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.historyApplyBlockedKey = "f";
+      input.blur?.();
+      this.closeAutocompleteMenu?.();
+      this.openSearchPromptModal(rowIdx, "");
+      return true;
+    }
     if (!String(input.value ?? "").trim()) return false;
     event.preventDefault();
     event.stopPropagation();
     this.captureHistoryOriginSelection();
     this.historyApplyBlockedKey = "f";
     this.directHistorySearchKeyHeld = true;
-    const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
     // Capture the highlighted name before blur removes the autocomplete menu.
     // A menu from another cell must never supply this editor's search query.
     const autocomplete = this.autocompleteState;
@@ -618,7 +625,7 @@ class PTHistorySearch {
     this.elSheetContainer.focus({ preventScroll: true });
     const query = chosenName || this.assembleHangul(input.value).trim() || this.assembleHangul(rawValue).trim();
     this.patientSearchDraft = null;
-    this.closeSearchPromptModal();
+    this.closeSearchPromptModal({ restoreFocus: false });
     void this.searchPatientHistory(query, rowIdx);
     return true;
   }
@@ -627,8 +634,8 @@ class PTHistorySearch {
     const { rowIdx, colKey } = this.activeCell || {};
     const targetIdx = Number.isInteger(rowIdx) ? rowIdx
       : this.selectedRange?.minRow ?? this.selectedRowIdx ?? this.findFirstEmptyRowIndex();
-    const query = ["name", "chartNo"].includes(colKey)
-      ? String(this.getCurrentRows()[targetIdx]?.[colKey] ?? "").trim() : "";
+    const query = colKey === "name"
+      ? String(this.getCurrentRows()[targetIdx]?.name ?? "").trim() : "";
     this.openSearchPromptModal(targetIdx, query);
   }
 

@@ -132,10 +132,11 @@ class PTSheetKeyboard {
   }
 
   releaseHistorySearchKey(e) {
-    if (['Control','Meta'].includes(e.key)) this.clipboardArrowModifierHandoff = false;
-    if (["f", "control", "meta"].includes(e.key.toLowerCase()) || e.code === "KeyF") this.directHistorySearchKeyHeld = false;
-    if (e.key.toLowerCase() === this.historyApplyBlockedKey ||
-        (this.historyApplyBlockedKey === "f" && e.code === "KeyF")) this.historyApplyBlockedKey = null;
+    const key = String(e.key || "").toLowerCase();
+    if (["control", "meta"].includes(key)) this.clipboardArrowModifierHandoff = false;
+    if (["f", "ㄹ", "control", "meta"].includes(key) || e.code === "KeyF" || e.keyCode === 70) this.directHistorySearchKeyHeld = false;
+    if (key === this.historyApplyBlockedKey ||
+        (this.historyApplyBlockedKey === "f" && (key === "ㄹ" || e.code === "KeyF" || e.keyCode === 70))) this.historyApplyBlockedKey = null;
   }
 
   handleHistoryApplyShortcut(e) {
@@ -189,6 +190,9 @@ class PTSheetKeyboard {
 
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
+    if (this.directHistorySearchKeyHeld && !this.isSearchShortcut(e)) {
+      this.directHistorySearchKeyHeld = false;
+    }
     if (e.defaultPrevented) return;
     if (this.handleClipboardArrowHandoff(e)) return;
     if (this.handleNextNameCellShortcut(e)) return;
@@ -234,35 +238,38 @@ class PTSheetKeyboard {
     }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 현재 셀 내용으로 전체 날짜 검색
+      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 성함 셀만 현재 내용으로 검색하고 나머지 셀은 빈 검색창 오픈
       if (this.isSearchShortcut(e)) {
         e.preventDefault();
         e.stopPropagation();
         const cellInput = e.target.closest(".excel-cell") ? e.target : null;
+        const formulaEditor = Boolean(this.elFormulaInput && e.target === this.elFormulaInput);
         if (cellInput?.classList?.contains("is-armed")) {
           this.findActiveCell();
           return;
         }
         const cell = cellInput?.closest(".excel-cell");
         const colKey = cell?.dataset?.col || this.activeCell?.colKey;
-        if (cellInput && !["name", "chartNo"].includes(colKey)) {
+        if ((cellInput || formulaEditor) && colKey !== "name") {
           const rowIdx = this.activeCell?.rowIdx ?? Number(cell?.dataset?.row);
-          cellInput.blur();
+          e.target.blur();
           this.openSearchPromptModal(rowIdx, "");
           return;
         }
-        const searchVal = cellInput ? cellInput.value.trim() : "";
+        const activeInput = cellInput || (formulaEditor ? e.target : null);
+        const searchVal = activeInput ? activeInput.value.trim() : "";
         if (this.elSearchInput && searchVal) {
           document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
           const originRow = e.target.closest(".excel-row");
           if (originRow) originRow.classList.add("search-origin-row");
-          const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : -1;
+          const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : (this.activeCell?.rowIdx ?? -1);
           e.target.blur();
           this.elSheetContainer.focus({ preventScroll: true });
-          const query = this.assembleHangul(cellInput.value).trim() || searchVal;
-          if (["name", "chartNo"].includes(this.activeCell?.colKey)) void this.searchPatientHistory(query, originRowIdx);
+          const query = this.assembleHangul(activeInput.value).trim() || searchVal;
+          if (colKey === "name") void this.searchPatientHistory(query, originRowIdx);
           else this.searchAllDates(query, originRowIdx);
-        } else if (cellInput) {
+        } else if (activeInput) {
+          e.target.blur?.();
           this.openSearchPromptModal(this.activeCell?.rowIdx, "");
         }
         return;
@@ -323,7 +330,7 @@ class PTSheetKeyboard {
       else if (isCtrlOrMeta && keyLower === "f") {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
-        if (["chartNo", "name"].includes(keys[selection.endCol])) this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, value);
+        if (keys[selection.endCol] === "name") this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, value);
         else this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, "");
       }
       // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택

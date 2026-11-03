@@ -152,6 +152,13 @@ class PTPatientSearchDialog {
     // Windows IME can replay F without marking it as a repeat after the editor
     // has gone. The same physical shortcut must not reopen the prompt.
     if (this.directHistorySearchKeyHeld) return;
+    this._searchNotFoundCleanup?.();
+    this._searchNotFoundCleanup = null;
+    if (this.elSearchNotFoundModal) this.elSearchNotFoundModal.style.display = "none";
+    this.cancelSheetPointerInteraction?.();
+    this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
     this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     this.cancelSearchPromptSubmission();
@@ -159,11 +166,17 @@ class PTPatientSearchDialog {
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
+    if (typeof document !== "undefined" && document.activeElement?.matches?.(".cell-input-element")) {
+      document.activeElement.blur?.();
+    }
     const includeCurrentDate = document.getElementById('searchIncludeCurrentDate');
     if (includeCurrentDate) includeCurrentDate.checked = Boolean(this.includeCurrentDateSearch);
     this.resetSearchPromptInputState();
     this.elSearchPromptInput.lang = "ko";
-    this.elSearchPromptInput.value = initialQuery ?? (this.elSearchInput?.value?.trim() || "");
+    const fallbackQuery = this.activeCell?.colKey === "name"
+      ? String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim()
+      : "";
+    this.elSearchPromptInput.value = initialQuery ?? fallbackQuery;
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
@@ -175,15 +188,43 @@ class PTPatientSearchDialog {
     this.queueSearchPromptAutocomplete();
   }
 
-  closeSearchPromptModal() {
+  closeSearchPromptModal({ restoreFocus = true } = {}) {
     this.resetSearchPromptInputState();
     this.searchPromptHistoryIndex = null;
     this.searchPromptRequestId = (this.searchPromptRequestId || 0) + 1;
     this.cancelSearchPromptSubmission();
     clearTimeout(this.searchPromptFocusTimer);
+    if (restoreFocus) {
+      this.directHistorySearchKeyHeld = false;
+      this.historyApplyBlockedKey = null;
+      this.guardNextCellInput = false;
+      this.presetLeftKeyHeld = false;
+      this.leftEditHandoffUntil = 0;
+      this.cancelSheetPointerInteraction?.();
+    }
     if (!this.elSearchPromptModal) return;
     this.closeSearchPromptAutocomplete();
     this.elSearchPromptModal.style.display = "none";
+    if (!restoreFocus) return;
+    const activeSearch = Boolean(this.elSearchInput?.value?.trim());
+    if (!activeSearch && this.historyOriginSelection !== undefined) {
+      this.restoreHistoryOriginSelection?.();
+      return;
+    }
+    if (this.activeCell && this.activeCell.colKey !== "gender") {
+      const { rowIdx, colKey } = this.activeCell;
+      const cell = this.elTableBody?.querySelector?.(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell && typeof cell.querySelector === "function" && !cell.querySelector("input")) {
+        this.startInlineEdit?.(rowIdx, colKey, cell, true);
+      }
+    }
+    if (typeof this.focusSelectedCellEditor === "function" && (this.activeCell || this.crossDateSelection)) {
+      this.focusSelectedCellEditor();
+      if (typeof document !== "undefined" && document.activeElement === this.elSearchPromptInput) {
+        this.elSheetContainer?.focus({ preventScroll: true });
+      }
+      return;
+    }
     this.elSheetContainer?.focus({ preventScroll: true });
   }
 
@@ -404,6 +445,11 @@ class PTPatientSearchDialog {
   }
 
   showSearchNotFoundModal(message = "일치하는 환자 내역이 없습니다.", { query, targetRowIdx } = {}) {
+    this._searchNotFoundCleanup?.();
+    this._searchNotFoundCleanup = null;
+    this.directHistorySearchKeyHeld = false;
+    this.historyApplyBlockedKey = null;
+    this.guardNextCellInput = false;
     const row = this.getCurrentRows()[targetRowIdx];
     const fromNameCell = this.activeCell?.colKey === "name" && this.activeCell.rowIdx === targetRowIdx &&
       Boolean(String(query ?? "").trim()) &&
@@ -445,6 +491,9 @@ class PTPatientSearchDialog {
   closeSearchNotFoundModal() {
     this._searchNotFoundCleanup?.();
     this._searchNotFoundCleanup = null;
+    this.directHistorySearchKeyHeld = false;
+    this.historyApplyBlockedKey = null;
+    this.guardNextCellInput = false;
     const modal = document.getElementById?.("searchNotFoundModal");
     if (modal) modal.style.display = "none";
     const target = this.searchNotFoundReturnTarget;
@@ -487,7 +536,7 @@ class PTPatientSearchDialog {
   }
 
   async searchPatientHistory(query, targetRowIdx) {
-    this.closeSearchPromptModal();
+    this.closeSearchPromptModal({ restoreFocus: false });
     const requestId = this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
     const date = this.currentDate;
     let result;
@@ -503,7 +552,7 @@ class PTPatientSearchDialog {
     if (requestId !== this.patientHistorySearchRequestId || date !== this.currentDate) return false;
     const { searchStore, exists } = result;
     // A repeated IME shortcut can open a prompt while cloud history is loading.
-    if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal();
+    if (this.elSearchPromptModal?.style.display === "flex") this.closeSearchPromptModal({ restoreFocus: false });
     if (!exists) {
       if (this.supabaseClient && this.searchHistoryLoadError) {
         this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
@@ -550,11 +599,11 @@ class PTPatientSearchDialog {
           this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
           return;
         }
-        this.closeSearchPromptModal();
+        this.closeSearchPromptModal({ restoreFocus: false });
         this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query: q, targetRowIdx: targetIdx });
         return;
       }
-      this.closeSearchPromptModal();
+      this.closeSearchPromptModal({ restoreFocus: false });
       const targetRow = this.getCurrentRows()[targetIdx];
       const field = searchByChart ? "chartNo" : "name";
       const focusCurrentTarget = String(targetRow?.[field] ?? "").trim().toLowerCase() === normalized;

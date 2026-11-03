@@ -393,6 +393,9 @@ class PTAppEvents {
     // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
       if (this._recordsRestorePending) return;
+      if (this.directHistorySearchKeyHeld && !this.isSearchShortcut(e)) {
+        this.directHistorySearchKeyHeld = false;
+      }
       if (this.handleNextNameCellShortcut(e)) return;
       if (!e.defaultPrevented && this.handleForcedCorrectionShortcut(e)) return;
       if (this.usesNativeCellInput() && this.isHangulToggleKeyEvent(e)) return;
@@ -409,6 +412,11 @@ class PTAppEvents {
       this.releaseHistorySearchKey(e);
       if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
     });
+    document.addEventListener("mousedown", () => {
+      this.directHistorySearchKeyHeld = false;
+      this.historyApplyBlockedKey = null;
+      this.presetLeftKeyHeld = false;
+    }, true);
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
     this.initCellWindowFocus();
     window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; this._cellLanguageToggleDown = null; });
@@ -554,7 +562,7 @@ class PTAppEvents {
     this.isSelectingRows = false;
     this._isRowDragging = false;
     this._rowDragAnchor = undefined;
-    this.elSheetContainer?.classList.remove('is-selecting', 'is-fill-dragging');
+    this.elSheetContainer?.classList?.remove('is-selecting', 'is-fill-dragging');
   }
 
   // Keep the default row count and fifteen empty rows below the last entered record.

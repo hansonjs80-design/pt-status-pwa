@@ -384,7 +384,7 @@ test('jumps place current cells at the requested viewport position below pinned 
   }
 });
 
-test('selected chart/name opens prefilled prompt with all text selected, including an empty cell', () => {
+test('selected name opens prefilled prompt with all text selected, while chart opens empty prompt', () => {
   for (const colKey of ['name', 'chartNo']) for (const value of ['가상환자', '']) {
     const { app } = createApp([{ [colKey]: value }]);
     app.activeCell.colKey = colKey;
@@ -395,7 +395,7 @@ test('selected chart/name opens prefilled prompt with all text selected, includi
     app.elSearchInput.value = 'old query';
     app.findActiveCell();
     assert.equal(app.elSearchPromptModal.style.display, 'flex');
-    assert.equal(app.elSearchPromptInput.value, value);
+    assert.equal(app.elSearchPromptInput.value, colKey === 'name' ? value : '');
     assert.equal(app.searchPromptTargetRowIdx, 0);
     assert.ok(selected && focused);
   }
@@ -459,7 +459,7 @@ test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
   }
 });
 
-test('chart/name live and formula editors route Ctrl/Cmd+F directly before other selection shortcuts', () => {
+test('name live and formula editors route Ctrl/Cmd+F directly while chart editors open an empty prompt before selection shortcuts', () => {
   for (const colKey of ['chartNo', 'name']) for (const formula of [false, true]) for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell = { rowIdx: 0, colKey };
@@ -467,13 +467,19 @@ test('chart/name live and formula editors route Ctrl/Cmd+F directly before other
     const input = { tagName: 'INPUT', value: colKey === 'name' ? '가상환자' : 'T001',
       closest: () => formula ? null : cell, blur() {} };
     if (formula) app.elFormulaInput = input;
-    let searched;
+    let searched, prompted;
     app.searchPatientHistory = (...args) => { searched = args; };
-    app.openSearchPromptModal = () => assert.fail('live editors must skip the prompt');
+    app.openSearchPromptModal = (...args) => { prompted = args; };
     app.handleCellRowSelectShortcut = () => assert.fail('search must run before selection shortcuts');
     app.handleGlobalKeyDown({ key: 'ㄹ', code: 'KeyF', isComposing: true, [modifier]: true,
       target: input, preventDefault() {}, stopPropagation() {} });
-    assert.deepEqual(searched, [input.value, 0]);
+    if (colKey === 'name') {
+      assert.deepEqual(searched, [input.value, 0]);
+      assert.equal(prompted, undefined);
+    } else {
+      assert.equal(searched, undefined);
+      assert.deepEqual(prompted, [0, '']);
+    }
   }
 });
 
@@ -738,7 +744,7 @@ test('history nonidentity cells also open an empty search prompt with the origin
   }
 });
 
-test('transparent armed chart/name selections retain their prefilled search prompt', () => {
+test('transparent armed name selections retain their prefilled search prompt while chart opens empty', () => {
   for (const colKey of ['name', 'chartNo']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell.colKey = colKey;
@@ -747,7 +753,7 @@ test('transparent armed chart/name selections retain their prefilled search prom
     app.searchAllDates = () => { assert.fail('armed input must open a prompt'); };
     const input = { tagName: 'INPUT', value: '가상환자', closest: () => ({}), classList: { contains: name => name === 'is-armed' } };
     app.handleGlobalKeyDown({ key: 'f', metaKey: true, target: input, preventDefault() {}, stopPropagation() {} });
-    assert.deepEqual(prompt, [0, app.getCurrentRows()[0][colKey]]);
+    assert.deepEqual(prompt, [0, colKey === 'name' ? app.getCurrentRows()[0][colKey] : '']);
   }
 });
 
@@ -1620,7 +1626,7 @@ test('empty focused name inputs and selected chart inputs still open the search 
     app.openSearchPromptModal = (...args) => { prompt=args; };
     app.searchPatientHistory = () => assert.fail('empty names and selected chart cells must open the prompt');
     app.handleGlobalKeyDown({key:'f',code:'KeyF',[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
-    assert.deepEqual(prompt,[0,value]);
+    assert.deepEqual(prompt,[0,colKey==='name'?value:'']);
   }
 });
 
@@ -1687,8 +1693,8 @@ test('draft search cannot reuse another date or a different cell, or replace mod
 });
 
 
-test('direct chart/name search closes a lingering prompt, cancels its focus callback and ignores held F repeats', () => {
-  for (const colKey of ['name','chartNo']) for (const modifier of ['ctrlKey','metaKey']) {
+test('direct name search closes a lingering prompt, cancels its focus callback and ignores held F repeats', () => {
+  for (const colKey of ['name']) for (const modifier of ['ctrlKey','metaKey']) {
     const {app,context}=createApp([{name:'검색 이름',chartNo:'4455'}]);
     app.activeCell={rowIdx:0,colKey};
     const timers=new Map();let timerId=0,focused=0;
@@ -1698,7 +1704,7 @@ test('direct chart/name search closes a lingering prompt, cancels its focus call
     app.elSearchPromptInput={value:'',focus(){focused++;},select(){}};
     app.openSearchPromptModal(0,'이전 검색');
     app.updateSearchPromptAutocomplete=()=>assert.fail('closed prompt must not recreate suggestions');
-    const input={tagName:'INPUT',value:colKey==='name'?'검색 이름':'4455',
+    const input={tagName:'INPUT',value:'검색 이름',
       closest:()=>({dataset:{row:'0',col:colKey}}),blur(){}};
     let searches=0;
     app.searchPatientHistory=()=>{searches++;};
@@ -1854,7 +1860,7 @@ test('native name search commits its highlighted autocomplete name before search
   }
 });
 
-test('name search falls back to live input when no own autocomplete candidate is highlighted', () => {
+test('name search falls back to live input when no own autocomplete candidate is highlighted, while chart opens empty prompt', () => {
   for (const mode of ['closed','unselected','otherRow','otherInput','chart']) {
     const {app}=createApp([{name:'입력한이름',chartNo:'411'}]);
     const colKey=mode==='chart'?'chartNo':'name';
@@ -1862,9 +1868,17 @@ test('name search falls back to live input when no own autocomplete candidate is
     const input={tagName:'INPUT',value:colKey==='name'?'입력한이름':'411',classList:{contains:()=>false},closest:()=>cell,blur(){}};
     app.autocompleteState={rowIdx:mode==='otherRow'?1:0,colKey:'name',input:mode==='otherInput'?{}:input,candidates:['다른이름'],selectedIndex:mode==='unselected'?-1:0};
     app.isAutocompleteOpen=()=>mode!=='closed';app.closeAutocompleteMenu=()=>{};
-    let searched;app.searchPatientHistory=(...args)=>{searched=args;};
+    let searched, prompted;
+    app.searchPatientHistory=(...args)=>{searched=args;};
+    app.openSearchPromptModal=(...args)=>{prompted=args;};
     app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:input,preventDefault(){},stopPropagation(){}});
-    assert.deepEqual(searched,[input.value,0]);
+    if (mode === 'chart') {
+      assert.equal(searched, undefined);
+      assert.deepEqual(prompted, [0, '']);
+    } else {
+      assert.deepEqual(searched,[input.value,0]);
+      assert.equal(prompted, undefined);
+    }
   }
 });
 
@@ -2267,4 +2281,69 @@ test('chart numbers, paste and shortcuts keep normal search input semantics',()=
   const previous=input.value;
   input.value='late';app.handleSearchPromptInput({type:'compositionend',data:'late'});
   app.openSearchPromptModal(0,previous);input.select();promptType(app,'rla');assert.equal(input.value,'김');
+});
+
+test('Ctrl/Cmd+F from non-name cells and history non-name cells opens search prompt with empty string', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    for (const colKey of ['no', 'gender', 'chartNo', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime']) {
+      const { app } = createApp([{ [colKey]: '입력된값', name: '김환자' }]);
+      app.activeCell = { rowIdx: 0, colKey };
+      let prompt;
+      app.openSearchPromptModal = (...args) => { prompt = args; };
+      app.searchPatientHistory = app.searchAllDates = () => assert.fail('non-name cell must not search directly');
+      const cell = { dataset: { row: '0', col: colKey } };
+      const liveInput = { tagName: 'INPUT', value: '입력중', classList: { contains: () => false }, closest: () => cell, blur() {} };
+      app.handleGlobalKeyDown({ key: 'f', code: 'KeyF', [modifier]: true, target: liveInput, preventDefault() {}, stopPropagation() {} });
+      assert.deepEqual(prompt, [0, '']);
+
+      prompt = null;
+      const armedInput = { tagName: 'INPUT', value: '입력된값', classList: { contains: k => k === 'is-armed' }, closest: () => cell, blur() {} };
+      app.handleGlobalKeyDown({ key: 'f', code: 'KeyF', [modifier]: true, target: armedInput, preventDefault() {}, stopPropagation() {} });
+      assert.deepEqual(prompt, [0, '']);
+    }
+    const { app } = createApp([{ name: '김환자' }]);
+    app.crossDateResults = [{ chartNo: '1234', name: '박환자', part: '허리' }];
+    let prompt;
+    app.openSearchPromptModal = (...args) => { prompt = args; };
+    app.crossDateSelection = { endRow: 0, endCol: 2 }; // chartNo
+    app.handleGlobalKeyDown({ key: 'f', code: 'KeyF', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(prompt, [0, '']);
+    app.crossDateSelection = { endRow: 0, endCol: 3 }; // name
+    app.handleGlobalKeyDown({ key: 'f', code: 'KeyF', [modifier]: true, target: { tagName: 'DIV' }, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(prompt, [0, '박환자']);
+  }
+});
+
+test('closing search prompt restores active cell native editor and clears stuck input/search guards', () => {
+  const rows = [{ name: '가상환자', part: '허리' }];
+  const { app, context } = createApp(rows);
+  app.activeCell = { rowIdx: 0, colKey: 'part' };
+  let restoredEditorFocus = 0, restoredSelect = 0;
+  const editorInput = { focus() { restoredEditorFocus++; context.document.activeElement = this; } };
+  const cell = { querySelector: sel => sel === 'input' ? editorInput : null, scrollIntoView() {} };
+  app.elTableBody.querySelector = sel => sel.endsWith(' input') ? editorInput : cell;
+  app.selectCell = (r, c) => { restoredSelect++; app.activeCell = { rowIdx: r, colKey: c }; };
+  app.focusSelectedCellEditor = context.App.prototype.focusSelectedCellEditor;
+  app.elSearchPromptModal = { style: {}, querySelector: () => null };
+  app.elSearchPromptInput = { value: '', focus() { context.document.activeElement = this; }, select() {} };
+  app.updateSearchPromptAutocomplete = app.closeSearchPromptAutocomplete = () => {};
+
+  app.guardNextCellInput = true;
+  app.presetLeftKeyHeld = true;
+  app.leftEditHandoffUntil = Date.now() + 5000;
+  app.openSearchPromptModal(0, '');
+  assert.equal(app.guardNextCellInput, false);
+  assert.equal(app.presetLeftKeyHeld, false);
+  assert.equal(app.leftEditHandoffUntil, 0);
+
+  app.directHistorySearchKeyHeld = true;
+  app.historyApplyBlockedKey = 'f';
+  app.guardNextCellInput = true;
+  app.closeSearchPromptModal();
+  assert.equal(app.directHistorySearchKeyHeld, false);
+  assert.equal(app.historyApplyBlockedKey, null);
+  assert.equal(app.guardNextCellInput, false);
+  assert.equal(restoredSelect, 1);
+  assert.equal(restoredEditorFocus, 1);
+  assert.equal(app.historyOriginSelection, undefined);
 });

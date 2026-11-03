@@ -295,7 +295,7 @@ class PTTableView {
 
   ensureCurrentCellVisible(cell, { center = false, viewportRatio = 0.5 } = {}) {
     const container = this.elSheetContainer;
-    cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    cell?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     if (!cell?.getBoundingClientRect || !container?.getBoundingClientRect) return;
     const bounds = container.getBoundingClientRect();
     const bottom = bounds.top + (container.clientTop || 0) + container.clientHeight;
