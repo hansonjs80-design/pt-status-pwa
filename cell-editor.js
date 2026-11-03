@@ -617,7 +617,7 @@ class PTCellEditor {
       // A corrected editor may still receive its original IME commit after
       // Enter/Tab moves focus. Arm the destination before blurring this input,
       // including when compositionend has already cleared the live projection.
-      if (input._forcedCorrectionApplied || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
+      if (input._forcedCorrectionApplied || composing || input.dataset.composing === 'true' || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       const liveValue = this.getCellEditorValue(input);

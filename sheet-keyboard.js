@@ -134,9 +134,11 @@ class PTSheetKeyboard {
   releaseHistorySearchKey(e) {
     const key = String(e.key || "").toLowerCase();
     if (["control", "meta"].includes(key)) this.clipboardArrowModifierHandoff = false;
-    if (["f", "ㄹ", "control", "meta"].includes(key) || e.code === "KeyF" || e.keyCode === 70) this.directHistorySearchKeyHeld = false;
-    if (key === this.historyApplyBlockedKey ||
-        (this.historyApplyBlockedKey === "f" && (key === "ㄹ" || e.code === "KeyF" || e.keyCode === 70))) this.historyApplyBlockedKey = null;
+    if (["f", "ㄹ", "control", "meta"].includes(key) || e.code === "KeyF" || e.keyCode === 70) {
+      this.directHistorySearchKeyHeld = false;
+      if (this.historyApplyBlockedKey === "f") this.historyApplyBlockedKey = null;
+    }
+    if (key === this.historyApplyBlockedKey) this.historyApplyBlockedKey = null;
   }
 
   handleHistoryApplyShortcut(e) {
@@ -190,8 +192,14 @@ class PTSheetKeyboard {
 
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
-    if (this.directHistorySearchKeyHeld && !this.isSearchShortcut(e)) {
-      this.directHistorySearchKeyHeld = false;
+    if ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === "f") && !this.isSearchShortcut(e)) {
+      const key = String(e.key || "").toLowerCase();
+      if (!e.ctrlKey && !e.metaKey && e.code !== "KeyF" && e.keyCode !== 70 &&
+           !["f", "ㄹ", "control", "meta"].includes(key) &&
+           (Boolean(e.code && e.code !== "Unidentified") || !["process", "unidentified"].includes(key))) {
+        this.directHistorySearchKeyHeld = false;
+        if (this.historyApplyBlockedKey === "f") this.historyApplyBlockedKey = null;
+      }
     }
     if (e.defaultPrevented) return;
     if (this.handleClipboardArrowHandoff(e)) return;
@@ -252,7 +260,12 @@ class PTSheetKeyboard {
         const colKey = cell?.dataset?.col || this.activeCell?.colKey;
         if ((cellInput || formulaEditor) && colKey !== "name") {
           const rowIdx = this.activeCell?.rowIdx ?? Number(cell?.dataset?.row);
-          e.target.blur();
+          if (typeof e.target?.commitAutocompleteValue === "function" && !e.target.classList?.contains?.("is-armed")) {
+            e.target.commitAutocompleteValue();
+          } else {
+            e.target.blur();
+          }
+          this.elSheetContainer?.focus?.({ preventScroll: true });
           this.openSearchPromptModal(rowIdx, "");
           return;
         }
@@ -327,9 +340,10 @@ class PTSheetKeyboard {
       }
       else if (isCtrlOrMeta && keyLower === "c") this.copySelection();
       else if (isCtrlOrMeta && keyLower === "v") return; // Let native paste deliver text and HTML to the shared paste handler.
-      else if (isCtrlOrMeta && keyLower === "f") {
+      else if (this.isSearchShortcut(e)) {
         const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
         const value = String(this.crossDateResults[selection.endRow][keys[selection.endCol]] ?? "").trim();
+        this.historyApplyBlockedKey = "f";
         if (keys[selection.endCol] === "name") this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, value);
         else this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, "");
       }

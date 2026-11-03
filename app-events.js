@@ -393,8 +393,14 @@ class PTAppEvents {
     // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
       if (this._recordsRestorePending) return;
-      if (this.directHistorySearchKeyHeld && !this.isSearchShortcut(e)) {
-        this.directHistorySearchKeyHeld = false;
+      if ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === "f") && !this.isSearchShortcut(e)) {
+        const key = String(e.key || "").toLowerCase();
+        if (!e.ctrlKey && !e.metaKey && e.code !== "KeyF" && e.keyCode !== 70 &&
+            !["f", "ㄹ", "control", "meta"].includes(key) &&
+            (Boolean(e.code && e.code !== "Unidentified") || !["process", "unidentified"].includes(key))) {
+          this.directHistorySearchKeyHeld = false;
+          if (this.historyApplyBlockedKey === "f") this.historyApplyBlockedKey = null;
+        }
       }
       if (this.handleNextNameCellShortcut(e)) return;
       if (!e.defaultPrevented && this.handleForcedCorrectionShortcut(e)) return;

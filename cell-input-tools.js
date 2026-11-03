@@ -27,24 +27,37 @@ class PTCellInputTools {
   }
 
   blockInheritedNavigationInput(input, event, originalValue) {
-    if (input.dataset.navigationInputGuard !== 'true') return false;
+    if (input?.dataset?.navigationInputGuard !== 'true') return false;
     if (['insertFromPaste', 'insertFromDrop'].includes(event.inputType)) {
       delete input.dataset.navigationInputGuard;
       return false;
     }
     if (event.cancelable) event.preventDefault();
-    if (event.type === 'input' || event.type === 'compositionend') {
-      if (input.value !== originalValue) {
-        input.value = originalValue;
-        if (input.classList?.contains('is-armed')) input.setSelectionRange(0, originalValue.length);
+    if (input.value !== originalValue) {
+      input.value = originalValue;
+      if (input.classList?.contains('is-armed') || input === this.elSearchPromptInput) {
+        input.setSelectionRange?.(0, originalValue.length);
       }
     }
     return true;
   }
 
   releaseNavigationInputGuard(input, event) {
+    if (!input?.dataset) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const keyLower = String(event.key || '').toLowerCase();
+    const isFKey = event.code === 'KeyF' || event.keyCode === 70 || keyLower === 'f' || keyLower === 'ㄹ';
+    if ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === 'f') &&
+        (isFKey || event.repeat || !event.code || event.code === 'Unidentified')) return;
+    const isSearchPromptCleanKey = Boolean(
+      input === this.elSearchPromptInput &&
+      !event.repeat &&
+      !isFKey &&
+      !this.isModeToggleKey?.(event) &&
+      (event.key === 'Process' || event.keyCode === 229)
+    );
     // A fresh physical typing key proves that this cell owns the next input.
-    if (event.key?.length === 1 || /^(Key[A-Z]|Digit[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || event.key || '')) {
+    if (isSearchPromptCleanKey || event.key?.length === 1 || /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || event.key || '')) {
       delete input.dataset.navigationInputGuard;
       this.leftEditHandoffUntil = 0;
     }

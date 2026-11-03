@@ -382,8 +382,9 @@ class PTApp {
 
   isSearchShortcut(e) {
     // Korean IME can report keyCode 229 or a Hangul key while the physical key is F.
-    return (e.ctrlKey || e.metaKey) && !e.altKey &&
-      (e.key.toLowerCase() === "f" || e.code === "KeyF");
+    const key = String(e.key || "").toLowerCase();
+    return (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+      (key === "f" || key === "ㄹ" || e.code === "KeyF" || e.keyCode === 70);
   }
 
   isForcedCorrectionShortcut(e) {

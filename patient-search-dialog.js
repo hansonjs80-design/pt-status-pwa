@@ -27,14 +27,33 @@ class PTPatientSearchDialog {
     if (!input) return;
     this.clearKoreanKeyBuffer(input);
     delete input._cellKeyValue;
+    delete input._guardedInitialValue;
     input._koreanNameOnly = true;
     input.dataset ||= {};
+    delete input.dataset.navigationInputGuard;
     input.dataset.nativeComposing = 'false';
   }
 
   handleSearchPromptCompositionStart(e) {
     const input = this.elSearchPromptInput;
     if (this.elSearchPromptModal?.style.display !== 'flex') return;
+    if (this.blockInheritedNavigationInput?.(input, e, input._guardedInitialValue ?? '')) {
+      this.clearKoreanKeyBuffer(input);
+      delete input._cellKeyValue;
+      input.dataset.nativeComposing = 'false';
+      if (!input._resettingInheritedComposition) {
+        input._resettingInheritedComposition = true;
+        try {
+          input.blur?.();
+          input.focus?.({ preventScroll: true });
+          if (input.value !== (input._guardedInitialValue ?? '')) input.value = input._guardedInitialValue ?? '';
+          input.select?.();
+        } finally {
+          delete input._resettingInheritedComposition;
+        }
+      }
+      return;
+    }
     this.restoreHandledCellKey(input, e);
     this.clearKoreanKeyBuffer(input);
     input.dataset.nativeComposing = 'true';
@@ -43,6 +62,12 @@ class PTPatientSearchDialog {
   handleSearchPromptBeforeInput(e) {
     const input = this.elSearchPromptInput;
     if (this.elSearchPromptModal?.style.display !== 'flex') return;
+    if (this.blockInheritedNavigationInput?.(input, e, input._guardedInitialValue ?? '')) {
+      this.clearKoreanKeyBuffer(input);
+      delete input._cellKeyValue;
+      input.dataset.nativeComposing = 'false';
+      return;
+    }
     if (e.inputType && e.inputType !== 'insertText' && !/Composition/.test(e.inputType)) {
       this.clearKoreanKeyBuffer(input);
       delete input._cellKeyValue;
@@ -53,6 +78,25 @@ class PTPatientSearchDialog {
   handleSearchPromptInput(e) {
     if (this.elSearchPromptModal?.style.display !== 'flex') return;
     const input = this.elSearchPromptInput;
+    if (this.blockInheritedNavigationInput?.(input, e, input._guardedInitialValue ?? '')) {
+      this.clearKoreanKeyBuffer(input);
+      delete input._cellKeyValue;
+      input.dataset.nativeComposing = 'false';
+      if ((e.isComposing || /Composition/.test(e.inputType || '')) && !input._resettingInheritedComposition) {
+        input._resettingInheritedComposition = true;
+        try {
+          input.blur?.();
+          input.focus?.({ preventScroll: true });
+          if (input.value !== (input._guardedInitialValue ?? '')) input.value = input._guardedInitialValue ?? '';
+          input.select?.();
+        } finally {
+          delete input._resettingInheritedComposition;
+        }
+      }
+      if (!input.value.trim()) this.closeSearchPromptAutocomplete();
+      else this.queueSearchPromptAutocomplete();
+      return;
+    }
     const handled = this.restoreHandledCellKey(input, e);
     if (e.type === 'compositionend' || (e.isComposing === false && e.inputType && !/Composition/.test(e.inputType))) {
       input.dataset.nativeComposing = 'false';
@@ -99,6 +143,16 @@ class PTPatientSearchDialog {
   }
 
   handleSearchPromptKeyDown(e) {
+    const keyLower = String(e.key || "").toLowerCase();
+    const isFKey = e.code === "KeyF" || e.keyCode === 70 || keyLower === "f" || keyLower === "ㄹ";
+    if (this.isSearchShortcut?.(e) || ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === "f") && (isFKey || e.repeat))) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
+      return;
+    }
+    if (this.elSearchPromptInput) {
+      this.releaseNavigationInputGuard?.(this.elSearchPromptInput, e);
+    }
     if (this.handleSearchPromptKoreanKey(e)) return;
     const enter = e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13;
     if (enter || ["ArrowDown", "ArrowUp"].includes(e.key)) this.flushSearchPromptAutocomplete();
@@ -166,9 +220,18 @@ class PTPatientSearchDialog {
     this.captureHistoryOriginSelection();
     this.searchPromptTargetRowIdx = Number.isInteger(targetRowIdx) ? targetRowIdx : this.findFirstEmptyRowIndex();
     if (!this.elSearchPromptModal || !this.elSearchPromptInput) return;
-    if (typeof document !== "undefined" && document.activeElement?.matches?.(".cell-input-element")) {
-      document.activeElement.blur?.();
+    const activeEditor = typeof document !== "undefined" && document.activeElement?.matches?.(".cell-input-element")
+      ? document.activeElement
+      : this.elTableBody?.querySelector?.(".cell-input-element:not(.is-armed)");
+    if (activeEditor) {
+      if (typeof activeEditor.commitAutocompleteValue === "function" && !activeEditor.classList?.contains?.("is-armed")) {
+        activeEditor.commitAutocompleteValue();
+      } else {
+        activeEditor.blur?.();
+      }
+      this.elSheetContainer?.focus?.({ preventScroll: true });
     }
+    this.guardNextCellInput = false;
     const includeCurrentDate = document.getElementById('searchIncludeCurrentDate');
     if (includeCurrentDate) includeCurrentDate.checked = Boolean(this.includeCurrentDateSearch);
     this.resetSearchPromptInputState();
@@ -176,7 +239,10 @@ class PTPatientSearchDialog {
     const fallbackQuery = this.activeCell?.colKey === "name"
       ? String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim()
       : "";
-    this.elSearchPromptInput.value = initialQuery ?? fallbackQuery;
+    const initialValue = initialQuery ?? fallbackQuery;
+    this.elSearchPromptInput.value = initialValue;
+    this.elSearchPromptInput._guardedInitialValue = initialValue;
+    this.elSearchPromptInput.dataset.navigationInputGuard = "true";
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";

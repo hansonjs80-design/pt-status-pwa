@@ -557,7 +557,8 @@ class PTHistorySearch {
     if (!["INPUT", "TEXTAREA"].includes(input?.tagName)) {
       const focused = document.activeElement;
       if (focused?.tagName === "INPUT" && focused.closest?.(".excel-cell")) input = focused;
-      else if (this.activeCell && (event.isComposing || event.keyCode === 229 || event.key === "Process")) {
+      else if (this.activeCell && (event.isComposing || event.keyCode === 229 || event.key === "Process" ||
+               event.target === this.elSheetContainer || event.target === document.body || event.target?.closest?.(".excel-cell"))) {
         const { rowIdx, colKey } = this.activeCell;
         const editor = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"] input:not(.is-armed)`);
         if (editor?.tagName === "INPUT") input = editor;
@@ -581,8 +582,14 @@ class PTHistorySearch {
       event.preventDefault();
       event.stopPropagation();
       this.historyApplyBlockedKey = "f";
-      input.blur?.();
+      this.patientSearchDraft = null;
+      if (typeof input?.commitAutocompleteValue === "function" && !input.classList?.contains?.("is-armed")) {
+        input.commitAutocompleteValue();
+      } else {
+        input.blur?.();
+      }
       this.closeAutocompleteMenu?.();
+      this.elSheetContainer?.focus?.({ preventScroll: true });
       this.openSearchPromptModal(rowIdx, "");
       return true;
     }

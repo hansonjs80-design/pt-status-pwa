@@ -2214,7 +2214,7 @@ function koreanPromptFixture(platform='MacIntel') {
   input.setSelectionRange=(start,end)=>{input.selectionStart=start;input.selectionEnd=end;};
   input.select=()=>input.setSelectionRange(0,input.value.length);
   app.openSearchPromptModal(0,'');
-  return {app,input};
+  return {app,input,context};
 }
 function promptKey(key,options={}) {
   return {type:'keydown',key,code:/^[a-zA-Z]$/.test(key)?'Key'+key.toUpperCase():key,
@@ -2346,4 +2346,82 @@ test('closing search prompt restores active cell native editor and clears stuck 
   assert.equal(restoredSelect, 1);
   assert.equal(restoredEditorFocus, 1);
   assert.equal(app.historyOriginSelection, undefined);
+});
+
+test('Ctrl/Cmd+F while composing Korean in a non-name cell commits the cell and blocks trailing syllable leak into search prompt', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) {
+    for (const keyVariant of [
+      { key: 'f', code: 'KeyF', keyCode: 70 },
+      { key: 'ㄹ', code: 'KeyF', keyCode: 70 },
+      { key: 'Process', code: 'KeyF', keyCode: 229, isComposing: true },
+    ]) {
+      const { app, input: promptInput, context } = koreanPromptFixture('MacIntel');
+      const rows = [{ name: '박환자', part: '' }];
+      app.getCurrentRows = () => rows;
+      app.activeCell = { rowIdx: 0, colKey: 'part' };
+      const cell = { dataset: { row: '0', col: 'part' } };
+      let committedCellText = null;
+      const cellEditor = {
+        tagName: 'INPUT',
+        value: '허리',
+        dataset: { composing: 'true', nativeComposing: 'true' },
+        classList: { contains: () => false },
+        closest: () => cell,
+        commitAutocompleteValue() {
+          committedCellText = this.value;
+          rows[0].part = this.value;
+          this.dataset.composing = 'false';
+          this.dataset.nativeComposing = 'false';
+          return true;
+        },
+        blur() {
+          rows[0].part = this.value;
+        },
+      };
+      context.document.activeElement = cellEditor;
+      app.elTableBody.querySelector = sel => sel.includes('input') ? cellEditor : cell;
+
+      app.handleGlobalKeyDown({
+        ...keyVariant,
+        [modifier]: true,
+        target: cellEditor,
+        preventDefault() {},
+        stopPropagation() {},
+      });
+
+      assert.equal(committedCellText, '허리', 'active non-name cell text must be committed intact');
+      assert.equal(rows[0].part, '허리');
+      assert.equal(app.elSearchPromptModal.style.display, 'flex');
+      assert.equal(promptInput.value, '', 'search prompt input must start completely empty');
+      assert.equal(promptInput.dataset.navigationInputGuard, 'true');
+
+      // Simulate OS IME flushing the trailing syllable ("리" of "허리") into the newly focused search prompt input
+      promptInput.value = '리';
+      app.handleSearchPromptCompositionStart({ type: 'compositionstart', data: '리', preventDefault() {}, stopPropagation() {} });
+      assert.equal(promptInput.value, '');
+
+      promptInput.value = '리';
+      app.handleSearchPromptBeforeInput({ type: 'beforeinput', inputType: 'insertCompositionText', data: '리', isComposing: true, preventDefault() {}, stopPropagation() {} });
+      assert.equal(promptInput.value, '');
+
+      promptInput.value = '리';
+      app.handleSearchPromptInput({ type: 'input', inputType: 'insertCompositionText', data: '리', isComposing: true, preventDefault() {}, stopPropagation() {} });
+      assert.equal(promptInput.value, '');
+
+      promptInput.value = '리';
+      app.handleSearchPromptInput({ type: 'compositionend', data: '리', preventDefault() {}, stopPropagation() {} });
+      assert.equal(promptInput.value, '');
+
+      // Simulate held/replayed F or ㄹ key after shortcut
+      app.handleSearchPromptKeyDown(promptKey('ㄹ', { code: 'KeyF', keyCode: 70 }));
+      assert.equal(promptInput.value, '');
+      assert.equal(promptInput.dataset.navigationInputGuard, 'true');
+
+      // Release modifier/shortcut key and type a fresh query in the search prompt
+      app.releaseHistorySearchKey({ key: 'f', code: 'KeyF' });
+      promptType(app, 'rla');
+      assert.equal(promptInput.dataset.navigationInputGuard, undefined);
+      assert.equal(promptInput.value, '김');
+    }
+  }
 });
