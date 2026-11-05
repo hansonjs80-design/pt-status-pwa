@@ -654,6 +654,14 @@ class PTCellEditor {
       setTimeout(() => {
         this._justCommittedFromAutocomplete = false;
       }, 60);
+      if (this.cloudPullDeferred && !this.pendingSyncDates?.has(this.currentDate)) {
+        this.cloudPullDeferred = false;
+        setTimeout(() => {
+          if (!this.isEditingCell() && !this.pendingSyncDates?.has(this.currentDate)) {
+            void this.pullFromCloud(this.currentDate);
+          }
+        }, 80);
+      }
     };
 
     // Search shortcuts can confirm the highlighted candidate through the same

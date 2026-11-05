@@ -143,35 +143,84 @@ class PTCloudSync {
   stopLiveSync() {
     this.liveSyncSession = null;
     this.liveRefreshBusy = false;
-    clearTimeout(this.liveReconnectTimer);
-    clearInterval(this.liveSyncTimer);
-    clearInterval(this.columnFormattingLiveTimer);
-    clearInterval(this.presetsLiveTimer);
-    clearTimeout(this.presetsSyncTimer);
-    clearTimeout(this.columnFormattingSyncTimer);
+    this._reconnectingLiveSync = false;
+    if (typeof clearTimeout === 'function') clearTimeout(this.liveReconnectTimer);
+    if (typeof clearInterval === 'function') {
+      clearInterval(this.liveSyncTimer);
+      clearInterval(this.columnFormattingLiveTimer);
+      clearInterval(this.presetsLiveTimer);
+    }
+    if (typeof clearTimeout === 'function') {
+      clearTimeout(this.presetsSyncTimer);
+      clearTimeout(this.columnFormattingSyncTimer);
+      this.syncTimers?.forEach(timer => clearTimeout(timer));
+    }
     if (this.liveChannel && this.liveClient) void this.liveClient.removeChannel(this.liveChannel);
     this.liveChannel = null;
-    this.syncTimers?.forEach(timer => clearTimeout(timer));
     this.syncTimers?.clear();
+    this.activePulls?.clear();
+  }
+
+  ensureLiveChannelHealthy() {
+    const client = this.supabaseClient;
+    if (!client) return;
+    const channel = this.liveChannel;
+    const isUnhealthy = !channel || channel.state === 'closed' || channel.state === 'errored';
+    if (isUnhealthy && !this._reconnectingLiveSync) {
+      this._reconnectingLiveSync = true;
+      clearTimeout(this.liveReconnectTimer);
+      this.liveReconnectTimer = setTimeout(() => {
+        this._reconnectingLiveSync = false;
+        if (this.supabaseClient === client) this.startLiveSync();
+      }, 500);
+    }
+  }
+
+  handleRealtimeCloudChange(date) {
+    if (!date) return;
+    if (date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
+    if (date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
+    if (date === SHARED_PRESETS_RECORD) { void this.syncSharedPresets({ force: true }); return; }
+    if (date === this.currentDate) {
+      if (this.isEditingCell()) {
+        this.cloudPullDeferred = true;
+      } else {
+        void this.pullFromCloud(this.currentDate);
+      }
+    }
+    this.searchHistoryLoadedAt = 0;
   }
 
   setupNetworkSyncListeners() {
     if (this._networkSyncListenersBound) return;
     this._networkSyncListenersBound = true;
-    window.addEventListener("online", () => {
+    const handleVisibilityOrFocus = () => {
       if (this.supabaseClient) {
-        this.startLiveSync();
-        void this.pullFromCloud(this.currentDate);
-      }
-    });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && this.supabaseClient) {
-        if (!this.liveChannel) this.startLiveSync();
-        else void this.pullFromCloud(this.currentDate);
+        const channel = this.liveChannel;
+        if (!channel || channel.state === 'closed' || channel.state === 'errored') {
+          this.startLiveSync();
+        } else {
+          void this.pullFromCloud(this.currentDate);
+        }
         void this.syncSharedColumnFormatting();
         void this.syncSharedPresets();
       }
-    });
+    };
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener("online", () => {
+        if (this.supabaseClient) {
+          this.startLiveSync();
+          void this.pullFromCloud(this.currentDate);
+        }
+      });
+      window.addEventListener("focus", handleVisibilityOrFocus);
+      window.addEventListener("pageshow", handleVisibilityOrFocus);
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") handleVisibilityOrFocus();
+      });
+    }
   }
 
   startLiveSync() {
@@ -183,20 +232,26 @@ class PTCloudSync {
     const session = this.liveSyncSession = {};
     this.liveChannel = client.channel("pt-live-updates-v1")
       .on("broadcast", { event: "changed" }, ({ payload }) => {
-        if (payload?.date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
-        if (payload?.date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
-        if (payload?.date === SHARED_PRESETS_RECORD) { void this.syncSharedPresets({force:true}); return; }
-        else if (payload?.date === this.currentDate) void this.pullFromCloud(this.currentDate);
-        this.searchHistoryLoadedAt = 0;
+        this.handleRealtimeCloudChange(payload?.date);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pt_daily_records" }, (payload) => {
+        const recordDate = payload.new?.date || payload.old?.date;
+        if (recordDate) this.handleRealtimeCloudChange(recordDate);
       });
     this.liveChannel.subscribe((status) => {
       if (this.liveSyncSession !== session) return;
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+      if (status === "SUBSCRIBED") {
+        if (this._pendingBroadcasts?.length) {
+          const pending = [...new Set(this._pendingBroadcasts)];
+          this._pendingBroadcasts = [];
+          for (const date of pending) this.notifyCloudChange(date);
+        }
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
         console.warn("Supabase 실시간 채널 연결 이상 감지, 재시도:", status);
         clearTimeout(this.liveReconnectTimer);
         this.liveReconnectTimer = setTimeout(() => {
           if (this.supabaseClient === client && this.liveSyncSession === session) this.startLiveSync();
-        }, 3000);
+        }, 1500);
       }
     });
     const refresh = async () => {
@@ -210,7 +265,6 @@ class PTCloudSync {
           if (!this.activePushes.has(date)) await this.pushToCloud(date);
         }
         if (this.liveSyncSession !== session) return;
-        void this.syncStaffCountSettings();
         // push가 모두 완료된 후 pull 실행
         if (this.liveSyncSession === session && !this.pendingSyncDates.has(this.currentDate)) {
           await this.pullFromCloud(this.currentDate);
@@ -219,20 +273,40 @@ class PTCloudSync {
         if (this.liveSyncSession === session) this.showSaveIndicator('클라우드 동기화 대기 · 연결되면 다시 시도합니다', true);
       } finally { if (this.liveSyncSession === session) this.liveRefreshBusy = false; }
     };
-    this.presetsLiveTimer = setInterval(() => { if (this.liveSyncSession === session) void this.syncSharedPresets(); }, 2000);
-    void this.syncSharedPresets();
+    // 주기적 설정 동기화: 실시간 broadcast/postgres_changes가 우선 처리되므로
+    // 백그라운드 폴링은 30초 주기로 완화하여 Supabase 연결 풀 부하 및 지연 방지
+    this.presetsLiveTimer = setInterval(() => { if (this.liveSyncSession === session) void this.syncSharedPresets(); }, 30000);
+    this.columnFormattingLiveTimer = setInterval(() => {
+      if (this.liveSyncSession === session) {
+        void this.syncSharedColumnFormatting();
+        void this.syncStaffCountSettings();
+      }
+    }, 30000);
     this.liveSyncTimer = setInterval(refresh, 2000);
-    this.columnFormattingLiveTimer = setInterval(() => { void this.syncSharedColumnFormatting(); }, 2000);
+    void this.syncSharedPresets();
     void this.syncSharedColumnFormatting();
     void this.syncStaffCountSettings();
     void refresh();
   }
 
   notifyCloudChange(date) {
+    if (!date) return;
     // Polling is the fallback. A failed optional broadcast must not turn an
     // acknowledged database write into a misleading save/retry error.
     try {
-      if (this.liveChannel) void Promise.resolve(this.liveChannel.send({ type: "broadcast", event: "changed", payload: { date } })).catch(() => {});
+      if (this.liveChannel) {
+        const sendPromise = this.liveChannel.send({ type: "broadcast", event: "changed", payload: { date } });
+        void Promise.resolve(sendPromise).then(res => {
+          if (res === 'error' || res === 'timed out') {
+            this._pendingBroadcasts ||= [];
+            if (!this._pendingBroadcasts.includes(date)) this._pendingBroadcasts.push(date);
+            this.ensureLiveChannelHealthy();
+          }
+        }).catch(() => {});
+      } else {
+        this._pendingBroadcasts ||= [];
+        if (!this._pendingBroadcasts.includes(date)) this._pendingBroadcasts.push(date);
+      }
     } catch (_) {}
   }
 
@@ -381,7 +455,7 @@ class PTCloudSync {
     }
     if (!this.supabaseClient) return;
     clearTimeout(this.syncTimers.get(date));
-    this.syncTimers.set(date, setTimeout(() => { this.syncTimers.delete(date); void this.pushToCloud(date); }, 400));
+    this.syncTimers.set(date, setTimeout(() => { this.syncTimers.delete(date); void this.pushToCloud(date); }, 120));
   }
 
   rebaseEditHistoryAfterSync(date, previousRows) {
@@ -597,7 +671,12 @@ class PTCloudSync {
     try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
-        (dateStr === this.currentDate && this.isEditingCell())) return;
+        (dateStr === this.currentDate && this.isEditingCell())) {
+      if (dateStr === this.currentDate && this.isEditingCell()) {
+        this.cloudPullDeferred = true;
+      }
+      return;
+    }
     const localAtRequest = JSON.stringify(this.dataStore[dateStr] || []);
     const client = this.supabaseClient;
     if (!client) {
@@ -605,70 +684,88 @@ class PTCloudSync {
       return;
     }
 
-    try {
-      const { data, error } = await this.runCloudQuery(client
-        .from("pt_daily_records")
-        .select("rows_data, updated_at")
-        .eq("date", dateStr)
-        .maybeSingle());
+    this.activePulls ||= new Map();
+    if (this.activePulls.has(dateStr)) return this.activePulls.get(dateStr);
 
-      if (error) {
-        console.warn("Cloud pull warning:", error);
-        if (showNotice) alert("클라우드 데이터 가져오기 실패: " + error.message);
-        return;
-      }
+    const pullTask = (async () => {
+      try {
+        const { data, error } = await this.runCloudQuery(client
+          .from("pt_daily_records")
+          .select("rows_data, updated_at")
+          .eq("date", dateStr)
+          .maybeSingle());
 
-      if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
-          localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
-          (dateStr === this.currentDate && this.isEditingCell())) return;
-      if (!this.syncBaselines.has(dateStr) && this.getDailySummary(this.dataStore[dateStr] || []).total &&
-          JSON.stringify(data?.rows_data || []) !== localAtRequest) {
-        this.pendingSyncDates.add(dateStr);
-        localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
-        await this.pushToCloud(dateStr, showNotice);
-        return;
-      }
-      if (data && Array.isArray(data.rows_data)) {
-        // The two-second poll normally receives the same day. Avoid rewriting
-        // the entire multi-date baseline store while the user is navigating.
-        if (JSON.stringify(this.syncBaselines.get(dateStr)) !== JSON.stringify(data.rows_data)) {
-          this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
-          await this.persistSyncBaselines();
+        if (error) {
+          console.warn("Cloud pull warning:", error);
+          if (showNotice) alert("클라우드 데이터 가져오기 실패: " + error.message);
+          return;
         }
+
         if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
             localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
-            (dateStr === this.currentDate && this.isEditingCell())) return;
-        const padded = data.rows_data.slice();
-        if (dateStr === this.currentDate) this.normalizeRowAllocation(padded, dateStr);
-        if (localAtRequest === JSON.stringify(padded)) return;
-        const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
-        this.dataStore[dateStr] = data.rows_data;
-        if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
-        // Ensure the current default row count
-        this.getCurrentRows();
-        if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
-        this.getEditHistory(dateStr);
-        this.updateHistoryButtons();
-        await this.persistDataStore();
-        if (this.currentDate === dateStr) {
-          this.renderTable();
-          this.updateSidebarStats();
+            (dateStr === this.currentDate && this.isEditingCell())) {
+          if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+          return;
         }
-        this.showSaveIndicator("클라우드 데이터 수신됨");
-        if (showNotice) alert(`${dateStr} 클라우드 최신 데이터를 성공적으로 불러왔습니다!`);
-      } else {
-        this.syncBaselines.set(dateStr, []);
-        if (this.getDailySummary(this.dataStore[dateStr] || []).total) {
+        if (!this.syncBaselines.has(dateStr) && this.getDailySummary(this.dataStore[dateStr] || []).total &&
+            JSON.stringify(data?.rows_data || []) !== localAtRequest) {
           this.pendingSyncDates.add(dateStr);
           localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
           await this.pushToCloud(dateStr, showNotice);
           return;
         }
-        if (showNotice) alert(`${dateStr} 일자의 클라우드 데이터가 아직 없습니다.`);
+        if (data && Array.isArray(data.rows_data)) {
+          // The two-second poll normally receives the same day. Avoid rewriting
+          // the entire multi-date baseline store while the user is navigating.
+          if (JSON.stringify(this.syncBaselines.get(dateStr)) !== JSON.stringify(data.rows_data)) {
+            this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
+            await this.persistSyncBaselines();
+          }
+          if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
+              localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
+              (dateStr === this.currentDate && this.isEditingCell())) {
+            if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+            return;
+          }
+          const padded = data.rows_data.slice();
+          if (dateStr === this.currentDate) this.normalizeRowAllocation(padded, dateStr);
+          if (localAtRequest === JSON.stringify(padded)) return;
+          const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
+          this.dataStore[dateStr] = data.rows_data;
+          if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
+          // Ensure the current default row count
+          this.getCurrentRows();
+          if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
+          this.getEditHistory(dateStr);
+          this.updateHistoryButtons();
+          await this.persistDataStore();
+          if (this.currentDate === dateStr) {
+            this.renderTable();
+            this.updateSidebarStats();
+          }
+          this.showSaveIndicator("클라우드 데이터 수신됨");
+          if (showNotice) alert(`${dateStr} 클라우드 최신 데이터를 성공적으로 불러왔습니다!`);
+        } else {
+          this.syncBaselines.set(dateStr, []);
+          if (this.getDailySummary(this.dataStore[dateStr] || []).total) {
+            this.pendingSyncDates.add(dateStr);
+            localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
+            await this.pushToCloud(dateStr, showNotice);
+            return;
+          }
+          if (showNotice) alert(`${dateStr} 일자의 클라우드 데이터가 아직 없습니다.`);
+        }
+      } catch (err) {
+        console.error("Cloud pull exception:", err);
+        if (showNotice) alert("클라우드 통신 오류: " + err.message);
       }
-    } catch (err) {
-      console.error("Cloud pull exception:", err);
-      if (showNotice) alert("클라우드 통신 오류: " + err.message);
+    })();
+
+    this.activePulls.set(dateStr, pullTask);
+    try {
+      return await pullTask;
+    } finally {
+      if (this.activePulls.get(dateStr) === pullTask) this.activePulls.delete(dateStr);
     }
   }
 

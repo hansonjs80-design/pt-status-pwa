@@ -657,3 +657,57 @@ test('deletion during an in-flight upload stays empty locally and in the next up
     assert.equal(db.get(date).rows_data[0][column],'',column+': next upload retains deletion');
   }
 });
+
+test('realtime channel handles broadcast, postgres_changes, deferred cell edit pull, and reconnection on CLOSED', async () => {
+  const { app, context } = createApp();
+  context.setInterval = setInterval; context.clearInterval = clearInterval;
+  context.clearTimeout = clearTimeout; context.setTimeout = setTimeout;
+  let broadcastHandler, postgresHandler, subscribeStatusCallback;
+  const channelMock = {
+    state: 'joined',
+    on(type, filter, handler) {
+      if (type === 'broadcast') broadcastHandler = handler;
+      if (type === 'postgres_changes') postgresHandler = handler;
+      return channelMock;
+    },
+    subscribe(cb) {
+      subscribeStatusCallback = cb;
+    },
+    send: () => Promise.resolve('ok'),
+  };
+  app.supabaseClient.channel = () => channelMock;
+  app.supabaseClient.removeChannel = () => {};
+
+  let pullCalls = [];
+  app.pullFromCloud = async d => { pullCalls.push(d); };
+  app.syncSharedColumnFormatting = app.syncSharedPresets = app.syncStaffCountSettings = () => {};
+
+  app.currentDate = '2026-11-05';
+  app.startLiveSync();
+  pullCalls = [];
+
+  // 1. Broadcast event triggers pull for today
+  broadcastHandler({ payload: { date: '2026-11-05' } });
+  assert.equal(pullCalls.length, 1);
+  assert.equal(pullCalls[0], '2026-11-05');
+
+  // 2. Postgres changes event triggers pull for today
+  postgresHandler({ new: { date: '2026-11-05' } });
+  assert.equal(pullCalls.length, 2);
+
+  // 3. When editing cell, pull is deferred instead of dropped
+  pullCalls = [];
+  app.isEditingCell = () => true;
+  broadcastHandler({ payload: { date: '2026-11-05' } });
+  assert.equal(pullCalls.length, 0);
+  assert.equal(app.cloudPullDeferred, true);
+
+  // 4. CLOSED status triggers reconnection
+  let liveSyncStarted = 0;
+  const origStart = app.startLiveSync.bind(app);
+  app.startLiveSync = () => { liveSyncStarted++; origStart(); };
+  subscribeStatusCallback('CLOSED');
+  assert.equal(Boolean(app.liveReconnectTimer), true);
+
+  app.stopLiveSync();
+});
