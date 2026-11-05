@@ -536,7 +536,7 @@ class PTHistorySearch {
   }
 
   rememberPatientSearchDraft(rowIdx, colKey, input) {
-    if (colKey !== "name") return;
+    if (!["name", "chartNo"].includes(colKey)) return;
     this.patientSearchDraft = { date: this.currentDate, rowIdx, colKey, input };
   }
 
@@ -578,7 +578,7 @@ class PTHistorySearch {
     if (!cell && !formulaEditor && !useDraft) return false;
     if (input.classList?.contains("is-armed") && !useDraft) return false;
     const rowIdx = useDraft ? draft.rowIdx : cell?.dataset?.row !== undefined ? Number(cell.dataset.row) : this.activeCell?.rowIdx;
-    if (colKey !== "name") {
+    if (!["name", "chartNo"].includes(colKey)) {
       event.preventDefault();
       event.stopPropagation();
       this.historyApplyBlockedKey = "f";

@@ -459,7 +459,7 @@ test('Ctrl/Cmd+F in a live cell editor still searches directly', () => {
   }
 });
 
-test('name live and formula editors route Ctrl/Cmd+F directly while chart editors open an empty prompt before selection shortcuts', () => {
+test('name and chart live/formula editors route Ctrl/Cmd+F directly before selection shortcuts', () => {
   for (const colKey of ['chartNo', 'name']) for (const formula of [false, true]) for (const modifier of ['ctrlKey', 'metaKey']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell = { rowIdx: 0, colKey };
@@ -473,13 +473,8 @@ test('name live and formula editors route Ctrl/Cmd+F directly while chart editor
     app.handleCellRowSelectShortcut = () => assert.fail('search must run before selection shortcuts');
     app.handleGlobalKeyDown({ key: 'ㄹ', code: 'KeyF', isComposing: true, [modifier]: true,
       target: input, preventDefault() {}, stopPropagation() {} });
-    if (colKey === 'name') {
-      assert.deepEqual(searched, [input.value, 0]);
-      assert.equal(prompted, undefined);
-    } else {
-      assert.equal(searched, undefined);
-      assert.deepEqual(prompted, [0, '']);
-    }
+    assert.deepEqual(searched, [input.value, 0]);
+    assert.equal(prompted, undefined);
   }
 });
 
@@ -1585,43 +1580,50 @@ test('failed prompt search restores the original name border; changed queries re
   }
 });
 
-test('failed history search from an active name editor returns its border without editing', async () => {
-  const rows = [{name:'편집중 이름'}, {}];
-  const {app} = createApp(rows);
-  app.hasRecordedPatientName = () => false;
-  app.ensureCurrentCellVisible = () => {};
-  let selected;
-  app.selectCell = (rowIdx,colKey,cell,editing) => { selected = {rowIdx,colKey,editing}; };
-  assert.equal(await app.searchPatientHistory('편집중 이름',0),false);
-  app.closeSearchNotFoundModal();
-  assert.deepEqual(selected,{rowIdx:0,colKey:'name',editing:false});
+test('failed history search from an active patient editor returns its original border without editing', async () => {
+  for (const colKey of ['name','chartNo']) {
+    const query = colKey === 'name' ? '편집중 이름' : '001234';
+    const rows = [{[colKey]:query}, {}];
+    const {app} = createApp(rows);
+    app.activeCell = {rowIdx:0,colKey};
+    app.hasRecordedPatientValue = () => false;
+    app.ensureCurrentCellVisible = () => {};
+    let selected;
+    app.selectCell = (rowIdx,colKey,cell,editing) => { selected = {rowIdx,colKey,editing}; };
+    assert.equal(await app.searchPatientHistory(query,0),false);
+    app.closeSearchNotFoundModal();
+    assert.deepEqual(selected,{rowIdx:0,colKey,editing:false});
+  }
 });
 
 
-test('focused populated name input searches directly even when table rendering has re-armed it', () => {
-  for (const modifier of ['ctrlKey', 'metaKey']) for (const armed of [false, true]) {
-    const { app, context } = createApp([{ name: '입력한 이름' }]);
-    const cell = {dataset:{row:'0',col:'name'}};
-    const input = {tagName:'INPUT',value:'입력한 이름',classList:{contains:()=>armed},
-      closest:()=>cell,blur(){ this.value = '확정한 이름'; }};
+test('focused patient inputs search the committed draft even when rendering has re-armed them', () => {
+  for (const colKey of ['name', 'chartNo']) for (const modifier of ['ctrlKey', 'metaKey']) for (const armed of [false, true]) {
+    const value = colKey === 'name' ? '입력한 이름' : '001234';
+    const committed = colKey === 'name' ? '확정한 이름' : '0012345';
+    const { app, context } = createApp([{ [colKey]: value }]);
+    app.activeCell = { rowIdx: 0, colKey };
+    const cell = {dataset:{row:'0',col:colKey}};
+    const input = {tagName:'INPUT',value,classList:{contains:()=>armed},
+      closest:()=>cell,blur(){ this.value = committed; }};
     context.document.activeElement = input;
-    if (armed) app.rememberPatientSearchDraft(0,'name',{tagName:'INPUT',value:input.value,classList:{contains:()=>false},closest:()=>null,blur(){this.value='확정한 이름';}});
-    app.openSearchPromptModal = () => assert.fail('populated name draft must skip the prompt');
+    if (armed) app.rememberPatientSearchDraft(0,colKey,{tagName:'INPUT',value:input.value,classList:{contains:()=>false},closest:()=>null,blur(){this.value=committed;}});
+    app.openSearchPromptModal = () => assert.fail('populated patient draft must skip the prompt');
     let searched;
     app.searchPatientHistory = (...args) => { searched = args; };
     const event = {key:'ㄹ',code:'KeyF',keyCode:229,isComposing:true,[modifier]:true,
       target:input,preventDefault(){},stopPropagation(){}};
     app.handleGlobalKeyDown(event);
-    assert.deepEqual(searched,['확정한 이름',0]);
+    assert.deepEqual(searched,[committed,0]);
     assert.equal(app.historyApplyBlockedKey,'f');
   }
 });
 
-test('empty focused name inputs and selected chart inputs still open the search prompt', () => {
-  for (const modifier of ['ctrlKey','metaKey']) for (const [colKey,value] of [['name',''],['name','선택한 이름'],['chartNo','1234']]) {
+test('empty patient editors and selected chart inputs still open the search prompt', () => {
+  for (const modifier of ['ctrlKey','metaKey']) for (const [colKey,value,armed] of [['name','',false],['chartNo','',false],['name','선택한 이름',true],['chartNo','1234',true]]) {
     const {app}=createApp([{[colKey]:value}]);
     app.activeCell = {rowIdx:0,colKey};
-    const input = {tagName:'INPUT',value,classList:{contains:()=>true},closest:()=>({dataset:{row:'0',col:colKey}})};
+    const input = {tagName:'INPUT',value,classList:{contains:()=>armed},closest:()=>({dataset:{row:'0',col:colKey}}),blur(){}};
     let prompt;
     app.openSearchPromptModal = (...args) => { prompt=args; };
     app.searchPatientHistory = () => assert.fail('empty names and selected chart cells must open the prompt');
@@ -1658,31 +1660,34 @@ test('search prompt input never borrows a composing name draft from the table', 
 });
 
 
-test('Windows Control handoff searches the typed draft after the native name editor has been removed', () => {
-  for (const modifier of ['ctrlKey','metaKey']) for (const targetCell of [false,true]) {
-    const {app,context}=createApp([{name:'입력한이름'}]);
+test('Windows Control handoff searches the typed patient draft after the native editor has been removed', () => {
+  for (const colKey of ['name','chartNo']) for (const modifier of ['ctrlKey','metaKey']) for (const targetCell of [false,true]) {
+    const value = colKey === 'name' ? '입력한이름' : 'T00411';
+    const {app,context}=createApp([{[colKey]:value}]);
+    app.activeCell = { rowIdx: 0, colKey };
     context.document.activeElement=null;
     app.elTableBody.querySelector=()=>null; // Control ended composition and the blur removed the input.
-    const input={tagName:'INPUT',value:'입력한이름',classList:{contains:()=>false},closest:()=>null,blur(){}};
-    app.rememberPatientSearchDraft(0,'name',input);
+    const input={tagName:'INPUT',value,classList:{contains:()=>false},closest:()=>null,blur(){}};
+    app.rememberPatientSearchDraft(0,colKey,input);
     let searches=[];
     app.searchPatientHistory=(...args)=>searches.push(args);
     app.openSearchPromptModal=()=>assert.fail('Windows draft handoff must skip the prompt');
-    const cell={dataset:{row:'0',col:'name'}};
+    const cell={dataset:{row:'0',col:colKey}};
     app.handleGlobalKeyDown({key:'f',code:'KeyF',[modifier]:true,
       target:{tagName:targetCell?'TD':'DIV',closest:()=>targetCell?cell:null},preventDefault(){},stopPropagation(){}});
-    assert.deepEqual(searches,[['입력한이름',0]]);
+    assert.deepEqual(searches,[[value,0]]);
     assert.equal(app.patientSearchDraft,null);
   }
 });
 
 test('draft search cannot reuse another date or a different cell, or replace modal search text', () => {
-  for (const mismatch of ['date','row','column','modal']) {
-    const {app,context}=createApp([{name:'현재 이름'},{}]);
+  for (const colKey of ['name','chartNo']) for (const mismatch of ['date','row','column','modal']) {
+    const {app,context}=createApp([{[colKey]:'현재 값'},{}]);
+    app.activeCell = {rowIdx:0,colKey};
     context.document.activeElement=null;
     app.elTableBody.querySelector=()=>null;
     const input={tagName:'INPUT',value:'이전 입력',closest:()=>null};
-    app.rememberPatientSearchDraft(0,'name',input);
+    app.rememberPatientSearchDraft(0,colKey,input);
     if(mismatch==='date') app.currentDate='2026-10-05';
     if(mismatch==='row') app.activeCell.rowIdx=1;
     if(mismatch==='column') app.activeCell.colKey='memo';
@@ -1693,8 +1698,8 @@ test('draft search cannot reuse another date or a different cell, or replace mod
 });
 
 
-test('direct name search closes a lingering prompt, cancels its focus callback and ignores held F repeats', () => {
-  for (const colKey of ['name']) for (const modifier of ['ctrlKey','metaKey']) {
+test('direct patient search closes a lingering prompt, cancels its focus callback and ignores held F repeats', () => {
+  for (const colKey of ['name','chartNo']) for (const modifier of ['ctrlKey','metaKey']) {
     const {app,context}=createApp([{name:'검색 이름',chartNo:'4455'}]);
     app.activeCell={rowIdx:0,colKey};
     const timers=new Map();let timerId=0,focused=0;
@@ -1704,7 +1709,7 @@ test('direct name search closes a lingering prompt, cancels its focus callback a
     app.elSearchPromptInput={value:'',focus(){focused++;},select(){}};
     app.openSearchPromptModal(0,'이전 검색');
     app.updateSearchPromptAutocomplete=()=>assert.fail('closed prompt must not recreate suggestions');
-    const input={tagName:'INPUT',value:'검색 이름',
+    const input={tagName:'INPUT',value:colKey === 'name' ? '검색 이름' : '4455',
       closest:()=>({dataset:{row:'0',col:colKey}}),blur(){}};
     let searches=0;
     app.searchPatientHistory=()=>{searches++;};
@@ -1860,7 +1865,7 @@ test('native name search commits its highlighted autocomplete name before search
   }
 });
 
-test('name search falls back to live input when no own autocomplete candidate is highlighted, while chart opens empty prompt', () => {
+test('patient search uses the live value when no own name autocomplete candidate is highlighted', () => {
   for (const mode of ['closed','unselected','otherRow','otherInput','chart']) {
     const {app}=createApp([{name:'입력한이름',chartNo:'411'}]);
     const colKey=mode==='chart'?'chartNo':'name';
@@ -1872,13 +1877,8 @@ test('name search falls back to live input when no own autocomplete candidate is
     app.searchPatientHistory=(...args)=>{searched=args;};
     app.openSearchPromptModal=(...args)=>{prompted=args;};
     app.handlePatientEditorSearchShortcut({key:'f',code:'KeyF',ctrlKey:true,target:input,preventDefault(){},stopPropagation(){}});
-    if (mode === 'chart') {
-      assert.equal(searched, undefined);
-      assert.deepEqual(prompted, [0, '']);
-    } else {
-      assert.deepEqual(searched,[input.value,0]);
-      assert.equal(prompted, undefined);
-    }
+    assert.deepEqual(searched,[input.value,0]);
+    assert.equal(prompted, undefined);
   }
 });
 
@@ -2283,9 +2283,9 @@ test('chart numbers, paste and shortcuts keep normal search input semantics',()=
   app.openSearchPromptModal(0,previous);input.select();promptType(app,'rla');assert.equal(input.value,'김');
 });
 
-test('Ctrl/Cmd+F from non-name cells and history non-name cells opens search prompt with empty string', () => {
+test('Ctrl/Cmd+F from other cells and history non-name cells opens search prompt with empty string', () => {
   for (const modifier of ['ctrlKey', 'metaKey']) {
-    for (const colKey of ['no', 'gender', 'chartNo', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime']) {
+    for (const colKey of ['no', 'gender', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime']) {
       const { app } = createApp([{ [colKey]: '입력된값', name: '김환자' }]);
       app.activeCell = { rowIdx: 0, colKey };
       let prompt;

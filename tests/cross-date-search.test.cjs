@@ -426,6 +426,7 @@ test('cross-date search deduplicates identical previous records and toggles with
 
 test('search period setting defaults to 6months, persists in localStorage, and filters by cutoff date', () => {
   const { app, context } = createCrossDateTestApp();
+  context.Date = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-10-04T12:00:00+09:00'])); } };
   assert.equal(app.getSearchPeriod(), '6months');
 
   // Test localStorage persistence

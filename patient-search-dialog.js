@@ -517,11 +517,13 @@ class PTPatientSearchDialog {
     this.historyApplyBlockedKey = null;
     this.guardNextCellInput = false;
     const row = this.getCurrentRows()[targetRowIdx];
-    const fromNameCell = this.activeCell?.colKey === "name" && this.activeCell.rowIdx === targetRowIdx &&
+    const colKey = this.activeCell?.colKey;
+    const fromPatientCell = ["name", "chartNo"].includes(colKey) && this.activeCell.rowIdx === targetRowIdx &&
       Boolean(String(query ?? "").trim()) &&
-      String(row?.name ?? "").trim().toLowerCase() === String(query).trim().toLowerCase();
+      String(row?.[colKey] ?? "").trim().toLowerCase() === String(query).trim().toLowerCase();
     this.searchNotFoundReturnTarget = {
-      date: this.currentDate, row: fromNameCell ? row : null, rowIdx: targetRowIdx
+      date: this.currentDate, row: fromPatientCell ? row : null, rowIdx: targetRowIdx,
+      colKey: fromPatientCell ? colKey : "name"
     };
     const modal = document.getElementById?.("searchNotFoundModal");
     const msgEl = document.getElementById?.("searchNotFoundMessage");
@@ -570,9 +572,10 @@ class PTPatientSearchDialog {
     // General searches resume immediately after the last named row, including gaps.
     const rowIdx = originIdx >= 0 ? originIdx : rows.findLastIndex(row => String(row?.name ?? "").trim()) + 1;
     if (rowIdx >= rows.length) this.addNewRow(false);
-    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="name"]`);
+    const colKey = originIdx >= 0 ? target.colKey || "name" : "name";
+    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
     if (cell) {
-      this.selectCell(rowIdx, "name", cell, originIdx < 0);
+      this.selectCell(rowIdx, colKey, cell, originIdx < 0);
       this.ensureCurrentCellVisible(cell);
       this.focusSelectedCellEditor();
     }
