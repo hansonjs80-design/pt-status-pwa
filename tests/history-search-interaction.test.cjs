@@ -384,8 +384,8 @@ test('jumps place current cells at the requested viewport position below pinned 
   }
 });
 
-test('selected name opens prefilled prompt with all text selected, while chart opens empty prompt', () => {
-  for (const colKey of ['name', 'chartNo']) for (const value of ['가상환자', '']) {
+test('selected patient cells open a prefilled prompt with all text selected', () => {
+  for (const colKey of ['name', 'chartNo', 'part']) for (const value of ['가상환자', '001234', 'T00411', ' 001234 ', '']) {
     const { app } = createApp([{ [colKey]: value }]);
     app.activeCell.colKey = colKey;
     let selected = false, focused = false;
@@ -395,7 +395,7 @@ test('selected name opens prefilled prompt with all text selected, while chart o
     app.elSearchInput.value = 'old query';
     app.findActiveCell();
     assert.equal(app.elSearchPromptModal.style.display, 'flex');
-    assert.equal(app.elSearchPromptInput.value, colKey === 'name' ? value : '');
+    assert.equal(app.elSearchPromptInput.value, colKey === 'part' ? '' : value.trim());
     assert.equal(app.searchPromptTargetRowIdx, 0);
     assert.ok(selected && focused);
   }
@@ -739,16 +739,16 @@ test('history nonidentity cells also open an empty search prompt with the origin
   }
 });
 
-test('transparent armed name selections retain their prefilled search prompt while chart opens empty', () => {
-  for (const colKey of ['name', 'chartNo']) {
+test('transparent armed patient selections retain their prefilled search prompt', () => {
+  for (const modifier of ['ctrlKey', 'metaKey']) for (const colKey of ['name', 'chartNo']) {
     const { app } = createApp([{ name: '가상환자', chartNo: 'T001' }]);
     app.activeCell.colKey = colKey;
     let prompt;
     app.openSearchPromptModal = (...args) => { prompt = args; };
     app.searchAllDates = () => { assert.fail('armed input must open a prompt'); };
     const input = { tagName: 'INPUT', value: '가상환자', closest: () => ({}), classList: { contains: name => name === 'is-armed' } };
-    app.handleGlobalKeyDown({ key: 'f', metaKey: true, target: input, preventDefault() {}, stopPropagation() {} });
-    assert.deepEqual(prompt, [0, colKey === 'name' ? app.getCurrentRows()[0][colKey] : '']);
+    app.handleGlobalKeyDown({ key: 'f', [modifier]: true, target: input, preventDefault() {}, stopPropagation() {} });
+    assert.deepEqual(prompt, [0, app.getCurrentRows()[0][colKey]]);
   }
 });
 
@@ -1628,7 +1628,7 @@ test('empty patient editors and selected chart inputs still open the search prom
     app.openSearchPromptModal = (...args) => { prompt=args; };
     app.searchPatientHistory = () => assert.fail('empty names and selected chart cells must open the prompt');
     app.handleGlobalKeyDown({key:'f',code:'KeyF',[modifier]:true,target:input,preventDefault(){},stopPropagation(){}});
-    assert.deepEqual(prompt,[0,colKey==='name'?value:'']);
+    assert.deepEqual(prompt,[0,value]);
   }
 });
 

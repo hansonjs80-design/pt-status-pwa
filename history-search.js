@@ -641,8 +641,8 @@ class PTHistorySearch {
     const { rowIdx, colKey } = this.activeCell || {};
     const targetIdx = Number.isInteger(rowIdx) ? rowIdx
       : this.selectedRange?.minRow ?? this.selectedRowIdx ?? this.findFirstEmptyRowIndex();
-    const query = colKey === "name"
-      ? String(this.getCurrentRows()[targetIdx]?.name ?? "").trim() : "";
+    const query = ["name", "chartNo"].includes(colKey)
+      ? String(this.getCurrentRows()[targetIdx]?.[colKey] ?? "").trim() : "";
     this.openSearchPromptModal(targetIdx, query);
   }
 
