@@ -26,7 +26,8 @@ function harness() {
       then(resolve,reject){return Promise.resolve().then(async()=>{
         const request={action,fields,record};requests.push(request);
         const data=action==='read'?clone(db.get(date)||null):null;
-        await hook(request);
+        const response = await hook(request);
+        if (response) return response;
         if(action==='read')return {data:fields==='updated_at'&&data?{updated_at:data.updated_at}:data};
         if(action==='insert'&&db.has(date))return {error:{code:'23505'}};
         db.set(date,record);return {};
@@ -90,6 +91,32 @@ test('a failed upload retains pending settings and recovery clears only its own 
   assert.equal(h.app.presetsSyncFailed,false);assert.equal(h.app.elSaveStatus.title,'');
   h.setHook(()=>{throw Error('offline again');});await h.app.pullSharedPresets();h.app.showSaveIndicator('기록 저장 실패',true);
   h.setHook(async()=>{});await h.app.pullSharedPresets();assert.equal(h.app.elSaveStatus.textContent,'기록 저장 실패');
+});
+
+test('egress quota restrictions explain the required action, share a cooldown and recover without losing pending edits',async()=>{
+  const h=harness();h.edit({memo:['보관할 문구']});
+  h.setHook(()=>({status:402,error:{message:'Service for this project is restricted due to the following violations: exceed_egress_quota.'}}));
+  await h.app.pushSharedPresets();
+  assert.match(h.app.elSaveStatus.textContent,/클라우드 사용량 한도 초과/);
+  assert.doesNotMatch(h.app.elSaveStatus.textContent,/연결되면/);
+  assert.match(h.app.elSaveStatus.title,/프로젝트 소유자/);
+  assert.equal(h.storage.get('PT_PRESETS_PENDING'),'1');assert.equal(h.app.presetsDirty,true);
+  h.edit({memo:['대기 중 수정한 최신 문구']});
+  await h.app.pushSharedPresets();
+  await h.app.runCloudQuery(h.app.supabaseClient.from('pt_daily_records').select('updated_at'));
+  assert.equal(h.requests.length,1,'settings and record pollers do not repeatedly request a restricted project');
+  h.setHook(async()=>{});h.advance(60001);await h.app.pushSharedPresets();
+  assert.equal(h.requests.length,2);assert.equal(h.db.get(date).rows_data[0].presets.memo[0],'대기 중 수정한 최신 문구');
+  assert.equal(h.storage.has('PT_PRESETS_PENDING'),false);assert.equal(h.app.presetsDirty,false);
+  assert.equal(h.app.elSaveStatus.textContent,'빠른 입력 도구 동기화 완료');assert.equal(h.app.elSaveStatus.title,'');
+  assert.equal(h.app.cloudQuotaRestriction,null);
+});
+
+test('a quota restriction on a previous client does not block a newly configured connection',async()=>{
+  const h=harness();h.edit({memo:['새 연결 설정']});
+  h.setHook(()=>({status:402,error:{message:'exceed_egress_quota'}}));await h.app.pushSharedPresets();
+  h.app.supabaseClient=h.makeClient();h.setHook(async()=>{});await h.app.pushSharedPresets();
+  assert.equal(h.requests.length,2);assert.equal(h.app.presetsDirty,false);
 });
 
 test('missing or invalid shared data and persistence errors preserve local settings',async()=>{

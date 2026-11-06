@@ -1,11 +1,20 @@
 // Feature methods installed on PTApp before startup; state remains on the app instance.
 class PTCloudSync {
+  isCloudQuotaError(error) {
+    return /exceed_egress_quota/.test(String(error?.message || error || ''));
+  }
+
   async runCloudQuery(query, timeoutMs = 15000) {
+    const client = this.supabaseClient;
+    const restriction = this.cloudQuotaRestriction;
+    // All pollers share the cooldown; reconnecting the realtime channel does
+    // not restore a project whose Data API is restricted by its usage limit.
+    if (restriction?.client === client && Date.now() < restriction.retryAt) return restriction.result;
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     if (controller && typeof query.abortSignal === 'function') query = query.abortSignal(controller.signal);
     let timer;
     try {
-      return await Promise.race([
+      const result = await Promise.race([
         query,
         new Promise((_, reject) => {
           timer = setTimeout(() => {
@@ -14,6 +23,12 @@ class PTCloudSync {
           }, timeoutMs);
         }),
       ]);
+      if (this.supabaseClient === client) {
+        if (this.isCloudQuotaError(result.error)) {
+          this.cloudQuotaRestriction = {client,result,retryAt:Date.now() + 60000};
+        } else if (!result.error) this.cloudQuotaRestriction = null;
+      }
+      return result;
     } finally { clearTimeout(timer); }
   }
 
@@ -325,8 +340,13 @@ class PTCloudSync {
   reportPresetSyncFailure(error) {
     this.presetsSyncFailed = true;
     this.presetSyncLastError = String(error?.message || error || '클라우드 연결 실패');
-    this.showSaveIndicator('빠른 입력 도구 동기화 대기 · 연결되면 재시도', true);
-    if (this.elSaveStatus) this.elSaveStatus.title = this.presetSyncLastError;
+    const quotaExceeded = this.isCloudQuotaError(error);
+    this.showSaveIndicator(quotaExceeded
+      ? '빠른 입력 도구 동기화 중단 · 클라우드 사용량 한도 초과'
+      : '빠른 입력 도구 동기화 대기 · 연결되면 재시도', true);
+    if (this.elSaveStatus) this.elSaveStatus.title = quotaExceeded
+      ? 'Supabase 데이터 전송량 한도를 초과했습니다. 프로젝트 소유자가 요금제 또는 지출 한도를 확인해야 합니다. 이 기기의 설정과 저장 대기 상태는 유지되며, 1분 후 다시 확인합니다.'
+      : this.presetSyncLastError;
   }
 
   completePresetSync() {
