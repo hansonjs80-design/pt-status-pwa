@@ -202,8 +202,11 @@ class PTCloudSync {
       } else {
         void this.pullFromCloud(this.currentDate);
       }
+    } else {
+      // 당일이 아닌 과거 일지의 수정(히스토리 일괄 변경 등)이 발생했을 때만
+      // 검색 기록 캐시를 갱신하도록 하여 불필요한 전체 재조회를 방지합니다.
+      this.searchHistoryLoadedAt = 0;
     }
-    this.searchHistoryLoadedAt = 0;
   }
 
   setupNetworkSyncListeners() {
@@ -661,6 +664,8 @@ class PTCloudSync {
         this.searchHistoryVersions ||= {};
         this.searchHistoryVersions[dateStr] = record.updated_at;
         this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(rows)));
+        this.cloudRecordVersions ||= new Map();
+        this.cloudRecordVersions.set(dateStr, { client, version: record.updated_at, snapshot: JSON.stringify(latest) });
         const mergedSnapshot = JSON.stringify(latest);
         await this.persistSyncBaselines();
         if (latestText === snapshot && JSON.stringify(this.dataStore[dateStr] || []) === mergedSnapshot) this.pendingSyncDates.delete(dateStr);

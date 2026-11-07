@@ -539,15 +539,32 @@
       let staffCalendarCounts = null;
       if (this.app.supabaseClient) {
         try {
-          for (let offset = 0; ; offset += 200) {
-            const { data, error } = await this.app.runCloudQuery(this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199));
-            if (error) throw Error('전체 백업 조회 실패: ' + error.message);
+          const hasLocalRecords = Object.keys(this.app.dataStore || {}).length > 0;
+          if (automatic && hasLocalRecords) {
+            // 자동 백업 시 이미 로컬에 동기화된 일지가 있으므로 전체 데이터베이스를
+            // 반복 다운로드하지 않고 공유 설정만 확인하여 Supabase Egress 한도 초과를 방지합니다.
+            const { data } = await this.app.runCloudQuery(
+              this.app.supabaseClient.from('pt_daily_records')
+                .select('*')
+                .in('date', ['__pt_shared_presets_v1__', '__pt_staff_calendar_count_settings_v1__'])
+            );
             for (const record of data || []) {
-              if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;
-              else if (record.date === '__pt_shared_presets_v1__') shared = record;
-              else if (record.date === '__pt_staff_calendar_count_settings_v1__') staffCalendarCounts = record.rows_data?.[0]?.staffCalendarCounts || null;
+              if (record.date === '__pt_shared_presets_v1__') shared = record;
+              else if (record.date === '__pt_staff_calendar_count_settings_v1__') {
+                staffCalendarCounts = record.rows_data?.[0]?.staffCalendarCounts || null;
+              }
             }
-            if (!data || data.length < 200) break;
+          } else {
+            for (let offset = 0; ; offset += 200) {
+              const { data, error } = await this.app.runCloudQuery(this.app.supabaseClient.from('pt_daily_records').select('*').order('date', { ascending: true }).range(offset, offset + 199));
+              if (error) throw Error('전체 백업 조회 실패: ' + error.message);
+              for (const record of data || []) {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(record.date)) cloud[record.date] = record.rows_data;
+                else if (record.date === '__pt_shared_presets_v1__') shared = record;
+                else if (record.date === '__pt_staff_calendar_count_settings_v1__') staffCalendarCounts = record.rows_data?.[0]?.staffCalendarCounts || null;
+              }
+              if (!data || data.length < 200) break;
+            }
           }
         } catch (cloudErr) {
           console.warn('Supabase 백업 조회 중 알림 (로컬 데이터로 백업 진행):', cloudErr);
