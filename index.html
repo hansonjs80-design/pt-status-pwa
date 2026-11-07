@@ -21,6 +21,11 @@
   <script src="device-recovery.js"></script>
   <script>
     (function() {
+      try {
+        if (localStorage.getItem('PT_CLINIC_ACCESS_AUTH_V1') !== 'unlocked') {
+          document.documentElement.classList.add('clinic-locked');
+        }
+      } catch (e) {}
       var prefs = PTDeviceSettings.readUI();
       document.documentElement.classList.add('device-summary-closed');
       document.documentElement.classList.toggle('device-toolbar-collapsed', prefs.toolbarCollapsed);
@@ -30,6 +35,33 @@
   <script id="supabaseSdk" async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+  <!-- 병원 접속 잠금 / 로그인 모달 -->
+  <div id="clinicLoginModal" class="clinic-login-overlay" role="dialog" aria-modal="true" aria-labelledby="clinicLoginTitle">
+    <div class="clinic-login-card">
+      <div class="clinic-login-icon-wrap" aria-hidden="true">
+        <svg viewBox="0 0 24 24" class="clinic-lock-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2 id="clinicLoginTitle" class="clinic-login-title">물리치료 일일현황</h2>
+      <p class="clinic-login-desc">병원 접속 암호를 입력해 주세요</p>
+      
+      <form id="clinicLoginForm" class="clinic-login-form" onsubmit="return false;">
+        <div class="clinic-input-group">
+          <input type="password" id="clinicPasswordInput" class="clinic-password-input" placeholder="비밀번호" autocomplete="current-password" autofocus>
+          <button type="submit" id="btnClinicLogin" class="clinic-login-submit-btn">접속</button>
+        </div>
+        <div id="clinicLoginError" class="clinic-login-error" role="alert" style="display: none;">
+          비밀번호가 올바르지 않습니다.
+        </div>
+      </form>
+      <div class="clinic-login-footer-info">
+        <span>※ 한 번 접속하면 이 브라우저에서 인증이 유지됩니다.</span>
+      </div>
+    </div>
+  </div>
+
   <div id="devicePersistenceNotice" class="local-restore-notice" role="status" hidden>
     <span data-device-persistence-message></span>
     <button type="button">다시 시도</button>
@@ -45,6 +77,15 @@
         <span class="excel-badge">X</span>
         <span class="file-name" id="docTitle">물리치료 일일 현황</span>
         <span class="save-status" id="saveStatus">저장 완료됨</span>
+      </div>
+      <div class="title-right">
+        <button type="button" class="btn-clinic-lock" id="btnClinicLock" title="화면 잠금" aria-label="화면 잠금">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 3px;">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>화면 잠금</span>
+        </button>
       </div>
     </header>
 
@@ -793,6 +834,7 @@ CREATE POLICY "Allow public all" ON pt_daily_records FOR ALL TO anon, authentica
   <script src="patient-search-dialog.js"></script>
   <script src="history-table.js"></script>
   <script src="app-updates.js"></script>
+  <script src="clinic-auth.js"></script>
   <script src="app.js"></script>
   <script src="local-tools.js"></script>
 </body>

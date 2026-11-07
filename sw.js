@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pt-status-pwa-v489';
+const CACHE_NAME = 'pt-status-pwa-v490';
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -47,6 +47,7 @@ const ASSETS_TO_CACHE = [
   './patient-search-dialog.js',
   './history-table.js',
   './app-updates.js',
+  './clinic-auth.js',
   './app.js',
   './local-tools.js',
   './manifest.json',

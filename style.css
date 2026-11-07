@@ -3697,3 +3697,166 @@ html.device-summary-closed:not(.app-ready) .summary-toggle-bar { transition: non
 .preset-editor-preview-label + .preset-color-preview { margin-top:4px; }
 
 .history-context-hidden { display: none !important; }
+
+/* ==========================================================================
+   Clinic Authentication / Lock Screen Styles
+   ========================================================================== */
+html.clinic-locked .excel-app {
+  display: none !important;
+}
+
+html.clinic-locked #clinicLoginModal {
+  display: flex !important;
+}
+
+#clinicLoginModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: linear-gradient(135deg, #094a26 0%, #107C41 50%, #0c562e 100%);
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.clinic-login-card {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 360px;
+  padding: 34px 26px 28px;
+  text-align: center;
+  box-sizing: border-box;
+  animation: clinicFadeIn 0.22s ease-out;
+}
+
+@keyframes clinicFadeIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.clinic-login-icon-wrap {
+  width: 54px;
+  height: 54px;
+  background: #eaf6ee;
+  color: #107C41;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.clinic-lock-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.clinic-login-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.3px;
+}
+
+.clinic-login-desc {
+  margin: 0 0 22px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.clinic-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clinic-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.clinic-password-input {
+  flex: 1;
+  height: 42px;
+  padding: 0 14px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+
+.clinic-password-input:focus {
+  border-color: #107C41;
+  box-shadow: 0 0 0 3px rgba(16, 124, 65, 0.2);
+}
+
+.clinic-login-submit-btn {
+  height: 42px;
+  padding: 0 18px;
+  background: #107C41;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, transform 0.05s;
+}
+
+.clinic-login-submit-btn:hover {
+  background: #0d6937;
+}
+
+.clinic-login-submit-btn:active {
+  background: #0a522b;
+  transform: scale(0.98);
+}
+
+.clinic-login-error {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  padding-left: 2px;
+}
+
+.clinic-login-footer-info {
+  margin-top: 20px;
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+.btn-clinic-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-clinic-lock:hover {
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.btn-clinic-lock:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
