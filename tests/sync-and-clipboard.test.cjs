@@ -5,6 +5,8 @@ const source = require('./helpers/load-app-source.cjs');
 const clone = value => JSON.parse(JSON.stringify(value));
 function createApp(db = new Map()) {
   const storage = new Map();
+  const reads = [];
+  let readHook = async () => {};
   const context = vm.createContext({ window: { addEventListener() {} }, document: { activeElement: null },
     localStorage: { getItem: k => storage.get(k) || null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) }, setTimeout, clearTimeout, AbortController,
     confirm: () => true, alert: () => {} });
@@ -14,10 +16,15 @@ function createApp(db = new Map()) {
   for (const key of ['showSaveIndicator', 'notifyCloudChange', 'renderTable', 'updateSidebarStats', 'updateHistoryButtons', 'renderQuickChips', 'refreshSearchSuggestions']) app[key] = () => {};
   app.isEditingCell = () => false;
   app.supabaseClient = { from() {
-    let action = 'read', record, conditions = [];
-    const query = { select() { return query; }, abortSignal() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, is(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
-      return Promise.resolve().then(() => {
-        if (action === 'read') return { data: clone(db.get(conditions.find(([k]) => k === 'date')[1]) || null) };
+    let action = 'read', record, fields, conditions = [];
+    const query = { select(value) { fields=value; return query; }, abortSignal() { return query; }, eq(k,v) { conditions.push([k,v]); return query; }, is(k,v) { conditions.push([k,v]); return query; }, update(r) { action='update'; record=r; return query; }, insert(r) { action='insert'; record=r; return query; }, upsert(r) { action='upsert'; record=r; return query; }, maybeSingle() { return query; }, then(resolve, reject) {
+      return Promise.resolve().then(async () => {
+        if (action === 'read') {
+          reads.push(fields);
+          const data = clone(db.get(conditions.find(([k]) => k === 'date')[1]) || null);
+          await readHook(fields);
+          return { data: fields === 'updated_at' && data ? {updated_at:data.updated_at} : data };
+        }
         const old = db.get(record.date);
         if (action === 'insert' && old) return { error: { code: '23505' } };
         if (action === 'update' && !conditions.every(([k,v]) => old?.[k] === v)) return { data: [] };
@@ -25,7 +32,7 @@ function createApp(db = new Map()) {
       }).then(resolve, reject);
     }}; return query;
   }};
-  return { app, storage, context };
+  return { app, storage, context, reads, setReadHook: hook => { readHook = hook; } };
 }
 test('a synced historical note stays updated on immediate re-search and on another device', async () => {
   const date='2026-09-01', before=[{name:'가상환자',chartNo:'TEST1',specialNote:'이전'}];
@@ -108,6 +115,75 @@ test('unchanged cloud polls skip baseline writes and rendering, while changed re
   await app.pullFromCloud(date);
   assert.deepEqual([baselines, records, renders], [1, 1, 1]);
 });
+async function versionPollFixture() {
+  const db = new Map(), h = createApp(db), date = h.app.currentDate;
+  const rows = h.app.createDefaultEmptyRows(); rows[0].name = '가상';
+  h.app.dataStore[date] = clone(rows); h.app.syncBaselines.set(date, clone(rows));
+  db.set(date, {date,rows_data:clone(rows),updated_at:'2026-11-07T00:00:00.000Z'});
+  await h.app.pullFromCloud(date);
+  return {...h,db,date};
+}
+
+test('unchanged fallback polls request only the revision and a missed notification still downloads changed records', async () => {
+  const {app,db,date,reads} = await versionPollFixture();
+  for (let i=0;i<100;i++) await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.equal(reads.filter(fields=>fields==='rows_data, updated_at').length,1);
+  assert.equal(reads.filter(fields=>fields==='updated_at').length,100);
+  db.get(date).rows_data[0].memo='놓친 알림의 변경';db.get(date).updated_at='2026-11-07T00:01:00.000Z';
+  await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.deepEqual(reads.slice(-2),['updated_at','rows_data, updated_at']);
+  assert.equal(app.dataStore[date][0].memo,'놓친 알림의 변경');
+  await app.pullFromCloud(date,false,{checkVersion:true});assert.equal(reads.at(-1),'updated_at');
+});
+
+test('realtime changes upgrade a metadata request already in flight to a full read', async () => {
+  const {app,db,date,reads,setReadHook} = await versionPollFixture();
+  let release, started;
+  const ready=new Promise(resolve=>{started=resolve;});
+  setReadHook(fields=>fields==='updated_at'?new Promise(resolve=>{release=resolve;started();}):undefined);
+  const poll=app.pullFromCloud(date,false,{checkVersion:true});await ready;
+  db.get(date).rows_data[0].memo='즉시 반영';
+  app.handleRealtimeCloudChange(date);release();await poll;
+  assert.deepEqual(reads.slice(-2),['updated_at','rows_data, updated_at']);
+  assert.equal(app.dataStore[date][0].memo,'즉시 반영');
+});
+
+test('reconnect, manual refresh and legacy records cannot reuse an unsafe revision cache', async () => {
+  const {app,db,date,reads} = await versionPollFixture();
+  db.get(date).rows_data[0].memo='직접 새로고침';
+  await app.pullFromCloud(date,true);assert.equal(reads.at(-1),'rows_data, updated_at');
+  assert.equal(app.dataStore[date][0].memo,'직접 새로고침');
+  const previous=app.supabaseClient;app.supabaseClient={...previous};
+  await app.pullFromCloud(date,false,{checkVersion:true});assert.equal(reads.at(-1),'rows_data, updated_at');
+  db.get(date).updated_at=null;await app.pullFromCloud(date,false,{checkVersion:true});
+  // Null/invalid versions force full reads on each fallback check.
+  await app.pullFromCloud(date,false,{checkVersion:true});assert.equal(reads.at(-1),'rows_data, updated_at');
+  app.dataStore[date][0].memo='저장 전 로컬 변경';app.pendingSyncDates.add(date);
+  const count=reads.length;await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.equal(reads.length,count);assert.equal(app.dataStore[date][0].memo,'저장 전 로컬 변경');
+});
+
+test('failed metadata reads preserve records and the next successful check recovers', async () => {
+  const {app,db,date,reads,setReadHook} = await versionPollFixture();
+  setReadHook(()=>{throw Error('offline');});await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.equal(app.dataStore[date][0].name,'가상');assert.equal(app.activePulls.size,0);
+  setReadHook(async()=>{});db.get(date).rows_data[0].memo='재연결 후 변경';db.get(date).updated_at='2026-11-07T00:02:00.000Z';
+  await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.equal(app.dataStore[date][0].memo,'재연결 후 변경');
+  assert.equal(reads.at(-1),'rows_data, updated_at');
+});
+
+test('an edit made during durable persistence is not acknowledged as a synced revision', async () => {
+  const {app,db,date,reads} = await versionPollFixture();
+  db.get(date).rows_data[0].memo='서버 변경';db.get(date).updated_at='2026-11-07T00:03:00.000Z';
+  const persist=app.persistDataStore.bind(app);
+  app.persistDataStore=async()=>{await persist();app.dataStore[date][0].memo='저장 중 로컬 수정';app.pendingSyncDates.add(date);};
+  await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.notEqual(app.cloudRecordVersions.get(date).snapshot,JSON.stringify(app.dataStore[date]));
+  const count=reads.length;await app.pullFromCloud(date,false,{checkVersion:true});
+  assert.equal(reads.length,count);assert.equal(app.dataStore[date][0].memo,'저장 중 로컬 수정');
+});
+
 test('two computers concurrently editing different cells retain both changes', async () => {
   const date='2026-09-30', db = new Map([[date, { date, rows_data: [{ name: '테스트', memo: '' }], updated_at: '2026-09-30T00:00:00.000Z' }]]);
   const a=createApp(db).app, b=createApp(db).app;
@@ -660,7 +736,9 @@ test('deletion during an in-flight upload stays empty locally and in the next up
 
 test('realtime channel handles broadcast, postgres_changes, deferred cell edit pull, and reconnection on CLOSED', async () => {
   const { app, context } = createApp();
-  context.setInterval = setInterval; context.clearInterval = clearInterval;
+  const intervals=[];
+  context.setInterval = (fn,delay) => {intervals.push({fn,delay});return intervals.length;};
+  context.clearInterval = () => {};
   context.clearTimeout = clearTimeout; context.setTimeout = setTimeout;
   let broadcastHandler, postgresHandler, subscribeStatusCallback;
   const channelMock = {
@@ -679,11 +757,17 @@ test('realtime channel handles broadcast, postgres_changes, deferred cell edit p
   app.supabaseClient.removeChannel = () => {};
 
   let pullCalls = [];
-  app.pullFromCloud = async d => { pullCalls.push(d); };
+  const pullOptions=[];
+  app.pullFromCloud = async (d,notice,options) => { pullCalls.push(d);pullOptions.push(options); };
   app.syncSharedColumnFormatting = app.syncSharedPresets = app.syncStaffCountSettings = () => {};
 
   app.currentDate = '2026-11-05';
   app.startLiveSync();
+  assert.equal(intervals.length,3);assert.ok(intervals.every(timer=>timer.delay===30000));
+  assert.equal(pullOptions[0].checkVersion,true);
+  await Promise.resolve();
+  await intervals[2].fn();
+  assert.equal(pullOptions.at(-1).checkVersion,true);
   pullCalls = [];
 
   // 1. Broadcast event triggers pull for today

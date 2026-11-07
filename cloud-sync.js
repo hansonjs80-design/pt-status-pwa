@@ -282,7 +282,7 @@ class PTCloudSync {
         if (this.liveSyncSession !== session) return;
         // push가 모두 완료된 후 pull 실행
         if (this.liveSyncSession === session && !this.pendingSyncDates.has(this.currentDate)) {
-          await this.pullFromCloud(this.currentDate);
+          await this.pullFromCloud(this.currentDate, false, { checkVersion: true });
         }
       } catch (error) {
         if (this.liveSyncSession === session) this.showSaveIndicator('클라우드 동기화 대기 · 연결되면 다시 시도합니다', true);
@@ -297,7 +297,7 @@ class PTCloudSync {
         void this.syncStaffCountSettings();
       }
     }, 30000);
-    this.liveSyncTimer = setInterval(refresh, 2000);
+    this.liveSyncTimer = setInterval(refresh, 30000);
     void this.syncSharedPresets();
     void this.syncSharedColumnFormatting();
     void this.syncStaffCountSettings();
@@ -687,7 +687,7 @@ class PTCloudSync {
     } finally { this.activePushes.delete(dateStr); }
   }
 
-  async pullFromCloud(dateStr, showNotice = false) {
+  async pullFromCloud(dateStr, showNotice = false, { checkVersion = false } = {}) {
     try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
@@ -705,10 +705,40 @@ class PTCloudSync {
     }
 
     this.activePulls ||= new Map();
-    if (this.activePulls.has(dateStr)) return this.activePulls.get(dateStr);
+    this.recordPullOperations ||= new Map();
+    if (this.activePulls.has(dateStr)) {
+      // A realtime notification must upgrade an in-flight metadata poll.
+      if (!checkVersion) {
+        const active = this.recordPullOperations.get(dateStr);
+        if (active) active.force = true;
+      }
+      return this.activePulls.get(dateStr);
+    }
+    const operation = { force: !checkVersion };
+    this.recordPullOperations.set(dateStr, operation);
+    const current = () => this.supabaseClient === client && !this.pendingSyncDates.has(dateStr) &&
+      localAtRequest === JSON.stringify(this.dataStore[dateStr] || []) &&
+      !(dateStr === this.currentDate && this.isEditingCell());
+    const rememberVersion = data => {
+      if (!data.updated_at || !Number.isFinite(Date.parse(data.updated_at))) return;
+      this.cloudRecordVersions ||= new Map();
+      this.cloudRecordVersions.set(dateStr, {client,version:data.updated_at,
+        snapshot:JSON.stringify(this.dataStore[dateStr] || [])});
+    };
 
     const pullTask = (async () => {
       try {
+        const cached = this.cloudRecordVersions?.get(dateStr);
+        if (!operation.force && cached?.client === client && cached.snapshot === localAtRequest && this.syncBaselines.has(dateStr)) {
+          const result = await this.runCloudQuery(client.from('pt_daily_records')
+            .select('updated_at').eq('date', dateStr).maybeSingle());
+          if (result.error) throw result.error;
+          if (!current()) {
+            if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+            return;
+          }
+          if (!operation.force && result.data?.updated_at === cached.version) return;
+        }
         const { data, error } = await this.runCloudQuery(client
           .from("pt_daily_records")
           .select("rows_data, updated_at")
@@ -735,8 +765,8 @@ class PTCloudSync {
           return;
         }
         if (data && Array.isArray(data.rows_data)) {
-          // The two-second poll normally receives the same day. Avoid rewriting
-          // the entire multi-date baseline store while the user is navigating.
+          // Avoid rewriting the entire multi-date baseline store when a
+          // notification or reconnect returns identical records.
           if (JSON.stringify(this.syncBaselines.get(dateStr)) !== JSON.stringify(data.rows_data)) {
             this.syncBaselines.set(dateStr, JSON.parse(JSON.stringify(data.rows_data)));
             await this.persistSyncBaselines();
@@ -749,7 +779,7 @@ class PTCloudSync {
           }
           const padded = data.rows_data.slice();
           if (dateStr === this.currentDate) this.normalizeRowAllocation(padded, dateStr);
-          if (localAtRequest === JSON.stringify(padded)) return;
+          if (localAtRequest === JSON.stringify(padded)) { rememberVersion(data); return; }
           const previousRows = JSON.stringify(this.dataStore[dateStr] || []);
           this.dataStore[dateStr] = data.rows_data;
           if (dateStr !== this.currentDate) this.invalidateAutocompleteHistory();
@@ -758,7 +788,12 @@ class PTCloudSync {
           if (previousRows !== JSON.stringify(this.dataStore[dateStr])) this.rebaseEditHistoryAfterSync(dateStr, JSON.parse(previousRows));
           this.getEditHistory(dateStr);
           this.updateHistoryButtons();
+          const appliedSnapshot = JSON.stringify(this.dataStore[dateStr]);
           await this.persistDataStore();
+          // Cache only the snapshot that was durably applied, never a newer
+          // local edit made while asynchronous persistence was running.
+          if (this.supabaseClient === client && !this.pendingSyncDates.has(dateStr) &&
+              JSON.stringify(this.dataStore[dateStr]) === appliedSnapshot) rememberVersion(data);
           if (this.currentDate === dateStr) {
             this.renderTable();
             this.updateSidebarStats();
@@ -786,6 +821,7 @@ class PTCloudSync {
       return await pullTask;
     } finally {
       if (this.activePulls.get(dateStr) === pullTask) this.activePulls.delete(dateStr);
+      if (this.recordPullOperations.get(dateStr) === operation) this.recordPullOperations.delete(dateStr);
     }
   }
 
