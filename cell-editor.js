@@ -361,9 +361,12 @@ class PTCellEditor {
       }
       if (!armed && existingEditor.dataset.nativeComposing !== "true") {
         delete existingEditor.dataset.navigationInputGuard;
+        delete existingEditor.dataset.navigationInputGuardUntil;
         this.activateNativeEditor(existingEditor);
         existingEditor.focus({ preventScroll: true });
         existingEditor.setSelectionRange(existingEditor.value.length, existingEditor.value.length);
+      } else if (armed && document.activeElement !== existingEditor) {
+        existingEditor.focus({ preventScroll: true });
       }
       return;
     }
@@ -393,6 +396,7 @@ class PTCellEditor {
     this._cellInputLanguage = input._inputLanguage;
     if (this.guardNextCellInput) {
       input.dataset.navigationInputGuard = "true";
+      input.dataset.navigationInputGuardUntil = String(Date.now() + 150);
       this.guardNextCellInput = false;
     }
     if (colKey === "writer") {

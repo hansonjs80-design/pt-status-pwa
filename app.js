@@ -287,8 +287,10 @@ class PTApp {
 
   isEditingCell() {
     const focused = document.activeElement;
-    return focused === this.elFormulaInput ||
-      Boolean(focused?.matches(".cell-input-element:not(.is-armed)"));
+    if (focused === this.elFormulaInput) return true;
+    if (Boolean(focused?.matches(".cell-input-element:not(.is-armed)"))) return true;
+    if (Boolean(focused?.matches(".cell-input-element")) && (focused.dataset?.nativeComposing === "true" || focused.dataset?.composing === "true")) return true;
+    return false;
   }
 
   getEditHistory(date = this.currentDate) {

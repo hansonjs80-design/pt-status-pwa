@@ -28,8 +28,15 @@ class PTCellInputTools {
 
   blockInheritedNavigationInput(input, event, originalValue) {
     if (input?.dataset?.navigationInputGuard !== 'true') return false;
+    const guardUntil = Number(input.dataset.navigationInputGuardUntil) || 0;
+    if (guardUntil && Date.now() > guardUntil) {
+      delete input.dataset.navigationInputGuard;
+      delete input.dataset.navigationInputGuardUntil;
+      return false;
+    }
     if (['insertFromPaste', 'insertFromDrop'].includes(event.inputType)) {
       delete input.dataset.navigationInputGuard;
+      delete input.dataset.navigationInputGuardUntil;
       return false;
     }
     if (event.cancelable) event.preventDefault();
@@ -57,8 +64,13 @@ class PTCellInputTools {
       (event.key === 'Process' || event.keyCode === 229)
     );
     // A fresh physical typing key proves that this cell owns the next input.
-    if (isSearchPromptCleanKey || event.key?.length === 1 || /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || event.key || '')) {
+    const isTypingKey = isSearchPromptCleanKey ||
+      event.key === 'Process' || event.keyCode === 229 ||
+      event.key?.length === 1 ||
+      /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab|HangulMode)$/.test(event.code || event.key || '');
+    if (isTypingKey) {
       delete input.dataset.navigationInputGuard;
+      delete input.dataset.navigationInputGuardUntil;
       this.leftEditHandoffUntil = 0;
     }
   }

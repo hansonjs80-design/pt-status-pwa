@@ -221,6 +221,7 @@ class PTTableView {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
+    this.guardNextCellInput = false;
     this.textColorSelection = null;
     this.patientSearchDraft = null;
     this._cellInputLanguage = this.usesNativeCellInput() ? this.getCellInputLanguage(colKey) : "kor";

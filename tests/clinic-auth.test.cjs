@@ -60,3 +60,4 @@ test('PTClinicAuth: default password is "1" and unlocks correctly', () => {
   assert.equal(PTClinicAuth.unlock('2026'), true);
   assert.equal(PTClinicAuth.isUnlocked(), true);
 });
+
