@@ -65,9 +65,8 @@ class PTCellInputTools {
     );
     // A fresh physical typing key proves that this cell owns the next input.
     const isTypingKey = isSearchPromptCleanKey ||
-      event.key === 'Process' || event.keyCode === 229 ||
-      event.key?.length === 1 ||
-      /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab|HangulMode)$/.test(event.code || event.key || '');
+      (event.key?.length === 1 && !['Process', 'Unidentified'].includes(event.key)) ||
+      /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|Space|Backspace|Delete|Enter|NumpadEnter|Tab)$/.test(event.code || '');
     if (isTypingKey) {
       delete input.dataset.navigationInputGuard;
       delete input.dataset.navigationInputGuardUntil;

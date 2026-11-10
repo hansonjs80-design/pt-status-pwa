@@ -148,6 +148,7 @@ class PTTableView {
           if (e.shiftKey && this.activeCell) return;
           if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow || this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
+          this.guardNextCellInput = false;
           this.selectCell(rowIdx, key, td, false);
         });
 
@@ -221,7 +222,6 @@ class PTTableView {
 
   // Select and focus cell like Excel
   selectCell(rowIdx, colKey, cellElement, startEdit = false) {
-    this.guardNextCellInput = false;
     this.textColorSelection = null;
     this.patientSearchDraft = null;
     this._cellInputLanguage = this.usesNativeCellInput() ? this.getCellInputLanguage(colKey) : "kor";

@@ -681,40 +681,21 @@ class PTSheetKeyboard {
     // 16) Direct character typing to begin editing (for text cells)
     if (this.activeCell?.colKey === "writer" && !isCtrlOrMeta && !e.altKey && /^Key[A-Z]$/.test(e.code)) {
       const cellEl = document.querySelector(`.excel-cell[data-row="${this.activeCell.rowIdx}"][data-col="writer"]`);
-      if (cellEl) {
-        let input = cellEl.querySelector("input");
-        if (!input) {
-          e.preventDefault();
-          this.startInlineEdit(this.activeCell.rowIdx, "writer", cellEl);
-          input = cellEl.querySelector("input");
-        } else {
-          delete input.dataset.navigationInputGuard;
-          delete input.dataset.navigationInputGuardUntil;
-          this.activateNativeEditor(input);
-          input.focus({ preventScroll: true });
-        }
-        if (input) {
-          e.preventDefault();
-          input.value = e.code.slice(3);
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          return;
-        }
+      if (cellEl && !cellEl.querySelector("input")) {
+        e.preventDefault();
+        this.startInlineEdit(this.activeCell.rowIdx, "writer", cellEl);
+        const input = cellEl.querySelector("input");
+        input.value = e.code.slice(3);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return;
       }
     }
     if (this.activeCell && !isCtrlOrMeta && !e.altKey && (e.key.length === 1 || e.key === "Process" || e.keyCode === 229)) {
       const { rowIdx, colKey } = this.activeCell;
       if (colKey !== "gender") {
         const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
-        if (cellEl) {
-          const existingInput = cellEl.querySelector("input");
-          if (!existingInput) {
-            this.startInlineEdit(rowIdx, colKey, cellEl);
-          } else {
-            delete existingInput.dataset.navigationInputGuard;
-            delete existingInput.dataset.navigationInputGuardUntil;
-            this.activateNativeEditor(existingInput);
-            existingInput.focus({ preventScroll: true });
-          }
+        if (cellEl && !cellEl.querySelector("input")) {
+          this.startInlineEdit(rowIdx, colKey, cellEl);
         }
       }
     }
