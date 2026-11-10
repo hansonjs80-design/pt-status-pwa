@@ -220,6 +220,10 @@ class PTHistorySearch {
       if (snapshot !== history.current && !history.undo.includes(snapshot) && !history.redo.includes(snapshot)) history.applySelections.delete(snapshot);
     }
     this.saveDataStore(false);
+    this.historyApplyBlockedKey = null;
+    this.directHistorySearchKeyHeld = false;
+    this.historyApplyEnterSuppressed = false;
+    this.guardNextCellInput = false;
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
 
@@ -381,6 +385,7 @@ class PTHistorySearch {
     const rowIdx = index >= 0 ? index : target.rowIdx;
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="no"]`);
     if (cell) {
+      this.guardNextCellInput = false;
       this.selectCell(rowIdx, "no", cell, false);
       this.isCrossDateRowSelected = false;
       this.revealHistoryDestination(cell, rowIdx);
@@ -448,7 +453,9 @@ class PTHistorySearch {
     this.elSearchInput.value = '';
     // Use the same exit path as Escape to restore the origin or applied row.
     this.handleSearch();
-    this.elSheetContainer.focus({ preventScroll: true });
+    if (!document.activeElement?.matches?.(".cell-input-element")) {
+      this.elSheetContainer.focus({ preventScroll: true });
+    }
   }
 
   handleSearch() {

@@ -694,8 +694,13 @@ class PTSheetKeyboard {
       const { rowIdx, colKey } = this.activeCell;
       if (colKey !== "gender") {
         const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
-        if (cellEl && !cellEl.querySelector("input")) {
-          this.startInlineEdit(rowIdx, colKey, cellEl);
+        if (cellEl) {
+          const existingInput = cellEl.querySelector("input");
+          if (!existingInput) {
+            this.startInlineEdit(rowIdx, colKey, cellEl);
+          } else if (document.activeElement !== existingInput) {
+            existingInput.focus({ preventScroll: true });
+          }
         }
       }
     }
