@@ -1173,14 +1173,10 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 /* 기본 이전 내역 선택 테두리는 No.부터 특이사항까지의 실제 선택 셀에만 표시한다. */
 .excel-row.cross-date-row-selected .cross-date-cell.range-selected {
   background-color: #fff7ed !important;
-  border-top: 2px solid #ff8000 !important;
-  border-bottom: 2px solid #ff8000 !important;
 }
-.excel-row.cross-date-row-selected .cross-date-cell.range-border-left {
-  border-left: 2px solid #ff8000 !important;
-}
-.excel-row.cross-date-row-selected .cross-date-cell.range-border-right {
-  border-right: 2px solid #ff8000 !important;
+.excel-row.cross-date-row-selected .cross-date-cell.range-selected::before {
+  border-top-width: 2px;
+  border-bottom-width: 2px;
 }
 .excel-row.cross-date-row-selected .cross-date-num {
   background: #ff8000 !important;
@@ -1269,18 +1265,27 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
   background-color: #b9dac5 !important;
 }
 
-/* Range Boundaries (Outer borders of selection box like Excel) */
-.excel-cell.range-border-top {
-  border-top: 2px solid var(--excel-green) !important;
+/* Selection paint stays out of table layout, including the mousedown range. */
+.excel-cell:is(.range-selected, .range-border-top, .range-border-bottom, .range-border-left, .range-border-right)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 0 solid var(--excel-green);
+  pointer-events: none;
+  z-index: 2;
 }
-.excel-cell.range-border-bottom {
-  border-bottom: 2px solid var(--excel-green) !important;
+.excel-cell.range-border-top::before {
+  border-top-width: 2px;
 }
-.excel-cell.range-border-left {
-  border-left: 2px solid var(--excel-green) !important;
+.excel-cell.range-border-bottom::before {
+  border-bottom-width: 2px;
 }
-.excel-cell.range-border-right {
-  border-right: 2px solid var(--excel-green) !important;
+.excel-cell.range-border-left::before {
+  border-left-width: 2px;
+}
+.excel-cell.range-border-right::before {
+  border-right-width: 2px;
 }
 
 /* Alignment per column type */
@@ -1511,10 +1516,20 @@ html.device-toolbar-collapsed:not(.app-ready) .toolbar-actions-toggle svg { tran
 
 .excel-cell.clipboard-source.cell-focused { outline: none; }
 .excel-cell.clipboard-source .cell-fill-handle { display: none; }
-.excel-table .excel-row .excel-cell.clipboard-source.clipboard-top { border-top: 2px dashed var(--excel-green) !important; }
-.excel-table .excel-row .excel-cell.clipboard-source.clipboard-bottom { border-bottom: 2px dashed var(--excel-green) !important; }
-.excel-table .excel-row .excel-cell.clipboard-source.clipboard-left { border-left: 2px dashed var(--excel-green) !important; }
-.excel-table .excel-row .excel-cell.clipboard-source.clipboard-right { border-right: 2px dashed var(--excel-green) !important; }
+.excel-cell.clipboard-source::before { display: none; }
+.excel-cell.clipboard-source::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 0 dashed var(--excel-green);
+  pointer-events: none;
+  z-index: 4;
+}
+.excel-cell.clipboard-source.clipboard-top::after { border-top-width: 2px; }
+.excel-cell.clipboard-source.clipboard-bottom::after { border-bottom-width: 2px; }
+.excel-cell.clipboard-source.clipboard-left::after { border-left-width: 2px; }
+.excel-cell.clipboard-source.clipboard-right::after { border-right-width: 2px; }
 
 /* In-Cell Input */
 .cell-input-element {
@@ -2958,10 +2973,6 @@ details.summary-accordion[open] summary {
 .history-search-active .excel-cell.history-destination-cell {
   box-shadow: inset 0 0 0 2px var(--excel-green);
 }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-top { border-top-color: #ff8000 !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-bottom { border-bottom-color: #ff8000 !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-left { border-left-color: #ff8000 !important; }
-.excel-table .cross-date-row .cross-date-cell.clipboard-source.clipboard-right { border-right-color: #ff8000 !important; }
 
 /* 이전 내역은 셀·범위·행 선택을 모두 오렌지 계열로 표시한다. */
 .excel-row.cross-date-row {

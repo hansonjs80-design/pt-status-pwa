@@ -10,7 +10,9 @@ const files = [...read('index.html').matchAll(/<script src="([^" ]+\.js)"><\/scr
   .map(match => match[1]);
 
 test('tests load the same feature scripts and order as the browser', () => {
-  const coreFiles = files.filter(file => file !== 'local-tools.js');
+  // Auth and local tools have independent DOM startup and dedicated tests;
+  // the VM helper loads only the scripts that implement the spreadsheet.
+  const coreFiles = files.filter(file => !['local-tools.js', 'clinic-auth.js'].includes(file));
   assert.equal(require('./helpers/load-app-source.cjs'), coreFiles.map(read).join('\n'));
   assert.equal(coreFiles.at(-1), 'app.js');
 });
