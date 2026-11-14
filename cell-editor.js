@@ -911,10 +911,34 @@ class PTCellEditor {
       if (colKey === "writer" && this.isWriterRightExit(e, input)) {
         e.preventDefault(); e.stopPropagation();
         composing = false; input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
         const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
         this.closeAutocompleteMenu();
         commitAndBlur(chosen);
         navigateColumn(1);
+        this.focusSelectedCellEditor();
+        return;
+      }
+      if (colKey === "writer" && this.isWriterVerticalExit(e, input)) {
+        e.preventDefault(); e.stopPropagation();
+        composing = false; input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        commitAndBlur();
+        const isDown = e.key === "ArrowDown" || e.code === "ArrowDown";
+        if (historyEdit) {
+          historyEdit.navigate(isDown ? 1 : -1, 0);
+          return;
+        }
+        const targetRow = isDown ? rowIdx + 1 : Math.max(0, rowIdx - 1);
+        const rows = this.getCurrentRows();
+        if (targetRow >= rows.length) {
+          this.addNewRow(false);
+        }
+        const targetCell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="writer"]`) ||
+          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRow}"][data-col="writer"]`) : null);
+        if (targetCell) {
+          this.selectCell(targetRow, "writer", targetCell, false);
+        }
         this.focusSelectedCellEditor();
         return;
       }
@@ -1101,7 +1125,8 @@ class PTCellEditor {
         if (targetRow >= rows.length) {
           this.addNewRow(false);
         }
-        const targetCell = document.querySelector(`.excel-cell[data-row="${targetRow}"][data-col="${targetColKey}"]`);
+        const targetCell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="${targetColKey}"]`) ||
+          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRow}"][data-col="${targetColKey}"]`) : null);
         if (targetCell) {
           this.selectCell(targetRow, targetColKey, targetCell, false);
         }

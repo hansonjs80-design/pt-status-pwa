@@ -1020,3 +1020,51 @@ test('whole-cell copy and cut commit the live editor before snapshot and return 
     if(action==='cutSelection')assert.equal(app.pendingCut.cells[0].value,'확정 값');
   }
 });
+
+test('typing a writer initial and pressing ArrowUp or ArrowDown commits and moves the selection border vertically even under Korean IME composition', () => {
+  for (const [startRow, code, expectedRow] of [[1, 'ArrowUp', 0], [0, 'ArrowDown', 1]]) {
+    const { app } = createTestApp();
+    app.dataStore[app.currentDate] = [{ writer: '' }, { writer: '' }];
+    let currentInput = null;
+    const makeCell = row => ({
+      dataset: { col: 'writer', row: String(row) },
+      textContent: '',
+      querySelector(sel) { return sel === 'input' ? currentInput : null; },
+      appendChild(el) { currentInput = el; },
+    });
+    const cells = [makeCell(0), makeCell(1)];
+    app.elTableBody = {
+      querySelector(sel) {
+        const match = sel.match(/\[data-row="(\d+)"\]\[data-col="writer"\]/);
+        return match ? cells[Number(match[1])] : null;
+      },
+    };
+    app.elFormulaInput = { value: '' };
+    for (const m of ['applyCellFormatting', 'renderColoredText', 'saveDataStore', 'refreshNewPatientRows', 'endNativeCellEditing']) app[m] = () => {};
+    let selected = null;
+    let focusedEditor = 0;
+    app.selectCell = (row, col, cell, startEdit) => {
+      selected = { row, col, cell, startEdit };
+    };
+    app.focusSelectedCellEditor = () => { focusedEditor++; };
+
+    app.startInlineEdit(startRow, 'writer', cells[startRow], true);
+    const input = app.getCreatedInput();
+    input.dispatchEvent = event => input._listeners.input(event);
+    input._listeners.compositionstart({ type: 'compositionstart' });
+    input._listeners.keydown(keyEvent('Process', { code: 'KeyJ', keyCode: 229, isComposing: true }));
+    assert.equal(input.value, 'J');
+    assert.equal(input.dataset.nativeComposing, 'false');
+
+    // Simulate OS IME still reporting Process/229 or composition on the immediate ArrowUp/ArrowDown press
+    input._listeners.compositionstart({ type: 'compositionstart' });
+    const arrow = keyEvent('Process', { code, keyCode: 229, isComposing: true });
+    input._listeners.keydown(arrow);
+
+    assert.equal(arrow.defaultPrevented, true);
+    assert.equal(app.getCurrentRows()[startRow].writer, 'J');
+    assert.deepEqual(selected, { row: expectedRow, col: 'writer', cell: cells[expectedRow], startEdit: false });
+    assert.equal(focusedEditor, 1);
+  }
+});
+

@@ -1198,3 +1198,22 @@ test('clipboard arrows ignore only the overlapping copy modifier press and prese
     assert.equal(app.handleClipboardArrowHandoff(event),false,'no clipboard selection');
   }
 });
+
+test('manual writer Up and Down exit and move the selection border even while IME reports composition, preserving picker navigation', () => {
+  const {app}=createApp();
+  let armed=false,open=false;
+  app.isAutocompleteOpen=()=>open;
+  const input={classList:{contains:()=>armed}};
+  for(const code of ['ArrowUp','ArrowDown']) {
+    for(const event of [{key:code,code},{key:'Process',code,isComposing:true,keyCode:229}]) {
+      assert.equal(app.isWriterVerticalExit(event,input),true);
+      for(const modifier of ['ctrlKey','metaKey','altKey','shiftKey'])
+        assert.equal(app.isWriterVerticalExit({...event,[modifier]:true},input),false);
+    }
+  }
+  armed=true;
+  assert.equal(app.isWriterVerticalExit({key:'ArrowDown'},input),false);
+  armed=false;open=true;
+  assert.equal(app.isWriterVerticalExit({key:'ArrowDown'},input),false);
+});
+

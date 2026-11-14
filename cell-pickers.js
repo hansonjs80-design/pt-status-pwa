@@ -33,6 +33,13 @@ class PTCellPickers {
       !input.classList.contains("is-armed");
   }
 
+  isWriterVerticalExit(event, input) {
+    const vertical = event.key === "ArrowUp" || event.key === "ArrowDown" ||
+      event.code === "ArrowUp" || event.code === "ArrowDown";
+    return vertical && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey &&
+      !input.classList?.contains?.("is-armed") && !this.isAutocompleteOpen();
+  }
+
   handleWriterPickerShortcut(event, rowIdx, cellElement) {
     if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
     event.preventDefault(); event.stopPropagation();
@@ -106,9 +113,10 @@ class PTCellPickers {
     this.activateNativeEditor(input);
     input.value = input.value.slice(0, start) + event.code.slice(3) + input.value.slice(end);
     input.dataset.composing = "false";
+    input.dataset.nativeComposing = "false";
     input.dataset.writerKeyValue = input.value;
     input.setSelectionRange(start + 1, start + 1);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
     return true;
   }
 
