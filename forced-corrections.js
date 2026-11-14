@@ -261,10 +261,10 @@ class PTForcedCorrections {
   }
 
   closeForcedCorrectionManager(restoreFocus = true) {
+    if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
     const modal = typeof document === 'undefined' ? null : document.getElementById?.('forcedCorrectionModal');
     if (!modal || modal.style.display !== 'flex') return;
     modal.style.display = 'none';
-    if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
     if (restoreFocus) {
       const prev = this._forcedCorrectionPreviousFocus;
       this._forcedCorrectionPreviousFocus = null;

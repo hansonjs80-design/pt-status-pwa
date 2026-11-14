@@ -288,8 +288,9 @@ class PTApp {
   isEditingCell() {
     const focused = document.activeElement;
     if (focused === this.elFormulaInput) return true;
-    if (Boolean(focused?.matches(".cell-input-element:not(.is-armed)"))) return true;
-    if (Boolean(focused?.matches(".cell-input-element")) && (focused.dataset?.nativeComposing === "true" || focused.dataset?.composing === "true")) return true;
+    if (!focused || focused.isConnected === false || focused.dataset?.committed === "true") return false;
+    if (Boolean(focused.matches?.(".cell-input-element:not(.is-armed)"))) return true;
+    if (Boolean(focused.matches?.(".cell-input-element")) && (focused.dataset?.nativeComposing === "true" || focused.dataset?.composing === "true")) return true;
     return false;
   }
 

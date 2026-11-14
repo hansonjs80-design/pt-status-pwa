@@ -636,6 +636,10 @@ class PTDeviceLayout {
 
     document.addEventListener("pointermove", (e) => {
       if (activeTh) {
+        if (e.pointerType === "mouse" && e.buttons === 0) {
+          endResize();
+          return;
+        }
         e.preventDefault();
         doResize(e.clientX);
       }
@@ -649,6 +653,14 @@ class PTDeviceLayout {
 
     document.addEventListener("pointercancel", () => {
       endResize();
+    });
+
+    window.addEventListener("blur", () => {
+      if (activeTh) endResize();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden && activeTh) endResize();
     });
 
     // 터치 멀티터치 보호 (2손가락으로 전환 시 리사이즈 취소)

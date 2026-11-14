@@ -695,6 +695,7 @@ class PTSheetKeyboard {
       if (colKey !== "gender") {
         const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
         if (cellEl) {
+          cellEl.querySelectorAll?.('input[data-committed="true"]').forEach(el => el.remove?.());
           const existingInput = cellEl.querySelector("input");
           if (!existingInput) {
             this.startInlineEdit(rowIdx, colKey, cellEl);

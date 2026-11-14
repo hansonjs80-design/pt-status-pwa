@@ -46,6 +46,10 @@ class PTCellInputTools {
         input.setSelectionRange?.(0, originalValue.length);
       }
     }
+    if (input.classList?.contains('is-armed')) {
+      input.dataset.composing = 'false';
+      input.dataset.nativeComposing = 'false';
+    }
     return true;
   }
 

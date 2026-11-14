@@ -219,6 +219,7 @@ class PTHistorySearch {
     for (const snapshot of history.applySelections.keys()) {
       if (snapshot !== history.current && !history.undo.includes(snapshot) && !history.redo.includes(snapshot)) history.applySelections.delete(snapshot);
     }
+    if (this.highlightBrushColor) this.setHighlightBrush?.(null);
     this.saveDataStore(false);
     this.historyApplyBlockedKey = null;
     this.directHistorySearchKeyHeld = false;

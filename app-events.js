@@ -425,7 +425,14 @@ class PTAppEvents {
     }, true);
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
     this.initCellWindowFocus();
-    window.addEventListener("blur", () => { this.historyApplyBlockedKey = null; this.presetLeftKeyHeld = false; this.directHistorySearchKeyHeld = false; this._cellLanguageToggleDown = null; });
+    window.addEventListener("blur", () => {
+      this.historyApplyBlockedKey = null;
+      this.presetLeftKeyHeld = false;
+      this.directHistorySearchKeyHeld = false;
+      this._cellLanguageToggleDown = null;
+      this.cancelSheetPointerInteraction?.();
+      this.endColumnResize?.();
+    });
 
     document.addEventListener("paste", event => {
       if (this._recordsRestorePending) return;

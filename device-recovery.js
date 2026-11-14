@@ -152,8 +152,14 @@ class PTDeviceRecovery {
     clearTimeout(this.timer);
     if (this.writing) return this.writing;
     if (!this.ready || !this.dirty || !this.tools.folder) return;
+    let requeue = false;
     const save = async () => {
-      while (this.dirty && this.ready) {
+      let attempts = 0;
+      while (this.dirty && this.ready && this.tools.folder) {
+        if (attempts++ >= 5) {
+          requeue = true;
+          break;
+        }
         this.dirty = false;
         const folder = this.tools.folder;
         const connection = this.connection;
@@ -161,7 +167,11 @@ class PTDeviceRecovery {
         // A newly emptied browser must not write defaults over a recovery copy.
         if (!Object.keys(snapshot.ui.columnWidths).length && !Object.values(snapshot.ui.columnWidthUpdatedAt).some(Boolean) &&
             !Object.values(snapshot.exports._fieldUpdatedAt).some(Boolean)) continue;
-        if (!folder || this.tools.folder !== folder || this.connection !== connection) { this.dirty = true;continue; }
+        if (!folder || this.tools.folder !== folder || this.connection !== connection) {
+          this.dirty = true;
+          if (!this.tools.folder || !this.ready) break;
+          continue;
+        }
         if (await folder.queryPermission({mode:'readwrite'}) !== 'granted') throw Error('설정 파일 보관을 위해 폴더 권한을 갱신해 주세요.');
         let previous;
         try {
@@ -169,7 +179,11 @@ class PTDeviceRecovery {
           previous = PTDeviceRecovery.parse(await (await handle.getFile()).text());
           if (previous.deviceId !== this.meta.id) throw Error('설정 파일 식별자가 달라 원본을 보존합니다.');
         } catch (error) { if (error.name !== 'NotFoundError') throw error; }
-        if (!this.ready || this.tools.folder !== folder || this.connection !== connection) { this.dirty = true;continue; }
+        if (!this.ready || this.tools.folder !== folder || this.connection !== connection) {
+          this.dirty = true;
+          if (!this.tools.folder || !this.ready) break;
+          continue;
+        }
         snapshot.ui = PTDeviceSettings.mergeUI([previous?.ui,snapshot.ui]);
         snapshot.exports = PTDeviceSettings.mergeExports([previous?.exports,snapshot.exports]);
         const text = JSON.stringify(PTDeviceRecovery.parse(JSON.stringify(snapshot)),null,2);
@@ -188,7 +202,14 @@ class PTDeviceRecovery {
         if (locks?.request) await locks.request('pt-device-recovery-'+this.meta.id,save);
         else await save();
       } catch (error) { this.dirty = true;this.message = '설정 파일 보관 대기 · '+error.message;throw error; }
-      finally { this.writing = null;this.render(); }
+      finally {
+        this.writing = null;
+        if (requeue && this.dirty && this.ready && this.tools.folder) {
+          clearTimeout(this.timer);
+          this.timer = setTimeout(() => { void this.flush().catch(() => {}); }, 300);
+        }
+        this.render();
+      }
     })();
     return this.writing;
   }

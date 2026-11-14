@@ -346,6 +346,11 @@ class PTCellEditor {
       return;
     }
 
+    cellElement.querySelectorAll?.('input[data-committed="true"]').forEach(el => {
+      el.editorColorPreview?.remove?.();
+      el.nativeLanguagePreview?.remove?.();
+      el.remove?.();
+    });
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
       if (!armed) {
@@ -622,6 +627,11 @@ class PTCellEditor {
       // Enter/Tab moves focus. Arm the destination before blurring this input,
       // including when compositionend has already cleared the live projection.
       if (input._forcedCorrectionApplied || composing || input.dataset.composing === 'true' || input.dataset.nativeComposing === 'true') this.guardNextCellInput = true;
+      input.dataset.committed = "true";
+      composing = false;
+      input.dataset.composing = "false";
+      input.dataset.nativeComposing = "false";
+      const wasFocused = typeof document !== "undefined" && document.activeElement === input;
       clearTimeout(_hangulRepairTimer);
       clearTimeout(_acDebounceTimer);
       const liveValue = this.getCellEditorValue(input);
@@ -647,6 +657,12 @@ class PTCellEditor {
       if (!existingInput || existingInput === input) {
         this.applyCellFormatting(cellElement, rows[rowIdx], colKey);
         this.renderColoredText(cellElement, rows[rowIdx], colKey);
+      }
+      input.editorColorPreview?.remove?.();
+      if (input.isConnected) input.remove?.();
+      if (wasFocused && typeof document !== "undefined" &&
+          (!document.activeElement || document.activeElement === document.body || document.activeElement === input)) {
+        this.elSheetContainer?.focus?.({ preventScroll: true });
       }
       if (colKey === "gender") {
         cellElement.classList.remove("f", "m");
@@ -687,7 +703,11 @@ class PTCellEditor {
         // Selection-only editors can still receive queued native IME events
         // after focus moves. Retire this closure without saving untouched text.
         isCommitted = true;
-        input.remove();
+        input.dataset.committed = "true";
+        composing = false;
+        input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        input.remove?.();
         return;
       }
       this.closeAutocompleteMenu();
@@ -707,7 +727,21 @@ class PTCellEditor {
     });
 
     input.addEventListener("keydown", (e) => {
-      if (isCommitted || input.isConnected === false) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+      if (isCommitted || input.dataset.committed === "true" || input.isConnected === false) {
+        if (input.isConnected) input.remove?.();
+        if (typeof document !== "undefined" &&
+            (!document.activeElement || document.activeElement === document.body || document.activeElement === input)) {
+          this.elSheetContainer?.focus?.({ preventScroll: true });
+        }
+        e.stopImmediatePropagation();
+        return;
+      }
+      if (input.classList.contains("is-armed") && !e.isComposing && e.keyCode !== 229 &&
+          ["Escape", "Enter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Delete"].includes(e.key)) {
+        composing = false;
+        input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+      }
       if (this.handleClipboardArrowHandoff(e)) return;
       if (this.handleForcedCorrectionDelete(e, input)) { composing = false; return; }
 

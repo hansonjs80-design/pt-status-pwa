@@ -1205,11 +1205,11 @@ class PTTableFormatting {
     this.setHighlightBrush(value.color || '#333333');
     this.textHighlightColor = highlightColor;
     this.underlineBrushStyle = { ...value };
-    this.elSheetContainer?.classList.add('is-underline-brush');
+    this.elSheetContainer?.classList?.add?.('is-underline-brush');
     const ink = value.color || '#333333';
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="m3 17 12-12 4 4-12 12-5 1z" fill="white" stroke="#414149" stroke-width="1.5"/><path d="m3 17 4 4-5 1zM2 23h16" fill="${ink}" stroke="${ink}" stroke-width="1.5"/></svg>`;
-    this.elSheetContainer?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 2 22, crosshair`);
-    this.updateTextHighlightIndicator(); this.updateUnderlineIndicator();
+    this.elSheetContainer?.style?.setProperty?.('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 2 22, crosshair`);
+    this.updateTextHighlightIndicator?.(); this.updateUnderlineIndicator?.();
   }
 
   toggleUnderline(value = null, allowReset = true) {
@@ -1225,6 +1225,10 @@ class PTTableFormatting {
       this.updateUnderlineIndicator(); return;
     }
     const mainButton = value === null;
+    if (mainButton && this.underlineBrushStyle) {
+      this.setHighlightBrush(null);
+      return;
+    }
     const selected = this.getSelectedUnderline();
     value ||= selected.value || this.underlineChoice || { style: 'single', color: null };
     this.underlineChoice = { ...value };
@@ -1321,18 +1325,18 @@ class PTTableFormatting {
 
   setHighlightBrush(color) {
     this.underlineBrushStyle = null;
-    this.elSheetContainer?.classList.remove('is-underline-brush');
-    this.updateUnderlineIndicator();
+    this.elSheetContainer?.classList?.remove?.('is-underline-brush');
+    this.updateUnderlineIndicator?.();
     this.cancelHighlightStroke?.();
     this.highlightBrushColor = color ? (this.normalizeColumnColor(color) || color) : null;
     if (color) this.textHighlightColor = this.highlightBrushColor;
     const sheet = this.elSheetContainer;
-    sheet?.classList.toggle('is-highlight-brush', !!color);
+    sheet?.classList?.toggle?.('is-highlight-brush', !!color);
     if (color) {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 32 32"><g stroke="#202127" stroke-width="1.6" stroke-linejoin="round"><path fill="${this.highlightBrushColor}" d="M7 17 20 4q3-3 6 0l3 3q3 3 0 6L16 26z"/><path fill="#414149" d="m7 17 9 9q-1 2-3 1-2-1-3 1l-1 1q-1 1-2 0l-3-3q-1-1 0-2l1-1q2-1 1-3-1-2 1-3z"/><path fill="${this.highlightBrushColor}" d="m4 25 4 4-2 2-4-1q-1 0 0-1z"/></g></svg>`;
-      sheet?.style.setProperty('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 1 22, crosshair`);
-    } else sheet?.style.removeProperty('--highlight-brush-cursor');
-    this.updateTextHighlightIndicator();
+      sheet?.style?.setProperty?.('--highlight-brush-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 1 22, crosshair`);
+    } else sheet?.style?.removeProperty?.('--highlight-brush-cursor');
+    this.updateTextHighlightIndicator?.();
   }
 
   chooseTextHighlight(color) {
@@ -1388,8 +1392,15 @@ class PTTableFormatting {
     const sheet = this.elSheetContainer;
     if (!sheet || this.highlightBrushBound) return;
     this.highlightBrushBound = true;
+    const isInteractiveControl = target => Boolean(target?.closest?.(
+      'button, input:not(.cell-input-element), select, textarea, a, [role="button"], .row-delete-btn, .col-resizer, .col-headers-row, .row-num, .history-date-toggle, .visit-time-refresh'
+    ));
     const suppress = event => {
       if (!this.highlightBrushColor) return;
+      if (isInteractiveControl(event.target)) {
+        if (event.type === 'mousedown') this.setHighlightBrush(null);
+        return;
+      }
       event.preventDefault(); event.stopImmediatePropagation();
     };
     for (const type of ['mousedown', 'click', 'dblclick']) sheet.addEventListener(type, suppress, true);
@@ -1398,11 +1409,24 @@ class PTTableFormatting {
         event.preventDefault(); event.stopImmediatePropagation(); this.setHighlightBrush(null);
       }
     }, true);
+    document.addEventListener('mousedown', event => {
+      if (!this.highlightBrushColor) return;
+      if (sheet.contains(event.target)) return;
+      if (event.target?.closest?.('.font-color-menu, .column-typography-menu, #btnTextHighlight, #btnTextHighlightMenu, #btnUnderline, #btnUnderlineMenu')) return;
+      this.setHighlightBrush(null);
+    }, true);
     sheet.addEventListener('pointerdown', event => {
       if (!this.highlightBrushColor || event.button !== 0) return;
+      if (isInteractiveControl(event.target)) {
+        this.setHighlightBrush(null);
+        return;
+      }
       suppress(event);
       const cell = event.target.closest('td.excel-cell[data-row][data-col], td.cross-date-cell[data-cross-col="specialNote"]');
-      if (!cell || !this.elTableBody.contains(cell)) return;
+      if (!cell || !this.elTableBody.contains(cell)) {
+        this.setHighlightBrush(null);
+        return;
+      }
       const history = cell.dataset.crossCol === 'specialNote';
       const rowIndex = Number(history ? cell.dataset.crossIdx : cell.dataset.row), key = history ? 'specialNote' : cell.dataset.col;
       const historyEdit = history ? this.createHistoryNoteEdit(rowIndex) : null;
