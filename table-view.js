@@ -239,8 +239,13 @@ class PTTableView {
     this.selectedColKey = null;
 
     this.clearHeaderSelections();
-    this.rangeStart = { rowIdx, colIdx: Number(cellElement.dataset.colIdx), colKey };
+    const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
+    const resolvedColIdx = Number.isInteger(Number(cellElement.dataset?.colIdx)) && cellElement.dataset?.colIdx !== undefined
+      ? Number(cellElement.dataset.colIdx)
+      : Math.max(0, colOrder.indexOf(colKey));
+    this.rangeStart = { rowIdx, colIdx: resolvedColIdx, colKey };
     this.rangeEnd = { ...this.rangeStart };
+    this.selectedRange = { minRow: rowIdx, maxRow: rowIdx, minCol: resolvedColIdx, maxCol: resolvedColIdx };
     this.updateActiveHeaders(rowIdx, colKey);
 
     // Highlight row

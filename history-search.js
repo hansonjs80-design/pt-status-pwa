@@ -184,6 +184,7 @@ class PTHistorySearch {
     if (rowIdx === undefined) return;
     this.activeCell = null;
     this.clipboardSelection = null;
+    this.cancelSheetPointerInteraction?.();
     this.clearHeaderSelections();
     const searchQuery = this.elSearchInput.value;
     if (focusAppliedRow) this.elSearchInput.value = "";
@@ -225,6 +226,9 @@ class PTHistorySearch {
     this.directHistorySearchKeyHeld = false;
     this.historyApplyEnterSuppressed = false;
     this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this.clipboardArrowModifierHandoff = false;
     this.showSaveIndicator(`${source._sourceDate} 기록을 ${BASE_ROW_NUMBER + rowIdx}행에 적용 · 방문시간 ${rows[rowIdx].visitTime}`);
   }
 
@@ -387,6 +391,10 @@ class PTHistorySearch {
     const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="no"]`);
     if (cell) {
       this.guardNextCellInput = false;
+      this.presetLeftKeyHeld = false;
+      this.leftEditHandoffUntil = 0;
+      this.clipboardArrowModifierHandoff = false;
+      this.cancelSheetPointerInteraction?.();
       this.selectCell(rowIdx, "no", cell, false);
       this.isCrossDateRowSelected = false;
       this.revealHistoryDestination(cell, rowIdx);
@@ -444,6 +452,13 @@ class PTHistorySearch {
   closeHistorySearch() {
     clearTimeout(this.historyCurrentScrollTimer);
     this.pendingHistorySearchSelection = null;
+    this.cancelSheetPointerInteraction?.();
+    this.directHistorySearchKeyHeld = false;
+    this.historyApplyBlockedKey = null;
+    this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this.clipboardArrowModifierHandoff = false;
     this.closeAutocompleteMenu();
     this.closeGenderDropdown();
     this.hideContextMenu();

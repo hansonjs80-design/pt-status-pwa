@@ -2425,3 +2425,147 @@ test('Ctrl/Cmd+F while composing Korean in a non-name cell commits the cell and 
     }
   }
 });
+
+test('after applying history, all four arrows navigate from the armed editor and manual cell selection even under Process/229 IME events and stuck drag/key guards', () => {
+  const rows = [
+    { name: '첫환자', chartNo: '100', part: '목' },
+    { name: '둘째환자', chartNo: '200', part: '허리' },
+    {},
+  ];
+  const { app, context } = createApp(rows);
+  const colKeys = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote', 'visitTime'];
+  let activeInput = null;
+  context.KeyboardEvent = class {
+    constructor(type, options) { Object.assign(this, { type }, options); }
+  };
+  const cells = new Map();
+  for (let r = 0; r < rows.length; r++) {
+    colKeys.forEach((col, c) => {
+      const cell = {
+        dataset: { row: String(r), col, colIdx: String(c), colLetter: String.fromCharCode(65 + c), excelRow: String(r + 1) },
+        style: {},
+        classList: { add() {}, remove() {}, toggle() {} },
+        closest: () => ({ classList: { add() {}, remove() {} }, style: {} }),
+        querySelector: sel => sel === 'input' ? cell._input : null,
+        querySelectorAll: () => [],
+        appendChild: el => { if (el.tagName === 'INPUT') { cell._input = el; activeInput = el; } },
+        scrollIntoView() {},
+      };
+      cells.set(`${r}:${col}`, cell);
+    });
+  }
+
+  context.document.createElement = tag => {
+    const listeners = {};
+    const classSet = new Set();
+    const el = {
+      tagName: tag.toUpperCase(),
+      dataset: {},
+      style: {},
+      value: '',
+      isConnected: true,
+      _listeners: listeners,
+      set className(val) {
+        classSet.clear();
+        String(val || '').split(/\s+/).filter(Boolean).forEach(n => classSet.add(n));
+      },
+      get className() { return [...classSet].join(' '); },
+      classList: {
+        add(...names) { names.forEach(n => classSet.add(n)); },
+        remove(...names) { names.forEach(n => classSet.delete(n)); },
+        contains(n) { return classSet.has(n); },
+        toggle(n, v) { if (v === undefined ? !classSet.has(n) : v) classSet.add(n); else classSet.delete(n); },
+      },
+      addEventListener(type, fn) { listeners[type] = fn; },
+      removeEventListener() {},
+      focus() { context.document.activeElement = el; },
+      blur() { if (listeners.blur) listeners.blur(); if (context.document.activeElement === el) context.document.activeElement = null; },
+      setSelectionRange(s, e) { el.selectionStart = s; el.selectionEnd = e; },
+      remove() { el.isConnected = false; },
+      matches(sel) { return tag === 'input' && sel.includes('cell-input-element') && (!sel.includes(':not(.is-armed)') || !classSet.has('is-armed')); },
+      closest(sel) { return sel === '.excel-cell' ? cells.get(`${app.activeCell?.rowIdx ?? 0}:${app.activeCell?.colKey ?? 'no'}`) : null; },
+    };
+    return el;
+  };
+
+  app.elTableBody = {
+    querySelector(sel) {
+      const m = sel.match(/\[data-row="(\d+)"\]\[data-col="(\w+)"\](?:\s+input)?/);
+      if (!m) return null;
+      const cell = cells.get(`${m[1]}:${m[2]}`);
+      return sel.endsWith('input') ? cell?._input : cell;
+    },
+    querySelectorAll() { return []; },
+  };
+  app.elSheetContainer = {
+    classList: { add() {}, remove() {}, toggle() {} },
+    focus() { context.document.activeElement = app.elSheetContainer; },
+    dispatchEvent(evt) { app.handleGlobalKeyDown({ ...evt, target: app.elSheetContainer, preventDefault() {}, stopPropagation() {} }); },
+  };
+  app.elBtnClearSearch = { style: {} };
+  app.elCellAddress = { textContent: '' };
+  app.elSelectedCellCoords = { textContent: '' };
+  app.elFormulaInput = { value: '' };
+  for (const fn of ['clearCrossDateRows', 'syncMainColumnWidths', 'updateHistoryDestinationHighlight', 'updateFontColorIndicator', 'updateBackgroundColorIndicator', 'updateUnderlineIndicator', 'ensureCurrentCellVisible', 'revealHistoryDestination', 'renderClipboardSelection', 'closeAutocompleteMenu', 'closeGenderDropdown', 'hideContextMenu', 'updateActiveHeaders', 'highlightCell']) {
+    app[fn] = () => {};
+  }
+  app.selectCell = context.App.prototype.selectCell;
+  app.clearHeaderSelections = context.App.prototype.clearHeaderSelections;
+  app.focusSelectedCellEditor = context.App.prototype.focusSelectedCellEditor;
+  app.cancelSheetPointerInteraction = context.App.prototype.cancelSheetPointerInteraction;
+  app.endColumnResize = () => {};
+  app.cancelHighlightStroke = () => {};
+  app.cancelFillDrag = () => {};
+
+  // Simulate stuck pointer/key guards before applying history row
+  Object.assign(app, {
+    isSelectingRange: true,
+    isSelectingRows: true,
+    _isRowDragging: true,
+    _rowDragAnchor: 0,
+    presetLeftKeyHeld: true,
+    leftEditHandoffUntil: Date.now() + 5000,
+    clipboardArrowModifierHandoff: true,
+    elSearchInput: { value: '첫환자' },
+  });
+
+  app.applyHistoryRow({ name: '첫환자', chartNo: '100', part: '어깨', _sourceDate: '2026-10-01' }, { focusAppliedRow: true });
+
+  assert.equal(app.isSelectingRange, false);
+  assert.equal(app.isSelectingRows, false);
+  assert.equal(app._isRowDragging, false);
+  assert.equal(app.presetLeftKeyHeld, false);
+  assert.equal(app.clipboardArrowModifierHandoff, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: 0, colKey: 'no' });
+  assert.ok(activeInput?.classList.contains('is-armed'));
+
+  // Simulate Korean IME reporting Process/229 on ArrowRight, ArrowDown, ArrowLeft, ArrowUp in the armed editor
+  for (const [code, expectedRow, expectedCol] of [
+    ['ArrowRight', 0, 'gender'],
+    ['ArrowRight', 0, 'chartNo'],
+    ['ArrowDown', 1, 'chartNo'],
+    ['ArrowLeft', 1, 'gender'],
+    ['ArrowUp', 0, 'gender'],
+  ]) {
+    const editor = cells.get(`${app.activeCell.rowIdx}:${app.activeCell.colKey}`)?.querySelector('input');
+    if (editor && app.activeCell.colKey !== 'gender') {
+      editor._listeners.keydown({
+        key: 'Process', code, keyCode: 229, isComposing: true,
+        preventDefault() {}, stopPropagation() {},
+      });
+    } else {
+      app.handleGlobalKeyDown({
+        key: 'Process', code, keyCode: 229, isComposing: true,
+        target: app.elSheetContainer, preventDefault() {}, stopPropagation() {},
+      });
+    }
+    assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: expectedRow, colKey: expectedCol }, `navigate ${code}`);
+  }
+
+  // Pressing Escape when activeCell is null but selectedRowIdx is set restores selection border instead of leaving table dead
+  app.activeCell = null;
+  app.selectedRowIdx = 1;
+  app.handleGlobalKeyDown({ key: 'Escape', target: app.elSheetContainer, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: 1, colKey: 'no' });
+});
+

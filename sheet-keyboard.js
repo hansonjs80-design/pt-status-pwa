@@ -104,14 +104,15 @@ class PTSheetKeyboard {
   }
 
   collapseSelectedRowToEdge(e) {
+    const effectiveKey = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : e.key;
     const plainArrow = !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey;
-    const returnLeft = (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key === "ArrowLeft";
-    if (!["ArrowLeft", "ArrowRight"].includes(e.key) || (!plainArrow && !returnLeft)) return false;
+    const returnLeft = (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && effectiveKey === "ArrowLeft";
+    if (!["ArrowLeft", "ArrowRight"].includes(effectiveKey) || (!plainArrow && !returnLeft)) return false;
     const history = Boolean(this.crossDateSelection);
     const range = history ? this.crossDateSelection : this.selectedRange;
     if (!range || range.minRow !== range.maxRow || range.minCol === range.maxCol) return false;
     const rowIdx = range.minRow;
-    const colIdx = e.key === "ArrowRight" ? range.maxCol : range.minCol;
+    const colIdx = effectiveKey === "ArrowRight" ? range.maxCol : range.minCol;
     const keys = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote", "visitTime"];
     const cell = this.elTableBody.querySelector(history
       ? `[data-cross-idx="${rowIdx}"][data-cross-col-idx="${colIdx}"]`
@@ -222,6 +223,13 @@ class PTSheetKeyboard {
         e.preventDefault(); e.stopPropagation();
         const { rowIdx, colKey } = this.activeCell;
         const cell = editingCell || this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+        this.cancelSheetPointerInteraction?.();
+        this.directHistorySearchKeyHeld = false;
+        this.historyApplyBlockedKey = null;
+        this.guardNextCellInput = false;
+        this.presetLeftKeyHeld = false;
+        this.leftEditHandoffUntil = 0;
+        this.clipboardArrowModifierHandoff = false;
         if (editingCell) e.target.blur();
         this.closeAutocompleteMenu();
         this.closeGenderDropdown();
@@ -334,6 +342,7 @@ class PTSheetKeyboard {
         }
       }
 
+      const historyEffectiveKey = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : e.key;
       if (e.key === "Enter") {
         // Eligible Enter events already run the shared Apply button action above.
         if (e.target.closest?.("button, #searchPromptModal")) return;
@@ -348,7 +357,7 @@ class PTSheetKeyboard {
         else this.openSearchPromptModal(this.historyApplyTarget?.rowIdx, "");
       }
       // Ctrl (또는 Cmd) + Shift + ArrowRight: 선택한 셀부터 우측에 내용이 연속으로 있는 셀까지 전체 선택
-      else if (isCtrlOrMeta && e.shiftKey && e.key === "ArrowRight") {
+      else if (isCtrlOrMeta && e.shiftKey && historyEffectiveKey === "ArrowRight") {
         const sourceRow = this.crossDateResults[selection.startRow];
         let targetCol = selection.startCol;
         for (let c = selection.startCol + 1; c < colKeys.length; c++) {
@@ -363,17 +372,17 @@ class PTSheetKeyboard {
         this.rememberHorizontalSelection();
       }
       // 행 전체 선택 상태일 때 위/아래 방향키 누르면 전체 행 선택 유지한 채 위아래로 이동
-      else if (this.isCrossDateRowSelected && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      else if (this.isCrossDateRowSelected && (historyEffectiveKey === "ArrowUp" || historyEffectiveKey === "ArrowDown")) {
         const crossRows = Array.from(this.elTableBody.querySelectorAll(".cross-date-row:not([style*='display: none'])"));
         const currentTr = this.elTableBody.querySelector(`[data-cross-idx="${selection.minRow}"]`)?.closest("tr");
         const currentDomIdx = crossRows.indexOf(currentTr);
         if (currentDomIdx >= 0) {
-          const nextDomIdx = e.key === "ArrowDown" ? currentDomIdx + 1 : currentDomIdx - 1;
+          const nextDomIdx = historyEffectiveKey === "ArrowDown" ? currentDomIdx + 1 : currentDomIdx - 1;
           if (nextDomIdx >= 0 && nextDomIdx < crossRows.length) {
             const nextTr = crossRows[nextDomIdx];
             const nextIdx = Number(nextTr.dataset.crossIdx ?? nextTr.querySelector("[data-cross-idx]")?.dataset.crossIdx);
             this.selectCrossDateRow(nextIdx);
-          } else if (e.key === "ArrowDown" && nextDomIdx >= crossRows.length) {
+          } else if (historyEffectiveKey === "ArrowDown" && nextDomIdx >= crossRows.length) {
             // ★ 이전 날짜 마지막 행에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행으로 행 전체 선택 이동!
             const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
             if (visibleCurrentRows.length > 0) {
@@ -388,12 +397,12 @@ class PTSheetKeyboard {
         }
       }
       // 일반 셀 선택 상태에서 방향키 이동
-      else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(historyEffectiveKey)) {
         this.isCrossDateRowSelected = false;
         this.elTableBody.querySelectorAll(".cross-date-num.selected, .cross-date-num.header-active").forEach(th => th.classList.remove("selected", "header-active"));
         this.elTableBody.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
 
-        if (e.key === "ArrowDown" && selection.endRow >= this.crossDateResults.length - 1) {
+        if (historyEffectiveKey === "ArrowDown" && selection.endRow >= this.crossDateResults.length - 1) {
           // ★ 이전 날짜 마지막 행의 셀에서 ArrowDown -> 파란 가로바를 넘어 현재 날짜 첫 표시 행의 동일 열로 이동!
           const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
           if (visibleCurrentRows.length > 0) {
@@ -412,8 +421,8 @@ class PTSheetKeyboard {
           }
         }
 
-        const row = Math.max(0, Math.min(this.crossDateResults.length - 1, selection.endRow + (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0)));
-        const col = Math.max(0, Math.min(10, selection.endCol + (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0)));
+        const row = Math.max(0, Math.min(this.crossDateResults.length - 1, selection.endRow + (historyEffectiveKey === "ArrowDown" ? 1 : historyEffectiveKey === "ArrowUp" ? -1 : 0)));
+        const col = Math.max(0, Math.min(10, selection.endCol + (historyEffectiveKey === "ArrowRight" ? 1 : historyEffectiveKey === "ArrowLeft" ? -1 : 0)));
         this.selectCrossDateCell(row, col, e.shiftKey);
         this.elTableBody.querySelector(`[data-cross-idx="${row}"][data-cross-col-idx="${col}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
@@ -516,15 +525,16 @@ class PTSheetKeyboard {
     // G열 성별 키보드 직접 입력 ('ㄹ' -> 'F', 'ㅡ' -> 'M', 'f'/'F' -> 'F', 'm'/'M' -> 'M')
     if (this.activeCell && this.activeCell.colKey === "gender" && !isCtrlOrMeta && !e.altKey) {
       const { rowIdx } = this.activeCell;
-      const cellEl = document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`);
+      const cellEl = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="gender"]`) ||
+        (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`) : null);
       if (cellEl) {
-        if (e.key === "ㄹ" || keyLower === "f") {
+        if (e.key === "ㄹ" || keyLower === "f" || (e.key === "Process" && e.code === "KeyF")) {
           e.preventDefault();
           this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "F", cellEl);
           return;
         }
-        if (e.key === "ㅡ" || keyLower === "m") {
+        if (e.key === "ㅡ" || keyLower === "m" || (e.key === "Process" && e.code === "KeyM")) {
           e.preventDefault();
           this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "M", cellEl);
@@ -536,7 +546,7 @@ class PTSheetKeyboard {
           this.setGenderValue(rowIdx, "", cellEl);
           return;
         }
-        if (e.key === "Enter") {
+        if (e.key === "Enter" || (e.key === "Process" && (e.code === "Enter" || e.code === "NumpadEnter"))) {
           e.preventDefault();
           const dropBtn = cellEl.querySelector(".gender-dropdown-btn");
           this.openGenderDropdown(rowIdx, cellEl, dropBtn);
@@ -600,20 +610,21 @@ class PTSheetKeyboard {
     }
 
     // Row-header selection: Shift+Arrow moves endpoint, ArrowUp/ArrowDown moves entire row selection
+    const effectiveNavKey = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : e.key;
     if (this.selectedRowRange && !isCtrlOrMeta && !e.altKey &&
-        (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        (effectiveNavKey === "ArrowUp" || effectiveNavKey === "ArrowDown")) {
       e.preventDefault();
       const rowCount = this.getCurrentRows().length;
       if (e.shiftKey) {
         const anchor = this.rowRangeStart ?? this.selectedRowRange.minRow;
         const end = this.rowRangeEnd ?? this.selectedRowRange.maxRow;
-        const targetRow = Math.max(0, Math.min(rowCount - 1, end + (e.key === "ArrowDown" ? 1 : -1)));
+        const targetRow = Math.max(0, Math.min(rowCount - 1, end + (effectiveNavKey === "ArrowDown" ? 1 : -1)));
         this.selectRowRange(anchor, targetRow);
         this.ensureCurrentCellVisible(this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`));
       } else {
         const currentRow = this.selectedRowRange.minRow;
         // 교차 검색이 활성화되어 있고 이전 날짜 기록이 있을 때
-        if (e.key === "ArrowUp" && this.crossDateResults && this.crossDateResults.length > 0) {
+        if (effectiveNavKey === "ArrowUp" && this.crossDateResults && this.crossDateResults.length > 0) {
           const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
           const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
           if (currentRow <= firstVisibleRowIdx) {
@@ -627,7 +638,7 @@ class PTSheetKeyboard {
             return;
           }
         }
-        const targetRow = Math.max(0, Math.min(rowCount - 1, currentRow + (e.key === "ArrowDown" ? 1 : -1)));
+        const targetRow = Math.max(0, Math.min(rowCount - 1, currentRow + (effectiveNavKey === "ArrowDown" ? 1 : -1)));
         this.selectRowRange(targetRow, targetRow);
         this.ensureCurrentCellVisible(this.elTableBody.querySelector(`tr[data-row-idx="${targetRow}"] .row-num`));
       }
@@ -635,14 +646,14 @@ class PTSheetKeyboard {
     }
 
     // 15) Arrow Keys Navigation (위/아래/좌/우 셀 이동)
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && this.activeCell) {
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(effectiveNavKey) && this.activeCell) {
       e.preventDefault();
       const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
       const from = e.shiftKey && this.selectedRange && this.rangeEnd && !this.selectedRowRange
         ? this.rangeEnd : { rowIdx: this.activeCell.rowIdx, colIdx: colOrder.indexOf(this.activeCell.colKey) };
 
       // ★ 이전 날짜 기록이 있고, 현재 날짜 첫 표시 행에서 ArrowUp을 누른 경우 -> 파란 가로바를 넘어 이전 날짜 마지막 행의 셀로 이동!
-      if (e.key === "ArrowUp" && !e.shiftKey && this.crossDateResults && this.crossDateResults.length > 0) {
+      if (effectiveNavKey === "ArrowUp" && !e.shiftKey && this.crossDateResults && this.crossDateResults.length > 0) {
         const visibleCurrentRows = Array.from(this.elTableBody.querySelectorAll(".excel-row:not(.cross-date-row):not(.cross-date-master-row):not([style*='display: none'])"));
         const firstVisibleRowIdx = visibleCurrentRows.length > 0 ? Number(visibleCurrentRows[0].dataset.rowIdx) : 0;
         if (from.rowIdx <= firstVisibleRowIdx) {
@@ -660,10 +671,10 @@ class PTSheetKeyboard {
       }
       let targetRow = from.rowIdx;
       let targetColIdx = from.colIdx;
-      if (e.key === "ArrowUp") targetRow--;
-      if (e.key === "ArrowDown") targetRow++;
-      if (e.key === "ArrowLeft") targetColIdx--;
-      if (e.key === "ArrowRight") targetColIdx++;
+      if (effectiveNavKey === "ArrowUp") targetRow--;
+      if (effectiveNavKey === "ArrowDown") targetRow++;
+      if (effectiveNavKey === "ArrowLeft") targetColIdx--;
+      if (effectiveNavKey === "ArrowRight") targetColIdx++;
       targetRow = Math.max(0, Math.min(this.getCurrentRows().length - 1, targetRow));
       targetColIdx = Math.max(0, Math.min(colOrder.length - 1, targetColIdx));
       const targetColKey = colOrder[targetColIdx];
@@ -709,7 +720,16 @@ class PTSheetKeyboard {
     // 17) Escape -> 검색 종료 및 적용한 행의 No. 셀로 복귀
     if (e.key === "Escape") {
       const appliedTarget = this.lastHistoryAppliedTarget;
+      const fallbackCell = this.activeCell ? { ...this.activeCell } : null;
+      const fallbackRowIdx = this.selectedRowRange?.minRow ?? this.selectedRowIdx;
       e.preventDefault();
+      this.cancelSheetPointerInteraction?.();
+      this.directHistorySearchKeyHeld = false;
+      this.historyApplyBlockedKey = null;
+      this.guardNextCellInput = false;
+      this.presetLeftKeyHeld = false;
+      this.leftEditHandoffUntil = 0;
+      this.clipboardArrowModifierHandoff = false;
       this.closeAutocompleteMenu();
       this.closeGenderDropdown();
       this.hideContextMenu();
@@ -717,9 +737,9 @@ class PTSheetKeyboard {
       this.pendingCut = null;
       this.renderClipboardSelection();
 
-      if (this.elSearchInput?.value?.trim()) {
+      if (this.elSearchInput?.value?.trim() || this.crossDateResults?.length) {
         this.clearHeaderSelections();
-        this.elSearchInput.value = "";
+        if (this.elSearchInput) this.elSearchInput.value = "";
         this.handleSearch();
         this.historyOriginSelection = undefined;
         return;
@@ -745,7 +765,7 @@ class PTSheetKeyboard {
           this.selectCell(targetRow, "no", cell, false);
           cell.scrollIntoView({ block: "nearest", inline: "nearest" });
         }
-        this.elSheetContainer.focus({ preventScroll: true });
+        this.focusSelectedCellEditor();
         return;
       }
 
@@ -762,7 +782,7 @@ class PTSheetKeyboard {
       document.querySelectorAll(".cross-date-row-selected").forEach(r => r.classList.remove("cross-date-row-selected"));
 
       // 편집 중인 input이 있으면 blur하여 편집 종료
-      const activeInput = document.querySelector(".cell-input-element");
+      const activeInput = typeof document?.querySelector === "function" ? document.querySelector(".cell-input-element") : null;
       if (activeInput) {
         activeInput.blur();
       }
@@ -794,7 +814,17 @@ class PTSheetKeyboard {
       this.selectedRowRange = null;
       this.rangeStart = null;
       this.rangeEnd = null;
-      this.restoreAppliedHistorySelection(appliedTarget);
+      if (appliedTarget) {
+        this.restoreAppliedHistorySelection(appliedTarget);
+      } else if (fallbackCell || Number.isInteger(fallbackRowIdx)) {
+        const targetRow = fallbackCell?.rowIdx ?? fallbackRowIdx;
+        const targetCol = fallbackCell?.colKey || "no";
+        const cell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="${targetCol}"]`);
+        if (cell) {
+          this.selectCell(targetRow, targetCol, cell, false);
+          this.focusSelectedCellEditor();
+        }
+      }
     }
   }
 

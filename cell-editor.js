@@ -984,7 +984,15 @@ class PTCellEditor {
       const englishCandidateKey = (input._inputLanguage === "eng" || input._forcedCorrectionProjection) && this.isAutocompleteOpen() &&
         !e.ctrlKey && !e.metaKey && !e.altKey &&
         ["Enter", "NumpadEnter", "Tab", "ArrowUp", "ArrowDown"].includes(e.code || e.key);
-      if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey) {
+      const isArmedNavigationKey = input.classList.contains("is-armed") && !e.altKey &&
+        (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "NumpadEnter", "Tab", "Escape", "Delete", "Backspace", "Home", "End", "PageUp", "PageDown", "F2"].includes(e.key) ||
+         ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "NumpadEnter", "Tab", "Escape", "Delete", "Backspace", "Home", "End", "PageUp", "PageDown", "F2"].includes(e.code));
+      if (isArmedNavigationKey) {
+        composing = false;
+        input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+      }
+      if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey && !isArmedNavigationKey) {
         e.stopPropagation();
         return;
       }
@@ -996,29 +1004,32 @@ class PTCellEditor {
       if (this.handleHistoryShortcut(e)) return;
       if (this.handleRowDeleteShortcut(e)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") return;
-      if ((e.ctrlKey || e.metaKey) && e.key === "ArrowDown") {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "ArrowDown" || e.code === "ArrowDown")) {
         e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToLastRecord(); return;
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === "ArrowUp") {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "ArrowUp" || e.code === "ArrowUp")) {
         e.preventDefault(); e.stopPropagation(); input.blur(); this.jumpToFirstRecord(); return;
       }
       if (input.classList.contains("is-armed")) {
-        if (e.key === "F2") {
+        if (e.key === "F2" || e.code === "F2") {
           e.preventDefault(); e.stopPropagation();
           this.activateNativeEditor(input);
           input.setSelectionRange(input.value.length, input.value.length);
           return;
         }
-        const shortcut = e.ctrlKey || e.metaKey || ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Delete", "Backspace", "Enter", "Tab", "Escape"].includes(e.key);
+        const effectiveKey = ["Process", "Unidentified"].includes(e.key) && e.code
+          ? (e.code === "NumpadEnter" ? "Enter" : e.code)
+          : e.key;
+        const shortcut = e.ctrlKey || e.metaKey || ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Delete", "Backspace", "Enter", "Tab", "Escape"].includes(effectiveKey);
         const writerKey = colKey === "writer" && /^Key[A-Z]$/.test(e.code) && !e.altKey;
         if (shortcut || writerKey) {
           e.preventDefault(); e.stopPropagation();
           if (writerKey && !e.ctrlKey && !e.metaKey) {
             input.value = e.code.slice(3);
-            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(typeof Event === "function" ? new Event("input", { bubbles: true }) : { type: "input", bubbles: true });
           } else {
             this.elSheetContainer.dispatchEvent(new KeyboardEvent("keydown", {
-              key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
+              key: effectiveKey, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
               shiftKey: e.shiftKey, altKey: e.altKey, bubbles: true, cancelable: true
             }));
           }
@@ -1078,9 +1089,10 @@ class PTCellEditor {
         }
       }
 
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const directionKey = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : e.key;
+      if (directionKey === "ArrowLeft" || directionKey === "ArrowRight") {
         const atEdge = input.selectionStart === input.selectionEnd &&
-          (e.key === "ArrowLeft" ? input.selectionStart === 0 : input.selectionEnd === input.value.length);
+          (directionKey === "ArrowLeft" ? input.selectionStart === 0 : input.selectionEnd === input.value.length);
         // Chart numbers use arrows for cell navigation from any caret position.
         if ((!atEdge && colKey !== "chartNo") || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) { e.stopPropagation(); return; }
       }
@@ -1088,13 +1100,13 @@ class PTCellEditor {
       //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)
       //    자동완성이 열려있을 때 좌/우 방향키 또는 자동완성이 닫혀있을 때 모든 방향키
       //    조합 중에는 위의 가드에서 IME에 키 처리를 맡긴다
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(directionKey)) {
         e.preventDefault();
         e.stopPropagation();
-        if (e.key === "ArrowLeft") { this.presetLeftKeyHeld = true; this.guardNextCellInput = true; }
+        if (directionKey === "ArrowLeft") { this.presetLeftKeyHeld = true; this.guardNextCellInput = true; }
 
         // 자동완성이 열려있으면 선택된 항목을 적용
-        if (this.isAutocompleteOpen() && e.key !== "ArrowLeft") {
+        if (this.isAutocompleteOpen() && directionKey !== "ArrowLeft") {
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
@@ -1104,8 +1116,8 @@ class PTCellEditor {
         }
 
         if (historyEdit) {
-          historyEdit.navigate(e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0,
-            e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0);
+          historyEdit.navigate(directionKey === "ArrowDown" ? 1 : directionKey === "ArrowUp" ? -1 : 0,
+            directionKey === "ArrowRight" ? 1 : directionKey === "ArrowLeft" ? -1 : 0);
           return;
         }
         // 방향에 따라 셀 이동
@@ -1114,10 +1126,10 @@ class PTCellEditor {
         let targetRow = rowIdx;
         let targetColIdx = colIdx;
 
-        if (e.key === "ArrowUp") targetRow = Math.max(0, rowIdx - 1);
-        if (e.key === "ArrowDown") targetRow = rowIdx + 1;
-        if (e.key === "ArrowLeft") targetColIdx = Math.max(0, colIdx - 1);
-        if (e.key === "ArrowRight") targetColIdx = Math.min(colOrder.length - 1, colIdx + 1);
+        if (directionKey === "ArrowUp") targetRow = Math.max(0, rowIdx - 1);
+        if (directionKey === "ArrowDown") targetRow = rowIdx + 1;
+        if (directionKey === "ArrowLeft") targetColIdx = Math.max(0, colIdx - 1);
+        if (directionKey === "ArrowRight") targetColIdx = Math.min(colOrder.length - 1, colIdx + 1);
 
         const targetColKey = colOrder[targetColIdx];
         // ArrowDown이 마지막 행을 넘어갈 경우 행 추가
@@ -1130,6 +1142,7 @@ class PTCellEditor {
         if (targetCell) {
           this.selectCell(targetRow, targetColKey, targetCell, false);
         }
+        this.focusSelectedCellEditor();
         return;
       }
 
