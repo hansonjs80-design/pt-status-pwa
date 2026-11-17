@@ -197,7 +197,7 @@ class PTCloudSync {
     if (date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
     if (date === SHARED_PRESETS_RECORD) { void this.syncSharedPresets({ force: true }); return; }
     if (date === this.currentDate) {
-      if (this.isEditingCell()) {
+      if (this.isCellInteractionActive?.() ?? this.isEditingCell()) {
         this.cloudPullDeferred = true;
       } else {
         void this.pullFromCloud(this.currentDate);
@@ -674,7 +674,7 @@ class PTCloudSync {
           this.invalidateManualDateDeletion(dateStr);
           await this._manualDeletionWrite;
         }
-        if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !this.isEditingCell()) {
+        if (dateStr === this.currentDate && JSON.stringify(latest) !== latestText && !(this.isCellInteractionActive?.() ?? this.isEditingCell())) {
           this.renderTable(); this.updateSidebarStats();
         }
         if (dateStr === this.currentDate) this.updateHistoryButtons();
@@ -696,8 +696,8 @@ class PTCloudSync {
     try { await this.syncBaselinesReady; await this._baselineWrite; await this._recordWrite; }
     catch (_) { this.showSaveIndicator('동기화 기준 저장·복원 확인 필요 · 동기화 보류', true); return; }
     if (this.pendingSyncDates?.has(dateStr) || this.activePushes?.has(dateStr) ||
-        (dateStr === this.currentDate && this.isEditingCell())) {
-      if (dateStr === this.currentDate && this.isEditingCell()) {
+        (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell()))) {
+      if (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell())) {
         this.cloudPullDeferred = true;
       }
       return;
@@ -723,7 +723,7 @@ class PTCloudSync {
     this.recordPullOperations.set(dateStr, operation);
     const current = () => this.supabaseClient === client && !this.pendingSyncDates.has(dateStr) &&
       localAtRequest === JSON.stringify(this.dataStore[dateStr] || []) &&
-      !(dateStr === this.currentDate && this.isEditingCell());
+      !(dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell()));
     const rememberVersion = data => {
       if (!data.updated_at || !Number.isFinite(Date.parse(data.updated_at))) return;
       this.cloudRecordVersions ||= new Map();
@@ -739,7 +739,7 @@ class PTCloudSync {
             .select('updated_at').eq('date', dateStr).maybeSingle());
           if (result.error) throw result.error;
           if (!current()) {
-            if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+            if (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell())) this.cloudPullDeferred = true;
             return;
           }
           if (!operation.force && result.data?.updated_at === cached.version) return;
@@ -758,8 +758,8 @@ class PTCloudSync {
 
         if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
             localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
-            (dateStr === this.currentDate && this.isEditingCell())) {
-          if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+            (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell()))) {
+          if (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell())) this.cloudPullDeferred = true;
           return;
         }
         if (!this.syncBaselines.has(dateStr) && this.getDailySummary(this.dataStore[dateStr] || []).total &&
@@ -778,8 +778,8 @@ class PTCloudSync {
           }
           if (this.supabaseClient !== client || this.pendingSyncDates.has(dateStr) ||
               localAtRequest !== JSON.stringify(this.dataStore[dateStr] || []) ||
-              (dateStr === this.currentDate && this.isEditingCell())) {
-            if (dateStr === this.currentDate && this.isEditingCell()) this.cloudPullDeferred = true;
+              (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell()))) {
+            if (dateStr === this.currentDate && (this.isCellInteractionActive?.() ?? this.isEditingCell())) this.cloudPullDeferred = true;
             return;
           }
           const padded = data.rows_data.slice();

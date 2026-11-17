@@ -141,7 +141,7 @@ class PTDateNavigation {
     if (this.supabaseClient) {
       Promise.resolve(this.pullFromCloud(dateStr, false)).then(() => {
         if (this._dateFocusRequest === focusRequest && this.currentDate === dateStr &&
-            this.activeCell === entrySelection && !this.crossDateSelection && !this.isEditingCell() &&
+            this.activeCell === entrySelection && !this.crossDateSelection && !(this.isCellInteractionActive?.() ?? this.isEditingCell()) &&
             (!entryEditor || entryEditor.classList.contains('is-armed'))) this.focusDateEntryCell();
       });
     }

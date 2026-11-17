@@ -172,7 +172,9 @@ class PTCellPickers {
     const finalVal = this.normalizeGenderInput(rawVal);
     rows[rowIdx].gender = finalVal;
 
-    const el = cellEl || document.querySelector(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`);
+    const liveCell = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="gender"]`) ||
+      (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`) : null);
+    const el = (cellEl && cellEl.isConnected !== false ? cellEl : null) || liveCell || cellEl;
     if (el) {
       let textSpan = el.querySelector(".cell-gender-text");
       if (!textSpan) {
@@ -201,6 +203,11 @@ class PTCellPickers {
   // 엑셀 스타일 우측 드롭다운 팝업 메뉴 (셀 안에 셀이 들어가지 않고 우측에만 표시)
   openGenderDropdown(rowIdx, cellElement, triggerElement = null) {
     this.closeGenderDropdown();
+    if (typeof document !== "undefined" &&
+        (document.activeElement?.matches?.(".cell-input-element") || document.activeElement === this.elFormulaInput)) {
+      document.activeElement.blur();
+    }
+    this.elSheetContainer?.focus?.({ preventScroll: true });
 
     const menu = document.createElement("div");
     menu.className = "gender-picker-menu";
@@ -273,10 +280,14 @@ class PTCellPickers {
 
   handleGenderPickerKeyDown(event) {
     const state = this.genderPickerState;
-    const key = event.key === "Process" ? event.code : event.key;
+    const rawKey = ["Process", "Unidentified"].includes(event.key) && event.code ? event.code : event.key;
+    const key = rawKey === "NumpadEnter" || (rawKey === "Unidentified" && event.keyCode === 13) ? "Enter" : rawKey;
     if (!state || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape"].includes(key)) return;
     if (key === "ArrowLeft" && (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
     event.preventDefault(); event.stopImmediatePropagation();
+    const liveCell = this.elTableBody?.querySelector(`[data-row="${state.rowIdx}"][data-col="gender"]`) ||
+      (state.cellElement?.isConnected !== false ? state.cellElement : null);
     if (key === "ArrowLeft") this.presetLeftKeyHeld = true;
     if (key === "ArrowUp" || key === "ArrowDown") {
       const direction = key === "ArrowDown" ? 1 : -1;
@@ -287,12 +298,14 @@ class PTCellPickers {
       });
       return;
     }
-    if (key === "Enter" || key === "ArrowRight" || key === "ArrowLeft") this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, state.cellElement);
+    if (key === "Enter" || key === "ArrowRight" || key === "ArrowLeft") {
+      this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, liveCell);
+    }
     this.closeGenderDropdown();
     if (key === "ArrowLeft") this.selectAutocompleteLeftCell(state.rowIdx, "gender");
     else if (key === "Enter") this.selectAutocompleteRightCell(state.rowIdx, "gender");
     else if (key === "ArrowRight") this.navigateCol(state.rowIdx, "gender", 1);
-    else this.selectCell(state.rowIdx, "gender", state.cellElement, false);
+    else if (liveCell) this.selectCell(state.rowIdx, "gender", liveCell, false);
     this.focusSelectedCellEditor();
   }
 
@@ -300,12 +313,22 @@ class PTCellPickers {
     clearTimeout(this.genderPickerOutsideTimer);
     if (this.genderPickerKeyListener) document.removeEventListener("keydown", this.genderPickerKeyListener, true);
     if (this.genderPickerOutsideListener) document.removeEventListener("click", this.genderPickerOutsideListener);
+    const hadPicker = Boolean(this.genderPickerState);
     this.genderPickerState = null;
     this.genderPickerKeyListener = null;
     this.genderPickerOutsideListener = null;
     const existing = document.getElementById("genderPickerMenu");
     if (existing) {
       existing.remove();
+    }
+    if (hadPicker && this.cloudPullDeferred && !this.pendingSyncDates?.has(this.currentDate)) {
+      this.cloudPullDeferred = false;
+      setTimeout(() => {
+        if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) &&
+            !this.pendingSyncDates?.has(this.currentDate)) {
+          void this.pullFromCloud?.(this.currentDate);
+        }
+      }, 80);
     }
   }
 

@@ -275,6 +275,7 @@ class PTApp {
     if (recordHistory && !this.isEditingCell()) this.captureHistory();
     this.updateHistoryButtons();
     const date = this.currentDate;
+    this.pendingSyncDates?.add(date);
     return this.persistDataStore().then(() => {
       this.showSaveIndicator("저장 완료됨");
       this.updateSidebarStats();
@@ -283,6 +284,10 @@ class PTApp {
       console.error("Save error", e);
       this.showSaveIndicator("저장 실패", true);
     });
+  }
+
+  isCellInteractionActive() {
+    return Boolean(this.genderPickerState) || this.isEditingCell();
   }
 
   isEditingCell() {
@@ -847,8 +852,8 @@ class PTApp {
       this.searchHistoryFocusCleanup?.();
       return;
     }
-    if (typeof document !== 'undefined' && this.isEditingCell()) {
-      // Replacing the table while IME/native editing owns focus destroys its input.
+    if (typeof document !== 'undefined' && (this.isCellInteractionActive?.() ?? this.isEditingCell())) {
+      // Replacing the table while IME/native editing or picker interaction owns focus destroys its target.
       // Coalesce refreshes until a focus transition, then recheck the live editor.
       if (!this.searchHistoryFocusCleanup) {
         const cleanup = () => {

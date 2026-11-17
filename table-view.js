@@ -96,6 +96,9 @@ class PTTableView {
           dropBtn.title = "성별 선택 (M / F)";
           dropBtn.tabIndex = -1;
 
+          dropBtn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+          });
           dropBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             this.selectCell(rowIdx, "gender", td, false);
@@ -211,6 +214,10 @@ class PTTableView {
       const { rowIdx, colKey } = this.activeCell;
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
       if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
+    }
+    if (this.genderPickerState) {
+      const liveCell = this.elTableBody.querySelector(`[data-row="${this.genderPickerState.rowIdx}"][data-col="gender"]`);
+      if (liveCell) this.genderPickerState.cellElement = liveCell;
     }
     if (this.elSearchInput?.value.trim()) this.searchAllDates(this.elSearchInput.value.trim(), undefined, { preserveCurrentSelection: true });
     this.updateFontColorIndicator();

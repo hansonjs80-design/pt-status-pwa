@@ -100,8 +100,8 @@ class PTColumnSettings {
     this.columnFormatting = merged;
     localStorage.setItem("PT_COLUMN_FORMATTING", JSON.stringify(merged));
     if (changed) this.columnFormattingRenderPending = true;
-    // A live IME editor keeps its DOM and composition; repaint after editing ends.
-    if (this.columnFormattingRenderPending && !this.isEditingCell()) {
+    // A live IME editor or gender picker keeps its DOM and composition; repaint after interaction ends.
+    if (this.columnFormattingRenderPending && !(this.isCellInteractionActive?.() ?? this.isEditingCell())) {
       this.columnFormattingRenderPending = false;
       this.renderTable();
     }

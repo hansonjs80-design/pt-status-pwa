@@ -1217,3 +1217,188 @@ test('manual writer Up and Down exit and move the selection border even while IM
   assert.equal(app.isWriterVerticalExit({key:'ArrowDown'},input),false);
 });
 
+test('gender picker confirms F via NumpadEnter and IME Process/Unidentified and targets the live cell if re-rendered', () => {
+  const { app, context } = createApp({ '2026-10-04': [{ name: '가상환자', gender: '' }] });
+  context.document = { activeElement: null, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+  const detachedCell = { isConnected: false };
+  const liveSpan = { textContent: '' };
+  const liveCell = {
+    isConnected: true,
+    classList: { toggle() {}, add() {}, remove() {} },
+    querySelector(selector) { return selector === '.cell-gender-text' ? liveSpan : null; },
+  };
+  app.elTableBody = {
+    querySelector(selector) {
+      return selector === '[data-row="0"][data-col="gender"]' ? liveCell : null;
+    },
+  };
+  app.elSheetContainer = { focus() {} };
+  const applied = [];
+  app.setGenderValue = (rowIdx, val, target) => {
+    applied.push({ rowIdx, val, target });
+    app.getCurrentRows()[rowIdx].gender = val;
+    target.querySelector('.cell-gender-text').textContent = val;
+  };
+  app.closeGenderDropdown = () => { app.genderPickerState = null; };
+  app.selectAutocompleteRightCell = () => {};
+  app.focusSelectedCellEditor = () => {};
+
+  for (const confirmEvent of [
+    { key: 'NumpadEnter', code: 'NumpadEnter' },
+    { key: 'Process', code: 'NumpadEnter', isComposing: true },
+    { key: 'Unidentified', code: 'Enter' },
+  ]) {
+    app.getCurrentRows()[0].gender = '';
+    liveSpan.textContent = '';
+    app.genderPickerState = {
+      rowIdx: 0,
+      cellElement: detachedCell,
+      items: [{ val: 'M' }, { val: 'F' }, { val: '' }],
+      selectedIndex: 0,
+    };
+    app.renderGenderPickerSelection = () => {};
+    let prevented = 0;
+    let stopped = 0;
+    app.handleGenderPickerKeyDown({
+      key: 'ArrowDown',
+      code: 'ArrowDown',
+      preventDefault() { prevented++; },
+      stopImmediatePropagation() { stopped++; },
+    });
+    assert.equal(app.genderPickerState.selectedIndex, 1);
+
+    app.handleGenderPickerKeyDown({
+      ...confirmEvent,
+      preventDefault() { prevented++; },
+      stopImmediatePropagation() { stopped++; },
+    });
+    assert.equal(prevented, 2);
+    assert.equal(stopped, 2);
+    assert.equal(app.genderPickerState, null);
+    assert.equal(app.getCurrentRows()[0].gender, 'F');
+    assert.equal(liveSpan.textContent, 'F');
+    assert.equal(applied.at(-1).target, liveCell);
+  }
+});
+
+test('open gender picker defers cloud pull, records undo, and marks pendingSyncDates before async persist completes', async () => {
+  const storage = new Map();
+  const makeEl = (tag = 'div') => {
+    const el = {
+      tagName: tag.toUpperCase(),
+      className: '',
+      textContent: '',
+      children: [],
+      style: {},
+      classList: { toggle() {}, add() {}, remove() {} },
+      setAttribute() {},
+      addEventListener() {},
+      appendChild(child) { el.children.push(child); return child; },
+      querySelector(selector) {
+        if (selector === '.cell-gender-text') {
+          return el.children.find(c => String(c.className).includes('cell-gender-text')) || null;
+        }
+        return null;
+      },
+    };
+    return el;
+  };
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: {
+      activeElement: null,
+      getElementById: () => null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      createElement: makeEl,
+    },
+    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+    setTimeout,
+    clearTimeout,
+  });
+  vm.runInContext(require('./helpers/load-app-source.cjs') + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  let resolvePersist;
+  const persistPromise = new Promise(resolve => { resolvePersist = resolve; });
+  Object.assign(app, {
+    dataStore: { '2026-10-04': [{ name: '가상환자', gender: '' }] },
+    cloudSearchHistory: {},
+    currentDate: '2026-10-04',
+    syncBaselines: new Map(),
+    pendingSyncDates: new Set(),
+    activePushes: new Set(),
+    editHistory: new Map(),
+    elFormulaInput: { value: '' },
+    elSearchInput: { value: '' },
+    elSheetContainer: { focus() {} },
+    supabaseClient: {
+      from() {
+        return {
+          select() { return this; },
+          eq() { return this; },
+          async maybeSingle() {
+            return { data: { data: [{ name: '가상환자', gender: '' }], updated_at: '2026-10-04T01:00:00Z' }, error: null };
+          },
+        };
+      },
+    },
+    isUserSignedIn: () => true,
+    showSaveIndicator() {},
+    updateSidebarStats() {},
+    persistDataStore: () => persistPromise,
+    scheduleSupabaseSync() {},
+    closeGenderDropdown() { this.genderPickerState = null; },
+    focusCell() {},
+  });
+
+  const liveCell = makeEl('td');
+  const liveSpan = makeEl('span');
+  liveSpan.className = 'cell-gender-text';
+  liveCell.appendChild(liveSpan);
+  liveCell.isConnected = true;
+  app.elTableBody = {
+    querySelector(selector) {
+      return selector === '[data-row="0"][data-col="gender"]' ? liveCell : null;
+    },
+  };
+
+  let renders = 0;
+  app.renderTable = () => { renders++; };
+  app.selectAutocompleteRightCell = () => {};
+  app.focusSelectedCellEditor = () => {};
+  app.genderPickerState = {
+    rowIdx: 0,
+    cellElement: liveCell,
+    items: [{ val: 'M' }, { val: 'F' }, { val: '' }],
+    selectedIndex: 1,
+  };
+
+  assert.equal(app.isEditingCell(), false);
+  assert.equal(app.isCellInteractionActive(), true);
+
+  await app.pullFromCloud('2026-10-04');
+  assert.equal(app.cloudPullDeferred, true);
+  assert.equal(renders, 0);
+
+  app.captureHistory();
+  const undoBefore = app.getEditHistory().undo.length;
+  app.handleGenderPickerKeyDown({
+    key: 'Enter',
+    code: 'Enter',
+    preventDefault() {},
+    stopImmediatePropagation() {},
+  });
+
+  assert.equal(app.dataStore['2026-10-04'][0].gender, 'F');
+  assert.equal(liveCell.querySelector('.cell-gender-text')?.textContent, 'F');
+  assert.equal(app.pendingSyncDates.has('2026-10-04'), true, 'date marked pending synchronously before persist resolves');
+  assert.equal(app.getEditHistory().undo.length, undoBefore + 1, 'undo captured for gender confirm');
+
+  await app.pullFromCloud('2026-10-04');
+  assert.equal(app.dataStore['2026-10-04'][0].gender, 'F', 'in-flight persist prevents stale pull overwrite');
+
+  resolvePersist();
+  await persistPromise;
+});
+
+

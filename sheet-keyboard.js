@@ -528,13 +528,14 @@ class PTSheetKeyboard {
       const cellEl = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="gender"]`) ||
         (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="gender"]`) : null);
       if (cellEl) {
-        if (e.key === "ㄹ" || keyLower === "f" || (e.key === "Process" && e.code === "KeyF")) {
+        const imeSpecial = e.key === "Process" || e.key === "Unidentified";
+        if (e.key === "ㄹ" || keyLower === "f" || (imeSpecial && e.code === "KeyF")) {
           e.preventDefault();
           this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "F", cellEl);
           return;
         }
-        if (e.key === "ㅡ" || keyLower === "m" || (e.key === "Process" && e.code === "KeyM")) {
+        if (e.key === "ㅡ" || keyLower === "m" || (imeSpecial && e.code === "KeyM")) {
           e.preventDefault();
           this.closeGenderDropdown();
           this.setGenderValue(rowIdx, "M", cellEl);
@@ -546,7 +547,8 @@ class PTSheetKeyboard {
           this.setGenderValue(rowIdx, "", cellEl);
           return;
         }
-        if (e.key === "Enter" || (e.key === "Process" && (e.code === "Enter" || e.code === "NumpadEnter"))) {
+        if (!e.shiftKey && !e.repeat &&
+            (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13)) {
           e.preventDefault();
           const dropBtn = cellEl.querySelector(".gender-dropdown-btn");
           this.openGenderDropdown(rowIdx, cellEl, dropBtn);

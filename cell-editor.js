@@ -677,7 +677,7 @@ class PTCellEditor {
       if (this.cloudPullDeferred && !this.pendingSyncDates?.has(this.currentDate)) {
         this.cloudPullDeferred = false;
         setTimeout(() => {
-          if (!this.isEditingCell() && !this.pendingSyncDates?.has(this.currentDate)) {
+          if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) && !this.pendingSyncDates?.has(this.currentDate)) {
             void this.pullFromCloud(this.currentDate);
           }
         }, 80);
