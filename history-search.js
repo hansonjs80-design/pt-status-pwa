@@ -619,6 +619,7 @@ class PTHistorySearch {
     if (!String(input.value ?? "").trim()) return false;
     event.preventDefault();
     event.stopPropagation();
+    this.cancelSheetPointerInteraction?.();
     this.captureHistoryOriginSelection();
     this.historyApplyBlockedKey = "f";
     this.directHistorySearchKeyHeld = true;
@@ -633,7 +634,12 @@ class PTHistorySearch {
     const chosenName = typeof selectedName === "string" ? selectedName.trim() : "";
     const committedCandidate = chosenName && input.commitAutocompleteValue?.(chosenName);
     if (!committedCandidate) {
-      input.blur();
+      if (typeof document !== "undefined" && document.activeElement !== input &&
+          input.isConnected && typeof input.commitAutocompleteValue === "function") {
+        input.commitAutocompleteValue();
+      } else {
+        input.blur();
+      }
       // Windows may have already committed and removed the original editor
       // during the Control-key handoff. Complete that row's captured draft too.
       if (chosenName) {

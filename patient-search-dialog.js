@@ -513,9 +513,13 @@ class PTPatientSearchDialog {
   showSearchNotFoundModal(message = "일치하는 환자 내역이 없습니다.", { query, targetRowIdx } = {}) {
     this._searchNotFoundCleanup?.();
     this._searchNotFoundCleanup = null;
+    this.cancelSheetPointerInteraction?.();
     this.directHistorySearchKeyHeld = false;
     this.historyApplyBlockedKey = null;
     this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this.clipboardArrowModifierHandoff = false;
     const row = this.getCurrentRows()[targetRowIdx];
     const colKey = this.activeCell?.colKey;
     const fromPatientCell = ["name", "chartNo"].includes(colKey) && this.activeCell.rowIdx === targetRowIdx &&
@@ -523,7 +527,7 @@ class PTPatientSearchDialog {
       String(row?.[colKey] ?? "").trim().toLowerCase() === String(query).trim().toLowerCase();
     this.searchNotFoundReturnTarget = {
       date: this.currentDate, row: fromPatientCell ? row : null, rowIdx: targetRowIdx,
-      colKey: fromPatientCell ? colKey : "name"
+      colKey: fromPatientCell ? colKey : "name", fromPatientCell
     };
     const modal = document.getElementById?.("searchNotFoundModal");
     const msgEl = document.getElementById?.("searchNotFoundMessage");
@@ -536,9 +540,13 @@ class PTPatientSearchDialog {
       btnClose?.focus();
 
       const handleKey = (e) => {
-        if (e.key === "Enter" || e.key === "Escape") {
+        const rawKey = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : e.key;
+        const isEnter = rawKey === "Enter" || rawKey === "NumpadEnter" || e.keyCode === 13;
+        const isEscape = rawKey === "Escape" || e.keyCode === 27;
+        if (isEnter || isEscape) {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation?.();
           cleanup();
           this.closeSearchNotFoundModal();
         }
@@ -559,27 +567,66 @@ class PTPatientSearchDialog {
   closeSearchNotFoundModal() {
     this._searchNotFoundCleanup?.();
     this._searchNotFoundCleanup = null;
+    this.cancelSheetPointerInteraction?.();
     this.directHistorySearchKeyHeld = false;
     this.historyApplyBlockedKey = null;
     this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this.clipboardArrowModifierHandoff = false;
     const modal = document.getElementById?.("searchNotFoundModal");
-    if (modal) modal.style.display = "none";
+    if (modal) {
+      if (typeof document !== "undefined" && modal.contains?.(document.activeElement)) {
+        document.activeElement.blur?.();
+      }
+      modal.style.display = "none";
+    }
     const target = this.searchNotFoundReturnTarget;
     this.searchNotFoundReturnTarget = null;
-    if (target?.date !== this.currentDate) return;
-    const rows = this.getCurrentRows();
-    const originIdx = target.row ? rows.indexOf(target.row) : -1;
-    // General searches resume immediately after the last named row, including gaps.
-    const rowIdx = originIdx >= 0 ? originIdx : rows.findLastIndex(row => String(row?.name ?? "").trim()) + 1;
-    if (rowIdx >= rows.length) this.addNewRow(false);
-    const colKey = originIdx >= 0 ? target.colKey || "name" : "name";
-    const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
-    if (cell) {
-      this.selectCell(rowIdx, colKey, cell, originIdx < 0);
-      this.ensureCurrentCellVisible(cell);
-      this.focusSelectedCellEditor();
+    const rows = this.getCurrentRows?.() || [];
+    let restored = false;
+    if (target?.date === this.currentDate) {
+      const originIdx = target.row ? rows.indexOf(target.row) : -1;
+      const fallbackPatientIdx = originIdx < 0 && target.fromPatientCell && Number.isInteger(target.rowIdx) && target.rowIdx >= 0 && target.rowIdx < rows.length
+        ? target.rowIdx : -1;
+      const resolvedOriginIdx = originIdx >= 0 ? originIdx : fallbackPatientIdx;
+      // General searches resume immediately after the last named row, including gaps.
+      const rowIdx = resolvedOriginIdx >= 0 ? resolvedOriginIdx : rows.findLastIndex(row => String(row?.name ?? "").trim()) + 1;
+      if (rowIdx >= rows.length) this.addNewRow(false);
+      const colKey = resolvedOriginIdx >= 0 ? target.colKey || "name" : "name";
+      const cell = this.elTableBody?.querySelector?.(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell) {
+        this.selectCell(rowIdx, colKey, cell, resolvedOriginIdx < 0);
+        this.ensureCurrentCellVisible(cell);
+        this.focusSelectedCellEditor();
+        restored = true;
+      }
+    }
+    if (!restored) {
+      if (!this.activeCell && rows.length && this.elTableBody) {
+        const fallbackRow = Math.max(0, Math.min(rows.length - 1, this.selectedRowIdx ?? 0));
+        const fallbackCol = this.selectedColKey || "no";
+        const fallbackCell = this.elTableBody.querySelector?.(`[data-row="${fallbackRow}"][data-col="${fallbackCol}"]`);
+        if (fallbackCell) {
+          this.selectCell(fallbackRow, fallbackCol, fallbackCell, false);
+        }
+      }
+      if (this.activeCell || this.crossDateSelection) {
+        this.focusSelectedCellEditor?.();
+      } else {
+        this.elSheetContainer?.focus?.({ preventScroll: true });
+      }
     }
     this.historyOriginSelection = undefined;
+    if (this.cloudPullDeferred && !this.pendingSyncDates?.has(this.currentDate) &&
+        !(this.isCellInteractionActive?.() ?? this.isEditingCell())) {
+      this.cloudPullDeferred = false;
+      setTimeout(() => {
+        if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) && !this.pendingSyncDates?.has(this.currentDate)) {
+          void this.pullFromCloud?.(this.currentDate);
+        }
+      }, 80);
+    }
   }
 
   preparePatientHistorySearch(query, targetRowIdx, cancelled = null) {

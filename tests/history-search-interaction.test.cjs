@@ -2569,3 +2569,246 @@ test('after applying history, all four arrows navigate from the armed editor and
   assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: 1, colKey: 'no' });
 });
 
+test('chartNo Ctrl/Cmd+F search not found restores armed focus after IME Enter or confirm and keeps all four arrow keys working', async () => {
+  const { app, context } = createApp([{ no: '1', chartNo: '', name: '' }, { no: '2', chartNo: '', name: '' }]);
+  context.KeyboardEvent = class KeyboardEvent { constructor(type, opts = {}) { Object.assign(this, { type }, opts); } };
+  const cells = new Map();
+  let activeInput = null;
+  const cols = ['no', 'gender', 'chartNo', 'name', 'part'];
+  for (let r = 0; r < 2; r++) {
+    cols.forEach((col, colIdx) => {
+      const cell = {
+        dataset: { row: String(r), col, colIdx: String(colIdx), colLetter: 'ABCDE'[colIdx], excelRow: String(r + 1) },
+        childNodes: [],
+        classList: { add() {}, remove() {}, toggle() {} },
+        closest: () => null,
+        querySelector: sel => sel === 'input' ? (cell._input?.isConnected ? cell._input : null) : null,
+        querySelectorAll: () => [],
+        appendChild: el => {
+          el.parentElement = cell;
+          if (!cell.childNodes.includes(el)) cell.childNodes.push(el);
+          if (el.tagName === 'INPUT') { cell._input = el; activeInput = el; el.isConnected = true; }
+        },
+        removeChild: el => {
+          cell.childNodes = cell.childNodes.filter(c => c !== el);
+          if (cell._input === el) cell._input = null;
+          el.isConnected = false;
+        },
+        scrollIntoView() {},
+      };
+      cells.set(`${r}:${col}`, cell);
+    });
+  }
+
+  context.document.createElement = tag => {
+    const listeners = {};
+    const classSet = new Set();
+    const el = {
+      tagName: tag.toUpperCase(),
+      dataset: {},
+      style: {},
+      value: '',
+      children: [],
+      isConnected: true,
+      _listeners: listeners,
+      set className(val) {
+        classSet.clear();
+        String(val || '').split(/\s+/).filter(Boolean).forEach(n => classSet.add(n));
+      },
+      get className() { return [...classSet].join(' '); },
+      classList: {
+        add(...names) { names.forEach(n => classSet.add(n)); },
+        remove(...names) { names.forEach(n => classSet.delete(n)); },
+        contains(n) { return classSet.has(n); },
+        toggle(n, v) { if (v === undefined ? !classSet.has(n) : v) classSet.add(n); else classSet.delete(n); },
+      },
+      addEventListener(type, fn) { listeners[type] = fn; },
+      removeEventListener() {},
+      focus() { context.document.activeElement = el; },
+      blur() { if (listeners.blur) listeners.blur(); if (context.document.activeElement === el) context.document.activeElement = context.document.body; },
+      setSelectionRange(s, e) { el.selectionStart = s; el.selectionEnd = e; },
+      remove() { el.isConnected = false; },
+      matches(sel) { return tag === 'input' && sel.includes('cell-input-element') && (!sel.includes(':not(.is-armed)') || !classSet.has('is-armed')); },
+      closest(sel) { return sel === '.excel-cell' ? cells.get(`${app.activeCell?.rowIdx ?? 0}:${app.activeCell?.colKey ?? 'no'}`) : null; },
+    };
+    return el;
+  };
+
+  const listeners = [];
+  context.document.addEventListener = (type, fn, cap) => listeners.push({ type, fn, cap: Boolean(cap) });
+  context.document.removeEventListener = (type, fn, cap) => {
+    const idx = listeners.findIndex(l => l.type === type && l.fn === fn && l.cap === Boolean(cap));
+    if (idx >= 0) listeners.splice(idx, 1);
+  };
+  context.document.dispatchEvent = ev => {
+    for (const l of [...listeners].filter(item => item.type === ev.type)) l.fn(ev);
+  };
+
+  const modal = {
+    style: { display: 'none' },
+    contains: el => el === modal || el === btnClose,
+  };
+  const msgEl = { textContent: '' };
+  const btnClose = {
+    id: 'btnCloseSearchNotFound',
+    focus() { context.document.activeElement = btnClose; },
+    blur() { if (context.document.activeElement === btnClose) context.document.activeElement = context.document.body; },
+  };
+  app.elSearchNotFoundModal = modal;
+  app.elSearchNotFoundMessage = msgEl;
+  app.elBtnCloseSearchNotFound = btnClose;
+  context.document.getElementById = id => {
+    if (id === 'searchNotFoundModal') return modal;
+    if (id === 'searchNotFoundMessage') return msgEl;
+    if (id === 'btnCloseSearchNotFound') return btnClose;
+    return null;
+  };
+
+  app.elTableBody = {
+    querySelector(sel) {
+      const m = sel.match(/\[data-row="(\d+)"\]\[data-col="(\w+)"\](?:\s+input)?/);
+      if (!m) return null;
+      const cell = cells.get(`${m[1]}:${m[2]}`);
+      return sel.endsWith('input') ? (cell?._input?.isConnected ? cell._input : null) : cell;
+    },
+    querySelectorAll: () => [],
+  };
+  app.elSheetContainer = {
+    classList: { add() {}, remove() {}, toggle() {} },
+    focus() { context.document.activeElement = app.elSheetContainer; },
+    dispatchEvent(evt) { app.handleGlobalKeyDown({ ...evt, target: app.elSheetContainer, preventDefault() {}, stopPropagation() {} }); },
+  };
+  app.elCellAddress = { textContent: '' };
+  app.elSelectedCellCoords = { textContent: '' };
+  app.elFormulaInput = { value: '' };
+  app.elSearchInput = { value: '' };
+  for (const fn of ['updateActiveHeaders', 'highlightCell', 'updateHistoryDestinationHighlight', 'ensureCurrentCellVisible', 'updateFontColorIndicator', 'updateBackgroundColorIndicator', 'updateUnderlineIndicator', 'closeAutocompleteMenu', 'closeGenderDropdown', 'hideContextMenu', 'refreshNewPatientRows', 'renderColoredText', 'applyCellFormatting', 'refreshEditorTextColors']) {
+    app[fn] = () => {};
+  }
+  app.cancelHighlightStroke = () => {};
+  app.cancelFillDrag = () => {};
+  app.endColumnResize = () => {};
+  app.hasRecordedPatientValue = () => false;
+  app.selectCell = context.App.prototype.selectCell;
+  app.clearHeaderSelections = context.App.prototype.clearHeaderSelections;
+  app.focusSelectedCellEditor = context.App.prototype.focusSelectedCellEditor;
+  app.cancelSheetPointerInteraction = context.App.prototype.cancelSheetPointerInteraction;
+
+  // Enter chartNo cell, type a chart number, and trigger Cmd+F directly
+  const chartCell = cells.get('0:chartNo');
+  app.selectCell(0, 'chartNo', chartCell, false);
+  const editor = chartCell.querySelector('input');
+  app.activateNativeEditor(editor);
+  editor.value = '99999';
+  app.presetLeftKeyHeld = true;
+  app.isSelectingRange = true;
+
+  await new Promise(resolve => {
+    const origShow = app.showSearchNotFoundModal.bind(app);
+    app.showSearchNotFoundModal = (...args) => {
+      origShow(...args);
+      resolve();
+    };
+    app.handlePatientEditorSearchShortcut({
+      key: 'f', code: 'KeyF', metaKey: true, keyCode: 70, target: editor,
+      preventDefault() {}, stopPropagation() {},
+    });
+  });
+
+  assert.equal(modal.style.display, 'flex');
+  assert.equal(context.document.activeElement, btnClose);
+  assert.equal(app.isSearchDialogOpen(), true);
+  assert.equal(app.isCellInteractionActive(), true);
+
+  // Background armed restoration while searchNotFoundModal is open must not steal focus from the modal button
+  app.startInlineEdit(0, 'chartNo', chartCell, true);
+  assert.equal(context.document.activeElement, btnClose);
+
+  // Korean IME Process + NumpadEnter closes the modal and returns to chartNo armed editor cleanly
+  context.document.dispatchEvent({
+    type: 'keydown', key: 'Process', code: 'NumpadEnter', keyCode: 229, isComposing: true,
+    preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
+  });
+
+  assert.equal(modal.style.display, 'none');
+  assert.equal(app.isSearchDialogOpen(), false);
+  assert.equal(app.presetLeftKeyHeld, false);
+  assert.equal(app.isSelectingRange, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: 0, colKey: 'chartNo' });
+  const restoredInput = chartCell.querySelector('input');
+  assert.ok(restoredInput && restoredInput.classList.contains('is-armed'));
+  assert.equal(context.document.activeElement, restoredInput);
+
+  // All 4 arrow keys must navigate freely after dismissing the modal
+  for (const [key, expectedRow, expectedCol] of [
+    ['ArrowRight', 0, 'name'],
+    ['ArrowDown', 1, 'name'],
+    ['ArrowLeft', 1, 'chartNo'],
+    ['ArrowUp', 0, 'chartNo'],
+  ]) {
+    const curInput = cells.get(`${app.activeCell.rowIdx}:${app.activeCell.colKey}`)?.querySelector('input');
+    curInput._listeners.keydown({
+      key, code: key, isComposing: false, preventDefault() {}, stopPropagation() {},
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: expectedRow, colKey: expectedCol }, `move ${key}`);
+  }
+});
+
+test('closeSearchNotFoundModal recovers sheet focus and fallback selection even when target row was replaced or missing', () => {
+  const { app, context } = createApp([{ no: '1', chartNo: '555', name: '' }]);
+  const cell = {
+    dataset: { row: '0', col: 'chartNo', colIdx: '2', colLetter: 'C', excelRow: '1' },
+    classList: { add() {}, remove() {}, toggle() {} },
+    closest: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    appendChild() {},
+    scrollIntoView() {},
+  };
+  let sheetFocused = 0;
+  app.elTableBody = {
+    querySelector: sel => sel === '[data-row="0"][data-col="chartNo"]' ? cell : null,
+    querySelectorAll: () => [],
+  };
+  app.elSheetContainer = {
+    classList: { add() {}, remove() {}, toggle() {} },
+    focus() { sheetFocused++; context.document.activeElement = app.elSheetContainer; },
+  };
+  app.elCellAddress = { textContent: '' };
+  app.elSelectedCellCoords = { textContent: '' };
+  app.elFormulaInput = { value: '' };
+  for (const fn of ['updateActiveHeaders', 'highlightCell', 'updateHistoryDestinationHighlight', 'ensureCurrentCellVisible', 'updateFontColorIndicator', 'updateBackgroundColorIndicator', 'updateUnderlineIndicator', 'closeAutocompleteMenu', 'closeGenderDropdown', 'startInlineEdit']) {
+    app[fn] = () => {};
+  }
+  app.getCurrentRows = () => app.dataStore[app.currentDate];
+  app.selectCell = context.App.prototype.selectCell;
+  app.clearHeaderSelections = context.App.prototype.clearHeaderSelections;
+  app.focusSelectedCellEditor = context.App.prototype.focusSelectedCellEditor;
+  app.cancelSheetPointerInteraction = context.App.prototype.cancelSheetPointerInteraction;
+  app.endColumnResize = () => {};
+  app.cancelHighlightStroke = () => {};
+  app.cancelFillDrag = () => {};
+  const btnClose = { blur() { context.document.activeElement = context.document.body; } };
+  const modal = { style: { display: 'flex' }, contains: el => el === btnClose };
+  app.elSearchNotFoundModal = modal;
+  context.document.getElementById = id => id === 'searchNotFoundModal' ? modal : null;
+
+  // 1. Replaced row object (e.g., background cloud sync) still restores patient chartNo cell
+  app.activeCell = { rowIdx: 0, colKey: 'chartNo' };
+  app.showSearchNotFoundModal('일치하는 환자 내역이 없습니다.', { query: '555', targetRowIdx: 0 });
+  app.dataStore[app.currentDate] = [{ no: '1', chartNo: '555', name: '' }];
+  context.document.activeElement = btnClose;
+  app.closeSearchNotFoundModal();
+  assert.deepEqual(JSON.parse(JSON.stringify(app.activeCell)), { rowIdx: 0, colKey: 'chartNo' });
+  assert.equal(sheetFocused > 0, true);
+
+  // 2. Missing target / detached modal still blurs button and focuses sheet instead of body
+  modal.style.display = 'flex';
+  context.document.activeElement = btnClose;
+  app.searchNotFoundReturnTarget = null;
+  app.closeSearchNotFoundModal();
+  assert.equal(modal.style.display, 'none');
+  assert.equal(context.document.activeElement, app.elSheetContainer);
+});
+
+

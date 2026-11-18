@@ -336,8 +336,8 @@ class PTCellEditor {
   }
 
   startInlineEdit(rowIdx, colKey, cellElement, armed = false, historyEdit = null) {
-    // Background selection restoration must not take focus from an open editor dialog.
-    if (armed && (this.elSearchPromptModal?.style.display === 'flex' ||
+    // Background selection restoration must not take focus from an open editor or search dialog.
+    if (armed && (this.isSearchDialogOpen?.() || this.elSearchPromptModal?.style.display === 'flex' ||
         (typeof document !== 'undefined' && document.activeElement?.closest?.('#forcedCorrectionModal')))) return;
     if (!armed && !historyEdit) void this.loadSearchHistory();
     if (colKey === "gender") {
@@ -370,8 +370,14 @@ class PTCellEditor {
         this.activateNativeEditor(existingEditor);
         existingEditor.focus({ preventScroll: true });
         existingEditor.setSelectionRange(existingEditor.value.length, existingEditor.value.length);
-      } else if (armed && document.activeElement !== existingEditor) {
-        existingEditor.focus({ preventScroll: true });
+      } else if (armed) {
+        if (existingEditor.dataset.nativeComposing !== "true") {
+          existingEditor.classList.add("is-armed");
+          existingEditor.dataset.composing = "false";
+        }
+        if (document.activeElement !== existingEditor) {
+          existingEditor.focus({ preventScroll: true });
+        }
       }
       return;
     }

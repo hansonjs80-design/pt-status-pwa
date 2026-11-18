@@ -286,8 +286,16 @@ class PTApp {
     });
   }
 
+  isSearchDialogOpen() {
+    const promptOpen = this.elSearchPromptModal?.style?.display === "flex";
+    const notFoundModal = this.elSearchNotFoundModal ||
+      (typeof document !== "undefined" ? document.getElementById?.("searchNotFoundModal") : null);
+    const notFoundOpen = notFoundModal?.style?.display === "flex";
+    return Boolean(promptOpen || notFoundOpen);
+  }
+
   isCellInteractionActive() {
-    return Boolean(this.genderPickerState) || this.isEditingCell();
+    return Boolean(this.genderPickerState) || this.isEditingCell() || this.isSearchDialogOpen();
   }
 
   isEditingCell() {

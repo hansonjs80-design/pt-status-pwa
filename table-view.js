@@ -210,7 +210,8 @@ class PTTableView {
     }
     this.paintCellSet();
     this.renderClipboardSelection();
-    if (this.activeCell && this.activeCell.colKey !== "gender" && this.elSearchPromptModal?.style.display !== 'flex') {
+    if (this.activeCell && this.activeCell.colKey !== "gender" &&
+        !(this.isSearchDialogOpen?.() ?? (this.elSearchPromptModal?.style?.display === 'flex'))) {
       const { rowIdx, colKey } = this.activeCell;
       const cell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
       if (cell) this.startInlineEdit(rowIdx, colKey, cell, true);
