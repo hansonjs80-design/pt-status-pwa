@@ -590,11 +590,19 @@ class PTContextMenu {
 
   closeQuickTextEditDialog() {
     const modal = document.getElementById("quickTextEditModal");
-    if (modal) modal.style.display = "none";
+    const wasOpen = Boolean(modal && modal.style.display && modal.style.display !== "none");
+    if (modal) {
+      if (typeof document !== "undefined" && modal.contains?.(document.activeElement)) {
+        document.activeElement.blur?.();
+      }
+      modal.style.display = "none";
+    }
 
     const editor = this.textEditorState?.input;
     if (editor && editor.isConnected) {
       editor.focus({ preventScroll: true });
+    } else if (wasOpen) {
+      this.restoreSheetFocusAfterModal?.(modal);
     }
   }
 

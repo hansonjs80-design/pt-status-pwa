@@ -392,7 +392,7 @@ class PTAppEvents {
     // Keyboard Shortcuts
     // Intercept search and forced-correction shortcuts before native editor/IME bubbling can lose its target.
     document.addEventListener("keydown", e => {
-      if (this._recordsRestorePending) return;
+      if (this._recordsRestorePending || document.documentElement?.classList?.contains?.("clinic-locked")) return;
       if ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === "f") && !this.isSearchShortcut(e)) {
         const key = String(e.key || "").toLowerCase();
         if (!e.ctrlKey && !e.metaKey && e.code !== "KeyF" && e.keyCode !== 70 &&
@@ -435,7 +435,7 @@ class PTAppEvents {
     });
 
     document.addEventListener("paste", event => {
-      if (this._recordsRestorePending) return;
+      if (this._recordsRestorePending || document.documentElement?.classList?.contains?.("clinic-locked")) return;
       const target = event.target;
       if (this.crossDateSelection) {
         event.preventDefault();
@@ -496,7 +496,13 @@ class PTAppEvents {
 
     // Close modal & context menu on escape
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
+      if (document.documentElement?.classList?.contains?.("clinic-locked")) return;
+      if (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27) {
+        const fcModal = document.getElementById("forcedCorrectionModal");
+        if (fcModal && fcModal.style.display === "flex") {
+          this.closeForcedCorrectionManager?.();
+          return;
+        }
         this.closeQuickTextEditDialog?.();
         this.closeGenderDropdown();
         this.hideContextMenu();

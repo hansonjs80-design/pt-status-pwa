@@ -255,26 +255,47 @@ class PTForcedCorrections {
     }
     clearTimeout(this.presetManagerFocusTimer);
     modal.style.display = 'flex';
-    this.updateForcedCorrectionManager();
+    try {
+      this.updateForcedCorrectionManager();
+    } catch (error) {
+      modal.style.display = 'none';
+      if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
+      throw error;
+    }
     if (this.elPresetManagerModal) this.elPresetManagerModal.inert = true;
-    document.getElementById('forcedCorrectionSearch').focus();
+    document.getElementById('forcedCorrectionSearch')?.focus();
   }
 
   closeForcedCorrectionManager(restoreFocus = true) {
     if (this.elPresetManagerModal) this.elPresetManagerModal.inert = false;
     const modal = typeof document === 'undefined' ? null : document.getElementById?.('forcedCorrectionModal');
     if (!modal || modal.style.display !== 'flex') return;
+    if (typeof document !== 'undefined' && modal.contains?.(document.activeElement)) {
+      document.activeElement.blur?.();
+    }
     modal.style.display = 'none';
     if (restoreFocus) {
       const prev = this._forcedCorrectionPreviousFocus;
       this._forcedCorrectionPreviousFocus = null;
-      if (prev && typeof document !== 'undefined' && document.contains?.(prev) && typeof prev.focus === 'function' && !modal.contains(prev)) {
+      if (prev && typeof document !== 'undefined' && document.contains?.(prev) && typeof prev.focus === 'function' && !modal.contains?.(prev) &&
+          !(prev.matches?.('.cell-input-element') && (prev.isConnected === false || prev.dataset?.committed === 'true'))) {
         prev.focus({ preventScroll: true });
-      } else if (this.activeCell && typeof document !== 'undefined') {
+      } else if (this.activeCell && typeof document !== 'undefined' && !this.isBlockingModalOpen?.(modal)) {
         const { rowIdx, colKey } = this.activeCell;
-        const cell = document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
-        if (cell) cell.focus({ preventScroll: true });
-        else this.elSheetContainer?.focus?.({ preventScroll: true });
+        const cell = this.elTableBody?.querySelector?.(`[data-row="${rowIdx}"][data-col="${colKey}"]`) ||
+          document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="${colKey}"]`);
+        if (cell && typeof this.selectCell === 'function') {
+          this.selectCell(rowIdx, colKey, cell, false);
+          this.focusSelectedCellEditor?.();
+        } else if (typeof this.restoreSheetFocusAfterModal === 'function') {
+          this.restoreSheetFocusAfterModal(modal);
+        } else {
+          this.elSheetContainer?.focus?.({ preventScroll: true });
+        }
+      } else if (this.elPresetManagerModal?.style.display === 'flex') {
+        document.getElementById('btnOpenForcedCorrectionManager')?.focus({ preventScroll: true });
+      } else if (typeof this.restoreSheetFocusAfterModal === 'function') {
+        this.restoreSheetFocusAfterModal(modal);
       } else {
         document.getElementById('btnOpenForcedCorrectionManager')?.focus({ preventScroll: true });
       }
@@ -409,7 +430,7 @@ class PTForcedCorrections {
         this.closeForcedCorrectionManager();
         return;
       }
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' || event.code === 'Escape' || event.keyCode === 27) {
         event.stopPropagation();
         if (!event.isComposing && event.keyCode !== 229) {
           event.preventDefault(); this.closeForcedCorrectionManager();

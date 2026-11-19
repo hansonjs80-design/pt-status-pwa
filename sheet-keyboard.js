@@ -193,6 +193,7 @@ class PTSheetKeyboard {
 
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
+    if (typeof document !== "undefined" && document.documentElement?.classList?.contains?.("clinic-locked")) return;
     if ((this.directHistorySearchKeyHeld || this.historyApplyBlockedKey === "f") && !this.isSearchShortcut(e)) {
       const key = String(e.key || "").toLowerCase();
       if (!e.ctrlKey && !e.metaKey && e.code !== "KeyF" && e.keyCode !== 70 &&
@@ -254,52 +255,63 @@ class PTSheetKeyboard {
     }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 성함 셀만 현재 내용으로 검색하고 나머지 셀은 빈 검색창 오픈
-      if (this.isSearchShortcut(e)) {
-        e.preventDefault();
-        e.stopPropagation();
-        const cellInput = e.target.closest(".excel-cell") ? e.target : null;
-        const formulaEditor = Boolean(this.elFormulaInput && e.target === this.elFormulaInput);
-        if (cellInput?.classList?.contains("is-armed")) {
-          this.findActiveCell();
-          return;
-        }
-        const cell = cellInput?.closest(".excel-cell");
-        const colKey = cell?.dataset?.col || this.activeCell?.colKey;
-        if ((cellInput || formulaEditor) && colKey !== "name") {
-          const rowIdx = this.activeCell?.rowIdx ?? Number(cell?.dataset?.row);
-          if (typeof e.target?.commitAutocompleteValue === "function" && !e.target.classList?.contains?.("is-armed")) {
-            e.target.commitAutocompleteValue();
-          } else {
-            e.target.blur();
+      // Recover if a detached or already-committed cell input somehow retained focus.
+      if (e.target.matches?.(".cell-input-element") &&
+          (e.target.isConnected === false || e.target.dataset?.committed === "true")) {
+        if (e.target.isConnected) e.target.remove?.();
+        this.elSheetContainer?.focus?.({ preventScroll: true });
+      } else {
+        // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 성함 셀만 현재 내용으로 검색하고 나머지 셀은 빈 검색창 오픈
+        if (this.isSearchShortcut(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          const cellInput = e.target.closest(".excel-cell") ? e.target : null;
+          const formulaEditor = Boolean(this.elFormulaInput && e.target === this.elFormulaInput);
+          if (cellInput?.classList?.contains("is-armed")) {
+            this.findActiveCell();
+            return;
           }
-          this.elSheetContainer?.focus?.({ preventScroll: true });
-          this.openSearchPromptModal(rowIdx, "");
+          const cell = cellInput?.closest(".excel-cell");
+          const colKey = cell?.dataset?.col || this.activeCell?.colKey;
+          if ((cellInput || formulaEditor) && colKey !== "name") {
+            const rowIdx = this.activeCell?.rowIdx ?? Number(cell?.dataset?.row);
+            if (typeof e.target?.commitAutocompleteValue === "function" && !e.target.classList?.contains?.("is-armed")) {
+              e.target.commitAutocompleteValue();
+            } else {
+              e.target.blur();
+            }
+            this.elSheetContainer?.focus?.({ preventScroll: true });
+            this.openSearchPromptModal(rowIdx, "");
+            return;
+          }
+          const activeInput = cellInput || (formulaEditor ? e.target : null);
+          const searchVal = activeInput ? activeInput.value.trim() : "";
+          if (this.elSearchInput && searchVal) {
+            document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
+            const originRow = e.target.closest(".excel-row");
+            if (originRow) originRow.classList.add("search-origin-row");
+            const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : (this.activeCell?.rowIdx ?? -1);
+            e.target.blur();
+            this.elSheetContainer.focus({ preventScroll: true });
+            const query = this.assembleHangul(activeInput.value).trim() || searchVal;
+            if (colKey === "name") void this.searchPatientHistory(query, originRowIdx);
+            else this.searchAllDates(query, originRowIdx);
+          } else if (activeInput) {
+            e.target.blur?.();
+            this.openSearchPromptModal(this.activeCell?.rowIdx, "");
+          }
           return;
         }
-        const activeInput = cellInput || (formulaEditor ? e.target : null);
-        const searchVal = activeInput ? activeInput.value.trim() : "";
-        if (this.elSearchInput && searchVal) {
-          document.querySelectorAll(".search-origin-row").forEach(r => r.classList.remove("search-origin-row"));
-          const originRow = e.target.closest(".excel-row");
-          if (originRow) originRow.classList.add("search-origin-row");
-          const originRowIdx = originRow ? Number(originRow.dataset.rowIdx) : (this.activeCell?.rowIdx ?? -1);
+        if (e.key === "Escape") {
           e.target.blur();
-          this.elSheetContainer.focus({ preventScroll: true });
-          const query = this.assembleHangul(activeInput.value).trim() || searchVal;
-          if (colKey === "name") void this.searchPatientHistory(query, originRowIdx);
-          else this.searchAllDates(query, originRowIdx);
-        } else if (activeInput) {
-          e.target.blur?.();
-          this.openSearchPromptModal(this.activeCell?.rowIdx, "");
+          this.hideContextMenu();
+          if (this.elSearchInput.value) { this.elSearchInput.value = ""; this.handleSearch(); }
         }
         return;
       }
-      if (e.key === "Escape") {
-        e.target.blur();
-        this.hideContextMenu();
-        if (this.elSearchInput.value) { this.elSearchInput.value = ""; this.handleSearch(); }
-      }
+    }
+
+    if (e.key !== "Escape" && e.code !== "Escape" && e.keyCode !== 27 && this.isBlockingModalOpen?.()) {
       return;
     }
 
@@ -648,6 +660,24 @@ class PTSheetKeyboard {
     }
 
     // 15) Arrow Keys Navigation (위/아래/좌/우 셀 이동)
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(effectiveNavKey) &&
+        !this.activeCell && !this.crossDateSelection && !this.selectedRowRange &&
+        !isCtrlOrMeta && !e.altKey && this.elTableBody &&
+        (!e.target || e.target === this.elSheetContainer || e.target === document.body || e.target?.closest?.("#sheetContainer"))) {
+      const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+      const rows = this.getCurrentRows();
+      const rowIdx = Math.max(0, Math.min(Math.max(0, rows.length - 1), this.selectedRange?.minRow ?? this.selectedRowIdx ?? 0));
+      const colKey = this.selectedColKey && colOrder.includes(this.selectedColKey)
+        ? this.selectedColKey
+        : colOrder[Math.max(0, Math.min(colOrder.length - 1, this.selectedRange?.minCol ?? 0))];
+      const fallbackCell = this.elTableBody.querySelector(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (fallbackCell) {
+        e.preventDefault();
+        this.selectCell(rowIdx, colKey, fallbackCell, false);
+        this.ensureCurrentCellVisible(fallbackCell);
+        return;
+      }
+    }
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(effectiveNavKey) && this.activeCell) {
       e.preventDefault();
       const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];

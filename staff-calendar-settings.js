@@ -117,15 +117,24 @@ class PTStaffCalendarSettings {
     scope.onchange = () => { touched = true; if (scope.value === 'today') date.value = this.getStaffCountToday(); update(); };
     date.oninput = () => { touched = true; };
     dialog.querySelector('[data-close]').onclick = () => dialog.close();
-    dialog.addEventListener('close', () => { dialog.remove(); if (this.staffCountDialog === dialog) this.staffCountDialog = null; });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (this.staffCountDialog === dialog) this.staffCountDialog = null;
+      this.restoreSheetFocusAfterModal?.(dialog);
+    });
     save.disabled = true;
     save.onclick = async () => {
       const value = { enabled: enabled.checked, scope: scope.value, startDate: scope.value === 'all' ? null : date.value };
       if (!this.normalizeStaffCountSettings(value)) { status.textContent = '유효한 시작일을 선택해주세요.'; return; }
       save.disabled = true; status.textContent = '저장 중입니다.';
-      const saved = await this.saveStaffCountSettings(value);
-      status.textContent = saved ? (value.enabled ? '저장 완료 · 직원 근무표에 적용됩니다.' : '연동 꺼짐 · 기존 메모와 건수를 표시합니다.') : '저장하지 못했습니다. 클라우드 연결을 확인한 뒤 다시 시도해주세요.';
-      save.disabled = false;
+      try {
+        const saved = await this.saveStaffCountSettings(value);
+        status.textContent = saved ? (value.enabled ? '저장 완료 · 직원 근무표에 적용됩니다.' : '연동 꺼짐 · 기존 메모와 건수를 표시합니다.') : '저장하지 못했습니다. 클라우드 연결을 확인한 뒤 다시 시도해주세요.';
+      } catch (_) {
+        status.textContent = '저장하지 못했습니다. 클라우드 연결을 확인한 뒤 다시 시도해주세요.';
+      } finally {
+        save.disabled = false;
+      }
     };
     update(); dialog.showModal();
     void this.syncStaffCountSettings().then(settings => {

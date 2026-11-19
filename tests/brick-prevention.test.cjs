@@ -518,3 +518,218 @@ test('closeForcedCorrectionManager resets inert and column resizing cleans up on
   }
   assert.equal(movePrevented, false);
 });
+
+test('clinic unlock restores sheet focus and clinic-locked blocks sheet keyboard shortcuts', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const authSource = fs.readFileSync(path.join(__dirname, '..', 'clinic-auth.js'), 'utf8');
+  const storage = new Map();
+  let restoredWith = null;
+  let pwBlurred = false;
+  const modal = { style: { display: 'flex' }, contains: el => el === pwInput };
+  const pwInput = { value: '1', blur() { pwBlurred = true; }, addEventListener() {}, focus() {}, select() {} };
+  const errEl = { style: { display: 'none' } };
+  const docClasses = new Set(['clinic-locked']);
+  const doc = {
+    readyState: 'complete',
+    documentElement: {
+      classList: {
+        add: c => docClasses.add(c),
+        remove: c => docClasses.delete(c),
+        contains: c => docClasses.has(c),
+      },
+    },
+    getElementById: id => ({ clinicLoginModal: modal, clinicPasswordInput: pwInput, clinicLoginError: errEl }[id] || null),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  const win = {
+    ptApp: {
+      restoreSheetFocusAfterModal(m) { restoredWith = m; },
+    },
+  };
+  const authCtx = vm.createContext({
+    window: win,
+    document: doc,
+    localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
+    setTimeout,
+  });
+  vm.runInContext(authSource, authCtx);
+
+  // While locked, PTApp.handleGlobalKeyDown ignores navigation/deletion shortcuts
+  const appCtx = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {} },
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', appCtx);
+  const app = Object.create(appCtx.App.prototype);
+  let cleared = 0;
+  app.activeCell = { rowIdx: 0, colKey: 'name' };
+  app.clearSelection = () => { cleared++; };
+  app.elSheetContainer = { focus() {} };
+  app.handleGlobalKeyDown({ key: 'Delete', target: app.elSheetContainer, preventDefault() {}, stopPropagation() {} });
+  assert.equal(cleared, 0, 'locked clinic screen must block sheet keyboard mutations');
+
+  // Unlocking blurs password input, hides modal, and restores sheet focus via PTApp
+  assert.equal(win.PTClinicAuth.unlock('1'), true);
+  assert.equal(pwBlurred, true);
+  assert.equal(modal.style.display, 'none');
+  assert.equal(docClasses.has('clinic-locked'), false);
+  assert.equal(restoredWith, modal);
+});
+
+test('modal close restores cell focus instead of td.focus no-op and blocks background keys while open', () => {
+  const overlays = [];
+  const doc = {
+    activeElement: null,
+    documentElement: { classList: { contains: () => false } },
+    body: { tagName: 'BODY' },
+    contains: () => true,
+    querySelector: sel => sel === '.excel-cell[data-row="0"][data-col="name"]' ? cell : null,
+    querySelectorAll: sel => sel === '.modal-overlay' ? overlays : [],
+    getElementById: id => elements[id] || null,
+  };
+  let selectedArgs = null;
+  let editorFocused = 0;
+  let sheetFocused = 0;
+  const cell = { dataset: { row: '0', col: 'name' }, querySelector: () => null };
+  const fcInput = { blur() { doc.activeElement = doc.body; } };
+  const fcModal = { style: { display: 'flex' }, contains: el => el === fcModal || el === fcInput };
+  const qtInput = { blur() { doc.activeElement = doc.body; } };
+  const qtModal = { style: { display: 'flex' }, contains: el => el === qtModal || el === qtInput };
+  const elements = { forcedCorrectionModal: fcModal, quickTextEditModal: qtModal };
+
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {} },
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  app.activeCell = { rowIdx: 0, colKey: 'name' };
+  app.elTableBody = { querySelector: sel => sel === '[data-row="0"][data-col="name"]' ? cell : null };
+  app.elSheetContainer = { focus() { sheetFocused++; doc.activeElement = app.elSheetContainer; } };
+  app.selectCell = (...args) => { selectedArgs = args; };
+  app.focusSelectedCellEditor = () => { editorFocused++; };
+  app.startInlineEdit = () => {};
+  app.cancelSheetPointerInteraction = () => {};
+
+  // 1. While a modal overlay is open, handleGlobalKeyDown does not mutate sheet rows
+  overlays.push(fcModal);
+  let deleted = 0;
+  app.clearSelection = () => { deleted++; };
+  app.handleGlobalKeyDown({ key: 'Delete', target: fcModal, preventDefault() {}, stopPropagation() {} });
+  assert.equal(deleted, 0);
+
+  // 2. Closing forcedCorrectionModal when previous input detached calls selectCell + focusSelectedCellEditor
+  doc.activeElement = fcInput;
+  app._forcedCorrectionPreviousFocus = { isConnected: false, dataset: { committed: 'true' }, matches: () => true, focus() { assert.fail('must not focus detached committed input'); } };
+  app.elPresetManagerModal = { inert: true, style: { display: 'none' } };
+  app.closeForcedCorrectionManager(true);
+  assert.equal(fcModal.style.display, 'none');
+  assert.equal(app.elPresetManagerModal.inert, false);
+  assert.deepEqual(selectedArgs, [0, 'name', cell, false]);
+  assert.equal(editorFocused, 1);
+
+  // 3. Closing quickTextEditModal when original cell editor detached restores sheet/editor focus
+  overlays.length = 0;
+  overlays.push(qtModal);
+  doc.activeElement = qtInput;
+  app.textEditorState = { input: { isConnected: false } };
+  app.closeQuickTextEditDialog();
+  assert.equal(qtModal.style.display, 'none');
+  assert.equal(editorFocused, 2);
+});
+
+test('arrow keys recover when activeCell is null or a committed cell input is stuck, and setDate/IME Escape clean up overlays', () => {
+  const docListeners = new Map();
+  const doc = {
+    activeElement: null,
+    documentElement: { classList: { contains: () => false } },
+    body: { tagName: 'BODY' },
+    addEventListener(type, fn) { (docListeners.get(type) || docListeners.set(type, []).get(type)).push(fn); },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+  };
+  const sheet = {
+    classList: { add() {}, remove() {}, toggle() {} },
+    style: { setProperty() {}, removeProperty() {} },
+    contains: () => true,
+    matches: () => false,
+    addEventListener() {},
+    focus() { doc.activeElement = sheet; },
+  };
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {} },
+    clearTimeout,
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  const fallbackCell = { dataset: { row: '0', col: 'no' } };
+  let selected = null;
+  Object.assign(app, {
+    currentDate: '2026-11-19',
+    dataStore: { '2026-11-19': [{ no: '1', name: '환자' }] },
+    activeCell: null,
+    crossDateSelection: null,
+    selectedRowRange: null,
+    elSheetContainer: sheet,
+    elTableBody: { querySelector: sel => sel === '[data-row="0"][data-col="no"]' ? fallbackCell : null },
+    selectCell(r, c, el, edit) { selected = { r, c, el, edit }; app.activeCell = { rowIdx: r, colKey: c }; },
+    ensureCurrentCellVisible() {},
+  });
+
+  // 1. ArrowDown with activeCell === null recovers selection instead of dead keyboard
+  app.handleGlobalKeyDown({ key: 'ArrowDown', code: 'ArrowDown', target: sheet, preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(selected, { r: 0, c: 'no', el: fallbackCell, edit: false });
+
+  // 2. Detached/committed .cell-input-element target does not trap ArrowRight in handleGlobalKeyDown
+  let removed = false;
+  const staleInput = {
+    tagName: 'INPUT',
+    isConnected: true,
+    dataset: { committed: 'true' },
+    matches: sel => sel === '.cell-input-element',
+    remove() { removed = true; this.isConnected = false; },
+  };
+  const genderCell = { dataset: { row: '0', col: 'gender' } };
+  app.elTableBody.querySelector = sel => sel === '[data-row="0"][data-col="gender"]' ? genderCell : fallbackCell;
+  app.handleGlobalKeyDown({ key: 'ArrowRight', code: 'ArrowRight', target: staleInput, preventDefault() {}, stopPropagation() {} });
+  assert.equal(removed, true);
+  assert.deepEqual(app.activeCell, { rowIdx: 0, colKey: 'gender' });
+
+  // 3. Highlight brush exits on Korean IME Escape (Process + code Escape / keyCode 27)
+  app.initHighlightBrush();
+  app.highlightBrushColor = '#ffff00';
+  for (const fn of docListeners.get('keydown') || []) {
+    fn({ key: 'Process', code: 'Escape', keyCode: 27, preventDefault() {}, stopImmediatePropagation() {} });
+  }
+  assert.equal(app.highlightBrushColor, null);
+
+  // 4. setDate cleans up open searchNotFoundModal, gender picker, brush, and pointer drag
+  let notFoundClosed = false, genderClosed = false, pointerCancelled = false, brushCleared = false;
+  app.elSearchNotFoundModal = { style: { display: 'flex' } };
+  app.elSearchPromptModal = { style: { display: 'none' } };
+  app.elDatePicker = { value: '' };
+  app.elDateLabel = { textContent: '' };
+  app.elSidebarDateTag = { textContent: '' };
+  app.elSheetTabTitle = { textContent: '' };
+  app.highlightBrushColor = '#ffff00';
+  app.setHighlightBrush = c => { if (c === null) brushCleared = true; };
+  app.closeSearchNotFoundModal = () => { notFoundClosed = true; };
+  app.closeGenderDropdown = () => { genderClosed = true; };
+  app.cancelSheetPointerInteraction = () => { pointerCancelled = true; };
+  for (const fn of ['closeAutocompleteMenu', 'hideContextMenu', 'closeFontColorMenu', 'closeDateCalendar', 'clearHeaderSelections', 'refreshCalendarHolidayAppearance', 'loadCalendarHolidays', 'renderTable', 'updateHistoryButtons', 'updateSidebarStats', 'focusDateEntryCell']) {
+    app[fn] = () => {};
+  }
+  app.setDate('2026-11-20');
+  assert.equal(notFoundClosed, true);
+  assert.equal(genderClosed, true);
+  assert.equal(pointerCancelled, true);
+  assert.equal(brushCleared, true);
+});
+

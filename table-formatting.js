@@ -1096,7 +1096,7 @@ class PTTableFormatting {
   closeFontColorMenu() {
     this.fontColorMenuCleanup?.();
     this.fontColorMenuCleanup = null;
-    document.getElementById("fontColorMenu")?.remove();
+    if (typeof document !== "undefined") document.getElementById?.("fontColorMenu")?.remove();
   }
 
   getUnderlineOptions() {
@@ -1405,7 +1405,8 @@ class PTTableFormatting {
     };
     for (const type of ['mousedown', 'click', 'dblclick']) sheet.addEventListener(type, suppress, true);
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && this.highlightBrushColor) {
+      const isEsc = event.key === 'Escape' || event.code === 'Escape' || event.keyCode === 27;
+      if (isEsc && this.highlightBrushColor) {
         event.preventDefault(); event.stopImmediatePropagation(); this.setHighlightBrush(null);
       }
     }, true);
@@ -1458,6 +1459,10 @@ class PTTableFormatting {
       cell.append(selection);
       const move = e => {
         if (e.pointerId !== event.pointerId) return;
+        if (e.pointerType === 'mouse' && e.buttons === 0) {
+          cleanup();
+          return;
+        }
         end = indexAt(e.clientX);
         const lo = Math.min(stroke.start, end) - offset, hi = Math.max(stroke.start, end) - offset;
         const rect = cell.getBoundingClientRect();

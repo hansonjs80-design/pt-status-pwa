@@ -41,18 +41,32 @@
         try {
           localStorage.setItem(AUTH_STORAGE_KEY, 'unlocked');
         } catch (_) {}
+        let modal = null;
         if (typeof document !== 'undefined' && document.documentElement) {
           document.documentElement.classList.remove('clinic-locked');
-          const modal = document.getElementById('clinicLoginModal');
+          modal = document.getElementById('clinicLoginModal');
+          const input = document.getElementById('clinicPasswordInput');
+          if (input) {
+            input.value = '';
+            try { input.blur(); } catch (_) {}
+          }
           if (modal) modal.style.display = 'none';
           const err = document.getElementById('clinicLoginError');
           if (err) err.style.display = 'none';
-          const input = document.getElementById('clinicPasswordInput');
-          if (input) input.value = '';
         }
 
-        if (typeof window !== 'undefined' && window.ptApp && typeof window.ptApp.focusActiveCell === 'function') {
-          try { window.ptApp.focusActiveCell(); } catch (_) {}
+        if (typeof window !== 'undefined' && window.ptApp) {
+          try {
+            if (typeof window.ptApp.restoreSheetFocusAfterModal === 'function') {
+              window.ptApp.restoreSheetFocusAfterModal(modal);
+            } else if (typeof window.ptApp.focusSelectedCellEditor === 'function') {
+              window.ptApp.focusSelectedCellEditor();
+            } else if (typeof window.ptApp.focusActiveCell === 'function') {
+              window.ptApp.focusActiveCell();
+            } else {
+              window.ptApp.elSheetContainer?.focus?.({ preventScroll: true });
+            }
+          } catch (_) {}
         }
         return true;
       }
@@ -121,7 +135,8 @@
           }
         });
         input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
+          const rawKey = ['Process', 'Unidentified'].includes(e.key) && e.code ? e.code : e.key;
+          if (rawKey === 'Enter' || rawKey === 'NumpadEnter' || e.keyCode === 13) {
             e.preventDefault();
             handleAttempt();
           }

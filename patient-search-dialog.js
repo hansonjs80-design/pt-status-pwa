@@ -336,7 +336,7 @@ class PTPatientSearchDialog {
       event.preventDefault();
       const rect = card.getBoundingClientRect();
       drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
-      header.setPointerCapture(event.pointerId);
+      try { header.setPointerCapture(event.pointerId); } catch (_) {}
       header.classList.add("is-dragging");
     });
     header.addEventListener("pointermove", event => {

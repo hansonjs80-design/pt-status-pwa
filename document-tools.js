@@ -45,7 +45,9 @@ class PTDocumentTools {
   }
 
   closePreviewModal() {
-    this.elPreviewModal.style.display = "none";
+    const wasOpen = Boolean(this.elPreviewModal && this.elPreviewModal.style.display && this.elPreviewModal.style.display !== "none");
+    if (this.elPreviewModal) this.elPreviewModal.style.display = "none";
+    if (wasOpen) this.restoreSheetFocusAfterModal?.(this.elPreviewModal);
   }
 
   // --- CSV Export ---
@@ -94,7 +96,9 @@ class PTDocumentTools {
   }
 
   closeBackupModal() {
-    this.elBackupModal.style.display = "none";
+    const wasOpen = Boolean(this.elBackupModal && this.elBackupModal.style.display && this.elBackupModal.style.display !== "none");
+    if (this.elBackupModal) this.elBackupModal.style.display = "none";
+    if (wasOpen) this.restoreSheetFocusAfterModal?.(this.elBackupModal);
   }
 
   async downloadFullBackup() {

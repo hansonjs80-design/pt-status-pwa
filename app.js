@@ -294,6 +294,45 @@ class PTApp {
     return Boolean(promptOpen || notFoundOpen);
   }
 
+  isBlockingModalOpen(excludeModal = null) {
+    if (typeof document === "undefined") return false;
+    if (document.documentElement?.classList?.contains?.("clinic-locked")) return true;
+    const openDialog = document.querySelector?.("dialog[open]");
+    if (openDialog && openDialog !== excludeModal && openDialog.tagName === "DIALOG" && openDialog.open !== false) return true;
+    const overlays = document.querySelectorAll?.(".modal-overlay") || [];
+    for (const overlay of overlays) {
+      if (overlay === excludeModal) continue;
+      if (overlay.style?.display && overlay.style.display !== "none") return true;
+    }
+    return false;
+  }
+
+  restoreSheetFocusAfterModal(modalEl = null) {
+    if (typeof document !== "undefined" && modalEl?.contains?.(document.activeElement)) {
+      document.activeElement.blur?.();
+    }
+    this.cancelSheetPointerInteraction?.();
+    this.directHistorySearchKeyHeld = false;
+    this.historyApplyBlockedKey = null;
+    this.guardNextCellInput = false;
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this.clipboardArrowModifierHandoff = false;
+    if (this.isBlockingModalOpen(modalEl)) return;
+    if (this.activeCell && this.activeCell.colKey !== "gender") {
+      const { rowIdx, colKey } = this.activeCell;
+      const cell = this.elTableBody?.querySelector?.(`[data-row="${rowIdx}"][data-col="${colKey}"]`);
+      if (cell && typeof cell.querySelector === "function" && !cell.querySelector("input")) {
+        this.startInlineEdit?.(rowIdx, colKey, cell, true);
+      }
+    }
+    if (typeof this.focusSelectedCellEditor === "function" && (this.activeCell || this.crossDateSelection)) {
+      this.focusSelectedCellEditor();
+      if (typeof document === "undefined" || !modalEl?.contains?.(document.activeElement)) return;
+    }
+    this.elSheetContainer?.focus?.({ preventScroll: true });
+  }
+
   isCellInteractionActive() {
     return Boolean(this.genderPickerState) || this.isEditingCell() || this.isSearchDialogOpen();
   }

@@ -469,7 +469,7 @@ class PTAutocomplete {
     this.clearInlineAutocompletePreview();
     this.autocompleteCleanup?.();
     this.autocompleteCleanup = null;
-    const existing = document.getElementById("cellAutocompleteMenu");
+    const existing = typeof document !== "undefined" ? document.getElementById?.("cellAutocompleteMenu") : null;
     if (existing) {
       existing.remove();
     }

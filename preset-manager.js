@@ -197,10 +197,19 @@ class PTPresetManager {
     clearTimeout(this.presetManagerFocusTimer);
     this.clearPresetDrag();
     if (this.elPresetManagerModal?.style.display === "flex") {
+      if (typeof document !== "undefined" && this.elPresetManagerModal.contains?.(document.activeElement)) {
+        document.activeElement.blur?.();
+      }
       this.elPresetManagerModal.style.display = "none";
-      const focus = this.presetManagerReturnFocus?.isConnected ? this.presetManagerReturnFocus : this.elBtnManagePresets;
-      focus?.focus({ preventScroll: true });
+      const prev = this.presetManagerReturnFocus;
       this.presetManagerReturnFocus = null;
+      if (prev?.isConnected && prev !== this.elBtnManagePresets && !this.elPresetManagerModal.contains?.(prev)) {
+        prev.focus({ preventScroll: true });
+      } else if (this.activeCell && typeof this.restoreSheetFocusAfterModal === "function") {
+        this.restoreSheetFocusAfterModal(this.elPresetManagerModal);
+      } else {
+        (prev?.isConnected ? prev : this.elBtnManagePresets)?.focus?.({ preventScroll: true });
+      }
     }
   }
 
@@ -838,8 +847,10 @@ class PTPresetManager {
   }
 
   closePresetModal() {
-    this.elPresetModal.style.display = "none";
+    const wasOpen = Boolean(this.elPresetModal && this.elPresetModal.style.display && this.elPresetModal.style.display !== "none");
+    if (this.elPresetModal) this.elPresetModal.style.display = "none";
     this._editingPreset = null;
+    if (wasOpen) this.restoreSheetFocusAfterModal?.(this.elPresetModal);
   }
 
   savePresetFromModal() {

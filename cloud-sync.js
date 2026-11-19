@@ -99,7 +99,9 @@ class PTCloudSync {
   }
 
   closeSupabaseModal() {
+    const wasOpen = Boolean(this.elSupabaseModal && this.elSupabaseModal.style.display && this.elSupabaseModal.style.display !== "none");
     if (this.elSupabaseModal) this.elSupabaseModal.style.display = "none";
+    if (wasOpen) this.restoreSheetFocusAfterModal?.(this.elSupabaseModal);
   }
 
   async saveSupabaseConfig() {

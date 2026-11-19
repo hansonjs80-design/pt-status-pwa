@@ -317,7 +317,7 @@ class PTCellPickers {
     this.genderPickerState = null;
     this.genderPickerKeyListener = null;
     this.genderPickerOutsideListener = null;
-    const existing = document.getElementById("genderPickerMenu");
+    const existing = typeof document !== "undefined" ? document.getElementById?.("genderPickerMenu") : null;
     if (existing) {
       existing.remove();
     }

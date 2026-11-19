@@ -2,9 +2,10 @@
 class PTDateNavigation {
   closeDateCalendar(restoreFocus = false) {
     this.calendarCleanup?.();
-    document.getElementById("dateCalendar")?.remove();
-    this.elDateLabel.setAttribute("aria-expanded", "false");
-    if (restoreFocus) this.elDateLabel.focus();
+    this.calendarCleanup = null;
+    if (typeof document !== "undefined") document.getElementById?.("dateCalendar")?.remove();
+    this.elDateLabel?.setAttribute?.("aria-expanded", "false");
+    if (restoreFocus) this.elDateLabel?.focus?.();
   }
 
   openCalendar() {
@@ -83,10 +84,21 @@ class PTDateNavigation {
 
   setDate(dateStr) {
     this.patientHistorySearchRequestId = (this.patientHistorySearchRequestId || 0) + 1;
-    if (this.elSearchPromptModal?.style.display === 'flex') this.closeSearchPromptModal();
+    this.cancelSheetPointerInteraction?.();
+    if (this.highlightBrushColor) this.setHighlightBrush?.(null);
+    this.closeGenderDropdown?.();
+    this.closeAutocompleteMenu?.();
+    this.hideContextMenu?.();
+    this.closeFontColorMenu?.();
+    this.closeDateCalendar?.();
+    if (this.elSearchNotFoundModal?.style.display === 'flex' || this._searchNotFoundCleanup) {
+      this.searchNotFoundReturnTarget = null;
+      this.closeSearchNotFoundModal?.();
+    }
+    if (this.elSearchPromptModal?.style.display === 'flex') this.closeSearchPromptModal({ restoreFocus: false });
     const focusRequest = this._dateFocusRequest = {};
     const dateChanged = this.currentDate !== dateStr;
-    if (this.isEditingCell() || document.activeElement?.matches(".cell-input-element")) document.activeElement.blur();
+    if (this.isEditingCell() || document.activeElement?.matches?.(".cell-input-element")) document.activeElement?.blur?.();
     clearTimeout(this._saveTimer);
     clearTimeout(this._dateFocusTimer);
     this.clipboardSelection = null;
