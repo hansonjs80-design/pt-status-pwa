@@ -733,3 +733,195 @@ test('arrow keys recover when activeCell is null or a committed cell input is st
   assert.equal(brushCleared, true);
 });
 
+test('live cell editor clears stuck composing state when compositionend was omitted by OS IME and allows Arrow/Enter exit', () => {
+  const doc = { activeElement: null, hasFocus: () => true, querySelectorAll: () => [], getElementById: () => null };
+  doc.body = makeElement('body', doc);
+  doc.body.isConnected = true;
+  doc.createElement = tag => makeElement(tag, doc);
+
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date,
+    Event: class Event { constructor(type) { this.type = type; } },
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  const rows = [{ name: '', part: '' }, { name: '', part: '' }];
+  const sheet = makeElement('div', doc);
+  sheet.isConnected = true;
+  const cells = {
+    '0:name': makeElement('td', doc),
+    '1:name': makeElement('td', doc),
+    '0:part': makeElement('td', doc),
+  };
+  for (const [key, cell] of Object.entries(cells)) {
+    const [r, c] = key.split(':');
+    cell.dataset = { row: r, col: c };
+    sheet.appendChild(cell);
+  }
+  sheet.querySelector = sel => {
+    const m = sel.match(/\[data-row="(\d+)"\]\[data-col="(\w+)"\]/);
+    return m ? cells[`${m[1]}:${m[2]}`] || null : null;
+  };
+
+  let selected = null;
+  Object.assign(app, {
+    currentDate: '2026-11-25',
+    dataStore: { '2026-11-25': rows },
+    activeCell: { rowIdx: 0, colKey: 'name' },
+    elTableBody: sheet,
+    elSheetContainer: sheet,
+    elFormulaInput: { value: '' },
+    getCurrentRows: () => rows,
+    usesNativeCellInput: () => true,
+    getCellInputLanguage: () => 'kor',
+    isKoreanPreferredColumn: () => true,
+    isCellAutocompleteEnabled: () => false,
+    isAutocompleteOpen: () => false,
+    initMemoInput() {},
+    closeAutocompleteMenu() {},
+    loadSearchHistory: async () => {},
+    saveDataStore() {},
+    debounceSaveDataStore() {},
+    applyCellFormatting() {},
+    renderColoredText(el, r, k) { el.textContent = r[k] || ''; },
+    getEffectiveCellRichText: () => null,
+    normalizeCellEditorValue: (_i, v) => v,
+    assembleCellEditorText: (_i, v) => v,
+    endNativeCellEditing(inp) { inp.dataset.composing = 'false'; inp.dataset.nativeComposing = 'false'; },
+    applyCompoundPatientInput: () => false,
+    applyAutocompleteColor() {},
+    refreshNewPatientRows() {},
+    getCellEditorValue: inp => inp.value,
+    isHangulToggleKeyEvent: () => false,
+    toggleCellInputLanguage: () => false,
+    clearKoreanKeyBuffer() {},
+    releaseNavigationInputGuard() {},
+    blockInheritedNavigationInput: () => false,
+    handleClipboardArrowHandoff: () => false,
+    handleForcedCorrectionDelete: () => false,
+    handleForcedCorrectionShortcut: () => false,
+    handleCellRowSelectShortcut: () => false,
+    handleHistoryShortcut: () => false,
+    handleRowDeleteShortcut: () => false,
+    rememberPatientSearchDraft() {},
+    updateForcedCorrection() {},
+    refreshNativeLanguagePreview() {},
+    isSearchShortcut: () => false,
+    selectCell(r, c, el, edit) { selected = { r, c, el, edit }; app.activeCell = { rowIdx: r, colKey: c }; },
+    focusSelectedCellEditor() {},
+  });
+
+  app.startInlineEdit(0, 'name', cells['0:name'], false);
+  const input = cells['0:name'].querySelector('input');
+  assert.ok(input);
+  // Start Korean composition, type syllable, then OS omits compositionend before user presses ArrowDown
+  input.dispatchEvent({ type: 'compositionstart' });
+  input.value = '신';
+  input.setSelectionRange(1, 1);
+  input.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '신' });
+  assert.equal(input.dataset.composing, 'true');
+  assert.equal(input.dataset.nativeComposing, 'true');
+
+  const arrowEv = input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: false, keyCode: 40 });
+  assert.equal(arrowEv.defaultPrevented, true, 'ArrowDown must not be swallowed by stale composing state');
+  assert.equal(rows[0].name, '신', 'typed syllable committed cleanly');
+  assert.deepEqual(selected, { r: 1, c: 'name', el: cells['1:name'], edit: false });
+  assert.equal(app.isEditingCell(), false);
+});
+
+test('hidden modal input retaining focus, search load failure, and bounded search prompt guard never brick keyboard navigation', async () => {
+  const doc = {
+    activeElement: null,
+    documentElement: { classList: { contains: () => false } },
+    body: { tagName: 'BODY' },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    getElementById: () => null,
+  };
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {} },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date,
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+
+  const sheet = { focus() { doc.activeElement = sheet; }, classList: { remove() {} } };
+  const promptModal = {
+    style: { display: 'flex' },
+    contains: el => el === promptInput,
+    querySelector: () => null,
+  };
+  let promptBlurred = false;
+  const promptInput = {
+    tagName: 'INPUT',
+    isConnected: true,
+    value: '12345',
+    dataset: {},
+    style: {},
+    matches: () => false,
+    closest: sel => sel === '.modal-overlay' ? promptModal : null,
+    blur() { promptBlurred = true; if (doc.activeElement === promptInput) doc.activeElement = doc.body; },
+    focus() { doc.activeElement = promptInput; },
+    select() {},
+    setSelectionRange() {},
+  };
+  const cell0 = { dataset: { row: '0', col: 'no' }, querySelector: () => null };
+  const cell1 = { dataset: { row: '0', col: 'gender' }, querySelector: () => null };
+  let selected = null;
+  let restoredModal = null;
+
+  Object.assign(app, {
+    currentDate: '2026-11-25',
+    dataStore: { '2026-11-25': [{ no: '1', chartNo: '12345' }] },
+    activeCell: { rowIdx: 0, colKey: 'no' },
+    elSheetContainer: sheet,
+    elSearchPromptModal: promptModal,
+    elSearchPromptInput: promptInput,
+    elTableBody: {
+      querySelector: sel => sel === '[data-row="0"][data-col="gender"]' ? cell1 : cell0,
+    },
+    getCurrentRows: () => app.dataStore['2026-11-25'],
+    selectCell(r, c, el, edit) { selected = { r, c, el, edit }; app.activeCell = { rowIdx: r, colKey: c }; },
+    ensureCurrentCellVisible() {},
+  });
+
+  // 1. openSearchPromptModal bounds navigationInputGuard with navigationInputGuardUntil
+  app.openSearchPromptModal(0, '12345');
+  assert.equal(promptInput.dataset.navigationInputGuard, 'true');
+  assert.ok(Number(promptInput.dataset.navigationInputGuardUntil) > Date.now(), 'search prompt guard must expire automatically');
+
+  // 2. closeSearchPromptModal({ restoreFocus: false }) still blurs promptInput so hidden modal never keeps activeElement
+  promptBlurred = false;
+  doc.activeElement = promptInput;
+  app.closeSearchPromptModal({ restoreFocus: false });
+  assert.equal(promptModal.style.display, 'none');
+  assert.equal(promptBlurred, true);
+
+  // 3. Even if a browser dispatches keydown with target = input inside a hidden modal, handleGlobalKeyDown recovers and navigates
+  promptBlurred = false;
+  doc.activeElement = promptInput;
+  app.handleGlobalKeyDown({ key: 'ArrowRight', code: 'ArrowRight', target: promptInput, preventDefault() {}, stopPropagation() {} });
+  assert.equal(promptBlurred, true);
+  assert.deepEqual(selected, { r: 0, c: 'gender', el: cell1, edit: false });
+
+  // 4. Async searchPatientHistory network/cloud error restores focus instead of stranding keyboard
+  app.supabaseClient = {};
+  app.searchHistoryLoadError = new Error('network');
+  app.preparePatientHistorySearch = async () => ({ searchStore: {}, exists: false });
+  app.showSaveIndicator = () => {};
+  app.restoreSheetFocusAfterModal = m => { restoredModal = m; };
+  const ok = await app.searchPatientHistory('12345', 0);
+  assert.equal(ok, false);
+  assert.equal(restoredModal, promptModal);
+});
+
+

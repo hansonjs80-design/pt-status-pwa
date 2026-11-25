@@ -353,6 +353,11 @@ class PTCellEditor {
     });
     const existingEditor = cellElement.querySelector("input");
     if (existingEditor) {
+      if (typeof document !== "undefined" && document.activeElement !== existingEditor &&
+          existingEditor.dataset?.nativeComposing === "true") {
+        existingEditor.dataset.nativeComposing = "false";
+        existingEditor.dataset.composing = "false";
+      }
       if (!armed) {
         // Enter/double-click activates this selection; it must not undo a
         // language toggle already made while its border was selected.
@@ -713,6 +718,8 @@ class PTCellEditor {
         composing = false;
         input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
+        input.editorColorPreview?.remove?.();
+        input.nativeLanguagePreview?.remove?.();
         input.remove?.();
         return;
       }
@@ -993,10 +1000,19 @@ class PTCellEditor {
       const isArmedNavigationKey = input.classList.contains("is-armed") && !e.altKey &&
         (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "NumpadEnter", "Tab", "Escape", "Delete", "Backspace", "Home", "End", "PageUp", "PageDown", "F2"].includes(e.key) ||
          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "NumpadEnter", "Tab", "Escape", "Delete", "Backspace", "Home", "End", "PageUp", "PageDown", "F2"].includes(e.code));
-      if (isArmedNavigationKey) {
+      const nonComposingPhysicalKey = e.isComposing === false && e.keyCode !== 229 && e.which !== 229 &&
+        !["Process", "Unidentified", "Shift", "Control", "Alt", "Meta"].includes(e.key) &&
+        !this.isHangulToggleKeyEvent(e);
+      if (isArmedNavigationKey || (nonComposingPhysicalKey && (composing || input.dataset.composing === "true" || input.dataset.nativeComposing === "true"))) {
+        if (!input.classList.contains("is-armed") && input._forcedCorrectionProjection) {
+          this.updateForcedCorrection?.(input, colKey, { commit: true, deleting: ["Backspace", "Delete"].includes(e.key) });
+          delete input._forcedCorrectionProjection;
+        }
+        delete input._nativeCellComposition;
         composing = false;
         input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
+        this.refreshNativeLanguagePreview?.(input);
       }
       if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey && !isArmedNavigationKey) {
         e.stopPropagation();

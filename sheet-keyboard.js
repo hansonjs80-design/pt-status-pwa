@@ -191,6 +191,25 @@ class PTSheetKeyboard {
     return true;
   }
 
+  isInactiveTextControl(target) {
+    if (!target) return false;
+    if (target.isConnected === false || target.disabled === true || target.hidden === true || target.style?.display === "none") {
+      return true;
+    }
+    if (target.matches?.(".cell-input-element") && target.dataset?.committed === "true") {
+      return true;
+    }
+    const overlay = target.closest?.(".modal-overlay");
+    if (overlay && (overlay.isConnected === false || overlay.hidden || overlay.style?.display === "none")) {
+      return true;
+    }
+    const dialog = target.closest?.("dialog");
+    if (dialog && (dialog.isConnected === false || dialog.hidden || dialog.open === false)) {
+      return true;
+    }
+    return false;
+  }
+
   handleGlobalKeyDown(e) {
     if (this._recordsRestorePending) return;
     if (typeof document !== "undefined" && document.documentElement?.classList?.contains?.("clinic-locked")) return;
@@ -255,11 +274,12 @@ class PTSheetKeyboard {
     }
     // If currently typing in an input/textarea inside a cell or modal
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      // Recover if a detached or already-committed cell input somehow retained focus.
-      if (e.target.matches?.(".cell-input-element") &&
-          (e.target.isConnected === false || e.target.dataset?.committed === "true")) {
-        if (e.target.isConnected) e.target.remove?.();
-        this.elSheetContainer?.focus?.({ preventScroll: true });
+      // Recover if a detached, committed, or closed-modal input somehow retained focus.
+      if (this.isInactiveTextControl(e.target)) {
+        if (e.target.matches?.(".cell-input-element") && e.target.isConnected) e.target.remove?.();
+        else e.target.blur?.();
+        if (this.activeCell || this.crossDateSelection) this.focusSelectedCellEditor?.();
+        else this.elSheetContainer?.focus?.({ preventScroll: true });
       } else {
         // ★ 셀 편집 중에도 Ctrl/Cmd+F로 검색 가능: 성함 셀만 현재 내용으로 검색하고 나머지 셀은 빈 검색창 오픈
         if (this.isSearchShortcut(e)) {

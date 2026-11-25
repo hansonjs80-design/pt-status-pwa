@@ -298,11 +298,18 @@ class PTApp {
     if (typeof document === "undefined") return false;
     if (document.documentElement?.classList?.contains?.("clinic-locked")) return true;
     const openDialog = document.querySelector?.("dialog[open]");
-    if (openDialog && openDialog !== excludeModal && openDialog.tagName === "DIALOG" && openDialog.open !== false) return true;
+    if (openDialog && openDialog !== excludeModal && openDialog.isConnected !== false &&
+        openDialog.tagName === "DIALOG" && openDialog.open !== false && !openDialog.hidden) return true;
     const overlays = document.querySelectorAll?.(".modal-overlay") || [];
     for (const overlay of overlays) {
-      if (overlay === excludeModal) continue;
-      if (overlay.style?.display && overlay.style.display !== "none") return true;
+      if (overlay === excludeModal || overlay.isConnected === false || overlay.hidden) continue;
+      if (overlay.style?.display === "none") continue;
+      if (overlay.style?.display) return true;
+      if (overlay.id === "columnFontSettingsModal" ||
+          overlay.classList?.contains?.("preset-confirm-dialog") ||
+          overlay.classList?.contains?.("preset-color-editor")) return true;
+      if (typeof getComputedStyle === "function" && overlay instanceof Element &&
+          getComputedStyle(overlay)?.display !== "none") return true;
     }
     return false;
   }

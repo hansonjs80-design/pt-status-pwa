@@ -498,13 +498,35 @@ class PTAppEvents {
     document.addEventListener("keydown", (e) => {
       if (document.documentElement?.classList?.contains?.("clinic-locked")) return;
       if (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27) {
-        const fcModal = document.getElementById("forcedCorrectionModal");
-        if (fcModal && fcModal.style.display === "flex") {
+        const fcModal = document.getElementById?.("forcedCorrectionModal");
+        if (fcModal && fcModal.style?.display === "flex") {
           this.closeForcedCorrectionManager?.();
+          return;
+        }
+        const notFoundModal = this.elSearchNotFoundModal || document.getElementById?.("searchNotFoundModal");
+        if (notFoundModal && notFoundModal.style?.display === "flex") {
+          this.closeSearchNotFoundModal?.();
+          return;
+        }
+        if (this.elSearchPromptModal && this.elSearchPromptModal.style?.display === "flex") {
+          this.closeSearchPromptModal?.();
+          return;
+        }
+        const staffModal = document.getElementById?.("staffCountSettingsModal");
+        if (staffModal && staffModal.style?.display === "flex") {
+          this.closeStaffCountSettings?.();
+          return;
+        }
+        const colFontModal = document.getElementById?.("columnFontSettingsModal");
+        if (colFontModal) {
+          colFontModal.remove?.();
+          this.restoreSheetFocusAfterModal?.(colFontModal);
           return;
         }
         this.closeQuickTextEditDialog?.();
         this.closeGenderDropdown();
+        this.closeFontColorMenu?.();
+        this.closeDateCalendar?.();
         this.hideContextMenu();
         this.closePreviewModal();
         this.closeBackupModal();

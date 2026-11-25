@@ -469,8 +469,15 @@ class PTHistorySearch {
     this.elSearchInput.value = '';
     // Use the same exit path as Escape to restore the origin or applied row.
     this.handleSearch();
-    if (!document.activeElement?.matches?.(".cell-input-element")) {
-      this.elSheetContainer.focus({ preventScroll: true });
+    const activeEl = typeof document !== "undefined" ? document.activeElement : null;
+    const hasLiveCellInput = Boolean(
+      activeEl &&
+      activeEl.isConnected !== false &&
+      activeEl.dataset?.committed !== "true" &&
+      activeEl.matches?.(".cell-input-element")
+    );
+    if (!hasLiveCellInput) {
+      this.elSheetContainer?.focus?.({ preventScroll: true });
     }
   }
 

@@ -114,10 +114,20 @@ class PTTableView {
         // Cell Mouse Down handler (Start Drag Selection)
         td.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return; // Only Left Click
+          if (!this._recordsRestorePending) {
+            this.directHistorySearchKeyHeld = false;
+            this.historyApplyBlockedKey = null;
+            this.guardNextCellInput = false;
+            this.presetLeftKeyHeld = false;
+            this.leftEditHandoffUntil = 0;
+            this.clipboardArrowModifierHandoff = false;
+            const appShell = typeof document !== "undefined" ? document.querySelector?.(".excel-app") : null;
+            if (appShell?.inert) appShell.inert = false;
+          }
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
           if (e.ctrlKey || e.metaKey) { e.preventDefault(); this.toggleCellSelection(rowIdx, colIdx); return; }
           // If already editing inside input, don't interrupt text cursor
-          if (e.target.tagName === "INPUT") return;
+          if (e.target.tagName === "INPUT" && !e.target.classList?.contains?.("is-armed") && e.target.dataset?.committed !== "true") return;
           e.preventDefault();
 
           this.isSelectingRange = true;
@@ -147,11 +157,17 @@ class PTTableView {
         // Cell Click handler (Clean cell selection)
         td.addEventListener("click", (e) => {
           if (e.ctrlKey || e.metaKey) return;
-          if (e.target.closest("input, textarea")) return;
+          if (e.target.closest("textarea") ||
+              (e.target.closest("input") && !e.target.classList?.contains?.("is-armed") && e.target.dataset?.committed !== "true")) return;
           if (e.shiftKey && this.activeCell) return;
           if (this.selectedRange && (this.selectedRange.minRow !== this.selectedRange.maxRow || this.selectedRange.minCol !== this.selectedRange.maxCol)) return;
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
+          this.directHistorySearchKeyHeld = false;
+          this.historyApplyBlockedKey = null;
           this.guardNextCellInput = false;
+          this.presetLeftKeyHeld = false;
+          this.leftEditHandoffUntil = 0;
+          this.clipboardArrowModifierHandoff = false;
           this.selectCell(rowIdx, key, td, false);
         });
 

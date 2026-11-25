@@ -31,6 +31,7 @@ class PTPatientSearchDialog {
     input._koreanNameOnly = true;
     input.dataset ||= {};
     delete input.dataset.navigationInputGuard;
+    delete input.dataset.navigationInputGuardUntil;
     input.dataset.nativeComposing = 'false';
   }
 
@@ -243,6 +244,7 @@ class PTPatientSearchDialog {
     this.elSearchPromptInput.value = initialValue;
     this.elSearchPromptInput._guardedInitialValue = initialValue;
     this.elSearchPromptInput.dataset.navigationInputGuard = "true";
+    this.elSearchPromptInput.dataset.navigationInputGuardUntil = String(Date.now() + 180);
     const cellName = String(this.getCurrentRows()[this.searchPromptTargetRowIdx]?.name ?? "").trim();
     this.searchPromptCellName = cellName && cellName === this.elSearchPromptInput.value.trim() ? cellName : null;
     this.elSearchPromptModal.style.display = "flex";
@@ -270,6 +272,10 @@ class PTPatientSearchDialog {
     }
     if (!this.elSearchPromptModal) return;
     this.closeSearchPromptAutocomplete();
+    if (typeof document !== "undefined" &&
+        (document.activeElement === this.elSearchPromptInput || this.elSearchPromptModal.contains?.(document.activeElement))) {
+      document.activeElement?.blur?.();
+    }
     this.elSearchPromptModal.style.display = "none";
     if (!restoreFocus) return;
     const activeSearch = Boolean(this.elSearchInput?.value?.trim());
@@ -662,6 +668,7 @@ class PTPatientSearchDialog {
     } catch (_) {
       if (requestId === this.patientHistorySearchRequestId && date === this.currentDate) {
         this.showSaveIndicator("검색을 완료하지 못했습니다. 다시 검색해 주세요.", true);
+        if (!this.isSearchDialogOpen?.()) this.restoreSheetFocusAfterModal?.(this.elSearchPromptModal);
       }
       return false;
     }
@@ -672,6 +679,7 @@ class PTPatientSearchDialog {
     if (!exists) {
       if (this.supabaseClient && this.searchHistoryLoadError) {
         this.showSaveIndicator("검색 기록을 불러오지 못했습니다. 연결을 확인한 뒤 다시 검색해 주세요.", true);
+        if (!this.isSearchDialogOpen?.()) this.restoreSheetFocusAfterModal?.(this.elSearchPromptModal);
         return false;
       }
       this.showSearchNotFoundModal("일치하는 환자 내역이 없습니다.", { query, targetRowIdx });

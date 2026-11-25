@@ -1187,6 +1187,7 @@
         dialog.addEventListener('close', () => {
           window.removeEventListener('pt-app-update-available', onUpdateFound);
           window.removeEventListener('pt-app-update-checked', updateCheckStatus);
+          this.app?.restoreSheetFocusAfterModal?.(dialog);
         }, { once: true });
       }
 

@@ -95,8 +95,12 @@ class PTCellInputTools {
       `[data-row="${selected.rowIdx}"][data-col="${selected.colKey}"] input`));
     // Keep the destination's native input focused before the first IME key.
     // Moving focus to the sheet makes the first composing key create/refocus an editor.
-    if (input) input.focus({ preventScroll: true });
-    else this.elSheetContainer?.focus({ preventScroll: true });
+    if (input && typeof input.focus === 'function' && input.isConnected !== false &&
+        input.dataset?.committed !== 'true') {
+      input.focus({ preventScroll: true });
+    } else {
+      this.elSheetContainer?.focus?.({ preventScroll: true });
+    }
   }
 
   selectAutocompleteLeftCell(rowIdx, colKey) {
