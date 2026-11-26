@@ -193,18 +193,41 @@ class PTLocalRecordStore {
   }
 
   updateLocalRestoreUI(state) {
-    const panel = document.getElementById('localRestoreNotice');
-    const app = document.querySelector('.excel-app');
-    if (app) app.inert = Boolean(this._recordsRestorePending);
+    const panel = document.getElementById?.('localRestoreNotice');
+    const locked = Boolean(this._recordsRestorePending);
+    const sections = document.querySelectorAll?.('.excel-ribbon, .formula-bar, .excel-workspace') || [];
+    for (const section of sections) section.inert = locked;
+    const app = document.querySelector?.('.excel-app');
+    if (app) {
+      app.inert = panel && app.contains?.(panel) ? false : locked;
+    }
     if (!panel) return;
+    const isError = state === 'records-error' || state === 'sync-error';
     panel.hidden = !state;
-    const message = panel.querySelector('[data-restore-message]');
-    message.textContent = state === 'loading' ? '이 기기에 저장된 기록을 불러오는 중입니다.'
-      : state === 'records-error' ? '저장된 기록을 아직 불러오지 못했습니다. 기존 기록을 보존하고 있습니다. 다시 시도해 주세요.'
-        : '기록은 열렸지만 동기화 준비를 완료하지 못했습니다. 다시 시도해 주세요.';
-    const retry = panel.querySelector('button');
-    retry.disabled = state === 'loading';
-    retry.onclick = () => void this.restoreLocalState();
+    panel.classList?.toggle?.('is-error', isError);
+    const fullMessage = state === 'loading'
+      ? '이 기기에 저장된 기록을 불러오는 중입니다.'
+      : state === 'records-error'
+        ? '저장된 기록을 아직 불러오지 못했습니다. 기존 기록을 보존하고 있습니다. 다시 시도해 주세요.'
+        : state === 'sync-error'
+          ? '기록은 열렸지만 동기화 준비를 완료하지 못했습니다. 다시 시도해 주세요.'
+          : '';
+    const compactMessage = state === 'loading'
+      ? '기록 불러오는 중'
+      : state === 'records-error'
+        ? '기록 복원 실패'
+        : state === 'sync-error'
+          ? '동기화 확인 필요'
+          : '';
+    panel.title = fullMessage;
+    const message = panel.querySelector?.('[data-restore-message]');
+    if (message) message.textContent = compactMessage;
+    const retry = panel.querySelector?.('button');
+    if (retry) {
+      retry.hidden = !isError;
+      retry.disabled = state === 'loading';
+      retry.onclick = () => void this.restoreLocalState();
+    }
   }
 
   async syncBaselineDisk(value) {

@@ -62,14 +62,6 @@
     </div>
   </div>
 
-  <div id="devicePersistenceNotice" class="local-restore-notice" role="status" hidden>
-    <span data-device-persistence-message></span>
-    <button type="button">다시 시도</button>
-  </div>
-  <div id="localRestoreNotice" class="local-restore-notice" role="alert" hidden>
-    <span data-restore-message></span>
-    <button type="button">다시 시도</button>
-  </div>
   <div class="excel-app">
     <!-- Top Green Header Ribbon Bar -->
     <header class="excel-titlebar">
@@ -79,6 +71,18 @@
         <span class="save-status" id="saveStatus">저장 완료됨</span>
       </div>
       <div class="title-right">
+        <div class="titlebar-status-notices">
+          <div id="devicePersistenceNotice" class="local-restore-notice" role="status" hidden>
+            <span class="notice-dot" aria-hidden="true"></span>
+            <span data-device-persistence-message></span>
+            <button type="button">재시도</button>
+          </div>
+          <div id="localRestoreNotice" class="local-restore-notice" role="alert" hidden>
+            <span class="notice-dot" aria-hidden="true"></span>
+            <span data-restore-message></span>
+            <button type="button">재시도</button>
+          </div>
+        </div>
         <button type="button" class="btn-clinic-lock" id="btnClinicLock" title="화면 잠금" aria-label="화면 잠금">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align: -1px; margin-right: 3px;">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>

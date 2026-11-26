@@ -123,6 +123,10 @@ class PTTableView {
             this.clipboardArrowModifierHandoff = false;
             const appShell = typeof document !== "undefined" ? document.querySelector?.(".excel-app") : null;
             if (appShell?.inert) appShell.inert = false;
+            const sections = typeof document !== "undefined" ? (document.querySelectorAll?.(".excel-ribbon, .formula-bar, .excel-workspace") || []) : [];
+            for (const section of sections) {
+              if (section?.inert) section.inert = false;
+            }
           }
           if (e.target.closest(".cell-fill-handle") || e.target.closest(".gender-dropdown-btn")) return;
           if (e.ctrlKey || e.metaKey) { e.preventDefault(); this.toggleCellSelection(rowIdx, colIdx); return; }

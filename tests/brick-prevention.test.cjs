@@ -1127,5 +1127,54 @@ test('self-echoed clinic schedule count realtime updates and unchanged disk snap
   assert.equal(scannedDates, 0, 'closed sidebar must not scan multi-date history on every cell save');
 });
 
+test('startup restore and device persistence notices render compactly to the left of btnClinicLock and keep retry interactive', () => {
+  const path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const titleRightMatch = html.match(/<div class="title-right">([\s\S]*?)<\/header>/);
+  assert.ok(titleRightMatch, 'title-right section exists inside excel-titlebar');
+  const titleRightHtml = titleRightMatch[1];
+  const devIdx = titleRightHtml.indexOf('id="devicePersistenceNotice"');
+  const restoreIdx = titleRightHtml.indexOf('id="localRestoreNotice"');
+  const lockIdx = titleRightHtml.indexOf('id="btnClinicLock"');
+  assert.ok(devIdx >= 0 && restoreIdx >= 0 && lockIdx >= 0, 'both notices and lock button live inside title-right');
+  assert.ok(devIdx < lockIdx && restoreIdx < lockIdx, 'both notices appear to the left of btnClinicLock');
+
+  // Verify updateLocalRestoreUI hides retry while loading, shows retry on error, and never marks .excel-app inert when notice is inside it
+  const msgEl = { textContent: '' };
+  const retryBtn = { hidden: false, disabled: false, onclick: null };
+  const panel = {
+    hidden: true,
+    title: '',
+    classList: { toggle(cls, on) { if (cls === 'is-error') panel.isError = on; } },
+    querySelector: sel => sel === '[data-restore-message]' ? msgEl : sel === 'button' ? retryBtn : null,
+  };
+  const ribbon = { inert: false };
+  const workspace = { inert: false };
+  const appShell = { inert: false, contains: el => el === panel };
+  const doc = {
+    getElementById: id => id === 'localRestoreNotice' ? panel : null,
+    querySelector: sel => sel === '.excel-app' ? appShell : null,
+    querySelectorAll: sel => sel.includes('.excel-workspace') ? [ribbon, workspace] : [],
+  };
+  const ctx = vm.createContext({ window: { addEventListener() {} }, document: doc, localStorage: { getItem: () => null, setItem() {} } });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', ctx);
+  const app = Object.create(ctx.App.prototype);
+  app._recordsRestorePending = true;
+  app.updateLocalRestoreUI('loading');
+  assert.equal(panel.hidden, false);
+  assert.equal(msgEl.textContent, '기록 불러오는 중');
+  assert.equal(retryBtn.hidden, true, 'retry button hidden during normal loading');
+  assert.equal(appShell.inert, false, 'titlebar container stays interactive');
+  assert.equal(ribbon.inert, true);
+  assert.equal(workspace.inert, true);
+
+  app.updateLocalRestoreUI('records-error');
+  assert.equal(msgEl.textContent, '기록 복원 실패');
+  assert.equal(retryBtn.hidden, false, 'retry button visible on error');
+  assert.equal(retryBtn.disabled, false);
+  assert.equal(panel.isError, true);
+});
+
+
 
 

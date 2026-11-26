@@ -280,22 +280,35 @@
       const notice = document.getElementById?.('devicePersistenceNotice');
       if (!notice) return;
       const recovering = !this._initialized;
-      const failed = Boolean(this.app._deviceStorageErrors?.size || this.app._devicePendingWrites?.size);
+      const hasError = Boolean(this.app._deviceStorageErrors?.size || (recovering && !this._initializing && (this._recoveryAttempts || 0) > 0));
+      const pendingWrite = Boolean(this.app._devicePendingWrites?.size);
+      const failed = hasError || pendingWrite;
       notice.hidden = !recovering && !failed;
-      const message = recovering
+      notice.classList?.toggle?.('is-error', hasError);
+      const fullMessage = recovering
         ? '이 컴퓨터의 설정을 불러오는 중입니다. 저장소 연결이 지연되면 자동으로 다시 시도합니다.'
-        : '기기 설정을 확인·저장하고 있습니다. 완료될 때까지 앱을 열어 두세요.';
-      notice.querySelector('[data-device-persistence-message]').textContent = message;
+        : hasError
+          ? '기기 설정 저장 확인이 필요합니다. 다시 시도를 눌러 저장 상태를 확인해 주세요.'
+          : '기기 설정을 확인·저장하고 있습니다. 완료될 때까지 앱을 열어 두세요.';
+      const compactMessage = recovering
+        ? (hasError ? '설정 복원 지연' : '설정 불러오는 중')
+        : (hasError ? '설정 저장 확인' : '설정 저장 중');
+      notice.title = fullMessage;
+      const msgEl = notice.querySelector?.('[data-device-persistence-message]');
+      if (msgEl) msgEl.textContent = compactMessage;
       const dialogStatus = this.dialog?.querySelector('[data-persistence-status]');
-      if (dialogStatus) { dialogStatus.hidden = notice.hidden;dialogStatus.textContent = message; }
+      if (dialogStatus) { dialogStatus.hidden = notice.hidden; dialogStatus.textContent = fullMessage; }
       if (this.app._deviceStorageErrors?.size) this._hadStorageFailure = true;
       if (notice.hidden && this._hadStorageFailure) {
         this._hadStorageFailure = false;
         this.report('이 컴퓨터의 설정 저장·확인이 완료되었습니다.');
       }
-      const retry = notice.querySelector('button');
-      retry.disabled = this._initializing;
-      retry.onclick = () => { void this.app.retryDeviceSettingsWrites?.();if (!this._initialized) void this.initialize(); };
+      const retry = notice.querySelector?.('button');
+      if (retry) {
+        retry.hidden = !hasError;
+        retry.disabled = Boolean(this._initializing);
+        retry.onclick = () => { void this.app.retryDeviceSettingsWrites?.(); if (!this._initialized) void this.initialize(); };
+      }
     }
     async init() {
       await this.recovery?.inspectStartup();
