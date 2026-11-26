@@ -344,6 +344,16 @@ class PTSummary {
 
   updateSidebarStats() {
     const period = this.summaryPeriod || "day";
+    const sidebar = typeof document !== "undefined" ? document.getElementById?.("summarySidebar") : null;
+    if (period !== "day" && sidebar?.classList?.contains?.("summary-closed")) {
+      const headerCountEl = this.elHeaderTotalCount || (typeof document !== "undefined" && document.getElementById?.("headerTotalCount"));
+      if (headerCountEl) {
+        headerCountEl.textContent = String(this.getDailySummary().total);
+      }
+      this._summaryStatsDirty = true;
+      return;
+    }
+    this._summaryStatsDirty = false;
     const dates = period === "day" ? [] : this.getSummaryDates(period);
     const selectedDates = dates.filter(entry => this.matchesSummaryFilters(entry, period));
     const summary = period === "day" ? this.getDailySummary() : this.getDailySummary(selectedDates.flatMap(entry => entry.rows));

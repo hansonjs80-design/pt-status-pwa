@@ -56,6 +56,7 @@
     const clock = document.createElement('div');
     clock.id = 'sheetDigitalClock';
     clock.className = 'sheet-digital-clock';
+    clock.style.pointerEvents = 'none';
     clock.setAttribute('role','img');
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns,'svg');
@@ -118,7 +119,10 @@
       schedule();
     };
     new ResizeObserver(schedule).observe(sheet);
-    new MutationObserver(schedule).observe(sheet,{childList:true,subtree:true});
+    const tableBody = document.getElementById('tableBody');
+    const observer = new MutationObserver(schedule);
+    observer.observe(sheet, { attributes: true, attributeFilter: ['class'] });
+    if (tableBody) observer.observe(tableBody, { childList: true });
     sheet.addEventListener('scroll',schedule,true);
     window.addEventListener('resize',schedule);
     window.visualViewport?.addEventListener('resize',schedule);

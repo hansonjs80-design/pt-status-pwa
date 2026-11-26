@@ -629,7 +629,7 @@ class PTPatientSearchDialog {
       this.cloudPullDeferred = false;
       setTimeout(() => {
         if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) && !this.pendingSyncDates?.has(this.currentDate)) {
-          void this.pullFromCloud?.(this.currentDate);
+          void this.pullFromCloud?.(this.currentDate, false, { checkVersion: true });
         }
       }, 80);
     }

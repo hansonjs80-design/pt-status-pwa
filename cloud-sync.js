@@ -193,11 +193,18 @@ class PTCloudSync {
     }
   }
 
-  handleRealtimeCloudChange(date) {
+  handleRealtimeCloudChange(date, incomingUpdatedAt = null) {
     if (!date) return;
     if (date === PT_STAFF_COUNT_SETTINGS_RECORD) { void this.syncStaffCountSettings(); return; }
     if (date === SHARED_COLUMN_FORMATTING_RECORD) { void this.syncSharedColumnFormatting(); return; }
     if (date === SHARED_PRESETS_RECORD) { void this.syncSharedPresets({ force: true }); return; }
+    // Ignore our own echoed postgres_changes event when we already hold this exact revision.
+    if (incomingUpdatedAt &&
+        this.cloudRecordVersions?.get(date)?.client === this.supabaseClient &&
+        this.cloudRecordVersions.get(date).version === incomingUpdatedAt &&
+        !this.pendingSyncDates?.has(date)) {
+      return;
+    }
     if (date === this.currentDate) {
       if (this.isCellInteractionActive?.() ?? this.isEditingCell()) {
         this.cloudPullDeferred = true;
@@ -256,7 +263,7 @@ class PTCloudSync {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "pt_daily_records" }, (payload) => {
         const recordDate = payload.new?.date || payload.old?.date;
-        if (recordDate) this.handleRealtimeCloudChange(recordDate);
+        if (recordDate) this.handleRealtimeCloudChange(recordDate, payload.new?.updated_at || null);
       });
     this.liveChannel.subscribe((status) => {
       if (this.liveSyncSession !== session) return;
@@ -612,6 +619,7 @@ class PTCloudSync {
     const snapshot = JSON.stringify(this.dataStore[dateStr] || []);
     const local = JSON.parse(snapshot), base = this.syncBaselines.get(dateStr) || [];
     const manualDeletion = this.manualDateDeletions?.get(dateStr);
+    let pushSucceeded = false;
     this.activePushes.set(dateStr, true);
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -683,6 +691,7 @@ class PTCloudSync {
         localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
         this.notifyCloudChange(dateStr);
         this.showSaveIndicator("클라우드 동기화 완료");
+        pushSucceeded = true;
         return;
       }
       throw new Error("다른 기기의 변경으로 재시도가 필요합니다");
@@ -691,7 +700,12 @@ class PTCloudSync {
       localStorage.setItem("PT_PENDING_DATES", JSON.stringify([...this.pendingSyncDates]));
       this.showSaveIndicator("클라우드 동기화 재시도 중", true);
       if (showNotice) alert("클라우드 업로드 실패: " + error.message);
-    } finally { this.activePushes.delete(dateStr); }
+    } finally {
+      this.activePushes.delete(dateStr);
+      if (pushSucceeded && client === this.supabaseClient && this.pendingSyncDates?.has(dateStr) && !this.syncTimers?.has(dateStr)) {
+        this.scheduleSupabaseSync(dateStr, false);
+      }
+    }
   }
 
   async pullFromCloud(dateStr, showNotice = false, { checkVersion = false } = {}) {

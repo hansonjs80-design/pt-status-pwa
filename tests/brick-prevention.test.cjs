@@ -924,4 +924,208 @@ test('hidden modal input retaining focus, search load failure, and bounded searc
   assert.equal(restoredModal, promptModal);
 });
 
+test('active Korean IME composition (Process/229) allows ArrowUp/Down/Right/Tab cell exit without leaking text or losing focus, and blocks IME replay', () => {
+  const doc = { activeElement: null, hasFocus: () => true, querySelectorAll: () => [], getElementById: () => null };
+  doc.body = makeElement('body', doc);
+  doc.body.isConnected = true;
+  doc.createElement = tag => makeElement(tag, doc);
+
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date,
+    Event: class Event { constructor(type) { this.type = type; } },
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  const rows = [
+    { no: '', gender: '', chartNo: '', name: '', part: '', memo: '' },
+    { no: '', gender: '', chartNo: '', name: '', part: '', memo: '' },
+  ];
+  const sheet = makeElement('div', doc);
+  sheet.isConnected = true;
+  const cells = {};
+  for (const r of [0, 1]) {
+    for (const c of ['name', 'part', 'memo']) {
+      const td = makeElement('td', doc);
+      td.dataset = { row: String(r), col: c };
+      sheet.appendChild(td);
+      cells[`${r}:${c}`] = td;
+    }
+  }
+  sheet.querySelector = sel => {
+    const m = sel.match(/\[data-row="(\d+)"\]\[data-col="(\w+)"\]( input)?/);
+    if (!m) return null;
+    const cell = cells[`${m[1]}:${m[2]}`] || null;
+    return m[3] ? cell?.querySelector('input') || null : cell;
+  };
+
+  const selections = [];
+  let navigatedCols = [];
+  Object.assign(app, {
+    currentDate: '2026-11-26',
+    dataStore: { '2026-11-26': rows },
+    activeCell: { rowIdx: 0, colKey: 'name' },
+    elTableBody: sheet,
+    elSheetContainer: sheet,
+    elFormulaInput: { value: '' },
+    getCurrentRows: () => rows,
+    usesNativeCellInput: () => true,
+    getCellInputLanguage: () => 'kor',
+    isKoreanPreferredColumn: () => true,
+    isCellAutocompleteEnabled: col => col !== 'name',
+    isAutocompleteOpen: () => false,
+    initMemoInput() {},
+    closeAutocompleteMenu() {},
+    loadSearchHistory: async () => {},
+    saveDataStore() {},
+    debounceSaveDataStore() {},
+    applyCellFormatting() {},
+    renderColoredText(el, r, k) { el.textContent = r[k] || ''; },
+    getEffectiveCellRichText: () => null,
+    normalizeCellEditorValue: (_i, v) => v,
+    assembleCellEditorText: (_i, v) => v,
+    endNativeCellEditing(inp) { inp.blur?.(); inp.dataset.composing = 'false'; inp.dataset.nativeComposing = 'false'; },
+    applyCompoundPatientInput: () => false,
+    applyAutocompleteColor() {},
+    refreshNewPatientRows() {},
+    getCellEditorValue: inp => inp.value,
+    isHangulToggleKeyEvent: () => false,
+    toggleCellInputLanguage: () => false,
+    clearKoreanKeyBuffer() {},
+    handleClipboardArrowHandoff: () => false,
+    handleForcedCorrectionDelete: () => false,
+    handleForcedCorrectionShortcut: () => false,
+    handleCellRowSelectShortcut: () => false,
+    handleHistoryShortcut: () => false,
+    handleRowDeleteShortcut: () => false,
+    rememberPatientSearchDraft() {},
+    updateForcedCorrection() {},
+    refreshNativeLanguagePreview() {},
+    isSearchShortcut: () => false,
+    navigateCol(r, col, dir) { navigatedCols.push({ r, col, dir }); },
+    selectCell(r, c, el, edit) {
+      selections.push({ r, c, edit });
+      app.activeCell = { rowIdx: r, colKey: c };
+      app.startInlineEdit(r, c, el, !edit);
+    },
+  });
+
+  // 1. ArrowDown during active Korean IME composition (Process/229) commits '신' and moves to row 1 without double-jumping on IME replay
+  app.startInlineEdit(0, 'name', cells['0:name'], false);
+  const nameInput = cells['0:name'].querySelector('input');
+  nameInput.dispatchEvent({ type: 'compositionstart' });
+  nameInput.value = '신';
+  nameInput.setSelectionRange(1, 1);
+  nameInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '신' });
+  const downEv = nameInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowDown', isComposing: true, keyCode: 229 });
+  assert.equal(downEv.defaultPrevented, true);
+  assert.equal(rows[0].name, '신');
+  assert.deepEqual(selections.at(-1), { r: 1, c: 'name', edit: false });
+  const destInput = cells['1:name'].querySelector('input');
+  assert.equal(destInput.dataset.navigationInputGuard, 'true', 'destination cell guarded against inherited IME syllable');
+  // Replayed Process/229 ArrowDown from OS IME is consumed
+  const replayDown = destInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowDown', isComposing: true, keyCode: 229 });
+  assert.equal(replayDown.defaultPrevented, true);
+  assert.equal(selections.length, 1, 'IME replay must not jump a second row');
+
+  // 2. ArrowRight at caret end during active Korean IME composition commits '허리' and moves right
+  app.startInlineEdit(0, 'part', cells['0:part'], false);
+  const partInput = cells['0:part'].querySelector('input');
+  partInput.dispatchEvent({ type: 'compositionstart' });
+  partInput.value = '허리';
+  partInput.setSelectionRange(2, 2);
+  partInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '허리' });
+  const rightEv = partInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowRight', isComposing: true, keyCode: 229 });
+  assert.equal(rightEv.defaultPrevented, true);
+  assert.equal(rows[0].part, '허리');
+
+  // 3. Tab during active Korean IME composition calls preventDefault (never leaks focus to toolbar) and navigates column
+  app.startInlineEdit(0, 'memo', cells['0:memo'], false);
+  const memoInput = cells['0:memo'].querySelector('input');
+  memoInput.dispatchEvent({ type: 'compositionstart' });
+  memoInput.value = '충완';
+  memoInput.setSelectionRange(2, 2);
+  memoInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '충완' });
+  const tabEv = memoInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'Tab', isComposing: true, keyCode: 229 });
+  assert.equal(tabEv.defaultPrevented, true, 'Tab must prevent browser focus escape');
+  assert.equal(rows[0].memo, '충완');
+  assert.deepEqual(navigatedCols, [{ r: 0, col: 'memo', dir: 1 }]);
+});
+
+test('self-echoed clinic schedule count realtime updates and unchanged disk snapshots are skipped, while concurrent push edits schedule follow-up sync', async () => {
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: { activeElement: null, getElementById: () => null, querySelectorAll: () => [] },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    setTimeout,
+    clearTimeout,
+    Date,
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+
+  // 1. Self-echoed postgres_changes matching cloudRecordVersions does not trigger redundant pullFromCloud
+  const client = {};
+  let pulls = 0;
+  app.supabaseClient = client;
+  app.currentDate = '2026-11-26';
+  app.pendingSyncDates = new Set();
+  app.cloudRecordVersions = new Map([['2026-11-26', { client, version: '2026-11-26T02:00:00.000Z', snapshot: '[]' }]]);
+  app.isCellInteractionActive = () => false;
+  app.pullFromCloud = async () => { pulls++; };
+
+  app.handleRealtimeCloudChange('2026-11-26', '2026-11-26T02:00:00.000Z');
+  assert.equal(pulls, 0, 'own echoed postgres_changes update must not re-pull full daily rows');
+
+  app.handleRealtimeCloudChange('2026-11-26', '2026-11-26T02:01:00.000Z');
+  assert.equal(pulls, 1, 'newer remote revision must still trigger pullFromCloud');
+
+  // 2. Deduplicated persistDataStore / persistSyncBaselines skip redundant IndexedDB writes for identical verified snapshots
+  const disk = new Map();
+  let diskWrites = 0;
+  const app2 = Object.create(context.App.prototype);
+  app2._recordsOnDisk = true;
+  app2._baselinesOnDisk = true;
+  app2.syncStateDisk = async (key, value) => {
+    if (value !== undefined) { diskWrites++; disk.set(key, value); }
+    return disk.get(key);
+  };
+  const records = { '2026-11-26': [{ name: '김환자' }] };
+  await app2.persistDataStore(records);
+  await app2.persistDataStore(records);
+  assert.equal(diskWrites, 1, 'identical already-verified records snapshot skips redundant disk transaction');
+  records['2026-11-26'][0].memo = '추가';
+  await app2.persistDataStore(records);
+  assert.equal(diskWrites, 2, 'modified records snapshot persists immediately');
+
+  // 3. Closed summary sidebar in month/year mode updates header count without scanning historical dates until opened
+  let scannedDates = 0;
+  const headerCount = { textContent: '' };
+  const closedSidebar = { classList: { contains: cls => cls === 'summary-closed', toggle() {} }, setAttribute() {} };
+  const summaryDoc = {
+    documentElement: { classList: { toggle() {} } },
+    getElementById: id => id === 'summarySidebar' ? closedSidebar : id === 'headerTotalCount' ? headerCount : null,
+    querySelector: () => null,
+  };
+  const summaryCtx = vm.createContext({ window: { addEventListener() {} }, document: summaryDoc, localStorage: { getItem: () => null, setItem() {} } });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', summaryCtx);
+  const app3 = Object.create(summaryCtx.App.prototype);
+  app3.summaryPeriod = 'month';
+  app3.currentDate = '2026-11-26';
+  app3.getDailySummary = () => ({ total: 17 });
+  app3.getSummaryDates = () => { scannedDates++; return []; };
+  app3.renderSummaryAnalytics = () => {};
+  app3.renderWriterSummaryList = () => {};
+  app3.renderSummaryList = () => {};
+  app3.appendSummaryAverages = () => {};
+  app3.updateSidebarStats();
+  assert.equal(headerCount.textContent, '17');
+  assert.equal(scannedDates, 0, 'closed sidebar must not scan multi-date history on every cell save');
+});
+
+
 

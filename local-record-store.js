@@ -274,19 +274,39 @@ class PTLocalRecordStore {
     if (this._recordsRestorePending) return Promise.reject(new Error('기록 복원 중에는 저장할 수 없습니다.'));
     if (this._recordRestoreError) return Promise.reject(this._recordRestoreError);
     const snapshot = JSON.stringify(records);
+    if (!this.localSnapshotQueues?.get('records')?.active &&
+        !this.localSnapshotQueues?.get('records')?.waiting &&
+        this._verifiedRecordsSnapshot &&
+        this._verifiedRecordsSnapshot.snapshot === snapshot &&
+        this._verifiedRecordsSnapshot.onDisk === Boolean(this._recordsOnDisk) &&
+        this._verifiedRecordsSnapshot.syncStateDisk === this.syncStateDisk) {
+      return Promise.resolve();
+    }
     this._recordPersistenceRevision = (this._recordPersistenceRevision || 0) + 1;
     const isQuota = error => error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014;
     // Large synchronous localStorage writes block typing and pointer events.
     // Use the existing verified IndexedDB path before reaching the quota limit.
     if (!this._recordsOnDisk && !this._recordWrite && snapshot.length <= 256 * 1024) {
-      try { localStorage.setItem(STORAGE_KEY, snapshot); return Promise.resolve(); }
-      catch (error) { if (!isQuota(error)) return Promise.reject(error); }
+      try {
+        localStorage.setItem(STORAGE_KEY, snapshot);
+        this._verifiedRecordsSnapshot = { snapshot, onDisk: false, syncStateDisk: this.syncStateDisk };
+        return Promise.resolve();
+      } catch (error) {
+        this._verifiedRecordsSnapshot = null;
+        if (!isQuota(error)) return Promise.reject(error);
+      }
     }
     const save = async snapshot => {
-      await this.syncStateDisk('records', snapshot);
-      if (await this.syncStateDisk('records') !== snapshot) throw new Error('로컬 기록 저장 검증에 실패했습니다.');
-      localStorage.setItem(STORAGE_KEY, '"indexedDB"');
-      this._recordsOnDisk = true;
+      try {
+        await this.syncStateDisk('records', snapshot);
+        if (await this.syncStateDisk('records') !== snapshot) throw new Error('로컬 기록 저장 검증에 실패했습니다.');
+        localStorage.setItem(STORAGE_KEY, '"indexedDB"');
+        this._recordsOnDisk = true;
+        this._verifiedRecordsSnapshot = { snapshot, onDisk: true, syncStateDisk: this.syncStateDisk };
+      } catch (error) {
+        this._verifiedRecordsSnapshot = null;
+        throw error;
+      }
     };
     const pending = this.queueLocalSnapshot('records', snapshot, save);
     this._recordWrite = pending;
@@ -296,19 +316,41 @@ class PTLocalRecordStore {
 
   persistSyncBaselines(baselines = this.syncBaselines) {
     const snapshot = JSON.stringify(Object.fromEntries(baselines));
+    if (!this.localSnapshotQueues?.get('baselines')?.active &&
+        !this.localSnapshotQueues?.get('baselines')?.waiting &&
+        this._verifiedBaselinesSnapshot &&
+        this._verifiedBaselinesSnapshot.snapshot === snapshot &&
+        this._verifiedBaselinesSnapshot.onDisk === Boolean(this._baselinesOnDisk) &&
+        this._verifiedBaselinesSnapshot.syncStateDisk === this.syncStateDisk &&
+        this._verifiedBaselinesSnapshot.syncBaselineDisk === this.syncBaselineDisk) {
+      return Promise.resolve();
+    }
     this._baselinePersistenceRevision = (this._baselinePersistenceRevision || 0) + 1;
     const save = async snapshot => {
-      if (!this._baselinesOnDisk && snapshot.length <= 256 * 1024) {
-        try { localStorage.setItem('PT_SYNC_BASELINES', snapshot); return; }
-        catch (error) {
-          if (error.name !== 'QuotaExceededError' && error.code !== 22 && error.code !== 1014) throw error;
+      try {
+        if (!this._baselinesOnDisk && snapshot.length <= 256 * 1024) {
+          try {
+            localStorage.setItem('PT_SYNC_BASELINES', snapshot);
+            this._verifiedBaselinesSnapshot = {
+              snapshot, onDisk: false, syncStateDisk: this.syncStateDisk, syncBaselineDisk: this.syncBaselineDisk
+            };
+            return;
+          } catch (error) {
+            if (error.name !== 'QuotaExceededError' && error.code !== 22 && error.code !== 1014) throw error;
+          }
         }
+        await this.syncBaselineDisk(snapshot);
+        if (await this.syncBaselineDisk() !== snapshot) throw new Error('동기화 기준 저장 검증에 실패했습니다.');
+        // Replace the large cache only after the complete disk snapshot is verified.
+        localStorage.setItem('PT_SYNC_BASELINES', '"indexedDB"');
+        this._baselinesOnDisk = true;
+        this._verifiedBaselinesSnapshot = {
+          snapshot, onDisk: true, syncStateDisk: this.syncStateDisk, syncBaselineDisk: this.syncBaselineDisk
+        };
+      } catch (error) {
+        this._verifiedBaselinesSnapshot = null;
+        throw error;
       }
-      await this.syncBaselineDisk(snapshot);
-      if (await this.syncBaselineDisk() !== snapshot) throw new Error('동기화 기준 저장 검증에 실패했습니다.');
-      // Replace the large cache only after the complete disk snapshot is verified.
-      localStorage.setItem('PT_SYNC_BASELINES', '"indexedDB"');
-      this._baselinesOnDisk = true;
     };
     const pending = this.queueLocalSnapshot('baselines', snapshot, save);
     this._baselineWrite = pending;

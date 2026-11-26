@@ -85,7 +85,15 @@ class PTAppEvents {
       });
     }
     this.elSheetContainer.addEventListener("mouseup", updateFontSize);
-    this.elSheetContainer.addEventListener("keyup", updateFontSize);
+    this.elSheetContainer.addEventListener("keyup", (e) => {
+      if (e.target?.matches?.(".cell-input-element:not(.is-armed)") &&
+          e.target.selectionStart === e.target.selectionEnd &&
+          !e.shiftKey && !e.ctrlKey && !e.metaKey &&
+          !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+        return;
+      }
+      updateFontSize();
+    });
 
     // Rows management
     if (this.elBtnAddRow) {
@@ -191,6 +199,9 @@ class PTAppEvents {
       this.elSearchPeriodSelect.value = this.getSearchPeriod();
       this.elSearchPeriodSelect.addEventListener("change", (e) => {
         this.setSearchPeriod(e.target.value);
+        this.elSearchPeriodSelect.blur?.();
+        if (this.activeCell || this.crossDateSelection) this.focusSelectedCellEditor?.();
+        else this.elSheetContainer?.focus?.({ preventScroll: true });
       });
     }
     this.elPresetModal = document.getElementById("presetModal");

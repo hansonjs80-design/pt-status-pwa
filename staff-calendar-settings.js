@@ -21,6 +21,7 @@ class PTStaffCalendarSettings {
   async syncStaffCountSettings() {
     const client = this.supabaseClient;
     if (!client) return null;
+    if (this.cloudQuotaRestriction?.client === client && Date.now() < this.cloudQuotaRestriction.retryAt) return null;
     if (this.staffCountSyncTask?.client === client) return this.staffCountSyncTask.promise;
     const revision = this.staffCountRevision || 0;
     const promise = (async () => {
@@ -46,7 +47,10 @@ class PTStaffCalendarSettings {
         if (!settings) throw new Error('invalid staff calendar settings');
         if (client === this.supabaseClient && !this.staffCountSaving && revision === (this.staffCountRevision || 0)) this.staffCountSettings = settings;
         return settings;
-      } catch {
+      } catch (error) {
+        if (client === this.supabaseClient && this.isCloudQuotaError?.(error)) {
+          this.cloudQuotaRestriction = { client, result: { data: null, error }, retryAt: Date.now() + 60000 };
+        }
         return null; // Retry on the next refresh; never replace an unreadable shared scope.
       } finally { clearTimeout(timer); }
     })();

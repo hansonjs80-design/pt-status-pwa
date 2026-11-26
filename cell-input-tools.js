@@ -123,7 +123,25 @@ class PTCellInputTools {
     if (cell) this.selectCell(rowIdx, targetKey, cell, false);
   }
 
+  consumeImeNavigationReplay(event) {
+    const handoff = this._imeExitHandoff;
+    if (!handoff) return false;
+    if (Date.now() >= handoff.until) {
+      this._imeExitHandoff = null;
+      return false;
+    }
+    const keyCodeName = ["Process", "Unidentified"].includes(event.key) && event.code ? event.code : (event.code || event.key);
+    if (keyCodeName !== handoff.key) return false;
+    const isImeOrRepeat = Boolean(event.isComposing || event.key === "Process" || event.keyCode === 229 || event.repeat);
+    if (!isImeOrRepeat) return false;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    event.stopPropagation?.();
+    return true;
+  }
+
   consumePresetLeftRepeat(event) {
+    if (this.consumeImeNavigationReplay(event)) return true;
     if (!(event.key === 'ArrowLeft' || event.code === 'ArrowLeft') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
     // An IME can deliver another Process/229 arrow after keyup has released the
     // original key. The destination still belongs to that same handoff.

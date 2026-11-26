@@ -249,6 +249,7 @@ class PTTableView {
     this.textColorSelection = null;
     this.patientSearchDraft = null;
     this._cellInputLanguage = this.usesNativeCellInput() ? this.getCellInputLanguage(colKey) : "kor";
+    if (colKey === "gender") this.guardNextCellInput = false;
     if (this.genderPickerState) this.closeGenderDropdown();
     if (colKey === "visitTime") {
       colKey = "specialNote";

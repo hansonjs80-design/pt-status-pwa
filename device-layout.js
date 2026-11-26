@@ -352,6 +352,10 @@ class PTDeviceLayout {
         this.persistDevicePreferences(prefs);
       } catch (_) {}
     }
+    if (!closed && this._summaryStatsDirty && typeof this.updateSidebarStats === "function") {
+      this._summaryStatsDirty = false;
+      this.updateSidebarStats();
+    }
     if (typeof this.syncMainColumnWidths === "function") this.syncMainColumnWidths();
   }
 

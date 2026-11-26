@@ -40,6 +40,15 @@ class PTCellPickers {
       !input.classList?.contains?.("is-armed") && !this.isAutocompleteOpen();
   }
 
+  isManualCellRightExit(event, input, colKey) {
+    const right = event.key === "ArrowRight" || event.code === "ArrowRight";
+    if (!right || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || input.classList?.contains?.("is-armed")) {
+      return false;
+    }
+    if (colKey === "chartNo" || this.isAutocompleteOpen()) return true;
+    return input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+  }
+
   handleWriterPickerShortcut(event, rowIdx, cellElement) {
     if (event.key !== "Enter" || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || this.isAutocompleteOpen()) return false;
     event.preventDefault(); event.stopPropagation();
@@ -326,7 +335,7 @@ class PTCellPickers {
       setTimeout(() => {
         if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) &&
             !this.pendingSyncDates?.has(this.currentDate)) {
-          void this.pullFromCloud?.(this.currentDate);
+          void this.pullFromCloud?.(this.currentDate, false, { checkVersion: true });
         }
       }, 80);
     }

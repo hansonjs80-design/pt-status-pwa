@@ -411,8 +411,10 @@ class PTCellEditor {
     input._inputLanguage = this.getCellInputLanguage(colKey);
     this._cellInputLanguage = input._inputLanguage;
     if (this.guardNextCellInput) {
-      input.dataset.navigationInputGuard = "true";
-      input.dataset.navigationInputGuardUntil = String(Date.now() + 150);
+      if (armed) {
+        input.dataset.navigationInputGuard = "true";
+        input.dataset.navigationInputGuardUntil = String(Date.now() + 150);
+      }
       this.guardNextCellInput = false;
     }
     if (colKey === "writer") {
@@ -689,7 +691,7 @@ class PTCellEditor {
         this.cloudPullDeferred = false;
         setTimeout(() => {
           if (!(this.isCellInteractionActive?.() ?? this.isEditingCell()) && !this.pendingSyncDates?.has(this.currentDate)) {
-            void this.pullFromCloud(this.currentDate);
+            void this.pullFromCloud(this.currentDate, false, { checkVersion: true });
           }
         }, 80);
       }
@@ -932,8 +934,15 @@ class PTCellEditor {
         this.focusSelectedCellEditor();
         return;
       }
-      if (colKey === "writer" && this.isWriterVerticalExit(e, input)) {
+      if (this.isWriterVerticalExit(e, input)) {
         e.preventDefault(); e.stopPropagation();
+        if (composing || e.isComposing || e.keyCode === 229) {
+          this.guardNextCellInput = true;
+          this._imeExitHandoff = {
+            key: (e.key === "ArrowDown" || e.code === "ArrowDown") ? "ArrowDown" : "ArrowUp",
+            until: Date.now() + 80
+          };
+        }
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
         commitAndBlur();
@@ -947,12 +956,74 @@ class PTCellEditor {
         if (targetRow >= rows.length) {
           this.addNewRow(false);
         }
-        const targetCell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="writer"]`) ||
-          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRow}"][data-col="writer"]`) : null);
+        const targetCell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="${colKey}"]`) ||
+          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRow}"][data-col="${colKey}"]`) : null);
+        if (!targetCell || colKey === "gender") this.guardNextCellInput = false;
         if (targetCell) {
-          this.selectCell(targetRow, "writer", targetCell, false);
+          this.selectCell(targetRow, colKey, targetCell, false);
         }
         this.focusSelectedCellEditor();
+        return;
+      }
+      if (colKey !== "writer" && this.isManualCellRightExit?.(e, input, colKey)) {
+        e.preventDefault(); e.stopPropagation();
+        if (composing || e.isComposing || e.keyCode === 229) {
+          this.guardNextCellInput = true;
+          this._imeExitHandoff = { key: "ArrowRight", until: Date.now() + 80 };
+        }
+        composing = false; input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        if (this.isAutocompleteOpen()) {
+          const chosenVal = this.getSelectedAutocompleteItem();
+          this._justCommittedFromAutocomplete = true;
+          this.closeAutocompleteMenu();
+          commitAndBlur(chosenVal);
+        } else {
+          commitAndBlur();
+        }
+        if (historyEdit) {
+          this.guardNextCellInput = false;
+          historyEdit.navigate(0, 1);
+          return;
+        }
+        const colOrder = ["no", "gender", "chartNo", "name", "part", "prescription", "extra", "writer", "memo", "specialNote"];
+        const colIdx = colOrder.indexOf(colKey);
+        const targetColKey = colOrder[Math.min(colOrder.length - 1, colIdx + 1)];
+        const targetCell = this.elTableBody?.querySelector(`[data-row="${rowIdx}"][data-col="${targetColKey}"]`) ||
+          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${rowIdx}"][data-col="${targetColKey}"]`) : null);
+        if (!targetCell || targetColKey === "gender") this.guardNextCellInput = false;
+        if (targetCell) {
+          this.selectCell(rowIdx, targetColKey, targetCell, false);
+        }
+        this.focusSelectedCellEditor();
+        return;
+      }
+      if (!input.classList.contains("is-armed") && !e.ctrlKey && !e.metaKey && !e.altKey &&
+          (e.key === "Tab" || e.code === "Tab")) {
+        e.preventDefault(); e.stopPropagation();
+        if (composing || e.isComposing || e.keyCode === 229) {
+          this.guardNextCellInput = true;
+          this._imeExitHandoff = { key: "Tab", until: Date.now() + 80 };
+        }
+        composing = false; input.dataset.composing = "false";
+        input.dataset.nativeComposing = "false";
+        if (this.isAutocompleteOpen()) {
+          const chosenVal = this.getSelectedAutocompleteItem();
+          this._justCommittedFromAutocomplete = true;
+          this.closeAutocompleteMenu();
+          commitAndBlur(chosenVal);
+        } else {
+          commitAndBlur();
+        }
+        navigateColumn(e.shiftKey ? -1 : 1);
+        this.focusSelectedCellEditor();
+        return;
+      }
+      if (!input.classList.contains("is-armed") && this.isAutocompleteOpen() &&
+          !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+          (e.key === "ArrowDown" || e.code === "ArrowDown" || e.key === "ArrowUp" || e.code === "ArrowUp")) {
+        e.preventDefault(); e.stopPropagation();
+        this.moveAutocompleteSelection((e.key === "ArrowDown" || e.code === "ArrowDown") ? 1 : -1);
         return;
       }
       if (colKey === "writer" && !input.classList.contains("is-armed") && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
