@@ -428,17 +428,20 @@ class PTAppEvents {
     document.addEventListener("keyup", (e) => {
       this.releaseHistorySearchKey(e);
       if (e.key === "ArrowLeft" || e.code === "ArrowLeft") this.presetLeftKeyHeld = false;
+      this.releaseEditorNavigationKey?.(e);
     });
     document.addEventListener("mousedown", () => {
       this.directHistorySearchKeyHeld = false;
       this.historyApplyBlockedKey = null;
       this.presetLeftKeyHeld = false;
+      this.clearEditorNavigationHandoff?.();
     }, true);
     this.elSheetContainer.addEventListener("scroll", () => this.syncHistoryRowHeaderPosition(), { passive: true });
     this.initCellWindowFocus();
     window.addEventListener("blur", () => {
       this.historyApplyBlockedKey = null;
       this.presetLeftKeyHeld = false;
+      this.clearEditorNavigationHandoff?.();
       this.directHistorySearchKeyHeld = false;
       this._cellLanguageToggleDown = null;
       this.cancelSheetPointerInteraction?.();

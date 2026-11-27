@@ -1175,6 +1175,202 @@ test('startup restore and device persistence notices render compactly to the lef
   assert.equal(panel.isError, true);
 });
 
+test('exiting an active cell editor with arrow keys never skips the adjacent cell on plain IME replay, writer exit, gender landing, or compositionend race', () => {
+  let now = 10000;
+  const FakeDate = class extends Date {
+    static now() { return now; }
+  };
+  class FakeKeyboardEvent {
+    constructor(type, init = {}) {
+      Object.assign(this, { type, defaultPrevented: false, cancelBubble: false }, init);
+    }
+    preventDefault() { this.defaultPrevented = true; }
+    stopPropagation() { this.cancelBubble = true; }
+    stopImmediatePropagation() { this.cancelBubble = true; this.immediateStopped = true; }
+  }
+  const doc = { activeElement: null, hasFocus: () => true, querySelectorAll: () => [], getElementById: () => null };
+  doc.body = makeElement('body', doc);
+  doc.body.isConnected = true;
+  doc.createElement = tag => makeElement(tag, doc);
+
+  const cols = ['no', 'gender', 'chartNo', 'name', 'part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+  const rows = [0, 1, 2].map(() => Object.fromEntries(cols.map(k => [k, ''])));
+  const sheet = makeElement('div', doc);
+  sheet.isConnected = true;
+  const cells = {};
+  for (const r of [0, 1, 2]) {
+    for (const c of cols) {
+      const td = makeElement('td', doc);
+      td.dataset = { row: String(r), col: c, colIdx: String(cols.indexOf(c)), colLetter: 'A', excelRow: String(r + 1) };
+      sheet.appendChild(td);
+      cells[`${r}:${c}`] = td;
+    }
+  }
+  const lookup = sel => {
+    const m = sel.match(/(?:\.excel-cell)?\[data-row="(\d+)"\]\[data-col="(\w+)"\]( input)?/);
+    if (!m) return null;
+    const cell = cells[`${m[1]}:${m[2]}`] || null;
+    return m[3] ? cell?.querySelector('input') || null : cell;
+  };
+  sheet.querySelector = lookup;
+  doc.querySelector = lookup;
+
+  const context = vm.createContext({
+    window: { addEventListener() {} },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date: FakeDate,
+    Event: class Event { constructor(type) { this.type = type; } },
+    KeyboardEvent: FakeKeyboardEvent,
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  Object.assign(app, {
+    currentDate: '2026-11-27',
+    dataStore: { '2026-11-27': rows },
+    activeCell: { rowIdx: 0, colKey: 'name' },
+    elTableBody: sheet,
+    elSheetContainer: sheet,
+    elFormulaInput: { value: '' },
+    elSearchInput: { value: '' },
+    elCellAddress: { textContent: '' },
+    elSelectedCellCoords: { textContent: '' },
+    getCurrentRows: () => rows,
+    usesNativeCellInput: () => true,
+    getCellInputLanguage: () => 'kor',
+    isKoreanPreferredColumn: col => !['writer', 'gender'].includes(col),
+    isCellAutocompleteEnabled: () => false,
+    isAutocompleteOpen: () => false,
+    initMemoInput() {},
+    closeAutocompleteMenu() {},
+    closeGenderDropdown() {},
+    hideContextMenu() {},
+    clearHeaderSelections() {},
+    updateActiveHeaders() {},
+    highlightCell() {},
+    updateHistoryDestinationHighlight() {},
+    ensureCurrentCellVisible() {},
+    updateFontColorIndicator() {},
+    updateBackgroundColorIndicator() {},
+    updateUnderlineIndicator() {},
+    loadSearchHistory: async () => {},
+    saveDataStore() {},
+    debounceSaveDataStore() {},
+    applyCellFormatting() {},
+    renderColoredText(el, r, k) { if (!el.querySelector('input')) el.textContent = r[k] || ''; },
+    getEffectiveCellRichText: () => null,
+    normalizeCellEditorValue: (_i, v) => v,
+    assembleCellEditorText: (_i, v) => v,
+    endNativeCellEditing(inp) { inp.blur?.(); inp.dataset.composing = 'false'; inp.dataset.nativeComposing = 'false'; },
+    applyCompoundPatientInput: () => false,
+    applyAutocompleteColor() {},
+    refreshNewPatientRows() {},
+    getCellEditorValue: inp => inp.value,
+    isHangulToggleKeyEvent: () => false,
+    toggleCellInputLanguage: () => false,
+    clearKoreanKeyBuffer() {},
+    handleClipboardArrowHandoff: () => false,
+    handleForcedCorrectionDelete: () => false,
+    handleForcedCorrectionShortcut: () => false,
+    handleCellRowSelectShortcut: () => false,
+    handleHistoryShortcut: () => false,
+    handleRowDeleteShortcut: () => false,
+    rememberPatientSearchDraft() {},
+    updateForcedCorrection() {},
+    refreshNativeLanguagePreview() {},
+    isSearchShortcut: () => false,
+    isBlockingModalOpen: () => false,
+  });
+  sheet.addEventListener('keydown', e => app.handleGlobalKeyDown(e));
+
+  // 1. Active Korean IME composition + plain ArrowRight replay (after keyup!) moves strictly 1 cell (name -> part, NOT prescription)
+  app.selectCell(0, 'name', cells['0:name'], true);
+  let nameInput = cells['0:name'].querySelector('input');
+  nameInput.dispatchEvent({ type: 'compositionstart' });
+  nameInput.value = '홍길동';
+  nameInput.setSelectionRange(3, 3);
+  nameInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '동' });
+  nameInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowRight', isComposing: true, keyCode: 229 });
+  assert.equal(rows[0].name, '홍길동');
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'part' });
+
+  // Simulate OS keyup arriving first, then OS IME flushing a plain non-composing ArrowRight 15ms later
+  now += 15;
+  app.releaseEditorNavigationKey({ key: 'ArrowRight', code: 'ArrowRight' });
+  const partArmed = cells['0:part'].querySelector('input');
+  partArmed.dispatchEvent({ type: 'keydown', key: 'ArrowRight', code: 'ArrowRight', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'part' }, 'plain IME replay must not skip part to prescription');
+
+  // Deliberate second ArrowRight tap by the user immediately moves to prescription
+  now += 30;
+  partArmed.dispatchEvent({ type: 'keydown', key: 'ArrowRight', code: 'ArrowRight', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'prescription' }, 'deliberate second arrow press navigates normally');
+
+  // 2. ArrowDown during Korean IME composition + plain ArrowDown replay moves strictly 1 row (row 0 -> row 1, NOT row 2)
+  now += 200;
+  app.selectCell(0, 'part', cells['0:part'], true);
+  const partInput = cells['0:part'].querySelector('input');
+  partInput.dispatchEvent({ type: 'compositionstart' });
+  partInput.value = '허리';
+  partInput.setSelectionRange(2, 2);
+  partInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '리' });
+  partInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowDown', isComposing: true, keyCode: 229 });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 1, colKey: 'part' });
+  now += 10;
+  const row1PartArmed = cells['1:part'].querySelector('input');
+  row1PartArmed.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 1, colKey: 'part' }, 'pre-keyup plain ArrowDown replay must not skip row 1 to row 2');
+  app.releaseEditorNavigationKey({ key: 'ArrowDown', code: 'ArrowDown' });
+
+  // 3. Writer column Korean-mode initial entry + ArrowRight + plain IME replay lands on memo (never skips memo to specialNote)
+  now += 200;
+  app.selectCell(0, 'writer', cells['0:writer'], true);
+  const writerInput = cells['0:writer'].querySelector('input');
+  writerInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'KeyS', isComposing: true, keyCode: 229 });
+  assert.equal(writerInput.value, 'S');
+  writerInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowRight', isComposing: true, keyCode: 229 });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'memo' });
+  now += 15;
+  app.releaseEditorNavigationKey({ key: 'ArrowRight', code: 'ArrowRight' });
+  const memoArmed = cells['0:memo'].querySelector('input');
+  memoArmed.dispatchEvent({ type: 'keydown', key: 'ArrowRight', code: 'ArrowRight', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'memo' }, 'writer ArrowRight exit must not skip memo to specialNote');
+
+  // 4. Exiting "no" via ArrowRight onto "gender" (no <input>, #sheetContainer focused) + plain ArrowRight replay stays on gender
+  now += 200;
+  app.selectCell(0, 'no', cells['0:no'], true);
+  const noInput = cells['0:no'].querySelector('input');
+  noInput.value = '1';
+  noInput.setSelectionRange(1, 1);
+  noInput.dispatchEvent({ type: 'compositionend', data: '1' }); // compositionend racing right before keydown
+  now += 5;
+  noInput.dispatchEvent({ type: 'keydown', key: 'ArrowRight', code: 'ArrowRight', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'gender' });
+  now += 10;
+  app.releaseEditorNavigationKey({ key: 'ArrowRight', code: 'ArrowRight' });
+  app.handleGlobalKeyDown(new FakeKeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', target: sheet }));
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'gender' }, 'ArrowRight landing on gender must not skip gender to chartNo');
+
+  // 5. In-cell ArrowLeft on 1-syllable composing text moves caret to 0 and consumes IME replay instead of prematurely exiting cell
+  now += 200;
+  rows[0].name = '';
+  app.selectCell(0, 'name', cells['0:name'], true);
+  nameInput = cells['0:name'].querySelector('input');
+  nameInput.dispatchEvent({ type: 'compositionstart' });
+  nameInput.value = '김';
+  nameInput.setSelectionRange(1, 1);
+  nameInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '김' });
+  nameInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowLeft', isComposing: true, keyCode: 229 });
+  nameInput.setSelectionRange(0, 0); // native caret moved 1 -> 0
+  now += 10;
+  const replayCaretLeft = nameInput.dispatchEvent({ type: 'keydown', key: 'ArrowLeft', code: 'ArrowLeft', isComposing: false, repeat: false });
+  assert.equal(replayCaretLeft.defaultPrevented, true, 'IME caret replay consumed inside active editor');
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'name' }, 'caret move to start must not also exit name to chartNo on same press');
+});
+
+
 
 
 

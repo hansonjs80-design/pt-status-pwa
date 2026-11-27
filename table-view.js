@@ -23,6 +23,8 @@ class PTTableView {
     const newPatientFlags = this.getNewPatientRowFlags(rows);
     document.querySelector(".business-headers-row")?.classList.toggle("before-lunch-row", Boolean(rows[0]?._lunchBefore));
 
+    const renderedRows = this.renderedSheetRows = [];
+    const fragment = document.createDocumentFragment();
     rows.forEach((row, rowIdx) => {
       const tr = document.createElement("tr");
       tr.className = "excel-row";
@@ -120,6 +122,7 @@ class PTTableView {
             this.guardNextCellInput = false;
             this.presetLeftKeyHeld = false;
             this.leftEditHandoffUntil = 0;
+            this.clearEditorNavigationHandoff?.();
             this.clipboardArrowModifierHandoff = false;
             const appShell = typeof document !== "undefined" ? document.querySelector?.(".excel-app") : null;
             if (appShell?.inert) appShell.inert = false;
@@ -171,6 +174,7 @@ class PTTableView {
           this.guardNextCellInput = false;
           this.presetLeftKeyHeld = false;
           this.leftEditHandoffUntil = 0;
+          this.clearEditorNavigationHandoff?.();
           this.clipboardArrowModifierHandoff = false;
           this.selectCell(rowIdx, key, td, false);
         });
@@ -211,8 +215,10 @@ class PTTableView {
       spacer.className = "cell-spacer";
       tr.appendChild(spacer);
 
-      this.elTableBody.appendChild(tr);
+      renderedRows.push(tr);
+      fragment.appendChild(tr);
     });
+    this.elTableBody.appendChild(fragment);
 
     // If active cell was set, restore highlight if valid
     if (this.activeCell) {
@@ -262,7 +268,8 @@ class PTTableView {
     }
     this.closeAutocompleteMenu();
     this.activeCell = { rowIdx, colKey };
-    this.historyApplyTarget = { date: this.currentDate, rowIdx, rows: this.getCurrentRows(), row: this.getCurrentRows()[rowIdx], colKey };
+    const rows = this.getCurrentRows();
+    this.historyApplyTarget = { date: this.currentDate, rowIdx, rows, row: rows[rowIdx], colKey };
     this.elTableBody.querySelectorAll(".history-apply-btn:disabled").forEach(button => { button.disabled = false; });
     this.selectedRowIdx = rowIdx;
     this.selectedColKey = null;
@@ -292,7 +299,6 @@ class PTTableView {
     this.elCellAddress.textContent = cellAddress;
     this.elSelectedCellCoords.textContent = `${cellAddress} (${colKey})`;
 
-    const rows = this.getCurrentRows();
     const cellValue = rows[rowIdx] ? (rows[rowIdx][colKey] || "") : "";
     this.elFormulaInput.value = cellValue;
 

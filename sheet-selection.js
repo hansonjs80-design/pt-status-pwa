@@ -138,7 +138,9 @@ class PTSheetSelection {
 
     for (let r = minRow; r <= maxRow; r++) {
       for (let c = minCol; c <= maxCol; c++) {
-        const cell = document.querySelector(`.excel-cell[data-row="${r}"][data-col-idx="${c}"]`);
+        // The first cell is the row heading. History rows can precede these rows in the DOM.
+        const cell = this.renderedSheetRows?.[r]?.cells?.[c + 1] ||
+          (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${r}"][data-col-idx="${c}"]`) : null);
         if (cell) {
           cellCount++;
           cell.classList.add("range-selected");

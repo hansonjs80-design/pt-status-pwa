@@ -75,6 +75,10 @@ class PTCellInputTools {
       delete input.dataset.navigationInputGuard;
       delete input.dataset.navigationInputGuardUntil;
       this.leftEditHandoffUntil = 0;
+      this._editorExitKeyHeld = null;
+      this._editorExitKeyHeldUntil = 0;
+      this._imeExitHandoff = null;
+      if (input) input._imeCaretHandoff = null;
     }
   }
 
@@ -123,21 +127,113 @@ class PTCellInputTools {
     if (cell) this.selectCell(rowIdx, targetKey, cell, false);
   }
 
+  beginEditorNavigationHandoff(event, input = null, explicitKey = null) {
+    const rawName = explicitKey || (["Process", "Unidentified"].includes(event?.key) && event?.code
+      ? event.code : (event?.key || event?.code || ""));
+    const key = rawName === "NumpadEnter" || event?.code === "NumpadEnter" ? "Enter" : rawName;
+    if (!key) return;
+    const now = Date.now();
+    const imeActive = Boolean(
+      event?.isComposing ||
+      event?.key === "Process" ||
+      event?.keyCode === 229 ||
+      input?.dataset?.composing === "true" ||
+      input?.dataset?.nativeComposing === "true" ||
+      input?._forcedCorrectionProjection ||
+      input?._forcedCorrectionApplied ||
+      input?.dataset?.writerKeyValue !== undefined ||
+      (input?._lastCompositionEndAt && now - input._lastCompositionEndAt < 100)
+    );
+    if (imeActive || key === "ArrowLeft") {
+      this.guardNextCellInput = true;
+    }
+    this._editorExitKeyHeld = key;
+    this._editorExitKeyHeldUntil = now + 220;
+    this._imeExitHandoff = {
+      key,
+      until: now + 100,
+      allowPlainReplay: imeActive
+    };
+    if (key === "ArrowLeft") {
+      this.presetLeftKeyHeld = true;
+      this.leftEditHandoffUntil = now + 100;
+    }
+  }
+
+  releaseEditorNavigationKey(event) {
+    if (!event) return;
+    if (event.key === "ArrowLeft" || event.code === "ArrowLeft") {
+      this.presetLeftKeyHeld = false;
+    }
+    if (!this._editorExitKeyHeld) return;
+    const rawName = ["Process", "Unidentified"].includes(event.key) && event.code
+      ? event.code : (event.key || event.code || "");
+    const keyCodeName = rawName === "NumpadEnter" || event.code === "NumpadEnter" ? "Enter" : rawName;
+    if (!keyCodeName || ["Process", "Unidentified"].includes(keyCodeName) ||
+        keyCodeName === this._editorExitKeyHeld || event.code === this._editorExitKeyHeld) {
+      this._editorExitKeyHeld = null;
+      this._editorExitKeyHeldUntil = 0;
+    }
+  }
+
+  clearEditorNavigationHandoff() {
+    this.presetLeftKeyHeld = false;
+    this.leftEditHandoffUntil = 0;
+    this._editorExitKeyHeld = null;
+    this._editorExitKeyHeldUntil = 0;
+    this._imeExitHandoff = null;
+  }
+
   consumeImeNavigationReplay(event) {
+    if (!event || event.ctrlKey || event.metaKey || event.altKey) return false;
+    const rawName = ["Process", "Unidentified"].includes(event.key) && event.code
+      ? event.code : (event.key || event.code || "");
+    const keyCodeName = rawName === "NumpadEnter" || event.code === "NumpadEnter" ? "Enter" : rawName;
+    if (!keyCodeName || (event.shiftKey && keyCodeName !== "Tab")) return false;
+    const now = Date.now();
+    const consume = () => {
+      event.preventDefault?.();
+      event.stopImmediatePropagation?.();
+      event.stopPropagation?.();
+      return true;
+    };
+
+    if (this._editorExitKeyHeld === keyCodeName) {
+      if (event.repeat) {
+        if (now < (this._editorExitKeyHeldUntil || 0) + 1800) return consume();
+        this._editorExitKeyHeld = null;
+        this._editorExitKeyHeldUntil = 0;
+      } else if (now < (this._editorExitKeyHeldUntil || 0)) {
+        if (this._imeExitHandoff?.key === keyCodeName) {
+          this._imeExitHandoff.allowPlainReplay = false;
+        }
+        return consume();
+      } else {
+        this._editorExitKeyHeld = null;
+        this._editorExitKeyHeldUntil = 0;
+      }
+    }
+
+    const isImeOrRepeat = Boolean(event.isComposing || event.key === "Process" || event.keyCode === 229 || event.repeat);
     const handoff = this._imeExitHandoff;
+    if (event.target?.dataset?.navigationInputGuard === "true" && isImeOrRepeat &&
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Tab"].includes(keyCodeName) &&
+        (!handoff || handoff.key === keyCodeName)) {
+      return consume();
+    }
+
     if (!handoff) return false;
-    if (Date.now() >= handoff.until) {
+    if (now >= handoff.until) {
       this._imeExitHandoff = null;
       return false;
     }
-    const keyCodeName = ["Process", "Unidentified"].includes(event.key) && event.code ? event.code : (event.code || event.key);
     if (keyCodeName !== handoff.key) return false;
-    const isImeOrRepeat = Boolean(event.isComposing || event.key === "Process" || event.keyCode === 229 || event.repeat);
-    if (!isImeOrRepeat) return false;
-    event.preventDefault?.();
-    event.stopImmediatePropagation?.();
-    event.stopPropagation?.();
-    return true;
+    if (isImeOrRepeat) return consume();
+    if (handoff.allowPlainReplay) {
+      handoff.allowPlainReplay = false;
+      return consume();
+    }
+    return false;
   }
 
   consumePresetLeftRepeat(event) {

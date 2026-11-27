@@ -35,12 +35,16 @@ class PTDeviceLayout {
       }
     }
     const lastContent = rows.findLastIndex(row => contentKeys.some(key => String(row[key] ?? '').trim()));
-    const lastProtected = rows.findLastIndex(row => Object.entries(row).some(([key,value]) =>
-      key !== 'date' && value != null && value !== '' &&
-      (typeof value !== 'object' || Object.keys(value).length > 0)));
-    const minimum = Math.max(count, lastContent + 16, lastProtected + 1);
+    const minimum = Math.max(count, lastContent + 16);
     const allocations = this.rowCountSettings?.allocations || [120,150];
-    if ((compact || allocations.includes(rows.length)) && rows.length > minimum) rows.splice(minimum);
+    if (rows.length > minimum && (compact || allocations.includes(rows.length))) {
+      // Only inspect rows that would actually be removed, retaining formatting and other metadata.
+      let end = rows.length;
+      while (end > minimum && !Object.entries(rows[end - 1]).some(([key, value]) =>
+        key !== 'date' && value != null && value !== '' &&
+        (typeof value !== 'object' || Object.keys(value).length > 0))) end--;
+      if (end < rows.length) rows.splice(end);
+    }
     if (rows.length < minimum) rows.push(...this.createDefaultEmptyRows(minimum - rows.length, date));
     return rows;
   }

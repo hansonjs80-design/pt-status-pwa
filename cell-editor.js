@@ -326,7 +326,7 @@ class PTCellEditor {
 
   activateNativeEditor(input) {
     if (!input.classList.contains("is-armed")) return;
-    for (const child of [...input.parentElement.childNodes]) {
+    for (const child of [...(input.parentElement?.childNodes || input.parentElement?.children || [])]) {
       if (child !== input && !child.classList?.contains("visit-time-refresh")) child.remove();
     }
     input.classList.remove("is-armed");
@@ -605,6 +605,7 @@ class PTCellEditor {
     });
 
     input.addEventListener("compositionend", (e) => {
+      input._lastCompositionEndAt = Date.now();
       if (isCommitted || input.isConnected === false || this.blockInheritedNavigationInput(input, e, initialVal)) return;
       const handledKey = this.restoreHandledCellKey(input, e);
       if (!handledKey) this.projectCellComposition(input, e, true);
@@ -751,6 +752,21 @@ class PTCellEditor {
         e.stopImmediatePropagation();
         return;
       }
+      if (input._imeCaretHandoff) {
+        const rawArrow = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : (e.key || e.code);
+        if (Date.now() >= input._imeCaretHandoff.until) {
+          input._imeCaretHandoff = null;
+        } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && rawArrow === input._imeCaretHandoff.key) {
+          input._imeCaretHandoff = null;
+          e.preventDefault();
+          e.stopImmediatePropagation?.();
+          e.stopPropagation();
+          return;
+        } else {
+          input._imeCaretHandoff = null;
+        }
+      }
+      if (this.consumePresetLeftRepeat(e)) return;
       if (input.classList.contains("is-armed") && !e.isComposing && e.keyCode !== 229 &&
           ["Escape", "Enter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Delete"].includes(e.key)) {
         composing = false;
@@ -858,18 +874,26 @@ class PTCellEditor {
           (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) &&
           this.getChartNameRedirect(input.value, initialVal)) {
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        this.beginEditorNavigationHandoff?.(e, input, 'Enter');
         composing = false;
         input.dataset.composing = 'false';
         input.dataset.nativeComposing = 'false';
         if (redirectChartName()) return;
       }
       if (["name", "part", "memo", "specialNote"].includes(colKey) && !input.classList.contains("is-armed") &&
-          !this.isAutocompleteOpen() && (e.key === "ArrowLeft" || e.code === "ArrowLeft") &&
+          !this.isAutocompleteOpen() && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+          (e.key === "ArrowLeft" || e.code === "ArrowLeft") &&
           (input.selectionStart !== 0 || input.selectionEnd !== 0)) {
+        if (composing || e.isComposing || e.key === "Process" || e.keyCode === 229 ||
+            input.dataset.composing === "true" || input.dataset.nativeComposing === "true") {
+          input._imeCaretHandoff = { key: "ArrowLeft", until: Date.now() + 100 };
+          composing = false;
+          input.dataset.composing = "false";
+          input.dataset.nativeComposing = "false";
+        }
         e.stopPropagation(); // Keep native caret movement until the collapsed caret reaches the start.
         return;
       }
-      if (this.consumePresetLeftRepeat(e)) return;
       if (["Enter", "NumpadEnter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.code || e.key) ||
           this.isSearchShortcut(e)) refreshPendingAutocomplete();
       this.releaseNavigationInputGuard(input, e);
@@ -896,6 +920,7 @@ class PTCellEditor {
       if (this.isPresetLeftExit(e, colKey) || this.isManualCellLeftExit(e, input)) {
         e.preventDefault(); e.stopPropagation();
         e.stopImmediatePropagation();
+        this.beginEditorNavigationHandoff?.(e, input, "ArrowLeft");
         this.presetLeftKeyHeld = true;
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
@@ -911,7 +936,8 @@ class PTCellEditor {
       // Physical initial entry can leave the OS IME reporting Process/229.
       // Writer Enter confirms the normalized initial before the generic IME guard.
       if (colKey === "writer" && this.isWriterEnterExit(e, input)) {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "Enter");
         composing = false;
         input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
@@ -924,7 +950,8 @@ class PTCellEditor {
       }
       // Writer keys may still be reported as composing after physical-key entry.
       if (colKey === "writer" && this.isWriterRightExit(e, input)) {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "ArrowRight");
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
         const chosen = this.isAutocompleteOpen() ? this.getSelectedAutocompleteItem() : undefined;
@@ -935,19 +962,14 @@ class PTCellEditor {
         return;
       }
       if (this.isWriterVerticalExit(e, input)) {
-        e.preventDefault(); e.stopPropagation();
-        if (composing || e.isComposing || e.keyCode === 229) {
-          this.guardNextCellInput = true;
-          this._imeExitHandoff = {
-            key: (e.key === "ArrowDown" || e.code === "ArrowDown") ? "ArrowDown" : "ArrowUp",
-            until: Date.now() + 80
-          };
-        }
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        const isDown = e.key === "ArrowDown" || e.code === "ArrowDown";
+        this.beginEditorNavigationHandoff?.(e, input, isDown ? "ArrowDown" : "ArrowUp");
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
         commitAndBlur();
-        const isDown = e.key === "ArrowDown" || e.code === "ArrowDown";
         if (historyEdit) {
+          this.guardNextCellInput = false;
           historyEdit.navigate(isDown ? 1 : -1, 0);
           return;
         }
@@ -966,11 +988,8 @@ class PTCellEditor {
         return;
       }
       if (colKey !== "writer" && this.isManualCellRightExit?.(e, input, colKey)) {
-        e.preventDefault(); e.stopPropagation();
-        if (composing || e.isComposing || e.keyCode === 229) {
-          this.guardNextCellInput = true;
-          this._imeExitHandoff = { key: "ArrowRight", until: Date.now() + 80 };
-        }
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "ArrowRight");
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
         if (this.isAutocompleteOpen()) {
@@ -1000,11 +1019,8 @@ class PTCellEditor {
       }
       if (!input.classList.contains("is-armed") && !e.ctrlKey && !e.metaKey && !e.altKey &&
           (e.key === "Tab" || e.code === "Tab")) {
-        e.preventDefault(); e.stopPropagation();
-        if (composing || e.isComposing || e.keyCode === 229) {
-          this.guardNextCellInput = true;
-          this._imeExitHandoff = { key: "Tab", until: Date.now() + 80 };
-        }
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "Tab");
         composing = false; input.dataset.composing = "false";
         input.dataset.nativeComposing = "false";
         if (this.isAutocompleteOpen()) {
@@ -1026,7 +1042,16 @@ class PTCellEditor {
         this.moveAutocompleteSelection((e.key === "ArrowDown" || e.code === "ArrowDown") ? 1 : -1);
         return;
       }
-      if (colKey === "writer" && !input.classList.contains("is-armed") && e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      if (colKey === "writer" && !input.classList.contains("is-armed") &&
+          (e.key === "ArrowRight" || e.code === "ArrowRight") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        if (composing || e.isComposing || e.key === "Process" || e.keyCode === 229 ||
+            input.dataset.composing === "true" || input.dataset.nativeComposing === "true" ||
+            input.dataset.writerKeyValue !== undefined) {
+          input._imeCaretHandoff = { key: "ArrowRight", until: Date.now() + 100 };
+          composing = false;
+          input.dataset.composing = "false";
+          input.dataset.nativeComposing = "false";
+        }
         e.stopPropagation(); // Keep native caret movement while it is inside the text.
         return;
       }
@@ -1059,7 +1084,8 @@ class PTCellEditor {
       // composition. Other composing keys continue through the native IME.
       if (input._forcedCorrectionProjection && !this.isAutocompleteOpen() &&
           !e.ctrlKey && !e.metaKey && !e.altKey && ['Enter', 'NumpadEnter'].includes(e.code || e.key)) {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, 'Enter');
         commitAndBlur();
         adjacent(1);
         this.focusSelectedCellEditor();
@@ -1086,6 +1112,14 @@ class PTCellEditor {
         this.refreshNativeLanguagePreview?.(input);
       }
       if ((composing || e.isComposing || e.keyCode === 229) && !englishCandidateKey && !isArmedNavigationKey) {
+        const rawArrow = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : (e.key || e.code);
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+            (rawArrow === "ArrowLeft" || rawArrow === "ArrowRight")) {
+          input._imeCaretHandoff = { key: rawArrow, until: Date.now() + 100 };
+          composing = false;
+          input.dataset.composing = "false";
+          input.dataset.nativeComposing = "false";
+        }
         e.stopPropagation();
         return;
       }
@@ -1123,7 +1157,7 @@ class PTCellEditor {
           } else {
             this.elSheetContainer.dispatchEvent(new KeyboardEvent("keydown", {
               key: effectiveKey, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
-              shiftKey: e.shiftKey, altKey: e.altKey, bubbles: true, cancelable: true
+              shiftKey: e.shiftKey, altKey: e.altKey, repeat: e.repeat, bubbles: true, cancelable: true
             }));
           }
           return;
@@ -1156,6 +1190,8 @@ class PTCellEditor {
         if (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter" || e.keyCode === 13) {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          this.beginEditorNavigationHandoff?.(e, input, "Enter");
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
@@ -1169,6 +1205,8 @@ class PTCellEditor {
         if (e.key === "Tab" || e.code === "Tab") {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          this.beginEditorNavigationHandoff?.(e, input, "Tab");
           const chosenVal = this.getSelectedAutocompleteItem();
           this._justCommittedFromAutocomplete = true;
           this.closeAutocompleteMenu();
@@ -1177,6 +1215,9 @@ class PTCellEditor {
             navigateColumn(-1);
           } else {
             navigateColumn(1);
+          }
+          if (this.elSheetContainer) {
+            this.focusSelectedCellEditor();
           }
           return;
         }
@@ -1196,6 +1237,8 @@ class PTCellEditor {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(directionKey)) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, directionKey);
         if (directionKey === "ArrowLeft") { this.presetLeftKeyHeld = true; this.guardNextCellInput = true; }
 
         // 자동완성이 열려있으면 선택된 항목을 적용
@@ -1209,6 +1252,7 @@ class PTCellEditor {
         }
 
         if (historyEdit) {
+          this.guardNextCellInput = false;
           historyEdit.navigate(directionKey === "ArrowDown" ? 1 : directionKey === "ArrowUp" ? -1 : 0,
             directionKey === "ArrowRight" ? 1 : directionKey === "ArrowLeft" ? -1 : 0);
           return;
@@ -1232,6 +1276,7 @@ class PTCellEditor {
         }
         const targetCell = this.elTableBody?.querySelector(`[data-row="${targetRow}"][data-col="${targetColKey}"]`) ||
           (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRow}"][data-col="${targetColKey}"]`) : null);
+        if (!targetCell || targetColKey === "gender") this.guardNextCellInput = false;
         if (targetCell) {
           this.selectCell(targetRow, targetColKey, targetCell, false);
         }
@@ -1243,18 +1288,24 @@ class PTCellEditor {
       if (e.isComposing || e.keyCode === 229) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        commitAndBlur();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "Enter");
+        commitAndBlur();
         adjacent(1);
         this.focusSelectedCellEditor();
       } else if (e.key === "Tab") {
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        this.beginEditorNavigationHandoff?.(e, input, "Tab");
         commitAndBlur();
         if (e.shiftKey) {
           navigateColumn(-1);
         } else {
           navigateColumn(1);
         }
+        this.focusSelectedCellEditor();
       }
     });
   }

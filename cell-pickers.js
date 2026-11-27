@@ -308,6 +308,7 @@ class PTCellPickers {
       return;
     }
     if (key === "Enter" || key === "ArrowRight" || key === "ArrowLeft") {
+      this.beginEditorNavigationHandoff?.(event, null, key);
       this.setGenderValue(state.rowIdx, state.items[state.selectedIndex].val, liveCell);
     }
     this.closeGenderDropdown();

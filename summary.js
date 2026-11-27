@@ -116,9 +116,21 @@ class PTSummary {
     if (period !== "day") void this.loadSearchHistory();
   }
 
+  combineDailySummaries(entries) {
+    const combined = this.getDailySummary([]);
+    for (const { summary } of entries) {
+      for (const field of ["total", "male", "female", "unknown"]) combined[field] += summary[field];
+      for (const field of ["writers", "writerContentCounts", "extras", "extraSubcounts", "prescriptions"]) {
+        const counts = combined[field];
+        for (const [label, count] of summary[field]) counts.set(label, (counts.get(label) || 0) + count);
+      }
+    }
+    return combined;
+  }
+
   getPeriodSummary(period = this.summaryPeriod || "day") {
     if (period === "day") return this.getDailySummary();
-    return this.getDailySummary(this.getSummaryDates(period, true).flatMap(entry => entry.rows));
+    return this.combineDailySummaries(this.getSummaryDates(period, true));
   }
 
   getSummaryDates(period, filtered = false) {
@@ -149,7 +161,9 @@ class PTSummary {
   }
 
   formatSummaryAverage(count, divisor) {
-    return divisor ? (count / divisor).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "—";
+    if (!divisor) return "—";
+    this.summaryAverageFormatter ||= new Intl.NumberFormat("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return this.summaryAverageFormatter.format(count / divisor);
   }
 
   appendSummaryAverages(container, counts) {
@@ -258,7 +272,7 @@ class PTSummary {
       create("div", `${period === "month" ? "주" : "월"}평균 ${this.formatSummaryAverage(total, period === "month" ? context.weeks : context.months)}건`));
     panel.append(averages);
     panel.append(create("p", `치료 기록이 있는 ${context.days}일${period === "month" ? ` · ${context.weeks}주` : ` · ${context.months}개월`} 기준. 빈 날짜는 평균에서 제외합니다. 작성 평균은 내용이 있는 행 기준입니다.`, "summary-average-note"));
-    const metrics = this.getSummaryMetrics(this.getDailySummary(dates.flatMap(entry => entry.rows)));
+    const metrics = this.getSummaryMetrics(selectedDates.length === dates.length ? summary : this.combineDailySummaries(dates));
     const selectorLabel = create("label", "비교 항목", "summary-metric-label");
     const select = create("select"); select.setAttribute("aria-label", "평균 비교 항목");
     const all = create("option", "전체 집계 항목"); all.value = "all"; select.append(all);
@@ -356,7 +370,7 @@ class PTSummary {
     this._summaryStatsDirty = false;
     const dates = period === "day" ? [] : this.getSummaryDates(period);
     const selectedDates = dates.filter(entry => this.matchesSummaryFilters(entry, period));
-    const summary = period === "day" ? this.getDailySummary() : this.getDailySummary(selectedDates.flatMap(entry => entry.rows));
+    const summary = period === "day" ? this.getDailySummary() : this.combineDailySummaries(selectedDates);
     this.renderSummaryAnalytics(period, dates, selectedDates, summary);
     const labels = { day: "일일", month: "월간", year: "연간" };
     if (this.elSidebarSummaryTitle) this.elSidebarSummaryTitle.textContent = `📊 ${labels[period]} 현황 요약`;

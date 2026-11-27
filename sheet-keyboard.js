@@ -249,6 +249,7 @@ class PTSheetKeyboard {
         this.guardNextCellInput = false;
         this.presetLeftKeyHeld = false;
         this.leftEditHandoffUntil = 0;
+        this.clearEditorNavigationHandoff?.();
         this.clipboardArrowModifierHandoff = false;
         if (editingCell) e.target.blur();
         this.closeAutocompleteMenu();
@@ -781,6 +782,7 @@ class PTSheetKeyboard {
       this.guardNextCellInput = false;
       this.presetLeftKeyHeld = false;
       this.leftEditHandoffUntil = 0;
+      this.clearEditorNavigationHandoff?.();
       this.clipboardArrowModifierHandoff = false;
       this.closeAutocompleteMenu();
       this.closeGenderDropdown();

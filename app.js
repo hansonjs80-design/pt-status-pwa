@@ -324,6 +324,7 @@ class PTApp {
     this.guardNextCellInput = false;
     this.presetLeftKeyHeld = false;
     this.leftEditHandoffUntil = 0;
+    this.clearEditorNavigationHandoff?.();
     this.clipboardArrowModifierHandoff = false;
     if (this.isBlockingModalOpen(modalEl)) return;
     if (this.activeCell && this.activeCell.colKey !== "gender") {
@@ -974,7 +975,9 @@ class PTApp {
       // Auto add new row if hitting enter at bottom!
       this.addNewRow(false);
     }
-    const nextCell = document.querySelector(`.excel-cell[data-row="${targetRowIdx}"][data-col="${colKey}"]`);
+    const nextCell = this.elTableBody?.querySelector?.(`[data-row="${targetRowIdx}"][data-col="${colKey}"]`) ||
+      (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${targetRowIdx}"][data-col="${colKey}"]`) : null);
+    if (!nextCell || colKey === "gender") this.guardNextCellInput = false;
     if (nextCell) {
       this.selectCell(targetRowIdx, colKey, nextCell);
     }
@@ -1000,7 +1003,9 @@ class PTApp {
     }
 
     const nextColKey = colOrder[nextIdx];
-    const nextCell = document.querySelector(`.excel-cell[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`);
+    const nextCell = this.elTableBody?.querySelector?.(`[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`) ||
+      (typeof document !== "undefined" ? document.querySelector?.(`.excel-cell[data-row="${nextRowIdx}"][data-col="${nextColKey}"]`) : null);
+    if (!nextCell || nextColKey === "gender") this.guardNextCellInput = false;
     if (nextCell) {
       this.selectCell(nextRowIdx, nextColKey, nextCell);
     }
