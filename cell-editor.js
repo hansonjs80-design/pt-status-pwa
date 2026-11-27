@@ -880,7 +880,7 @@ class PTCellEditor {
         input.dataset.nativeComposing = 'false';
         if (redirectChartName()) return;
       }
-      if (["name", "part", "memo", "specialNote"].includes(colKey) && !input.classList.contains("is-armed") &&
+      if (["part", "memo", "specialNote"].includes(colKey) && !input.classList.contains("is-armed") &&
           !this.isAutocompleteOpen() && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
           (e.key === "ArrowLeft" || e.code === "ArrowLeft") &&
           (input.selectionStart !== 0 || input.selectionEnd !== 0)) {
@@ -1227,8 +1227,8 @@ class PTCellEditor {
       if (directionKey === "ArrowLeft" || directionKey === "ArrowRight") {
         const atEdge = input.selectionStart === input.selectionEnd &&
           (directionKey === "ArrowLeft" ? input.selectionStart === 0 : input.selectionEnd === input.value.length);
-        // Chart numbers use arrows for cell navigation from any caret position.
-        if ((!atEdge && colKey !== "chartNo") || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) { e.stopPropagation(); return; }
+        const immediateExit = colKey === "chartNo" || (directionKey === "ArrowLeft" && colKey === "name");
+        if ((!atEdge && !immediateExit) || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) { e.stopPropagation(); return; }
       }
       // 2) 방향키 처리: 편집 커밋 후 해당 방향으로 셀 이동
       //    자동완성이 열려있을 때는 위/아래는 이미 위에서 처리됨 (목록 이동)

@@ -1353,21 +1353,39 @@ test('exiting an active cell editor with arrow keys never skips the adjacent cel
   app.handleGlobalKeyDown(new FakeKeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', target: sheet }));
   assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'gender' }, 'ArrowRight landing on gender must not skip gender to chartNo');
 
-  // 5. In-cell ArrowLeft on 1-syllable composing text moves caret to 0 and consumes IME replay instead of prematurely exiting cell
+  // 5. Name cell active editor exits immediately to chartNo on ArrowLeft (from any caret or IME composing state) without skipping chartNo to gender
   now += 200;
   rows[0].name = '';
   app.selectCell(0, 'name', cells['0:name'], true);
   nameInput = cells['0:name'].querySelector('input');
   nameInput.dispatchEvent({ type: 'compositionstart' });
-  nameInput.value = '김';
-  nameInput.setSelectionRange(1, 1);
-  nameInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '김' });
+  nameInput.value = '김철수';
+  nameInput.setSelectionRange(3, 3);
+  nameInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '수' });
   nameInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowLeft', isComposing: true, keyCode: 229 });
-  nameInput.setSelectionRange(0, 0); // native caret moved 1 -> 0
+  assert.equal(rows[0].name, '김철수', 'name cell text committed on ArrowLeft');
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'chartNo' }, 'name ArrowLeft moves selection border to chartNo');
   now += 10;
-  const replayCaretLeft = nameInput.dispatchEvent({ type: 'keydown', key: 'ArrowLeft', code: 'ArrowLeft', isComposing: false, repeat: false });
+  app.releaseEditorNavigationKey({ key: 'ArrowLeft', code: 'ArrowLeft' });
+  const chartArmed = cells['0:chartNo'].querySelector('input');
+  chartArmed.dispatchEvent({ type: 'keydown', key: 'ArrowLeft', code: 'ArrowLeft', isComposing: false, repeat: false });
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'chartNo' }, 'replayed ArrowLeft must not skip chartNo to gender');
+
+  // 6. In-cell ArrowLeft on 1-syllable composing text in part (when autocomplete closed) moves caret to 0 and consumes IME replay
+  now += 200;
+  rows[0].part = '';
+  app.selectCell(0, 'part', cells['0:part'], true);
+  const partCaretInput = cells['0:part'].querySelector('input');
+  partCaretInput.dispatchEvent({ type: 'compositionstart' });
+  partCaretInput.value = '목';
+  partCaretInput.setSelectionRange(1, 1);
+  partCaretInput.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '목' });
+  partCaretInput.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowLeft', isComposing: true, keyCode: 229 });
+  partCaretInput.setSelectionRange(0, 0);
+  now += 10;
+  const replayCaretLeft = partCaretInput.dispatchEvent({ type: 'keydown', key: 'ArrowLeft', code: 'ArrowLeft', isComposing: false, repeat: false });
   assert.equal(replayCaretLeft.defaultPrevented, true, 'IME caret replay consumed inside active editor');
-  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'name' }, 'caret move to start must not also exit name to chartNo on same press');
+  assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'part' });
 });
 
 
