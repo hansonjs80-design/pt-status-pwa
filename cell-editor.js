@@ -429,12 +429,20 @@ class PTCellEditor {
     if (colKey === "visitTime") this.appendVisitTimeRefresh(cellElement, rows[rowIdx]);
     input.focus({ preventScroll: true });
     for (const event of ["click", "keyup", "select", "scroll"]) input.addEventListener(event, e => {
-      if (event === "keyup" && this.isKoreanPreferredColumn(colKey)) {
-        if (this.isHangulToggleKeyEvent(e)) {
-          input._lastHangulToggleAt = Date.now();
-          this._lastHangulToggleAt = Date.now();
+      if (event === "keyup") {
+        if (input._imeAutocompleteNavHandoff) {
+          const rawNav = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : (e.key || e.code);
+          if (!rawNav || ["Process", "Unidentified"].includes(rawNav) || rawNav === input._imeAutocompleteNavHandoff.key) {
+            input._imeAutocompleteNavHandoff.held = false;
+          }
         }
-        if (this.toggleCellInputLanguage(e, input)) return;
+        if (this.isKoreanPreferredColumn(colKey)) {
+          if (this.isHangulToggleKeyEvent(e)) {
+            input._lastHangulToggleAt = Date.now();
+            this._lastHangulToggleAt = Date.now();
+          }
+          if (this.toggleCellInputLanguage(e, input)) return;
+        }
       }
       input.refreshEditorColors();
       this.updateInlineAutocompletePreview();
@@ -457,9 +465,12 @@ class PTCellEditor {
     input.onInputLanguageToggle = () => { composing = false; };
     const queueAutocomplete = (delay) => {
       if (!this.isCellAutocompleteEnabled(colKey) || ["gender", "writer", "no"].includes(colKey)) return;
+      if (input.dataset?.presetPickerMode === "true" || this.autocompleteState?.isPresetPicker) return;
       clearTimeout(_acDebounceTimer);
       _acDebounceTimer = setTimeout(() => {
+        _acDebounceTimer = null;
         if (isCommitted || !input.isConnected || document.activeElement !== input) return;
+        if (input.dataset?.presetPickerMode === "true" || this.autocompleteState?.isPresetPicker) return;
         // English projected from a native IME is the visible query, just like
         // ordinary English typing. Never search with the hidden Korean draft.
         const query = this.getCellEditorValue(input);
@@ -474,12 +485,42 @@ class PTCellEditor {
     };
     const refreshPendingAutocomplete = () => {
       const state = this.autocompleteState;
-      if (!state || state.input !== input || state.query === this.getCellEditorValue(input) ||
-          ["gender", "writer", "no"].includes(colKey)) return;
+      if (!state || state.input !== input || ["gender", "writer", "no"].includes(colKey)) return;
       // Navigation can beat the delayed refresh. Never confirm a candidate
-      // left over from an earlier query after fast typing or a language toggle.
+      // left over from an earlier query after fast typing or a language toggle,
+      // and cancel any queued timer for an already-rendered query.
       clearTimeout(_acDebounceTimer);
+      _acDebounceTimer = null;
+      if (state.query === this.getCellEditorValue(input)) return;
       this.refreshSearchSuggestions();
+    };
+    const navigateAutocompleteByArrow = (e, direction) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+      const now = Date.now();
+      const imeActive = Boolean(
+        composing ||
+        e.isComposing ||
+        e.key === "Process" ||
+        e.keyCode === 229 ||
+        input.dataset.composing === "true" ||
+        input.dataset.nativeComposing === "true" ||
+        input._forcedCorrectionProjection ||
+        input._forcedCorrectionApplied ||
+        input.dataset.writerKeyValue !== undefined ||
+        (input._lastCompositionEndAt && now - input._lastCompositionEndAt < 100)
+      );
+      input._lastCompositionEndAt = 0;
+      input._imeAutocompleteNavHandoff = {
+        key: direction > 0 ? "ArrowDown" : "ArrowUp",
+        held: true,
+        heldUntil: now + 220,
+        until: now + 100,
+        allowPlainUntil: now + 80,
+        allowPlainReplay: imeActive
+      };
+      this.moveAutocompleteSelection(direction);
     };
     const redirectChartName = () => {
       if (isCommitted || colKey !== 'chartNo' || composing || input.dataset.nativeComposing === 'true') return false;
@@ -766,6 +807,36 @@ class PTCellEditor {
           input._imeCaretHandoff = null;
         }
       }
+      if (input._imeAutocompleteNavHandoff) {
+        const handoff = input._imeAutocompleteNavHandoff;
+        const rawNav = ["Process", "Unidentified"].includes(e.key) && e.code ? e.code : (e.key || e.code);
+        const now = Date.now();
+        const maxUntil = Math.max(handoff.until || 0, handoff.held ? (handoff.heldUntil || 0) : 0);
+        if (now >= maxUntil) {
+          input._imeAutocompleteNavHandoff = null;
+        } else if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && rawNav === handoff.key) {
+          const isImeEvent = Boolean(e.isComposing || e.key === "Process" || e.keyCode === 229);
+          if (isImeEvent && now < handoff.until) {
+            e.preventDefault();
+            e.stopImmediatePropagation?.();
+            e.stopPropagation();
+            return;
+          }
+          if (!isImeEvent && !e.repeat &&
+              ((handoff.held && now < handoff.heldUntil) ||
+               (handoff.allowPlainReplay && now < (handoff.allowPlainUntil || handoff.until)))) {
+            handoff.held = false;
+            handoff.allowPlainReplay = false;
+            input._lastCompositionEndAt = 0;
+            e.preventDefault();
+            e.stopImmediatePropagation?.();
+            e.stopPropagation();
+            return;
+          }
+        } else if (!["Process", "Unidentified", "Shift", "Control", "Alt", "Meta"].includes(e.key)) {
+          input._imeAutocompleteNavHandoff = null;
+        }
+      }
       if (this.consumePresetLeftRepeat(e)) return;
       if (input.classList.contains("is-armed") && !e.isComposing && e.keyCode !== 229 &&
           ["Escape", "Enter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown", "Delete"].includes(e.key)) {
@@ -1038,8 +1109,7 @@ class PTCellEditor {
       if (!input.classList.contains("is-armed") && this.isAutocompleteOpen() &&
           !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
           (e.key === "ArrowDown" || e.code === "ArrowDown" || e.key === "ArrowUp" || e.code === "ArrowUp")) {
-        e.preventDefault(); e.stopPropagation();
-        this.moveAutocompleteSelection((e.key === "ArrowDown" || e.code === "ArrowDown") ? 1 : -1);
+        navigateAutocompleteByArrow(e, (e.key === "ArrowDown" || e.code === "ArrowDown") ? 1 : -1);
         return;
       }
       if (colKey === "writer" && !input.classList.contains("is-armed") &&
@@ -1170,15 +1240,11 @@ class PTCellEditor {
       // 1) 자동완성 목록이 열려 있을 때: Enter/Tab 시 최상단(또는 선택된) 항목 즉시 입력
       if (this.isAutocompleteOpen()) {
         if (e.key === "ArrowDown" || e.code === "ArrowDown") {
-          e.preventDefault();
-          e.stopPropagation();
-          this.moveAutocompleteSelection(1);
+          navigateAutocompleteByArrow(e, 1);
           return;
         }
         if (e.key === "ArrowUp" || e.code === "ArrowUp") {
-          e.preventDefault();
-          e.stopPropagation();
-          this.moveAutocompleteSelection(-1);
+          navigateAutocompleteByArrow(e, -1);
           return;
         }
         if (e.key === "Escape") {

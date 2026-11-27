@@ -78,7 +78,10 @@ class PTCellInputTools {
       this._editorExitKeyHeld = null;
       this._editorExitKeyHeldUntil = 0;
       this._imeExitHandoff = null;
-      if (input) input._imeCaretHandoff = null;
+      if (input) {
+        input._imeCaretHandoff = null;
+        input._imeAutocompleteNavHandoff = null;
+      }
     }
   }
 

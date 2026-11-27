@@ -236,15 +236,22 @@ class PTAutocomplete {
     // Matching ignores case, but choosing a candidate must retain its spelling:
     // the typed "mw" and the registered "MW" are different selectable values.
     if (showTypedValue) candidates = this.deduplicatePresetCandidates(colKey, [typedValue, ...candidates], query);
-    const sameQuery = previous?.input === input && previous.rowIdx === rowIdx &&
-      previous.colKey === colKey && previous.query === query;
+    const previousTypedValue = previous ? this.assembleHangul(String(previous.query ?? "")).trim() : "";
+    const sameQuery = Boolean(previous && previous.input === input && previous.rowIdx === rowIdx &&
+      previous.colKey === colKey &&
+      (previous.query === query || (Boolean(typedValue) && previousTypedValue === typedValue)));
     // Ending IME composition while browsing must not remove pending-initial
     // matches. Refresh the list only when the actual typed query changes.
     if (sameQuery) {
       const pendingMatches = previous.candidates.filter(value =>
         this.matchesHangulPrefix(value, query, true) && !this.matchesHangulPrefix(value, query, false));
       if (pendingMatches.length) {
-        const retained = previous.candidates.filter(value => candidates.includes(value) || pendingMatches.includes(value));
+        const candidateIdentities = new Set((candidates || []).map(item => this.getPresetCandidateIdentity(item)));
+        const pendingIdentities = new Set(pendingMatches.map(item => this.getPresetCandidateIdentity(item)));
+        const retained = previous.candidates.filter(value => {
+          const id = this.getPresetCandidateIdentity(value);
+          return candidateIdentities.has(id) || pendingIdentities.has(id);
+        });
         candidates = this.deduplicatePresetCandidates(colKey,[...retained, ...candidates, ...pendingMatches],query);
       }
     }
@@ -252,8 +259,14 @@ class PTAutocomplete {
     if (sameQuery && candidates?.length === previous.candidates.length &&
         candidates.every((candidate, index) => this.getPresetCandidateIdentity(candidate) === this.getPresetCandidateIdentity(previous.candidates[index])) &&
         document.getElementById("cellAutocompleteMenu")) { this.updateInlineAutocompletePreview(); return; }
-    const selectedValue = sameQuery ? previous.candidates[previous.selectedIndex] : null;
-    const preservedIndex = sameQuery ? candidates?.findIndex(value => this.getPresetCandidateIdentity(value) === this.getPresetCandidateIdentity(selectedValue)) : -1;
+    const hasSelectedValue = sameQuery && previous.selectedIndex >= 0 && previous.selectedIndex < (previous.candidates?.length || 0);
+    const selectedValue = hasSelectedValue ? previous.candidates[previous.selectedIndex] : null;
+    let preservedIndex = hasSelectedValue
+      ? candidates?.findIndex(value => this.getPresetCandidateIdentity(value) === this.getPresetCandidateIdentity(selectedValue))
+      : -1;
+    if (preservedIndex < 0 && hasSelectedValue) {
+      preservedIndex = candidates?.findIndex(value => String(value) === String(selectedValue));
+    }
     const ruleKey = this.getAutocompleteRuleKey(colKey, query);
     const registered = this.getPresetCandidates(Object.hasOwn(COLUMN_PRESETS, ruleKey) ? ruleKey : colKey);
     const preferred = registered.find(value => candidates.some(item => this.getPresetCandidateIdentity(item) === this.getPresetCandidateIdentity(value)) &&

@@ -1388,6 +1388,171 @@ test('exiting an active cell editor with arrow keys never skips the adjacent cel
   assert.deepEqual({ ...app.activeCell }, { rowIdx: 0, colKey: 'part' });
 });
 
+test('autocomplete ArrowDown/ArrowUp in part, prescription, extra, writer, memo, specialNote moves strictly one item and never jumps 2 items or resets to top on IME replay or history refresh', () => {
+  let now = 20000;
+  const FakeDate = class extends Date {
+    static now() { return now; }
+  };
+  let menuEl = null;
+  const doc = {
+    activeElement: null,
+    hasFocus: () => true,
+    querySelectorAll: () => [],
+    getElementById: id => id === 'cellAutocompleteMenu' ? menuEl : null,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  doc.body = makeElement('body', doc);
+  doc.body.isConnected = true;
+  const origAppend = doc.body.appendChild.bind(doc.body);
+  doc.body.appendChild = child => {
+    if (child.id === 'cellAutocompleteMenu') {
+      child.remove = () => { if (menuEl === child) menuEl = null; };
+      menuEl = child;
+    }
+    return origAppend(child);
+  };
+  doc.createElement = tag => {
+    const el = makeElement(tag, doc);
+    el.offsetWidth = 160;
+    el.offsetHeight = 120;
+    el.setAttribute = () => {};
+    el.scrollIntoView = () => {};
+    el.querySelectorAll = sel => sel === '.autocomplete-item' ? el.children : [];
+    el.querySelector = sel => sel === '.autocomplete-hint-badge'
+      ? (el.children.find(c => String(c.className).includes('autocomplete-hint-badge')) || null) : null;
+    return el;
+  };
+
+  const cols = ['part', 'prescription', 'extra', 'writer', 'memo', 'specialNote'];
+  const rows = [Object.fromEntries(cols.map(k => [k, '']))];
+  const sheet = makeElement('div', doc);
+  sheet.isConnected = true;
+  const cells = {};
+  for (const c of cols) {
+    const td = makeElement('td', doc);
+    td.dataset = { row: '0', col: c, colIdx: String(cols.indexOf(c)), colLetter: 'E', excelRow: '1' };
+    td.getBoundingClientRect = () => ({ left: 100, top: 100, bottom: 128, width: 120 });
+    sheet.appendChild(td);
+    cells[c] = td;
+  }
+  sheet.querySelector = sel => {
+    const m = sel.match(/\[data-row="0"\]\[data-col="(\w+)"\]( input)?/);
+    if (!m) return null;
+    const cell = cells[m[1]] || null;
+    return m[2] ? cell?.querySelector('input') || null : cell;
+  };
+
+  const context = vm.createContext({
+    window: { addEventListener() {}, removeEventListener() {}, innerWidth: 1200, innerHeight: 800 },
+    document: doc,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    getComputedStyle: () => ({ font: '14px sans-serif', fontSize: '14px', paddingLeft: '6px', letterSpacing: 'normal', color: 'rgb(17, 17, 17)', textAlign: 'left' }),
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date: FakeDate,
+    Event: class Event { constructor(type) { this.type = type; } },
+  });
+  vm.runInContext(source + '\nglobalThis.App = PTApp;', context);
+  const app = Object.create(context.App.prototype);
+  Object.assign(app, {
+    currentDate: '2026-11-27',
+    dataStore: { '2026-11-27': rows },
+    cloudSearchHistory: {},
+    activeCell: { rowIdx: 0, colKey: 'part' },
+    elTableBody: sheet,
+    elSheetContainer: sheet,
+    elFormulaInput: { value: '' },
+    elSearchInput: { value: '' },
+    elCellAddress: { textContent: '' },
+    elSelectedCellCoords: { textContent: '' },
+    getCurrentRows: () => rows,
+    usesNativeCellInput: () => true,
+    getCellInputLanguage: () => 'kor',
+    isKoreanPreferredColumn: col => !['writer', 'gender'].includes(col),
+    initMemoInput() {},
+    closeGenderDropdown() {},
+    hideContextMenu() {},
+    clearHeaderSelections() {},
+    updateActiveHeaders() {},
+    highlightCell() {},
+    updateHistoryDestinationHighlight() {},
+    ensureCurrentCellVisible() {},
+    updateFontColorIndicator() {},
+    updateBackgroundColorIndicator() {},
+    updateUnderlineIndicator() {},
+    updateInlineAutocompletePreview() {},
+    loadSearchHistory: async () => {},
+    saveDataStore() {},
+    debounceSaveDataStore() {},
+    applyCellFormatting() {},
+    renderColoredText(el, r, k) { el.textContent = r[k] || ''; },
+    renderAutocompleteText(el, _col, cand) { el.textContent = String(cand); },
+    getEffectiveCellRichText: () => null,
+    refreshNativeLanguagePreview() {},
+  });
+
+  // 1. In part, extra, memo, specialNote (3-row menu: [typed, cand1(selected=1), cand2]),
+  //    Korean IME ArrowDown + compositionend + plain ArrowDown replay moves 1 -> 2 (NEVER wraps 2 -> 0 top row!)
+  for (const col of ['part', 'extra', 'memo', 'specialNote']) {
+    now += 300;
+    app.selectCell(0, col, cells[col], true);
+    const input = cells[col].querySelector('input');
+    input.dispatchEvent({ type: 'compositionstart' });
+    input.value = '충';
+    input.setSelectionRange(1, 1);
+    input.dispatchEvent({ type: 'input', inputType: 'insertCompositionText', isComposing: true, data: '충' });
+    app.showAutocompleteMenu(0, col, cells[col], input, ['충격파', '충격파 2회']);
+    assert.equal(app.autocompleteState.selectedIndex, 1, `${col} starts on first suggestion (idx 1)`);
+
+    // Single physical ArrowDown during Korean IME composition:
+    // Event #1 (keyCode 229) -> compositionend -> Event #2 (plain ArrowDown replay)
+    input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: true, keyCode: 229 });
+    assert.equal(app.autocompleteState.selectedIndex, 2, `${col} moves one item down to idx 2`);
+    now += 3;
+    input.dispatchEvent({ type: 'compositionend', data: '충' });
+    app.showAutocompleteMenu(0, col, cells[col], input, ['충격파', '충격파 2회']);
+    assert.equal(app.autocompleteState.selectedIndex, 2, `${col} compositionend refresh keeps idx 2`);
+    now += 5;
+    input.dispatchEvent({ type: 'keyup', key: 'ArrowDown', code: 'ArrowDown' });
+    now += 5;
+    const replay = input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: false, repeat: false });
+    assert.equal(replay.defaultPrevented, true);
+    assert.equal(app.autocompleteState.selectedIndex, 2, `${col} plain IME replay must not wrap idx 2 back to top idx 0`);
+
+    // Formatting metadata arriving from async loadSearchHistory preserves idx 2 instead of resetting to top
+    const formattedSecond = app.makePresetCandidate('충격파 2회', { color: '#2563eb', fontWeight: 700, richText: null });
+    app.showAutocompleteMenu(0, col, cells[col], input, ['충격파', formattedSecond]);
+    assert.equal(app.autocompleteState.selectedIndex, 2, `${col} async formatting variant refresh keeps idx 2`);
+    app.closeAutocompleteMenu();
+  }
+
+  // 2. In prescription & writer (where showTypedValue is false, starting at idx 0):
+  //    4 items -> single ArrowDown + IME replay moves 0 -> 1 (NEVER 2 steps to idx 2!), then second deliberate ArrowDown moves 1 -> 2
+  for (const [col, items] of [['prescription', ['척추', '사지', '한랭', '견인']], ['writer', ['S', 'J', 'K']]]) {
+    now += 300;
+    app.selectCell(0, col, cells[col], true);
+    const input = cells[col].querySelector('input');
+    input.dataset.presetPickerMode = 'true';
+    app.showAutocompleteMenu(0, col, cells[col], input, items, { includeTypedValue: false, isPresetPicker: true });
+    assert.equal(app.autocompleteState.selectedIndex, 0);
+
+    input.dispatchEvent({ type: 'keydown', key: 'Process', code: 'ArrowDown', isComposing: true, keyCode: 229 });
+    assert.equal(app.autocompleteState.selectedIndex, 1, `${col} moves 0 -> 1`);
+    now += 10;
+    input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: false, repeat: false });
+    assert.equal(app.autocompleteState.selectedIndex, 1, `${col} IME replay must not jump 2 items to idx 2`);
+    input.dispatchEvent({ type: 'keyup', key: 'ArrowDown', code: 'ArrowDown' });
+
+    // Deliberate next ArrowDown moves 1 -> 2
+    now += 100;
+    input.dispatchEvent({ type: 'keydown', key: 'ArrowDown', code: 'ArrowDown', isComposing: false, repeat: false });
+    assert.equal(app.autocompleteState.selectedIndex, 2, `${col} deliberate second press moves 1 -> 2`);
+    input.dispatchEvent({ type: 'keyup', key: 'ArrowDown', code: 'ArrowDown' });
+    app.closeAutocompleteMenu();
+  }
+});
+
 
 
 
